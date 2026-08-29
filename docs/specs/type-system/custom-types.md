@@ -12,7 +12,8 @@ Value Objectとは異なり、field数ではなくtype categoryとdata shapeに�
 
 このdocumentは、canonical declaration、field type、field modifier、mapping validation、dependency cycle、stable field IDと
 `reservedFields`、generated public API、structural equality、およびconstructor validation boundaryを定義する。Enum、Flags Enum、
-MessagePackのexact shape、C# naming policyの詳細は、それぞれのowner specificationへ委譲する。
+MessagePackのexact shapeはowner specificationへ委譲する。generated C# identifierのobservable contractは、
+[C#命名仕様](csharp-naming.md)が所有する。
 
 ## 用語
 
@@ -119,10 +120,9 @@ wire shapeをこのproposalで決定するものではない。
 
 Generated Custom Typeは、次のcategoryに固定されたpublic `readonly struct`でなければならない（MUST）。各declared fieldは
 public get-only propertyとして公開しなければならない（MUST）。Custom Typeごとに `class`、`record`、または `record struct`
-を選択可能にしてはならない（MUST NOT）。property identifierのnormalization、namespace、collision、reserved keyword policy
-は、Custom Typeのstructural semanticsとは別に、[C# naming RFC](../../rfcs/0003-csharp-naming.md)などの適用可能なC# naming
-specificationが所有する。人間のnaming decisionが得られるまで、`implement-spec` はこのmappingを補完してはならない
-（MUST NOT）。
+を選択可能にしてはならない（MUST NOT）。property identifier、type identifier、namespace、collision、reserved keyword policy
+は、Custom Typeのstructural semanticsとは別に[C#命名仕様](csharp-naming.md)が所有する。`implement-spec` はこのmappingを
+独自に補完してはならない（MUST NOT）。
 
 ```csharp
 public readonly struct Reward
@@ -141,8 +141,8 @@ public readonly struct Reward
 
 Generated Custom Typeのpublic constructorは、すべてのfieldを引数として受け取らなければならない（MUST）。constructor
 parameterの順序は、YAML declaration orderではなく、field IDのascending orderで決定しなければならない（MUST）。例えば
-field IDが `5`、`1`、`3` の場合、constructorのorderは `1`、`3`、`5` でなければならない（MUST）。parameter nameとgenerated
-source formattingはこのrequirementの対象外である。
+field IDが `5`、`1`、`3` の場合、constructorのorderは `1`、`3`、`5` でなければならない（MUST）。parameter identifierは
+[C#命名仕様](csharp-naming.md)に従い、generated source formattingはこのrequirementの対象外である。
 
 ### SCHEMA-CUSTOM-013
 
@@ -220,8 +220,8 @@ released-schema migrationはこのproposalでは割り当てない。
 | `SCHEMA-CUSTOM-008` | field数やcontained typeにかかわらずCustom Typeがkey-incompatibleとして分類される。 | 1-fieldまたはkey-compatible fieldだけのCustom TypeがPrimary/Secondary Keyとして許可される。 | Key-capability tests。 |
 | `SCHEMA-CUSTOM-009` | acyclicな `A -> B -> C` が受け入れられる。 | `A -> A`、`A -> B -> A`、またはNullable/Arrayを経由したcycleがrejectされる。 | Dependency graph validation tests。 |
 | `SCHEMA-CUSTOM-010` | 各fieldがrequiredでuniqueなnumeric IDを持ち、name rename後もIDが維持され、Custom Typeごとのnamespaceが独立する。 | ID欠落、重複、nameとの同一視、削除IDの再利用、またはtable/別Custom Typeとのnamespace共有。 | Field-ID and evolution tests。 |
-| `SCHEMA-CUSTOM-011` | generated typeがpublic `readonly struct`で、各fieldにpublic get-only propertyがある。 | class、record、record struct、setter付きproperty、またはfieldの欠落。 | C# compile/reflection/API-surface test。 |
-| `SCHEMA-CUSTOM-012` | public constructorが全fieldを受け取り、field ID ascending orderでparameterを並べる。 | declaration order依存、field欠落、またはID順と異なるparameter order。 | Constructor-order API test。 |
+| `SCHEMA-CUSTOM-011` | generated typeがpublic `readonly struct`で、各fieldにpublic get-only propertyがあり、type/property identifierがC#命名仕様どおりである。 | class、record、record struct、setter付きproperty、fieldの欠落、または未定義のidentifier repair。 | C# compile/reflection/API-surface and naming tests。 |
+| `SCHEMA-CUSTOM-012` | public constructorが全fieldをfield ID ascending orderで受け取り、各parameter identifierが対応するsource field nameと一致する。 | declaration order依存、field欠落、ID順と異なるparameter order、またはparameter nameの暗黙変換。 | Constructor-order and named-argument API tests。 |
 | `SCHEMA-CUSTOM-013` | same structural valuesが `Equals(N)`、`Equals(object)`、`==` でequal、異なるfield valueまたはtypeがnot equal、`!=` がnegationとなり、`IEquatable<N>` と全required APIが存在する。 | reference identityだけの比較、required API欠落、またはordering APIをこのspecのcontractへ混入。 | Equality API and structural-equality tests。 |
 | `SCHEMA-CUSTOM-014` | equalなCustom Typeと同じcontents/orderのArray fieldがequal hashを持つ。 | equal valuesのhash不一致、またはArray reference identityだけに依存。 | Structural hash-consistency and sequence tests。 |
 | `SCHEMA-CUSTOM-015` | Required stringのnullがconstructorでrejectされ、Nullable nullと `ImmutableArray<T>.Empty` が受け入れられ、default Arrayがrejectされる。`default(CustomType)` はinvalidになり得る。nested typeのrecursive validityはconstructorの必須検査ではない。 | null/default Arrayが受理される、またはconstructorがnested default stateを再帰的に必須検証すると主張する。 | Constructor validation-boundary and default-state tests。 |
@@ -268,7 +268,7 @@ Custom Typeのcategory、mapping representation、stable Field ID、reserved ide
 structural equality、Array immutabilityは、将来のschema/dataとgenerated artifactに影響する。Field IDの共通identity ruleと削除後の
 再利用禁止は[Field identity仕様](../compatibility/field-identity.md)を参照し、Custom Typeのdeleted Field IDは
 `custom.reservedFields` に保持する。このproposalは、minimum shapeを超えるtombstone metadata、MessagePack attribute/wire shape、
-generated API naming、released schema evolutionのclassificationを決定しない。
+released schema evolutionのclassificationを決定しない。generated API namingは[C#命名仕様](csharp-naming.md)が所有する。
 
 ## 例
 
@@ -341,7 +341,6 @@ A -> B[] -> A
 
 - Custom Type field IDのallocation policyは何か。
 - `custom.reservedFields` のminimum shapeを超えて、deletion timestamp、reason、replacement、migration、compatibility version、serialization metadataを保持するか。
-- Custom Type field nameからgenerated C# property identifierへ変換するexact naming、namespace、collision、reserved keyword policy。関連するcandidateは[C# naming RFC](../../rfcs/0003-csharp-naming.md)で管理する。
 - EnumおよびFlags Enumをfield base typeとして使用する際の、各仕様とのdependency boundaryと実装順序。
 - MasterMemory/MessagePack integrationで必要なexact attribute、wire shape、formatter、serialization constructor、およびresolver behavior。
 - Custom Typeの追加、field rename、field deletion、field ID変更、field type変更、modifier変更をreleased schemaに対してどうclassificationするか。

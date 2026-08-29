@@ -16,61 +16,58 @@ invalidまたはcollisionしたgenerated nameがC# compile後までfailureにな
 
 ## 目標（Goals）
 
-- 将来のnaming specificationが回答すべきquestionを定義する。
+- generated C# naming specificationが所有するobservable contractの背景とtrade-offを記録する。
 - obvious invalid outputをcode-generation validation boundaryで止める。
 - Unicode、escaping、rename compatibility policyを黙って選択しない。
-- Value ObjectとCustom Typeの `implement-spec` 開始前に、人間が決めるべきpublic C# identifier contractを明示する。
+- Value ObjectとCustom Typeの `implement-spec` 開始前に必要なpublic C# identifier contractを明示する。
 
 ## 非目標（Non-Goals）
 
-このRFCは、final naming convention、rename migration policy、Unicode identifier policyを承認しない。
+このRFCは、generated C# naming contractのcanonical ownerではない。observable contractは
+[C#命名仕様](../specs/type-system/csharp-naming.md)が所有する。rename migration policy、Unicode identifier policy、
+namespaceおよびfilenameの詳細は、このRFCでも承認しない。
 Type System semanticsも追加しない。
 
-## 型システム実装前のblocking contract
+## 型システム実装前のhuman-confirmed contract
 
-Value ObjectとCustom Typeの仕様は、generated public C# type、property、constructorを要求する。しかし、YAML nameから
-C# identifierへのmappingはこのRFCでまだ確定していない。したがって、以下の質問が人間によって解決されるまで、これらの
-generated public APIに対する `implement-spec` は開始してはならない（MUST NOT）。このsectionのRecommendationはRFC上の
-比較材料であり、final decisionではない。
+Value ObjectとCustom Typeの仕様は、generated public C# type、property、constructorを要求する。今回のhuman decisionにより、
+これらのminimum public identifier surfaceに関する6つのquestionは解決された。採用されたobservable contractは
+[C#命名仕様](../specs/type-system/csharp-naming.md)へ反映し、このRFCは背景、rationale、比較されたalternativeを記録する。
+以下の旧Option A/B/Cはhistory上の比較材料であり、現在のcanonical contractは「決定」に記載した内容である。
 
 ### 1. Type declaration nameからgenerated type identifierへのmapping
 
-**Question**: YAML type declarationの `name` をgenerated C# type identifierへどう変換するか。
+**Decision**: YAML type declarationの `name` はPascalCase ASCII C# identifierでなければならず、generated C# type identifierは
+そのsource nameをそのまま使用する。追加normalizationは行わない。詳細は `TYPE-NAMING-001`、`TYPE-NAMING-002` が所有する。
 
 - **Option A**: YAML `name` が有効なC# identifierであることを要求し、そのidentifierをそのまま使用する。
 - **Option B**: YAML `name` を決定的なnormalization ruleでC# identifierへ変換し、変換後のcollisionを検出する。
 - **Option C**: YAML `name` をsource identityとして保持し、別のexplicit generated-name optionを必須または任意で提供する。
-
-**Recommendation**: 初期contractではOption Aを推奨する。暗黙のrenameを避け、generated public type identityを入力から追跡しやすく
-できるためである。異なる入力表記を許可する必要がある場合は、Option BまたはCを人間が明示的に選ぶ。
 
 **Why it matters**: Value Object / Custom Typeのpublic type identifierと、そこから参照されるgenerated APIを実装者が独自に決めると、
 compile結果と将来のcompatibility surfaceが変わる。
 
 ### 2. Field nameからgenerated public property identifierへのmapping
 
-**Question**: YAML field `name` をgenerated public property identifierへどう変換するか。
+**Decision**: Custom Typeのsource field `name` はlowerCamelCase ASCII identifierでなければならない。generated public property
+identifierは先頭ASCII characterだけをuppercaseへ変換し、残りをそのまま保持する。詳細は `TYPE-NAMING-003`、`TYPE-NAMING-004` が
+所有する。
 
 - **Option A**: YAML field `name` が有効なC# identifierであることを要求し、そのidentifierをpropertyにそのまま使用する。
 - **Option B**: YAML field `name` を決定的にnormalizationし、property identifierへ変換する。変換後のcollisionはerrorとする。
 - **Option C**: source field nameとは別に、generated property nameをfieldごとに明示する。
 
-**Recommendation**: 初期contractではOption Aを推奨する。source field identityとpublic property identityの対応が明快になり、
-normalization collisionを暗黙に解決せずに済むためである。人間向けYAML表記とC#表記を分ける要件がある場合は、Option BまたはCを選ぶ。
-
 **Why it matters**: Custom Typeのget-only propertyの名前はpublic APIであり、実装者がcase変換やseparator処理を発明してはならない。
 
 ### 3. Field nameからconstructor parameter identifierへのmapping
 
-**Question**: generated constructorのparameter identifierを、property identifierとどのように関係付けるか。
+**Decision**: Custom Typeのgenerated constructor parameter identifierは、対応するYAML field `name`をそのまま使用する。named
+argumentから観測されるnameもstable public API surfaceである。parameter orderは `SCHEMA-CUSTOM-012` のfield ID ascending ruleに
+従う。詳細は `TYPE-NAMING-005` が所有する。
 
 - **Option A**: property mappingから決定的に導出し、parameter mapping ruleもstable public APIとして扱う。
 - **Option B**: parameter identifierをstable contractに含めず、compile可能でcollisionのないidentifierであることだけを要求する。
 - **Option C**: property identifierとparameter identifierをfieldごとに独立指定する。
-
-**Recommendation**: named argumentによるconstructor callをcompatibility surfaceに含めないならOption Bを推奨する。named argumentを
-stable APIとして扱うならOption Aを選び、導出ruleを同時に決める。Option Cはschema記述量とmigration surfaceが増えるため、明示的な
-要件がある場合に限る。
 
 **Why it matters**: constructor parameter nameはproperty nameとは別のidentifier surfaceであり、named argumentを許す場合はpublic
 source compatibilityに影響する。Option Bを選ぶ場合も、実装者がdomain semanticsを補完しないよう、stable contract外であることを
@@ -78,49 +75,43 @@ source compatibilityに影響する。Option Bを選ぶ場合も、実装者がd
 
 ### 4. Invalid C# identifierの扱い
 
-**Question**: YAML nameからvalidなC# identifierを生成できない場合にどうするか。
+**Decision**: lexical ruleを満たさないsource nameはschemaまたはcode-generation validation errorとしてrejectする。automatic
+repairは行わない。詳細は `TYPE-NAMING-006` が所有する。
 
 - **Option A**: schema/code-generation validation errorとしてrejectする。
 - **Option B**: deterministicなescapeまたはprefix ruleでvalid identifierへ変換する。
 - **Option C**: source nameを保持しつつ、explicit generated nameの指定を要求する。
 
-**Recommendation**: Option Aを推奨する。入力の誤りを早期に検出し、暗黙のpublic API renameを避けられるためである。Option BまたはCを
-選ぶ場合は、変換結果とcompatibility ruleを同時に定義する。
-
 **Why it matters**: invalid outputをcompile時まで遅延させず、実装者ごとに異なる修正を許さないためである。
 
 ### 5. C# reserved keywordの扱い
 
-**Question**: `class` や `event` のようなreserved keywordに一致するsource nameをどう扱うか。
+**Decision**: C# reserved keywordと一致するsource nameはvalidation errorとしてrejectする。C# `@` escapeは使用しない。詳細は
+`TYPE-NAMING-006` が所有する。
 
 - **Option A**: reserved keywordをinvalid inputとしてrejectする。
 - **Option B**: C#の `@` escapeを使用してidentifierとして生成する。
 - **Option C**: reserved keywordの場合だけexplicit generated nameを要求する。
 
-**Recommendation**: Option Aを推奨する。source nameとgenerated APIの対応を予測しやすく、language-specific escapeをdomain入力へ
-持ち込まないためである。Option BまたはCを選ぶ場合は、type、property、parameterの各surfaceへ同じruleを適用するかを明示する。
-
 **Why it matters**: keyword handlingを未定義のままにすると、同じschemaから生成するpublic APIがgeneratorの判断に依存する。
 
 ### 6. Normalization後のcollisionの扱い
 
-**Question**: 異なるsource nameが同じgenerated identifierへ変換される場合にどうするか。
+**Decision**: 同じgenerated C# scopeでidentifierがcollisionする場合はvalidation errorとしてrejectする。automatic suffix、prefix、
+escape、normalizationまたはその他のdisambiguationは行わない。generator-owned memberとのcollisionも含む。詳細は `TYPE-NAMING-007` が
+所有する。
 
 - **Option A**: schema/code-generation validation errorとしてrejectする。
 - **Option B**: deterministicなsuffixまたはprefixを付けて別identifierへdisambiguateする。
 - **Option C**: collisionしたfield/typeごとにexplicit generated nameを要求する。
-
-**Recommendation**: Option Aを推奨する。source identityを黙って変更せず、schema authorが意図したrenameを明示できるためである。
-Option BまたはCを選ぶ場合は、disambiguationの安定性とcompatibilityを同時に定義する。
 
 **Why it matters**: `foo-bar` と `foo_bar` のような入力を同一APIへ黙ってmergeせず、生成結果を一意にする必要がある。
 
 ## 補助的な命名事項
 
 generated namespaceのvalidity、generated filename、filesystemのcase collision、Unicode normalizationの高度な互換性、namespace/API
-rename migrationは、将来のgenerated artifactとreleased compatibilityの検討事項である。これらは、このRFCの6つのminimum
-blocking questionを解決するまでのType System semanticを直接決めるものではない。ただし、current implementationが要求する場合は、
-conservativeなvalidation guardを別途維持する。
+rename migrationは、将来のgenerated artifactとreleased compatibilityの検討事項である。これらは今回解決した6つのminimum
+contractとは別であり、current implementationが要求する場合は、conservativeなvalidation guardを別途維持する。
 
 ## 選択肢（Options）
 
@@ -137,9 +128,9 @@ rejectionは予測可能でsource identityを保てるが、authorにinputのren
 ## 提案（Proposal）
 
 current scaffoldには、namespace、type、property、constructor-parameterの明らかに無効なgenerated outputを早期に止める
-conservativeなvalidation boundaryがある。これはcurrent implementationのguardに関する観測であり、このRFCがそのままapproved
-naming specificationであることを意味しない。generated API nameがcompatibility promiseになる前に、上記のminimum blocking
-questionについて最終的なproduct policyをrefineし、reviewしなければならない。
+conservativeなvalidation boundaryがある。これはcurrent implementationのguardに関する観測であり、このRFCがcanonical
+naming specificationの代替であることを意味しない。最終的なobservable contractは `docs/specs/type-system/csharp-naming.md` に
+記録する。
 
 ## 互換性（Compatibility）
 
@@ -148,18 +139,12 @@ filenameが変わる可能性がある。最終decisionにはgolden testと明�
 
 ## Open Questions（未解決事項）
 
-上記のminimum blocking questionに対するhuman decisionが必要である。
-
-- Type declaration `name` をgenerated C# type identifierへexactに写すか、normalizationするか、explicit generated nameを設けるか。
-- Field `name` をgenerated public property identifierへexactに写すか、normalizationするか、explicit generated nameを設けるか。
-- Constructor parameter identifierをstable public contractに含めるか、compile可能なnon-contract detailとして扱うか。
-- invalid C# identifierをreject、escape/prefix、またはexplicit generated name要求のいずれで扱うか。
-- reserved keywordをreject、`@` escape、またはexplicit generated name要求のいずれで扱うか。
-- normalization collisionをreject、deterministic disambiguation、またはexplicit generated name要求のいずれで扱うか。
 - namespace、filename、Unicode normalization、case-folding、released API rename migrationにどのcompatibility guaranteeを与えるか。
+- C# contextual keywordを将来どのように扱うか。
 
 ## 決定（Decision）
 
-明示的なhuman decision待ち。RFCは `Status: Proposed` のままであり、上記のblocking questionをfinal naming contractとして
-採用していない。currentのconservative validation boundaryはobviously invalidなoutputを防ぐための実装guardに過ぎず、
-このRFCがProposedである間もgenerated public APIの最終命名規則を承認したものではない。
+今回のhuman decisionは、6つのminimum naming questionについて、`docs/specs/type-system/csharp-naming.md` に記録されたpolicyを
+示した。RFCはrationaleとalternative comparisonを保持し、`Status: Proposed` のままとする。RFCの `Accepted` transitionと
+canonical specificationの `Approved` transitionは別のworkflow operationであり、このrefinementでは実行しない。したがって、
+このRFCもcanonical specificationも、human maintainerによる明示的なapprovalが完了するまで `implement-spec` のauthorityではない。

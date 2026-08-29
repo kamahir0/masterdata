@@ -100,9 +100,9 @@ underlying typeを `T`、Value Object nameを `N` とすると、generated type�
 なければならず（MUST）、public setterなしの `public T Value { get; }` を公開し（MUST）、argumentを `Value` に
 格納するpublic constructor `N(T value)` を公開しなければならない（MUST）。Value Objectは、typeごとの
 representation optionによって `class`、`record`、または `record struct` として選べてはならない（MUST NOT）。
-parameter nameとgenerated source formattingはこのcontractの対象外である。`N` へ到達するsource nameのmappingは、
-[C# naming RFC](../../rfcs/0003-csharp-naming.md)で管理する。このrequirementはnaming normalization、keyword handling、
-collision handlingを決定しない。MessagePack attributeとserialization memberは、別の将来decisionで管理する。
+`N` へ到達するsource nameのmappingは、[C#命名仕様](csharp-naming.md)が管理する。Value Objectの固定property
+`Value`、equality member、`ToString()` memberとのcollisionも、同仕様のgenerated member collision ruleに従う。
+generated source formattingとMessagePack attribute / serialization memberの詳細は、このrequirementの対象外である。
 
 ### SCHEMA-VO-007
 
@@ -214,7 +214,7 @@ boundaryである。exact diagnostic codeとfinal MessagePack attribute shapeは
 | `SCHEMA-VO-003` | 許可されたprimitiveを直接wrapするValue Objectが受け入れられ、structural field typeはCustom Typeとして区別される。 | nested、enum、custom、array、nullable wrapper、またはfield数だけを根拠にしたcategory変更がrejectされる。 | Forbidden-wrapper and category-boundary tests。 |
 | `SCHEMA-VO-004` | `kind: type`、top-level `name`、top-level `valueObject.underlying` を持つ1つのtype documentが、pathに依存せずnamed Value Object declarationを生成する。 | 複数declaration、canonical memberの欠落、またはpath-derived identityがrejectされる。 | Type document structure tests。 |
 | `SCHEMA-VO-005` | Value Object fieldがunderlying primitiveと同じscalar representationを使用する。 | `value` propertyを含むwrapper objectが、定義されたrepresentationとして要求または受け入れられる。 | Data representation tests。 |
-| `SCHEMA-VO-006` | generated outputが、public `Value` get-only propertyとpublic underlying-value constructorを持つpublic readonly structである。 | private type、setterを持つ `Value` property、public constructorの欠落、argumentを保存しないconstructor、またはclass/record representation。 | C# generation golden/compile/API-surface test。 |
+| `SCHEMA-VO-006` | generated outputが、C#命名仕様に従うtype identifierを持ち、public `Value` get-only propertyとpublic underlying-value constructorを持つpublic readonly structである。 | private type、setterを持つ `Value` property、public constructorの欠落、argumentを保存しないconstructor、class/record representation、または未定義のidentifier repair。 | C# generation golden/compile/API-surface and naming test。 |
 | `SCHEMA-VO-007` | すべてのvalid Value Objectがkey-compatibleとして報告され、実際のindex使用なしでもそのcapabilityを持つ。approvedなunderlying comparison capabilityがあれば同じoutcomeが継承される。 | Value Objectごとのoverride、実際のkey使用を要する判定、またはunderlyingと異なるcomparison capability。 | Capability inheritance tests。 |
 | `SCHEMA-VO-008` | canonical conversion syntaxが `false/false`、`true/false`、`false/true`、`true/true` を独立して表現し、省略されたmapping/optionがdisableとなり、enableされた方向だけimplicit C# operatorを持つ。 | 欠落した方向がenableになる、一方のsettingが他方を変える、またはdisableされた方向のoperatorが生成される。 | Conversion syntax, default, and generated-operator tests。 |
 | `SCHEMA-VO-009` | conversion settingの変更がgenerated C# conversion surfaceだけを変更する。 | key compatibility、comparison、equality、wire identity、underlying identity、field modifier behaviorがconversion settingで変化する。 | Conversion-isolation tests。 |

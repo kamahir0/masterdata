@@ -26,10 +26,14 @@ Custom Type
 field数はValue ObjectとCustom Typeを分類しない。1-field Custom TypeもCustom Typeであり、dataはmappingとして扱う。
 Value Objectのdataはscalarである。Array shapeとgenerated C#の`ImmutableArray<T>` representationは、
 [Field Modifiers仕様](field-modifiers.md)が全field categoryに共通して定義する。
+Value ObjectおよびCustom Typeのtype name、Custom Type fieldのsource name、generated property、constructor
+parameterのmappingは[C#命名仕様](csharp-naming.md)が所有する。Tableの`table` identityと`csharpName` presentation nameは
+この仕様の対象外である。
 
 - [Primitive Types仕様](primitives.md) — `Status: Proposed`
 - [Field Modifiers仕様](field-modifiers.md) — `Status: Proposed`
 - [Value Objects仕様](value-objects.md) — `Status: Proposed`
+- [C#命名仕様](csharp-naming.md) — `Status: Proposed`
 - [Enums and Flags仕様](enums.md) — `Status: Draft`
 - [Custom Types仕様](custom-types.md) — `Status: Proposed`
 

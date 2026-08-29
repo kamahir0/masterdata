@@ -165,6 +165,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Primitive Types仕様](type-system/primitives.md)
   - [Field Modifiers仕様](type-system/field-modifiers.md)
   - [Value Objects仕様](type-system/value-objects.md)
+  - [C#命名仕様](type-system/csharp-naming.md)
   - [Enum / Flags仕様](type-system/enums.md)
   - [Custom Types仕様](type-system/custom-types.md)
 - [Index / reference仕様](index-and-reference.md)

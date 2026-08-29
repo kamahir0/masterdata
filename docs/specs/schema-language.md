@@ -80,7 +80,9 @@ custom:
 これらのtype declarationはProposed specificationのdirectionであり、current parserは `kind: type`、`valueObject`、または
 `custom` をまだ受け付けない。specificationがApprovedかつImplementedになるまで、current parserのimplementation contract
 ではない。type documentのpathまたはfilenameはtype identityを決めない。1つのYAML documentに複数のtype declarationを入れる
-形式は使用しない。
+形式は使用しない。Value ObjectとCustom Typeのtype name、およびCustom Type field nameのASCII lexical ruleとgenerated
+C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
+`csharpName` presentation nameへ適用されない。
 
 ## YAML subsetのOpen Questions
 

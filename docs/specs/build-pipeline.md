@@ -34,8 +34,9 @@ misleadingなfinal generated directoryを残すことはない。production buil
 場合、generated C#、binary output、cacheへのwriteはstagingを使い、必要なすべてのstageが成功した
 後にのみpublishしなければならない（MUST）。
 
-Generated identifier validationはconservativeなscaffold guardである。completeなC# naming policyは、
-ここで黙って定義せず、Proposedの [`C# naming RFC`](../rfcs/0003-csharp-naming.md) で管理する。
+Value Object / Custom Typeのgenerated identifier validationのobservable contractは、Proposedの[C#命名仕様](type-system/csharp-naming.md)が所有する。
+採用理由と比較したalternativeは[C# naming RFC](../rfcs/0003-csharp-naming.md)に残す。build pipelineはこの命名ruleを別の
+normalizationやrepairへ置き換えてはならない（MUST NOT）。
 
 ## Outputとidentityの境界
 

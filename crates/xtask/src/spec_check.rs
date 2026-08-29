@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -41,21 +41,45 @@ pub fn check_repository(root: &Path) -> Result<SpecCheckSummary> {
         check_spec_header(root, path, &contents, &mut issues);
     }
 
-    let mut requirement_owners = BTreeMap::new();
+    let mut requirement_owners: BTreeMap<String, PathBuf> = BTreeMap::new();
     for path in spec_files
         .iter()
         .chain(gui_files.iter())
         .filter(|path| is_canonical_document(path))
     {
         let contents = read_text(path)?;
-        for id in requirement_ids(&contents) {
+        for (heading, line) in malformed_requirement_headings(&contents) {
+            issues.push(format!(
+                "malformed specification ID definition `{heading}` in {} at line {line}",
+                display_path(root, path)
+            ));
+        }
+        let definitions = requirement_definitions(&contents);
+        let mut local_definitions = BTreeMap::new();
+        for definition in definitions {
             summary.requirement_ids += 1;
-            if let Some(previous) = requirement_owners.insert(id.clone(), path.clone()) {
+            if let Some(previous_line) =
+                local_definitions.insert(definition.id.clone(), definition.line)
+            {
                 issues.push(format!(
-                    "duplicate specification ID `{id}` in {} and {}",
-                    display_path(root, &previous),
-                    display_path(root, path)
+                    "duplicate specification ID definition `{}` within {} at lines {} and {}",
+                    definition.id,
+                    display_path(root, path),
+                    previous_line,
+                    definition.line
                 ));
+            }
+            if let Some(previous) = requirement_owners.get(&definition.id) {
+                if previous != path {
+                    issues.push(format!(
+                        "duplicate specification ID definition `{}` in {} and {}",
+                        definition.id,
+                        display_path(root, previous),
+                        display_path(root, path)
+                    ));
+                }
+            } else {
+                requirement_owners.insert(definition.id.clone(), (*path).clone());
             }
         }
     }
@@ -99,7 +123,7 @@ pub fn check_repository(root: &Path) -> Result<SpecCheckSummary> {
             .collect::<Vec<_>>()
             .join("\n");
         Err(MasterdataError::new(
-            "XTASK-SPECS-001",
+            "E-XTASK-SPECS-CHECK",
             ErrorKind::Validation,
             format!("spec integrity check failed:\n{details}"),
         ))
@@ -126,11 +150,11 @@ fn markdown_files(root: &Path) -> Result<Vec<PathBuf>> {
     for entry in entries {
         let entry = entry.map_err(|error| io_error(root, error))?;
         let path = entry.path();
-        if entry
-            .file_type()
-            .map_err(|error| io_error(&path, error))?
-            .is_dir()
-        {
+        let file_type = entry.file_type().map_err(|error| io_error(&path, error))?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
             files.extend(markdown_files(&path)?);
         } else if path.extension().and_then(|value| value.to_str()) == Some("md") {
             files.push(path);
@@ -146,7 +170,7 @@ fn read_text(path: &Path) -> Result<String> {
 
 fn io_error(path: &Path, error: impl std::fmt::Display) -> MasterdataError {
     MasterdataError::new(
-        "XTASK-SPECS-002",
+        "E-XTASK-SPECS-IO",
         ErrorKind::Io,
         format!("could not read specification workflow input: {error}"),
     )
@@ -195,35 +219,60 @@ fn check_spec_header(root: &Path, path: &Path, contents: &str, issues: &mut Vec<
     }
 }
 
-fn requirement_ids(contents: &str) -> BTreeSet<String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RequirementDefinition {
+    id: String,
+    line: usize,
+}
+
+/// Requirement IDs are owned only by explicit level-three headings. Mentions
+/// in prose such as `See PROJECT-001` are references and must not become a
+/// second owner. Keeping the grammar intentionally small also makes the
+/// checker useful without attempting to parse Markdown in full.
+fn requirement_definitions(contents: &str) -> Vec<RequirementDefinition> {
     contents
         .lines()
-        .flat_map(|line| {
-            line.split(|character: char| {
-                character.is_whitespace()
-                    || matches!(
-                        character,
-                        '`' | ':'
-                            | ','
-                            | '.'
-                            | ';'
-                            | '('
-                            | ')'
-                            | '['
-                            | ']'
-                            | '{'
-                            | '}'
-                            | '"'
-                            | '\''
-                    )
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let heading = line.strip_prefix("### ")?.trim();
+            is_requirement_id(heading).then(|| RequirementDefinition {
+                id: heading.to_owned(),
+                line: index + 1,
             })
         })
-        .filter(|token| is_requirement_id(token))
-        .map(str::to_owned)
         .collect()
 }
 
+fn malformed_requirement_headings(contents: &str) -> Vec<(String, usize)> {
+    contents
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let heading = line.strip_prefix("### ")?.trim();
+            if !heading.is_empty()
+                && looks_like_requirement_heading(heading)
+                && !is_requirement_id(heading)
+            {
+                Some((heading.to_owned(), index + 1))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn looks_like_requirement_heading(heading: &str) -> bool {
+    heading.contains('-')
+        || heading.contains('_')
+        || (!heading.bytes().any(|byte| byte.is_ascii_whitespace())
+            && heading.bytes().any(|byte| byte.is_ascii_uppercase())
+            && heading.bytes().any(|byte| byte.is_ascii_digit()))
+}
+
 fn is_requirement_id(token: &str) -> bool {
+    if token.starts_with("E-") {
+        return false;
+    }
     let parts = token.split('-').collect::<Vec<_>>();
     if parts.len() < 2 {
         return false;
@@ -321,7 +370,7 @@ mod tests {
         fs::create_dir_all(&specs).expect("spec directory");
         fs::write(
             specs.join("example.md"),
-            "# Example\n\nStatus: Proposed\n\n### TEST-001\n\nThe rule MAY be used.\n",
+            "# Example\n\nStatus: Proposed\n\n### TEST-001\n\nThe rule MAY be used. See TEST-001 for the reference.\n",
         )
         .expect("spec file");
 
@@ -347,8 +396,68 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("duplicate specification ID `TEST-001`")
+                .contains("duplicate specification ID definition `TEST-001`")
         );
+    }
+
+    #[test]
+    fn duplicate_requirement_id_in_one_file_is_reported() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### TEST-001\n\n### TEST-001\n",
+        )
+        .expect("spec file");
+
+        let error = check_repository(directory.path()).expect_err("duplicate ID");
+        assert!(error.to_string().contains("within docs/specs/example.md"));
+    }
+
+    #[test]
+    fn malformed_requirement_heading_is_reported() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### TEST_bad\n",
+        )
+        .expect("spec file");
+
+        let error = check_repository(directory.path()).expect_err("malformed ID");
+        assert!(error.to_string().contains("malformed specification ID"));
+    }
+
+    #[test]
+    fn malformed_compact_requirement_heading_is_reported() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### TEST1\n",
+        )
+        .expect("spec file");
+
+        let error = check_repository(directory.path()).expect_err("malformed ID");
+        assert!(error.to_string().contains("malformed specification ID"));
+    }
+
+    #[test]
+    fn diagnostic_namespace_is_not_a_requirement_definition() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### E-SCHEMA-001\n",
+        )
+        .expect("spec file");
+
+        let error = check_repository(directory.path()).expect_err("diagnostic namespace");
+        assert!(error.to_string().contains("malformed specification ID"));
     }
 
     #[test]

@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use masterdata_codegen_csharp::CSharpGenerator;
-use masterdata_core::{ErrorKind, InitOptions, MasterdataError, ProjectService, Result};
-use masterdata_dotnet::DotnetBridge;
+use masterdata_app::ApplicationService;
+use masterdata_core::{ErrorKind, InitOptions, MasterdataError, Result};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -75,12 +74,12 @@ fn run() -> Result<()> {
     let cli = Cli::parse();
     let current_dir = std::env::current_dir().map_err(|error| {
         MasterdataError::new(
-            "CLI-001",
+            "E-CLI-CURRENT-DIRECTORY",
             ErrorKind::Io,
             format!("could not determine current directory: {error}"),
         )
     })?;
-    let service = ProjectService::new();
+    let service = ApplicationService::new();
 
     match cli.command {
         Command::Init(args) => {
@@ -132,7 +131,11 @@ fn run() -> Result<()> {
                 for root in info.source_roots {
                     println!("  - {}", root.display());
                 }
-                println!("build output: {}", info.build_output.display());
+                println!("generated C# output: {}", info.build_output.display());
+                if let Some(binary_output) = info.build_binary_output {
+                    println!("MasterMemory binary output: {}", binary_output.display());
+                }
+                println!("build cache: {}", info.build_cache.display());
             }
         }
         Command::Validate(args) => {
@@ -156,16 +159,20 @@ fn run() -> Result<()> {
             }
             if !report.valid {
                 return Err(MasterdataError::new(
-                    "CLI-VALIDATE-001",
+                    "E-CLI-VALIDATION-FAILED",
                     ErrorKind::Validation,
                     "project validation failed",
                 ));
             }
         }
         Command::Build(args) => {
-            let plan = service.prepare_build(cli.project.as_deref(), &current_dir)?;
-            let generation = CSharpGenerator::default().plan(&plan)?;
-            println!("schema hash: {}", plan.schema_hash);
+            let execution = service.build(cli.project.as_deref(), &current_dir, args.dry_run)?;
+            let plan = &execution.plan;
+            let generation = &execution.generation;
+            println!(
+                "schema source content hash: {}",
+                plan.schema_source_content_hash
+            );
             println!("C# files planned: {}", generation.files.len());
             for file in &generation.files {
                 println!("  - {}", file.relative_path.display());
@@ -176,14 +183,11 @@ fn run() -> Result<()> {
             if args.dry_run {
                 println!("dry-run: no files written and no .NET builder invoked");
             } else {
-                let output_dir = &plan.generated_output;
-                let written = CSharpGenerator::default().write_to(&generation, output_dir)?;
                 println!(
                     "wrote {} C# scaffold file(s) to {}",
-                    written.len(),
-                    output_dir.display()
+                    execution.written_files.len(),
+                    plan.generated_output.display()
                 );
-                DotnetBridge::default().build_mastermemory(&plan)?;
             }
         }
     }

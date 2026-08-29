@@ -1,0 +1,10 @@
+kind: schema
+table: invalid-fields
+fields:
+  - id: 1
+    name: active
+    type: int
+reservedFields:
+  - id: 1
+    formerName: old
+    formerType: int

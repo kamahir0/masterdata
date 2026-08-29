@@ -29,3 +29,10 @@ behavior). A reference image never overrides written normative requirements.
 If an image is changed, review the affected GUI requirement IDs and update the
 compatibility/acceptance notes as needed. This task intentionally adds no
 Table Editor images or behavior.
+
+Keep one canonical GUI rule in one surface specification. Use requirement IDs
+such as `GUI-TABLE-SEL-001` for observable layout, state, selection, editing,
+keyboard, focus, validation, loading, empty/error/disabled, unsaved-change,
+and build-progress behavior. Shared domain meaning remains in
+`masterdata-core`; a GUI spec should describe only the user's observable
+adapter behavior and its boundary with Tauri.

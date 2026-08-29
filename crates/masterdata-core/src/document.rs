@@ -10,8 +10,6 @@ use crate::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub struct SchemaDocument {
     pub kind: String,
     pub table: String,
-    #[serde(rename = "tableId", default)]
-    pub table_id: Option<String>,
     #[serde(rename = "csharpName", default)]
     pub csharp_name: Option<String>,
     #[serde(default)]
@@ -101,7 +99,7 @@ impl ProjectDocuments {
 pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocument> {
     let value: Value = serde_yaml::from_str(content).map_err(|error| {
         MasterdataError::new(
-            "YAML-PARSE-001",
+            "E-YAML-PARSE",
             ErrorKind::Parse,
             format!("could not parse YAML: {error}"),
         )
@@ -115,7 +113,7 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
         .map(str::to_owned)
         .ok_or_else(|| {
             MasterdataError::new(
-                "YAML-DOCUMENT-001",
+                "E-YAML-MISSING-KIND",
                 ErrorKind::Parse,
                 "YAML document must declare a string `kind` field",
             )
@@ -127,7 +125,7 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
         "data" => serde_yaml::from_value::<DataDocument>(value).map(SourceDocument::Data),
         other => {
             return Err(MasterdataError::new(
-                "YAML-DOCUMENT-002",
+                "E-YAML-UNKNOWN-KIND",
                 ErrorKind::Parse,
                 format!("unsupported YAML document kind `{other}`"),
             )
@@ -136,7 +134,7 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
     }
     .map_err(|error| {
         MasterdataError::new(
-            "YAML-DOCUMENT-003",
+            "E-YAML-SHAPE",
             ErrorKind::Parse,
             format!("document does not match the `{kind}` shape: {error}"),
         )

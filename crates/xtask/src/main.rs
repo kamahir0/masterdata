@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::{Parser, Subcommand};
-use masterdata_codegen_csharp::CSharpGenerator;
-use masterdata_core::{ErrorKind, MasterdataError, Project, ProjectService, Result};
-use masterdata_dotnet::{BridgeSmokeStatus, DotnetBridge};
+use masterdata_app::ApplicationService;
+use masterdata_core::{ErrorKind, MasterdataError, Project, Result};
 
 mod spec_check;
 
@@ -33,6 +32,8 @@ enum CommandKind {
     TestIntegration,
     /// Check specification headers, IDs, ADR numbers, and relative links.
     CheckSpecs,
+    /// Run the isolated real MasterMemory v3 .NET technical spike.
+    MastermemorySpike,
     /// Run the repository's main checks.
     CheckAll,
     /// Recreate target/dev-project from fixtures/minimal.
@@ -54,6 +55,7 @@ fn run() -> Result<()> {
         CommandKind::Gui => gui(),
         CommandKind::TestIntegration => test_integration(),
         CommandKind::CheckSpecs => check_specs(),
+        CommandKind::MastermemorySpike => mastermemory_spike(),
         CommandKind::CheckAll => check_all(),
         CommandKind::DevReset => {
             let destination = reset_dev_project()?;
@@ -84,7 +86,7 @@ fn reset_dev_project() -> Result<PathBuf> {
     let destination = development_project_root();
     if !source.is_dir() {
         return Err(MasterdataError::new(
-            "XTASK-FIXTURE-001",
+            "E-XTASK-FIXTURE-MISSING",
             ErrorKind::Io,
             "minimal fixture directory is missing",
         )
@@ -93,7 +95,7 @@ fn reset_dev_project() -> Result<PathBuf> {
     if destination.exists() {
         fs::remove_dir_all(&destination).map_err(|error| {
             MasterdataError::new(
-                "XTASK-FIXTURE-002",
+                "E-XTASK-FIXTURE-CLEAR",
                 ErrorKind::Io,
                 format!("could not clear development project: {error}"),
             )
@@ -107,7 +109,7 @@ fn reset_dev_project() -> Result<PathBuf> {
 fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
     fs::create_dir_all(destination).map_err(|error| {
         MasterdataError::new(
-            "XTASK-FIXTURE-003",
+            "E-XTASK-FIXTURE-CREATE",
             ErrorKind::Io,
             format!("could not create development project: {error}"),
         )
@@ -115,7 +117,7 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
     })?;
     let entries = fs::read_dir(source).map_err(|error| {
         MasterdataError::new(
-            "XTASK-FIXTURE-004",
+            "E-XTASK-FIXTURE-READ",
             ErrorKind::Io,
             format!("could not read fixture: {error}"),
         )
@@ -124,7 +126,7 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
     for entry in entries {
         let entry = entry.map_err(|error| {
             MasterdataError::new(
-                "XTASK-FIXTURE-005",
+                "E-XTASK-FIXTURE-ENUMERATE",
                 ErrorKind::Io,
                 format!("could not enumerate fixture: {error}"),
             )
@@ -134,7 +136,7 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
         let destination_path = destination.join(entry.file_name());
         let file_type = entry.file_type().map_err(|error| {
             MasterdataError::new(
-                "XTASK-FIXTURE-006",
+                "E-XTASK-FIXTURE-INSPECT",
                 ErrorKind::Io,
                 format!("could not inspect fixture entry: {error}"),
             )
@@ -145,7 +147,7 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
         } else if file_type.is_file() {
             fs::copy(&source_path, &destination_path).map_err(|error| {
                 MasterdataError::new(
-                    "XTASK-FIXTURE-007",
+                    "E-XTASK-FIXTURE-COPY",
                     ErrorKind::Io,
                     format!("could not copy fixture file: {error}"),
                 )
@@ -241,28 +243,39 @@ fn test_integration() -> Result<()> {
     let report = masterdata_core::validate_documents(&documents);
     if !report.valid {
         return Err(MasterdataError::new(
-            "XTASK-INTEGRATION-001",
+            "E-XTASK-INTEGRATION-VALIDATION",
             ErrorKind::Validation,
             "minimal fixture validation failed",
         ));
     }
-    let plan = ProjectService::new().prepare_build(Some(&destination), &repository_root())?;
-    let generation = CSharpGenerator::default().plan(&plan)?;
+    let service = ApplicationService::new();
+    let plan = service.prepare_build(Some(&destination), &repository_root())?;
+    let generation = service.plan_csharp(&plan)?;
     println!("fixture: {}", destination.display());
     println!(
-        "validated {} file(s), schema hash {}",
-        report.files_scanned, plan.schema_hash
+        "validated {} file(s), schema source content hash {}",
+        report.files_scanned, plan.schema_source_content_hash
     );
     println!("planned {} C# scaffold file(s)", generation.files.len());
 
-    let smoke = DotnetBridge::default().smoke_test(&repository_root())?;
-    match smoke.status {
-        BridgeSmokeStatus::Passed => println!(".NET bridge smoke test: passed ({})", smoke.detail),
-        BridgeSmokeStatus::Skipped => {
-            println!(".NET bridge smoke test: skipped ({})", smoke.detail)
-        }
-    }
-    println!("MasterMemory binary generation remains an explicit not-implemented boundary.");
+    let smoke = service.bridge_smoke_test(&repository_root())?;
+    println!(
+        ".NET bridge smoke test: {:?} ({})",
+        smoke.status, smoke.detail
+    );
+    Ok(())
+}
+
+fn mastermemory_spike() -> Result<()> {
+    let report = ApplicationService::new().mastermemory_spike(&repository_root())?;
+    println!(
+        "MasterMemory {} / MessagePack {}: binary {} bytes, reloaded item {} = {}",
+        report.master_memory_version,
+        report.message_pack_version,
+        report.binary_size,
+        report.reloaded_item_id,
+        report.reloaded_item_name
+    );
     Ok(())
 }
 
@@ -300,8 +313,6 @@ fn check_all() -> Result<()> {
             OsString::from("--workspace"),
             OsString::from("--all-targets"),
             OsString::from("--all-features"),
-            OsString::from("--exclude"),
-            OsString::from("masterdata-gui"),
             OsString::from("--"),
             OsString::from("-D"),
             OsString::from("warnings"),
@@ -348,6 +359,17 @@ fn check_all() -> Result<()> {
         &root,
         &[],
     )?;
+    run_program(
+        cargo_command(),
+        [
+            OsString::from("test"),
+            OsString::from("--package"),
+            OsString::from("masterdata-gui"),
+        ],
+        &root,
+        &[],
+    )?;
+    mastermemory_spike()?;
     test_integration()
 }
 
@@ -379,14 +401,14 @@ where
     }
     let status = command.status().map_err(|error| {
         MasterdataError::new(
-            "XTASK-COMMAND-001",
+            "E-XTASK-COMMAND-START",
             ErrorKind::ExternalTool,
             format!("could not start `{}`: {error}", program.to_string_lossy()),
         )
     })?;
     if !status.success() {
         return Err(MasterdataError::new(
-            "XTASK-COMMAND-002",
+            "E-XTASK-COMMAND-FAILED",
             ErrorKind::ExternalTool,
             format!("command exited unsuccessfully: {program:?} {display_args}"),
         ));

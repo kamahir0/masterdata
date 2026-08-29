@@ -40,6 +40,11 @@ pub struct Diagnostic {
     pub record_identity: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+    /// Normative requirement IDs related to this runtime diagnostic. These are
+    /// references, not diagnostic codes and do not make the diagnostic an
+    /// owner of the requirement.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_requirements: Vec<String>,
 }
 
 impl Diagnostic {
@@ -54,6 +59,7 @@ impl Diagnostic {
             schema_path: None,
             record_identity: None,
             suggestion: None,
+            related_requirements: Vec::new(),
         }
     }
 
@@ -74,6 +80,11 @@ impl Diagnostic {
 
     pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
         self.suggestion = Some(suggestion.into());
+        self
+    }
+
+    pub fn with_related_requirement(mut self, requirement: impl Into<String>) -> Self {
+        self.related_requirements.push(requirement.into());
         self
     }
 }
@@ -109,6 +120,13 @@ impl MasterdataError {
         self
     }
 
+    pub fn with_related_requirement(mut self, requirement: impl Into<String>) -> Self {
+        self.diagnostic
+            .related_requirements
+            .push(requirement.into());
+        self
+    }
+
     pub fn diagnostic(&self) -> &Diagnostic {
         &self.diagnostic
     }
@@ -116,7 +134,7 @@ impl MasterdataError {
 
 pub fn io_error(path: &Path, error: impl Display) -> MasterdataError {
     MasterdataError::new(
-        "IO-001",
+        "E-IO-ACCESS",
         ErrorKind::Io,
         format!("could not access {}: {error}", path.display()),
     )

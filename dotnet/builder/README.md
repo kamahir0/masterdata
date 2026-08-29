@@ -9,9 +9,13 @@ will own the MasterMemory v3 Source Generator, C# compilation, binary build,
 and binary validation. Rust must remain an adapter and must not reimplement
 those internals.
 
+The repository's real dependency/API compatibility experiment is the isolated
+[MasterMemory v3 technical spike](../spike/masterdata-mastermemory-spike.csproj)
+and is run with `cargo xtask mastermemory-spike`. It is deliberately not the
+production schema-driven builder.
+
 Manual smoke test:
 
 ```bash
 dotnet run --project dotnet/builder/masterdata-builder.csproj -- --self-test
 ```
-

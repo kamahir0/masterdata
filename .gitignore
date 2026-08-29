@@ -14,6 +14,7 @@
 # .NET
 **/bin/
 **/obj/
+/dotnet/spike/target/
 
 # masterdata generated and local state
 /.masterdata/cache/

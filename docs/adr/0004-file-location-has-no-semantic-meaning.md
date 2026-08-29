@@ -19,5 +19,6 @@ the remaining meaning.
 Discovery scans configured roots recursively and sorts paths only for
 deterministic processing/hash input. Moving a file inside a source root does
 not change its table identity. Source roots themselves are explicit project
-configuration, not hard-coded directory conventions.
-
+configuration, not hard-coded directory conventions. The current traversal
+does not follow symlink entries as an internal cycle-safety guard; whether
+source discovery follows symlinks is a separate product Open Question.

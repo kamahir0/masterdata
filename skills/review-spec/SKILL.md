@@ -34,6 +34,11 @@ Read:
 5. Existing tests/fixtures only as evidence of current behavior, never as
    permission to override an approved contract.
 
+If the change targets an `Approved` or `Implemented` canonical document,
+require a separate proposal artifact under `docs/spec-changes/` (or an RFC for
+alternative comparison). A canonical approved document must not contain a
+mixture of approved old behavior and unapproved new behavior.
+
 Use `rg` to search for duplicate IDs, terminology variants, and conflicting
 normative phrases. Keep the review focused on semantics; do not demand a
 specification for a typo or a purely internal refactor.
@@ -51,6 +56,8 @@ resolution when a check fails.
   kept non-normative?
 - Were rejected choices kept out?
 - Did the wording preserve the speaker's scope and certainty?
+- Does the proposal avoid promoting current implementation behavior, a
+  diagnostic code, or a test name into a requirement without source evidence?
 
 ### Internal consistency
 
@@ -58,6 +65,8 @@ resolution when a check fails.
   Compatibility, Examples, Open Questions, and Non-Goals consistent?
 - Are requirement IDs unique within the change and stable across edits?
 - Does a requirement contradict another requirement in the same document?
+- Does the proposal distinguish requirement definitions from references, and
+  are referenced IDs owned by exactly one canonical document?
 
 ### Cross-spec consistency
 
@@ -66,6 +75,9 @@ resolution when a check fails.
   bridge boundary?
 - Is the canonical owner clear, with links rather than copied normative text?
 - Are duplicate or conflicting requirements present elsewhere?
+- Does the existing implementation already contain semantics not authorized by
+  the target specification, requiring removal or a separate proposal instead
+  of retroactive approval?
 
 ### Terminology consistency
 
@@ -81,6 +93,8 @@ resolution when a check fails.
 - Are recommendations clearly labeled as such and supported by a reason?
 - Are examples or implementation notes accidentally written as normative
   behavior?
+- Are runtime diagnostic codes visibly distinct from requirement IDs, with no
+  shared namespace or misleading numeric suffix reuse?
 
 ### Testability
 
@@ -89,6 +103,8 @@ resolution when a check fails.
   enough to write an acceptance test?
 - Is a requirement ID mapped to a test name or nearby comment where useful?
 - Is fixture coverage requested only where an end-to-end fixture adds value?
+- Do requirement IDs in test names/comments actually describe the behavior they
+  cover, rather than merely borrowing a number?
 
 ### Backward compatibility
 
@@ -120,6 +136,8 @@ resolution when a check fails.
 - Did the change add features, defaults, validations, UI states, or migration
   behavior not requested or supported by an approved contract?
 - Were adjacent ideas placed in Non-Goals, an RFC, or Open Questions instead?
+- Is any semantic change mixed directly into an Approved/Implemented canonical
+  file instead of being isolated in a durable proposal artifact?
 
 ## Required output
 
@@ -160,3 +178,5 @@ Implementation leakage, and Unrequested behavior.
 - Never review only the changed paragraph when an ID or term is shared across
   specifications.
 - Do not turn current code behavior into a new requirement without evidence.
+- Do not treat implementation, diagnostics, or mismatched test labels as
+  authority for a requirement.

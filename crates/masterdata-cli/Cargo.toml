@@ -13,8 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
-masterdata-dotnet = { path = "../masterdata-dotnet" }
+masterdata-app = { path = "../masterdata-app" }
 masterdata-core = { path = "../masterdata-core" }
 serde_json.workspace = true
-

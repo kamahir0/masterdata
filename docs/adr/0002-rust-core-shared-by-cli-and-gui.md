@@ -10,13 +10,16 @@ testing, and lifecycle behavior unnecessarily indirect.
 
 ## Decision
 
-`masterdata-core` owns shared domain/application operations. The CLI invokes it
-as a Rust library; Tauri commands invoke the same library directly. Neither
-frontend may reimplement domain logic.
+`masterdata-app` owns shared application orchestration such as project info,
+validation, build preparation, C# generation, and the .NET boundary.
+`masterdata-core` owns shared domain/document operations. The CLI and Tauri
+invoke the application service as a Rust library; neither frontend may
+reimplement domain logic or invoke the CLI subprocess.
 
 ## Consequences
 
-Core APIs need structured serializable results and diagnostics. UI-specific
-formatting belongs in adapters. A change to project semantics is made once and
-tested once at the core boundary.
-
+Core/application APIs need structured serializable results and diagnostics.
+UI-specific formatting belongs in adapters. A change to project semantics is
+made once and tested once at the core boundary. Tauri preserves diagnostic
+code, kind, source location, schema path, record identity, suggestion, and
+related requirement references in its error DTO.

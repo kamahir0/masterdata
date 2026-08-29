@@ -5,6 +5,7 @@ import { test } from "node:test";
 test("GUI delegates project loading to the Tauri command", async () => {
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(source, /invoke<ProjectInfo>\("project_info"/);
+  assert.match(source, /relatedRequirements/);
+  assert.match(source, /type ApiError/);
   assert.doesNotMatch(source, /child_process|readFileSync|readdir/);
 });
-

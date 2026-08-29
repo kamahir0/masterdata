@@ -32,6 +32,23 @@ pub struct BridgeSmokeReport {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MasterMemorySpikeReport {
+    pub status: String,
+    #[serde(rename = "masterMemoryVersion")]
+    pub master_memory_version: String,
+    #[serde(rename = "messagePackVersion")]
+    pub message_pack_version: String,
+    #[serde(rename = "binaryPath")]
+    pub binary_path: PathBuf,
+    #[serde(rename = "binarySize")]
+    pub binary_size: usize,
+    #[serde(rename = "reloadedItemId")]
+    pub reloaded_item_id: i32,
+    #[serde(rename = "reloadedItemName")]
+    pub reloaded_item_name: String,
+}
+
 impl Default for DotnetBridge {
     fn default() -> Self {
         Self::new()
@@ -97,7 +114,7 @@ impl DotnetBridge {
         let probe = self.probe();
         if !probe.available {
             return Err(MasterdataError::new(
-                "DOTNET-TOOL-001",
+                "E-DOTNET-SDK-UNAVAILABLE",
                 ErrorKind::ExternalTool,
                 format!(
                     ".NET SDK is unavailable through `{}`: {}",
@@ -108,7 +125,7 @@ impl DotnetBridge {
         let builder_project = Self::builder_project_path(repository_root);
         if !builder_project.is_file() {
             return Err(MasterdataError::new(
-                "DOTNET-BUILDER-001",
+                "E-DOTNET-BUILDER-MISSING",
                 ErrorKind::ExternalTool,
                 "builder project is missing",
             )
@@ -126,7 +143,7 @@ impl DotnetBridge {
             .output()
             .map_err(|error| {
                 MasterdataError::new(
-                    "DOTNET-BRIDGE-001",
+                    "E-DOTNET-BRIDGE-INVOKE",
                     ErrorKind::ExternalTool,
                     format!("could not invoke .NET builder: {error}"),
                 )
@@ -135,7 +152,7 @@ impl DotnetBridge {
         if !output.status.success() {
             let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
             return Err(MasterdataError::new(
-                "DOTNET-BRIDGE-002",
+                "E-DOTNET-BRIDGE-SMOKE-FAILED",
                 ErrorKind::ExternalTool,
                 format!(".NET builder smoke test failed: {detail}"),
             )
@@ -153,9 +170,102 @@ impl DotnetBridge {
     /// not a successful placeholder.
     pub fn build_mastermemory(&self, _plan: &BuildPlan) -> Result<()> {
         Err(MasterdataError::new(
-            "DOTNET-MASTERMEMORY-001",
+            "E-DOTNET-MASTERMEMORY-NOT-IMPLEMENTED",
             ErrorKind::NotImplemented,
             "MasterMemory v3 Source Generator and binary build are not implemented yet",
         ))
+    }
+
+    /// Run the isolated, hand-written MasterMemory v3 technical spike. This
+    /// is evidence that the .NET dependency and bridge work; it is not the
+    /// production schema-driven generator.
+    pub fn mastermemory_spike(&self, repository_root: &Path) -> Result<MasterMemorySpikeReport> {
+        let probe = self.probe();
+        if !probe.available {
+            return Err(MasterdataError::new(
+                "E-DOTNET-SDK-UNAVAILABLE",
+                ErrorKind::ExternalTool,
+                format!(
+                    ".NET SDK is unavailable through `{}`: {}",
+                    probe.executable, probe.detail
+                ),
+            ));
+        }
+        let spike_project = Self::spike_project_path(repository_root);
+        if !spike_project.is_file() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-SPIKE-MISSING",
+                ErrorKind::ExternalTool,
+                "MasterMemory technical spike project is missing",
+            )
+            .with_source(spike_project));
+        }
+        let binary_path = repository_root
+            .join("target")
+            .join("mastermemory-spike")
+            .join("masterdata.bytes");
+        let output = Command::new(&self.executable)
+            .arg("run")
+            .arg("--project")
+            .arg(&spike_project)
+            .arg("--no-launch-profile")
+            .arg("--")
+            .arg("--output")
+            .arg(&binary_path)
+            .current_dir(repository_root)
+            .output()
+            .map_err(|error| {
+                MasterdataError::new(
+                    "E-DOTNET-SPIKE-INVOKE",
+                    ErrorKind::ExternalTool,
+                    format!("could not invoke MasterMemory technical spike: {error}"),
+                )
+                .with_source(spike_project.clone())
+            })?;
+        if !output.status.success() {
+            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(MasterdataError::new(
+                "E-DOTNET-SPIKE-FAILED",
+                ErrorKind::ExternalTool,
+                format!("MasterMemory technical spike failed: {detail}"),
+            )
+            .with_source(spike_project));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json = stdout
+            .lines()
+            .rev()
+            .find(|line| line.trim_start().starts_with('{'))
+            .ok_or_else(|| {
+                MasterdataError::new(
+                    "E-DOTNET-SPIKE-REPORT",
+                    ErrorKind::ExternalTool,
+                    "MasterMemory technical spike did not emit a JSON report",
+                )
+            })?;
+        let report: MasterMemorySpikeReport = serde_json::from_str(json).map_err(|error| {
+            MasterdataError::new(
+                "E-DOTNET-SPIKE-REPORT",
+                ErrorKind::ExternalTool,
+                format!("could not parse MasterMemory technical spike report: {error}"),
+            )
+            .with_source(spike_project)
+        })?;
+        if report.status != "ok" || report.binary_size == 0 || !report.binary_path.is_file() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-SPIKE-REPORT",
+                ErrorKind::ExternalTool,
+                "MasterMemory technical spike reported an invalid binary result",
+            )
+            .with_source(report.binary_path));
+        }
+        Ok(report)
+    }
+
+    pub fn spike_project_path(repository_root: &Path) -> PathBuf {
+        repository_root
+            .join("dotnet")
+            .join("spike")
+            .join("masterdata-mastermemory-spike.csproj")
     }
 }

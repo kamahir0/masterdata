@@ -6,11 +6,10 @@ still being expanded. The eventual fixture will exercise:
 
 - value objects and immutable custom types
 - normal and flags enums
-- primary and composite primary keys
+- primary and composite keys
 - unique, non-unique, and composite secondary indexes
 - one-to-one and one-to-many `MasterReference`
 
 The current files use declarations that the core can preserve in its schema
 AST. Type resolution, index materialization, reference helpers, and
 MasterMemory generation remain open implementation work.
-

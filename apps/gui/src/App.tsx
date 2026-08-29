@@ -9,12 +9,55 @@ type ProjectInfo = {
   version: string;
   source_roots: string[];
   build_output: string;
+  build_binary_output: string | null;
+  build_cache: string;
 };
+
+type Diagnostic = {
+  code: string;
+  kind: string;
+  message: string;
+  source: string | null;
+  line: number | null;
+  column: number | null;
+  schemaPath: string | null;
+  recordIdentity: string | null;
+  suggestion: string | null;
+  relatedRequirements: string[];
+};
+
+type ApiError = { diagnostic: Diagnostic };
 
 type LoadState =
   | { kind: "loading" }
   | { kind: "loaded"; project: ProjectInfo }
-  | { kind: "error"; message: string };
+  | { kind: "error"; diagnostic: Diagnostic };
+
+function asApiError(error: unknown): ApiError {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "diagnostic" in error &&
+    typeof error.diagnostic === "object" &&
+    error.diagnostic !== null
+  ) {
+    return error as ApiError;
+  }
+  return {
+    diagnostic: {
+      code: "E-GUI-UNKNOWN",
+      kind: "external_tool",
+      message: String(error),
+      source: null,
+      line: null,
+      column: null,
+      schemaPath: null,
+      recordIdentity: null,
+      suggestion: null,
+      relatedRequirements: [],
+    },
+  };
+}
 
 function App() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -22,14 +65,15 @@ function App() {
   const loadProject = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      // The Rust Tauri command resolves the project through masterdata-core.
+      // The Rust Tauri command resolves the project through masterdata-app
+      // and masterdata-core.
       // The frontend does not inspect the filesystem or invoke the CLI.
       const project = await invoke<ProjectInfo>("project_info", {
         projectPath: null,
       });
       setState({ kind: "loaded", project });
     } catch (error) {
-      setState({ kind: "error", message: String(error) });
+      setState({ kind: "error", diagnostic: asApiError(error).diagnostic });
     }
   }, []);
 
@@ -67,11 +111,14 @@ function App() {
 
         <section className="content">
           <span className="section-label">Current project</span>
-          {state.kind === "loading" && <p className="message">Loading project through Rust core…</p>}
+          {state.kind === "loading" && <p className="message">Loading project through Rust application service…</p>}
           {state.kind === "error" && (
             <div className="error-card">
               <h2>Project could not be opened</h2>
-              <p>{state.message}</p>
+              <p>{state.diagnostic.message}</p>
+              <code>{state.diagnostic.code}</code>
+              {state.diagnostic.source && <p>{state.diagnostic.source}</p>}
+              {state.diagnostic.suggestion && <p>{state.diagnostic.suggestion}</p>}
               <p className="hint">Run <code>cargo xtask dev-reset</code> and start the GUI again.</p>
             </div>
           )}
@@ -121,4 +168,3 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
 }
 
 export default App;
-

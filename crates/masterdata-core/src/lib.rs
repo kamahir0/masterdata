@@ -20,6 +20,6 @@ pub use document::{
     SourceDocument,
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
-pub use pipeline::{BuildPlan, BuildStatus, compute_schema_hash};
+pub use pipeline::{BuildPlan, BuildStatus, compute_schema_source_content_hash};
 pub use project::{InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, initialize_project};
 pub use validation::{ValidationReport, validate_documents};

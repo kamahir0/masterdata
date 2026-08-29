@@ -13,16 +13,22 @@ Status: Draft
   meaning of a schema.
 - **Data document**: a YAML file with `kind: data` that contributes records to
   the declared table.
-- **Table**: a logical collection of records identified by the declared table
-  identity, independent of a source file's path.
+- **Table**: a logical collection of records identified by the declared
+  project-local `table` identity, independent of a source file's path.
 - **Record**: one instance or row belonging to a table.
 - **Field**: a named, typed member of a record with a stable field identity
   where the schema requires one.
 - **Schema AST**: typed Rust structures representing schema declarations.
 - **Data AST**: typed Rust structures for data document shape with YAML values
   retained at field leaves until type resolution.
-- **Table ID**: persistent identity of a table, independent of its generated
-  C# type name.
+- **Table identity**: the project-local stable identity carried by the `table`
+  field. It is distinct from a generated C# type name and from a source file
+  path. The current Rust schema model does not define a second `tableId`
+  identity; the compatibility implications are tracked by the table-identity
+  RFC.
+- **Generated C# type name**: a presentation/code-generation name, supplied by
+  `csharpName` when present or derived by the generator when absent. It MAY be
+  changed independently only where the compatibility specification permits.
 - **Field ID**: persistent MessagePack integer-key identity, separate from a
   MasterMemory index number.
 - **Value Object**: an immutable domain type that wraps a value according to
@@ -50,5 +56,12 @@ Status: Draft
   project schema/data, the YAML documents are the source of truth.
 - **Build plan**: the validated, hashed input passed from Rust toward the .NET
   builder boundary.
+- **Schema source-content hash**: a deterministic hash of schema source bytes
+  in the current scaffold. It is not a semantic schema hash or a builder cache
+  key.
+- **Semantic schema hash**: a future hash of canonical parsed/resolved schema
+  meaning; it is not currently implemented.
+- **Builder cache key**: a future composite identity for reusable builder
+  output. It is distinct from both source-content and semantic schema hashes.
 - **Builder**: the .NET-side process that will eventually compile generated C#,
   invoke MasterMemory v3 Source Generator, and write a binary.

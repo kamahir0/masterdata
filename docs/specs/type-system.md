@@ -14,13 +14,23 @@ The eventual schema model supports the following categories:
 
 Normative intentions:
 
-- `SCHEMA-VO-001`: value objects MUST be immutable, equality-capable, and
-  MessagePack serializable.
-- `SCHEMA-ENUM-001`: enum numeric values MUST be treated as persistent wire
-  identities; removed values MUST NOT normally be reused.
-- `SCHEMA-FLAGS-001`: flags enums MUST NOT be primary or secondary keys.
-- `SCHEMA-CUSTOM-001`: generated custom types MUST be immutable.
+### SCHEMA-VO-001
+
+Value objects MUST be immutable, equality-capable, and MessagePack
+serializable.
+
+### SCHEMA-ENUM-001
+
+Enum numeric values MUST be treated as persistent wire identities; removed
+values MUST NOT normally be reused.
+
+### SCHEMA-FLAGS-001
+
+Flags enums MUST NOT be primary or secondary keys.
+
+### SCHEMA-CUSTOM-001
+
+Generated custom types MUST be immutable.
 
 The initial C# generator only maps primitive field names needed by the minimal
 fixture. Custom types are reported as an explicit not-implemented boundary.
-

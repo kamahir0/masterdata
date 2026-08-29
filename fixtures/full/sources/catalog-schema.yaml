@@ -1,6 +1,5 @@
 kind: schema
 table: item
-tableId: "catalog.item"
 csharpName: ItemMaster
 fields:
   - id: 0
@@ -19,4 +18,3 @@ reservedFields:
   - id: 4
     formerName: legacyName
     formerType: string
-

@@ -5,19 +5,28 @@
 ## Before changing code
 
 - 実装前に関連する `docs/specs` と `docs/adr` を読む。
-- `docs/specs` の `Status: Approved` な仕様を優先する。Draftは確定仕様として扱わない。
+- `docs/specs` の `Status: Approved` または `Status: Implemented` な仕様を
+  domain behaviorの正本として優先する。Draft/Proposedは確定仕様として
+  扱わない。
 - domain semanticsを変更する場合は、同じ変更で仕様書も更新する。
 - public behaviorを追加・変更したら、対応するtestを追加または更新する。
 
 ## Architecture rules
 
-- CLIとGUIは `masterdata-core` を共有し、domain logicを重複させない。
+- CLIとGUIは `masterdata-app` のapplication workflowと
+  `masterdata-core` を共有し、domain logicを重複させない。
 - GUIからCLIをsubprocess起動してdomain処理を行わない。
-- GUI側にfilesystem探索やYAMLの意味解釈を実装しない。Tauri command経由でcoreを呼ぶ。
+- GUI側にfilesystem探索やYAMLの意味解釈を実装しない。Tauri command経由で
+  application service/coreを呼ぶ。
 - MasterMemory internals、binary format、Source GeneratorをRustで再実装しない。
 - .NET process invocationは `masterdata-dotnet` のadapterに集約する。
+- Requirement ID（例: `PROJECT-001`）とruntime Diagnostic Code（例:
+  `E-PROJECT-NOT-FOUND`）を混同しない。
 - YAMLのfile/directory locationにsemantic meaningを追加しない。`kind`、`table`、schema fieldsを正本とする。
 - schema/type/index/referenceに関するarchitectural decisionを変更するときはADRを追加または更新する。
+- Approved/Implemented canonical specへのsemantic changeは、先に
+  `docs/spec-changes/` またはRFCへ隔離し、review-specと明示的な人間の
+  承認を経てatomicに反映する。canonical specへ未承認変更を混在させない。
 - 将来のSchema ASTを単なる `HashMap<String, serde_yaml::Value>` に固定しない。
 - C# code generationを巨大なstring concat一関数に押し込まない。
 
@@ -60,3 +69,20 @@
 4. `cargo clippy` と `cargo test` が通るか
 5. frontend checkとintegration smoke testが通るか
 6. `cargo xtask check-all` の結果と未実装事項を報告したか
+
+## Specification workflow guardrails
+
+- 会話は仕様の証拠であり、永久的な仕様ではない。`refine-spec` で発言を
+  Decision / Requirement / Constraint / Preference / Proposal / Idea /
+  Question / Open Question / Rejectedに分類する。
+- `MAY`を`SHOULD`や`MUST`へ強めず、未指定のdefault・edge case・nullability・
+  error policyを勝手に確定しない。不明点はOpen Questionまたは
+  Specification Gapとして残す。
+- `review-spec` は `implement-spec` の前に実行する。AI-generated Draftを
+  自動でApprovedへ変更しない。
+- Project/domain behaviorの実装はApproved canonical specから開始する。
+  implementationで仕様の穴を見つけた場合、既存コードを正本にせず
+  refine-specへ戻す。
+- `cargo xtask check-specs` はRequirement IDのdefinitionとreferenceを区別
+  し、duplicate definition、malformed ID/status、duplicate ADR number、
+  broken linkを確認する。

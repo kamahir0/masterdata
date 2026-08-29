@@ -71,7 +71,11 @@ Locate the canonical owning specification. Prefer updating one existing
 requirement over copying the same semantic rule into multiple documents. Check
 for conflicts with approved and proposed specifications, ADR decisions, GUI
 boundaries, and the terminology glossary. Never silently overwrite a conflict;
-report both sides and identify the human decision needed.
+report both sides and identify the human decision needed. If the canonical
+document is `Approved` or `Implemented`, do not edit it with a semantic delta:
+write a separate durable proposal under `docs/spec-changes/` (or an RFC when
+alternatives are still being compared). The canonical document remains the
+only authority until a human-approved atomic merge.
 
 ### 3. Preserve normative strength
 
@@ -107,9 +111,11 @@ old ID for its old meaning where history requires it and allocate a new ID
 with a predecessor/deprecation note. A reference to an existing requirement is
 not a new requirement.
 
-Mark a new or changed document `Draft` while it is being organized, or
-`Proposed` when it is ready for review. `Proposed` is not approval. Do not
-change a document to `Approved` as part of this skill.
+Mark a new document `Draft` while it is being organized, or `Proposed` when it
+is ready for review. A semantic change to an existing Approved/Implemented
+document belongs in a `docs/spec-changes/` artifact whose status is `Draft` or
+`Proposed`; do not downgrade the canonical document. `Proposed` is not
+approval. Do not change a document to `Approved` as part of this skill.
 
 ### 5. Assess downstream work
 
@@ -122,6 +128,15 @@ logic.
 If the design compares substantial alternatives, recommend an RFC. If a
 chosen architectural boundary or trade-off needs durable rationale, recommend
 an ADR. Neither recommendation is a silent decision.
+
+### 6. Preserve namespace and implementation boundaries
+
+Requirement IDs describe normative specification rules. Runtime diagnostic
+codes describe observed failures and MUST use a visibly separate namespace
+(for example `PROJECT-001` versus `E-PROJECT-NOT-FOUND`). Never use a
+diagnostic code as a requirement ID or infer a requirement from an existing
+diagnostic/test name. Existing code behavior is evidence to inspect, not
+authority to promote into a product rule.
 
 ## Required output
 
@@ -178,5 +193,9 @@ human approval action still required. A concise change summary is mandatory.
 - Do not add unspecified defaults or edge cases.
 - Do not duplicate a rule owned by another specification.
 - Do not silently overwrite conflicting specifications or ADRs.
+- Do not mix a semantic change into an Approved/Implemented canonical document;
+  use a separate change artifact.
+- Do not treat a runtime diagnostic code, test number, or current behavior as a
+  specification requirement without explicit evidence.
 - Do not mark a Draft/Proposed specification `Approved` automatically.
 - Do not implement product features as part of refinement.

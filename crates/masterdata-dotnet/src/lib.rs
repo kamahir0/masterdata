@@ -6,4 +6,6 @@
 
 mod bridge;
 
-pub use bridge::{BridgeSmokeReport, BridgeSmokeStatus, DotnetBridge, DotnetProbe};
+pub use bridge::{
+    BridgeSmokeReport, BridgeSmokeStatus, DotnetBridge, DotnetProbe, MasterMemorySpikeReport,
+};

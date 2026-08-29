@@ -3,8 +3,8 @@
 Specifications are version-controlled product and domain contracts. They state
 observable behavior and compatibility rules in language that a person can
 review and a test can exercise. Code may implement only a subset while a
-specification is being drafted, but code MUST NOT silently contradict an
-`Approved` specification.
+specification is being drafted, but code MUST NOT silently contradict the
+current `Approved` or `Implemented` specification.
 
 This directory is the canonical home for product and domain specifications.
 The repository workflow for turning conversation into a proposed change is
@@ -34,8 +34,8 @@ The `Status:` header uses exactly one of these values:
   not an implementation authority.
 - `Proposed`: sufficiently structured to review as an implementation
   candidate, but not finally approved by a human maintainer.
-- `Approved`: the current normative contract. Implementation work SHOULD use
-  this status as its source of truth.
+- `Approved`: the current normative contract. New implementation work SHOULD
+  use this status as its source of truth.
 - `Implemented`: an `Approved` contract whose acceptance criteria have
   corresponding implementation, tests, and appropriate fixture evidence. The
   meaning of the requirements does not change when this status is applied.
@@ -51,11 +51,14 @@ agent MUST NOT make that transition automatically. A review recommendation of
 “Approved as Proposed” is evidence for a human reviewer, not the approval
 operation itself.
 
-A semantic change to an approved document is a new proposed change. Unchanged
-requirement IDs remain stable; replaced or split requirements receive new IDs
-and retain a reference to their predecessor. An incomplete implementation
-keeps the document `Approved` and reports the gap rather than changing the
-contract to match the code.
+A semantic change to an approved or implemented document is a new proposed
+change artifact. The canonical document remains unchanged and authoritative
+while that artifact is under review. After explicit human approval, the
+approved change is merged atomically into the canonical document; unchanged
+requirement IDs remain stable, while replaced or split requirements receive
+new IDs and retain a reference to their predecessor. An incomplete
+implementation keeps the canonical document `Approved` and reports the gap
+rather than changing the contract to match the code.
 
 ## Normative language
 
@@ -81,12 +84,26 @@ example `PROJECT-001`, `SCHEMA-VO-001`, `INDEX-PRIMARY-001`, and `REF-001`).
 GUI requirements use a `GUI-` domain prefix, such as
 `GUI-TABLE-EDIT-001`. The domain should identify the canonical owning area.
 
-IDs are allocated by searching all existing specifications before adding one.
+IDs are allocated by searching all existing specification definitions before
+adding one.
 Once published, an ID MUST NOT be renamed, reassigned, or reused after
 deletion. A changed meaning gets a new ID and a predecessor/deprecation note.
 The same normative rule belongs in one canonical specification; other
 documents link to its ID instead of copying it. The lightweight
-`cargo xtask check-specs` command checks duplicate IDs and malformed headers.
+`cargo xtask check-specs` command checks explicit requirement definitions,
+references, duplicate definitions, malformed IDs, status/header metadata,
+duplicate ADR numbers, and broken relative links. A requirement reference such
+as `See PROJECT-001` is not an owner.
+
+## Requirement IDs and diagnostics
+
+Requirement IDs identify normative rules and are allocated from the
+specification namespace, for example `PROJECT-004` or `SCHEMA-VO-001`. Runtime
+diagnostic codes identify observed failures and use a separate, visibly marked
+namespace such as `E-PROJECT-NOT-FOUND` or `E-YAML-PARSE`. The `E-` prefix is
+reserved for diagnostics; a requirement ID MUST NOT begin with it. A
+diagnostic may carry `related_requirements` metadata as references, but a
+diagnostic code is never a requirement definition and must not be used as one.
 
 ## Open Questions
 
@@ -111,7 +128,7 @@ name or a nearby comment, for example:
 
 ```rust
 #[test]
-fn vo_001_rejects_invalid_underlying_type() {
+fn schema_vo_001_rejects_invalid_underlying_type() {
     // Covers SCHEMA-VO-001.
 }
 ```
@@ -126,15 +143,23 @@ fixed test inputs and MUST NOT be rewritten by CLI or GUI execution.
 1. Extract intent from the conversation or request and classify each statement.
 2. Read the affected specifications, ADRs, RFCs, and
    [terminology](../product/terminology.md).
-3. Update or create a `Draft`/`Proposed` specification with stable IDs,
-   explicit open questions, compatibility impact, and test impact.
-4. Run `review-spec` against the change. Resolve blocking issues or record why
-   a human reviewer accepts them.
+3. For a new contract, update or create a `Draft`/`Proposed` specification
+   with stable IDs, explicit open questions, compatibility impact, and test
+   impact. For a semantic change to an `Approved`/`Implemented` canonical
+   document, create a separate artifact under
+   [`docs/spec-changes`](../spec-changes/README.md) (or an RFC when
+   alternatives are still being compared). Do not edit the canonical document
+   to contain unapproved semantics.
+4. Run `review-spec` against the draft or change artifact. Resolve blocking
+   issues or record why a human reviewer accepts them.
 5. A human maintainer explicitly approves the proposal by the repository's
-   review operation and changes the status to `Approved`.
-6. Use `implement-spec` to implement only the approved behavior, synchronize
-   tests and fixtures, and run repository verification.
-7. Change the status to `Implemented` only after the evidence is complete.
+   review operation. Only then may the change artifact be applied atomically
+   to the canonical specification and its status become `Approved`.
+6. Use `implement-spec` to implement only the canonical approved behavior,
+   synchronize tests and fixtures, and run repository verification. A change
+   artifact marked Proposed is never an implementation input.
+7. Change the canonical status to `Implemented` only after the evidence is
+   complete.
 
 Typo fixes, formatting-only edits, and internal refactors with no public or
 domain semantic change may use the ordinary code/document workflow. When the
@@ -164,7 +189,9 @@ when the rationale or trade-off is important to preserve.
 - [Compatibility](compatibility.md)
 
 The initial Rust implementation currently covers the project contract, YAML
-document envelope, basic field identity checks, duplicate `id` checks, schema
-hashing, and build-plan formation. Type resolution, indexes, references,
+document envelope, basic field identity checks, source-content hashing, and
+build-plan formation, including a clearly named schema source-content hash. A
+field named `id` has no implicit primary-key meaning.
+Type resolution, indexes, references,
 MasterMemory binary generation, and the full GUI remain deliberately
 incomplete; their current documents remain `Draft` until refined and approved.

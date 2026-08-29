@@ -20,8 +20,10 @@ pub struct BuildPlan {
     pub project: ProjectInfo,
     pub documents: ProjectDocuments,
     pub validation: ValidationReport,
-    pub schema_hash: String,
+    pub schema_source_content_hash: String,
     pub generated_output: std::path::PathBuf,
+    pub binary_output: Option<std::path::PathBuf>,
+    pub cache_directory: std::path::PathBuf,
     pub status: BuildStatus,
 }
 
@@ -30,7 +32,7 @@ pub fn prepare_build(project: &Project) -> Result<BuildPlan> {
     let validation = crate::validate_documents(&documents);
     if !validation.valid {
         return Err(MasterdataError::new(
-            "BUILD-VALIDATION-001",
+            "E-BUILD-VALIDATION-FAILED",
             ErrorKind::Validation,
             format!(
                 "project validation failed with {} diagnostic(s)",
@@ -39,20 +41,28 @@ pub fn prepare_build(project: &Project) -> Result<BuildPlan> {
         )
         .with_source(project.root().to_path_buf()));
     }
-    let schema_hash = compute_schema_hash(&documents, project.root())?;
+    let schema_source_content_hash =
+        compute_schema_source_content_hash(&documents, project.root())?;
+    let info = project.info();
     Ok(BuildPlan {
-        project: project.info(),
+        binary_output: info.build_binary_output.clone(),
+        cache_directory: info.build_cache.clone(),
+        project: info,
         documents,
         validation,
-        schema_hash,
+        schema_source_content_hash,
         generated_output: project.build_output_path(),
         status: BuildStatus::ReadyForDotnet,
     })
 }
 
-/// Hash schema bytes in deterministic path order. The hash is deliberately
-/// exposed at the build boundary so a future .NET builder cache can key off it.
-pub fn compute_schema_hash(documents: &ProjectDocuments, _project_root: &Path) -> Result<String> {
+/// Hash schema source bytes in deterministic path order. This is deliberately
+/// a schema source-content hash, not a semantic schema hash or builder cache
+/// key.
+pub fn compute_schema_source_content_hash(
+    documents: &ProjectDocuments,
+    _project_root: &Path,
+) -> Result<String> {
     let mut schema_paths: Vec<_> = documents.schemas().map(|(path, _)| path).collect();
     schema_paths.sort();
     let mut hasher = Sha256::new();

@@ -34,6 +34,11 @@ and repository checks are complete.
    snapshots/golden files, GUI commands, and .NET bridge calls affected by the
    IDs.
 
+Do not use a `docs/spec-changes/` proposal, RFC, Draft, or Proposed document as
+the implementation input. If the canonical spec is `Approved` but a proposed
+delta is present elsewhere, implement the canonical meaning only and report
+the delta as out of scope until a human-approved atomic merge.
+
 Do not treat a current implementation, fixture, or generated artifact as
 authority when it disagrees with an approved specification. Do not implement a
 Draft Type System or any other unapproved future feature merely because its
@@ -55,6 +60,10 @@ For each requirement ID, record:
 Use requirement IDs in test names or nearby comments when that makes the
 mapping clear. A test must verify the approved wording, not silently choose an
 answer to an Open Question.
+
+Keep runtime diagnostic codes in their own namespace (for example
+`E-PROJECT-NOT-FOUND`), never reuse a requirement ID such as `PROJECT-004` as
+the diagnostic code, and preserve any related-requirement metadata separately.
 
 ### 2. Identify architecture impact
 
@@ -137,5 +146,11 @@ Report:
 - Never promote a Draft or Proposed spec during implementation.
 - Never resolve an Open Question by coding a default.
 - Never weaken or strengthen normative language to fit the code.
+- Never use current implementation behavior as authority when it contains
+  unapproved semantics; remove it, report it, or return to refinement.
+- Never implement a proposed Approved-spec change before its canonical
+  specification has been atomically updated by explicit human approval.
+- Never treat a diagnostic code as a requirement ID, and verify that test names
+  or comments describe the requirement they claim to cover.
 - Never duplicate core domain semantics in CLI, GUI, or the .NET adapter.
 - Never claim `Implemented` without test and verification evidence.

@@ -1,12 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/masterdata-core",
-    "crates/masterdata-codegen-csharp",
-    "crates/masterdata-dotnet",
-    "crates/masterdata-cli",
-    "crates/xtask",
-    "apps/gui/src-tauri",
+  "crates/masterdata-app",
+  "crates/masterdata-core",
+  "crates/masterdata-codegen-csharp",
+  "crates/masterdata-dotnet",
+  "crates/masterdata-cli",
+  "crates/xtask",
+  "apps/gui/src-tauri",
 ]
 default-members = [
     "crates/masterdata-core",
@@ -32,4 +33,3 @@ sha2 = "0.10"
 tempfile = "3.13"
 thiserror = "2.0"
 toml = "0.8"
-

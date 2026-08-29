@@ -1884,13 +1884,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "masterdata-app"
+version = "0.1.0"
+dependencies = [
+ "masterdata-codegen-csharp",
+ "masterdata-core",
+ "masterdata-dotnet",
+]
+
+[[package]]
 name = "masterdata-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "masterdata-codegen-csharp",
+ "masterdata-app",
  "masterdata-core",
- "masterdata-dotnet",
  "serde_json",
 ]
 
@@ -1922,12 +1930,14 @@ dependencies = [
  "masterdata-codegen-csharp",
  "masterdata-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "masterdata-gui"
 version = "0.1.0"
 dependencies = [
+ "masterdata-app",
  "masterdata-core",
  "serde",
  "serde_json",
@@ -4670,9 +4680,8 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "clap",
- "masterdata-codegen-csharp",
+ "masterdata-app",
  "masterdata-core",
- "masterdata-dotnet",
  "tempfile",
 ]
 

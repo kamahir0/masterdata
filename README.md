@@ -1,20 +1,19 @@
 # masterdata
 
-`masterdata` は Unity + MasterMemory を対象にした、YAML-firstのローカルファーストなマスターデータ開発システムです。CLIとTauri GUIは、同じRust coreを直接利用します。
+`masterdata` は Unity + MasterMemory を対象にした、YAML-firstのローカルファーストなマスターデータ開発システムです。CLIとTauri GUIは、同じRust application serviceとcoreを直接利用します。
 
-このリポジトリは初期セットアップ段階です。project discovery、設定読込、YAML文書の分類、基本検証、C#生成の足場、CLI、Tauriアプリシェル、.NET bridge smoke testまでは動作します。MasterMemory v3のSource Generatorを使った最終的なbinary buildは、意図的に未実装です。
+このリポジトリはproduct Type Systemの実装前段階です。project discovery、設定読込、YAML文書の分類、基本検証、C#生成の足場、CLI、Tauriアプリシェル、.NET bridge smoke test、実際のMasterMemory v3を使う独立technical spikeまでは動作します。schema-drivenのproduction binary buildは、仕様が承認されるまで意図的に未実装です。
 
 ## Architecture
 
 ```text
-                         masterdata-core
-                       /       |          \
-                      /        |           \
-             masterdata-cli  Tauri GUI  build pipeline
-                                           |
-                                  masterdata-dotnet
-                                           |
-                               .NET builder / MasterMemory
+       masterdata-cli                 Tauri GUI
+              \                         /
+               \                       /
+                +-- masterdata-app ---+
+                       /    |    \
+                      /     |     \
+     masterdata-core  codegen  masterdata-dotnet
 ```
 
 主要な責務は次の通りです。
@@ -22,8 +21,9 @@
 - `masterdata-core`: project解決、`masterdata.toml`、YAML document/data model、validation、build plan
 - `masterdata-codegen-csharp`: schema ASTからC# scaffoldを生成する独立境界
 - `masterdata-dotnet`: .NET SDKと将来のMasterMemory builderを呼び出す唯一のRust adapter
-- `masterdata-cli`: coreを使うCLI。GUIやCLIにdomain logicを重複させない
-- `apps/gui`: TypeScript + React frontendとTauri v2 shell。backend commandはcoreを呼ぶ
+- `masterdata-app`: CLIとTauriが共有するproject/validate/build orchestration。domain semanticsは持たない
+- `masterdata-cli`: application serviceを使うCLI。GUIやCLIにdomain logicを重複させない
+- `apps/gui`: TypeScript + React frontendとTauri v2 shell。backend commandはapplication serviceを呼ぶ
 - `xtask`: repository固有の開発コマンドをRustで集約
 
 最終的なbuild pipelineは次を目指します。
@@ -82,6 +82,9 @@ cargo xtask gui
 # fixture discovery -> validation -> C# plan -> .NET builder smoke test
 cargo xtask test-integration
 
+# 実際のMasterMemory v3 Source Generator -> binary -> reload/lookup spike
+cargo xtask mastermemory-spike
+
 # specification headers / IDs / ADR numbers / relative links
 cargo xtask check-specs
 
@@ -101,7 +104,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`はC# scaffoldを作成する設計境界まで進めますが、MasterMemory binary生成は未実装エラーとして停止します。未実装機能を成功したように見せません。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`はC# scaffoldを作成する設計境界まで進めますが、schema-drivenのMasterMemory binary生成は未実装エラーとして停止します。未実装機能を成功したように見せません。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## Project and YAML conventions
 
@@ -132,3 +135,7 @@ records:
 - [Minimal fixture](fixtures/minimal/README.md)
 
 仕様はコードと同じくGit管理する第一級成果物です。未確定事項は各文書の`Status: Draft` / `Proposed`または`Open Questions`に残し、AIが自動で`Approved`へ進めません。
+
+## License
+
+このリポジトリはMIT Licenseです。

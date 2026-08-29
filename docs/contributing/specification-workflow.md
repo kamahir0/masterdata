@@ -95,8 +95,14 @@ invent a default for implementation convenience.
 `refine-spec` answers “what should become a specification?” It reads the
 conversation and repository context, identifies the canonical affected spec,
 classifies statements, detects conflicts, assigns stable IDs, and produces a
-Draft/Proposed change. It may recommend an RFC or ADR. It does not implement a
-product feature and does not set `Approved` automatically.
+Draft/Proposed change. If the canonical document is already `Approved` or
+`Implemented`, the semantic delta MUST be written to a separate
+`docs/spec-changes/` artifact (or an RFC when alternatives are still open);
+the canonical document MUST NOT be edited to mix in unapproved behavior. It
+must keep requirement IDs and runtime diagnostic codes in separate namespaces,
+and it must not promote current code behavior to a requirement without source
+evidence. It may recommend an RFC or ADR. It does not implement a product
+feature and does not set `Approved` automatically.
 
 ### review-spec
 
@@ -105,15 +111,22 @@ with the source request when available, checks related specs and ADRs, tests
 normative strength and testability, and reports blocking issues, non-blocking
 issues, questions, and whether it is suitable for human approval. Its
 “Approved as Proposed” result is a recommendation only; it does not change the
-specification status.
+specification status. It also checks whether an existing implementation already
+contains unapproved semantics, whether requirement IDs and test names actually
+match, and whether an unapproved change was mixed into an approved canonical
+document.
 
 ### implement-spec
 
 `implement-spec` starts from an explicitly `Approved` specification. It maps
 requirement IDs to acceptance criteria, tests, fixtures, affected crates, GUI
 boundaries, and the .NET adapter, then implements and verifies the approved
-behavior. It does not design missing semantics from conversation. A missing
-rule is reported as `Specification Gap` and sent back to refinement.
+behavior. It treats diagnostic codes as a separate namespace from requirement
+IDs, checks acceptance/test traceability, and does not treat incorrect current
+behavior as authority. A `docs/spec-changes/` proposal, Draft, or Proposed
+document is never an implementation input. It does not design missing
+semantics from conversation. A missing rule is reported as `Specification Gap`
+and sent back to refinement.
 
 ## Approval and lifecycle
 
@@ -125,9 +138,22 @@ The lifecycle and exact status meanings are defined in
 - An AI-generated draft is never automatically promoted.
 - `Implemented` means the approved meaning was implemented and evidenced; it
   is not permission to weaken or reinterpret the specification.
-- A semantic change starts another proposed change. A typo, formatting-only
-  change, or internal refactor with no public/domain semantic change may use a
-  normal workflow.
+- A semantic change starts another proposed change artifact. A typo,
+  formatting-only change, or internal refactor with no public/domain semantic
+  change may use a normal workflow.
+
+## Approved specification changes
+
+An approved canonical document is immutable with respect to unapproved
+semantics. When refinement discovers a semantic change, create a durable
+artifact under [`docs/spec-changes`](../spec-changes/README.md), link the
+affected requirement IDs, and leave the canonical `Approved`/`Implemented`
+document unchanged. Use `review-spec` on the artifact. After explicit human
+approval, apply the approved delta atomically to the canonical document and
+keep the proposal as an audit record. Only then may implementation begin; the
+proposal itself is never an implementation contract. This prevents an
+`Approved` document from simultaneously claiming old requirements are approved
+and new requirements are not.
 
 ## Normalization and ownership
 

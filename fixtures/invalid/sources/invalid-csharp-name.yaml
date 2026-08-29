@@ -1,0 +1,4 @@
+kind: schema
+table: invalid-name
+csharpName: class
+fields: []

@@ -1,0 +1,66 @@
+use std::fs;
+
+use masterdata_core::{Project, ProjectService};
+use tempfile::tempdir;
+
+fn write_project(root: &std::path::Path, schema: &str, build: &str) {
+    fs::create_dir_all(root.join("sources")).expect("sources");
+    fs::write(
+        root.join("masterdata.toml"),
+        format!(
+            "[project]\nid = \"pipeline.test\"\nname = \"Pipeline\"\nversion = \"0.1.0\"\n\n[build]\n{build}"
+        ),
+    )
+    .expect("config");
+    fs::write(root.join("sources").join("schema.yaml"), schema).expect("schema");
+}
+
+#[test]
+fn schema_source_hash_tracks_raw_schema_bytes() {
+    let directory = tempdir().expect("temp directory");
+    let schema = "kind: schema\ntable: item\nfields: []\n";
+    write_project(directory.path(), schema, "");
+
+    let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
+    let first = ProjectService::new()
+        .prepare_build(Some(project.root()), project.root())
+        .expect("first build plan")
+        .schema_source_content_hash;
+
+    fs::write(
+        directory.path().join("sources").join("schema.yaml"),
+        "# formatting-only source change\nkind: schema\ntable: item\nfields: []\n",
+    )
+    .expect("updated schema");
+    let second = ProjectService::new()
+        .prepare_build(Some(project.root()), project.root())
+        .expect("second build plan")
+        .schema_source_content_hash;
+
+    assert_ne!(first, second);
+}
+
+#[test]
+fn build_plan_keeps_generated_binary_and_cache_outputs_distinct() {
+    let directory = tempdir().expect("temp directory");
+    write_project(
+        directory.path(),
+        "kind: schema\ntable: item\nfields: []\n",
+        "output = \"generated-csharp\"\nbinary_output = \"generated-binary/items.bytes\"\ncache = \"build-cache\"\n",
+    );
+
+    let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
+    let plan = ProjectService::new()
+        .prepare_build(Some(project.root()), project.root())
+        .expect("build plan");
+
+    assert_eq!(
+        plan.generated_output,
+        directory.path().join("generated-csharp")
+    );
+    assert_eq!(
+        plan.binary_output,
+        Some(directory.path().join("generated-binary/items.bytes"))
+    );
+    assert_eq!(plan.cache_directory, directory.path().join("build-cache"));
+}

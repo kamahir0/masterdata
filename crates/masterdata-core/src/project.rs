@@ -31,6 +31,8 @@ pub struct ProjectInfo {
     pub version: String,
     pub source_roots: Vec<PathBuf>,
     pub build_output: PathBuf,
+    pub build_binary_output: Option<PathBuf>,
+    pub build_cache: PathBuf,
 }
 
 impl Project {
@@ -53,26 +55,31 @@ impl Project {
             };
             if !candidate.is_file() {
                 return Err(MasterdataError::new(
-                    "PROJECT-001",
+                    "E-PROJECT-NOT-FOUND",
                     ErrorKind::ProjectNotFound,
                     format!(
                         "could not find {PROJECT_CONFIG_FILENAME} at {}",
                         candidate.display()
                     ),
                 )
-                .with_source(candidate));
+                .with_source(candidate)
+                .with_related_requirement("PROJECT-001")
+                .with_related_requirement("PROJECT-002"));
             }
             candidate
         } else {
             find_config_upwards(&start)?.ok_or_else(|| {
                 MasterdataError::new(
-                    "PROJECT-002",
+                    "E-PROJECT-NOT-FOUND",
                     ErrorKind::ProjectNotFound,
                     format!(
                         "could not find {PROJECT_CONFIG_FILENAME} from {} or its parents",
                         start.display()
                     ),
                 )
+                .with_related_requirement("PROJECT-001")
+                .with_related_requirement("PROJECT-003")
+                .with_related_requirement("PROJECT-004")
             })?
         };
 
@@ -88,7 +95,7 @@ impl Project {
             fs::read_to_string(&config_path).map_err(|error| io_error(&config_path, error))?;
         let config: ProjectConfig = toml::from_str(&content).map_err(|error| {
             MasterdataError::new(
-                "PROJECT-CONFIG-005",
+                "E-PROJECT-CONFIG-PARSE",
                 ErrorKind::Config,
                 format!("could not parse TOML: {error}"),
             )
@@ -135,6 +142,13 @@ impl Project {
                 .map(|root| resolve_project_path(&self.root, root))
                 .collect(),
             build_output: resolve_project_path(&self.root, &self.config.build.output),
+            build_binary_output: self
+                .config
+                .build
+                .binary_output
+                .as_deref()
+                .map(|path| resolve_project_path(&self.root, path)),
+            build_cache: resolve_project_path(&self.root, &self.config.build.cache),
         }
     }
 
@@ -144,14 +158,15 @@ impl Project {
             let root_path = resolve_project_path(&self.root, root);
             if !root_path.exists() {
                 return Err(MasterdataError::new(
-                    "PROJECT-SOURCES-001",
+                    "E-PROJECT-SOURCE-ROOT-MISSING",
                     ErrorKind::Config,
                     format!(
                         "configured source root does not exist: {}",
                         root_path.display()
                     ),
                 )
-                .with_source(root_path));
+                .with_source(root_path)
+                .with_related_requirement("PROJECT-006"));
             }
             collect_yaml_files(&root_path, &mut files)?;
         }
@@ -177,6 +192,18 @@ impl Project {
     pub fn build_output_path(&self) -> PathBuf {
         resolve_project_path(&self.root, &self.config.build.output)
     }
+
+    pub fn build_binary_output_path(&self) -> Option<PathBuf> {
+        self.config
+            .build
+            .binary_output
+            .as_deref()
+            .map(|path| resolve_project_path(&self.root, path))
+    }
+
+    pub fn build_cache_path(&self) -> PathBuf {
+        resolve_project_path(&self.root, &self.config.build.cache)
+    }
 }
 
 /// Create a new project marker and the default source root.
@@ -190,7 +217,7 @@ pub fn initialize_project(root: &Path, options: &InitOptions) -> Result<ProjectI
     let config_path = root.join(PROJECT_CONFIG_FILENAME);
     if config_path.exists() {
         return Err(MasterdataError::new(
-            "PROJECT-INIT-001",
+            "E-PROJECT-ALREADY-INITIALIZED",
             ErrorKind::Config,
             format!("project config already exists at {}", config_path.display()),
         )
@@ -208,7 +235,7 @@ pub fn initialize_project(root: &Path, options: &InitOptions) -> Result<ProjectI
     config.validate()?;
     let content = toml::to_string_pretty(&config).map_err(|error| {
         MasterdataError::new(
-            "PROJECT-INIT-002",
+            "E-PROJECT-CONFIG-SERIALIZE",
             ErrorKind::Config,
             format!("could not serialize project config: {error}"),
         )
@@ -250,7 +277,18 @@ fn collect_yaml_files(path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     let entries = fs::read_dir(path).map_err(|error| io_error(path, error))?;
     for entry in entries {
         let entry = entry.map_err(|error| io_error(path, error))?;
-        collect_yaml_files(&entry.path(), files)?;
+        let entry_path = entry.path();
+        // Do not follow symlink entries. This is an internal safety guard
+        // against directory cycles; the product-level symlink policy is
+        // intentionally still an Open Question in the source-discovery docs.
+        if entry
+            .file_type()
+            .map_err(|error| io_error(&entry_path, error))?
+            .is_symlink()
+        {
+            continue;
+        }
+        collect_yaml_files(&entry_path, files)?;
     }
     Ok(())
 }

@@ -1,7 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde_yaml::Value;
-
 use crate::Diagnostic;
 use crate::document::{ProjectDocuments, SourceDocument, schema_diagnostic};
 
@@ -33,7 +31,7 @@ pub fn validate_documents(documents: &ProjectDocuments) -> ValidationReport {
             SourceDocument::Schema(schema) => {
                 if schema.table.trim().is_empty() {
                     diagnostics.push(schema_diagnostic(
-                        "SCHEMA-001",
+                        "E-SCHEMA-EMPTY-TABLE",
                         "schema table must not be empty",
                         &loaded.path,
                     ));
@@ -41,7 +39,7 @@ pub fn validate_documents(documents: &ProjectDocuments) -> ValidationReport {
                 if let Some(previous) = schemas.insert(schema.table.clone(), loaded.path.clone()) {
                     diagnostics.push(
                         schema_diagnostic(
-                            "SCHEMA-002",
+                            "E-SCHEMA-DUPLICATE-TABLE",
                             format!(
                                 "table `{}` has more than one schema document (also declared in {})",
                                 schema.table,
@@ -58,7 +56,7 @@ pub fn validate_documents(documents: &ProjectDocuments) -> ValidationReport {
                 data_counts += 1;
                 if data.table.trim().is_empty() {
                     diagnostics.push(schema_diagnostic(
-                        "DATA-001",
+                        "E-DATA-EMPTY-TABLE",
                         "data table must not be empty",
                         &loaded.path,
                     ));
@@ -67,36 +65,9 @@ pub fn validate_documents(documents: &ProjectDocuments) -> ValidationReport {
         }
     }
 
-    let mut record_keys: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for loaded in &documents.files {
-        let SourceDocument::Data(data) = &loaded.document else {
-            continue;
-        };
-        let keys = record_keys.entry(data.table.clone()).or_default();
-        for (index, record) in data.records.iter().enumerate() {
-            let Some(id) = record.get("id") else {
-                continue;
-            };
-            let key = yaml_key(id);
-            if !keys.insert(key.clone()) {
-                diagnostics.push(
-                    schema_diagnostic(
-                        "DATA-PRIMARY-001",
-                        format!("duplicate `id` value in table `{}`", data.table),
-                        &loaded.path,
-                    )
-                    .with_record_identity(format!(
-                        "table:{} id:{} record:{}",
-                        data.table, key, index
-                    )),
-                );
-            }
-        }
-    }
-
     if documents.files.is_empty() {
         diagnostics.push(Diagnostic::new(
-            "PROJECT-DOC-001",
+            "E-PROJECT-NO-SOURCES",
             crate::ErrorKind::Validation,
             "project has no YAML source documents",
         ));
@@ -131,7 +102,7 @@ fn validate_schema_fields(
     for field in &schema.fields {
         if !field_ids.insert(field.id) {
             diagnostics.push(schema_diagnostic(
-                "SCHEMA-FIELD-001",
+                "E-SCHEMA-DUPLICATE-FIELD-ID",
                 format!(
                     "duplicate field id {} in table `{}`",
                     field.id, schema.table
@@ -141,7 +112,7 @@ fn validate_schema_fields(
         }
         if !field_names.insert(field.name.clone()) {
             diagnostics.push(schema_diagnostic(
-                "SCHEMA-FIELD-002",
+                "E-SCHEMA-DUPLICATE-FIELD-NAME",
                 format!(
                     "duplicate field name `{}` in table `{}`",
                     field.name, schema.table
@@ -151,14 +122,10 @@ fn validate_schema_fields(
         }
         if reserved_ids.contains(&field.id) {
             diagnostics.push(schema_diagnostic(
-                "SCHEMA-FIELD-003",
+                "E-SCHEMA-ACTIVE-RESERVED-FIELD-ID-COLLISION",
                 format!("field id {} is both active and reserved", field.id),
                 path,
             ));
         }
     }
-}
-
-fn yaml_key(value: &Value) -> String {
-    serde_yaml::to_string(value).unwrap_or_else(|_| format!("{value:?}"))
 }

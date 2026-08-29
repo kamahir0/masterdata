@@ -32,7 +32,7 @@ jobs:
       - run: cargo xtask check-all
 
   windows:
-    name: Windows platform-sensitive and Tauri compile
+    name: Windows repository quality gate
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,14 +47,10 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
-      - run: cargo test --workspace --exclude masterdata-gui
-      - run: cargo xtask test-integration
-      - run: npm run frontend:lint
-      - run: npm run frontend:test
-      - run: cargo check --package masterdata-gui
+      - run: cargo xtask check-all
 
   macos:
-    name: macOS core, .NET, and Tauri compile
+    name: macOS repository quality gate
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -69,10 +65,4 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
-      - run: cargo fmt --all -- --check
-      - run: cargo test --workspace --exclude masterdata-gui
-      - run: cargo xtask test-integration
-      - run: npm run frontend:lint
-      - run: npm run frontend:test
-      - run: cargo check --package masterdata-gui
-
+      - run: cargo xtask check-all

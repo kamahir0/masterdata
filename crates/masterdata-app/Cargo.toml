@@ -1,0 +1,11 @@
+[package]
+name = "masterdata-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared application workflows for the masterdata CLI and GUI"
+
+[dependencies]
+masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
+masterdata-core = { path = "../masterdata-core" }
+masterdata-dotnet = { path = "../masterdata-dotnet" }

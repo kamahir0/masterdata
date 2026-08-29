@@ -1,28 +1,28 @@
-# Schema language
+# Schema言語（Schema language）
 
 Status: Draft
 
-## Document envelope
+## Document envelope（ドキュメントの外枠）
 
-Every YAML source document MUST declare its meaning itself:
+すべてのYAML source documentは、自身の意味を宣言しなければならない（MUST）。
 
 ```yaml
 kind: schema
 table: item
 ```
 
-or:
+または:
 
 ```yaml
 kind: data
 table: item
 ```
 
-An unknown or missing `kind` is a parse error. A table MAY receive data from
-one or more data documents. Data files are merged by declared table identity,
-not by filename or directory.
+`kind` が未知または欠落している場合はparse errorとする。1つのtableは、1つ以上のdata
+documentからdataを受け取ってもよい（MAY）。Data fileはfilenameやdirectoryではなく、
+宣言されたtable identityによってmergeする。
 
-## Planned schema shape
+## Planned schema shape（予定するschemaの形）
 
 ```yaml
 kind: schema
@@ -38,40 +38,35 @@ reservedFields:
     formerType: string
 ```
 
-The Rust AST keeps schema declarations typed (`SchemaDocument`,
-`FieldDefinition`, and `ReservedField`) so future type/index/reference
-features do not collapse into an unstructured map.
+Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`、`ReservedField`）に
+保つ。将来のtype/index/reference featureがunstructured mapへ崩れることを防ぐためである。
 
-The current scaffold recognizes `schema` and `data` documents only. The
-Proposed [Value Objects specification](type-system/value-objects.md) defines
-`kind: type` as the direction for a future unified type-declaration document;
-that proposed kind is not accepted by the current parser and is not an
-implementation contract until the specification is approved and implemented.
+現在のscaffoldが認識するdocumentは `schema` と `data` だけである。Proposedの
+[Value Objects仕様（Value Objects specification）](type-system/value-objects.md)は、将来のunified type-declaration
+documentの方向として `kind: type` を定義する。このproposed kindはcurrent parserでは受け付けず、
+specificationがApprovedかつImplementedになるまでimplementation contractではない。
 
-The current scaffold uses `table` as the project-local logical table identity.
-`csharpName`, when present, is a generated C# type-name override and is not a
-second table identity. The previously shown `tableId` field was not consumed by
-the Rust model or generator and is intentionally absent from the current
-scaffold. The compatibility implications of this direction are tracked in
-[`docs/rfcs/0001-table-identity.md`](../rfcs/0001-table-identity.md), which is
-accepted for this current-scaffold direction. Global identity, rename
-migration, released-schema compatibility, legacy `tableId` migration, and
-cross-project identity remain Open Questions.
+current scaffoldは `table` をproject-localなlogical table identityとして使用する。存在する場合の
+`csharpName` はgenerated C# type-name overrideであり、2つ目のtable identityではない。以前に示した
+`tableId` fieldはRust modelやgeneratorでconsumeされておらず、current scaffoldには意図的に存在しない。
+この方向のcompatibility implicationは、current-scaffold directionについてAcceptedとなった
+[`docs/rfcs/0001-table-identity.md`](../rfcs/0001-table-identity.md) に記録する。global identity、
+rename migration、released-schema compatibility、legacy `tableId` migration、cross-project identityは
+引き続きOpen Questionである。
 
-## YAML subset open questions
+## YAML subsetのOpen Questions
 
-The product has not yet approved a YAML subset. Refinement MUST leave these
-choices visible rather than deriving them from the current parser:
+productが承認したYAML subsetはまだない。refinementでは、current parserからこれらの選択を導出せず、
+見える状態に残さなければならない（MUST）。
 
-- whether anchors and aliases are allowed;
-- whether merge keys are allowed;
-- whether multiple documents separated by `---` are allowed in one file;
-- whether custom tags are allowed;
-- how duplicate mapping keys are diagnosed;
-- how numeric and timestamp-looking scalars are interpreted; and
-- whether unknown fields are rejected, ignored, or preserved for round-trip
-  editing.
+- anchorとaliasを許可するか。
+- merge keyを許可するか。
+- 1つのfileで `---` によって区切られた複数documentを許可するか。
+- custom tagを許可するか。
+- duplicate mapping keyをどのようにdiagnoseするか。
+- numericおよびtimestamp-looking scalarをどのように解釈するか。
+- unknown fieldをreject、ignore、またはround-trip editingのためにpreserveするか。
 
-Open Questions also include whether comments, formatting, and quoting must be
-preserved when the GUI writes YAML back. Parser/library selection is tracked
-separately in [`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md).
+Open Questionsには、GUIがYAMLを書き戻す際にcomment、formatting、quoteを保持する必要があるかも含まれる。
+parser/library selectionは、[`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md)
+で別途追跡する。

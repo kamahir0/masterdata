@@ -4,36 +4,36 @@ Status: Draft
 
 Domain: DOMAIN
 
-## Summary
+## 概要
 
-<!-- State the behavior and scope in a few sentences. Do not paste a conversation log. -->
+<!-- behaviorとscopeを数文で記載する。conversation logを貼り付けない。 -->
 
-## Terminology
+## 用語
 
-<!-- Link to docs/product/terminology.md and define only terms specific to this spec. -->
+<!-- docs/product/terminology.mdへlinkし、このspec固有のtermだけを定義する。 -->
 
-## Normative Requirements
+## 規範要件
 
 ### DOMAIN-TOPIC-001
 
-<!-- Use MUST / MUST NOT / SHOULD / SHOULD NOT / MAY precisely. -->
+<!-- MUST / MUST NOT / SHOULD / SHOULD NOT / MAYを正確に使う。 -->
 
-## Validation Rules
+## 検証ルール
 
-<!-- Describe observable validation and failure behavior, or say None. -->
+<!-- 観測可能なvalidationとfailure behaviorを記載する。なければNoneと書く。 -->
 
-## Compatibility
+## 互換性
 
-<!-- State compatibility impact, migration needs, or why it is not applicable. -->
+<!-- compatibility impact、migrationの必要性、または適用外である理由を記載する。 -->
 
-## Examples
+## 例
 
-<!-- Examples are non-normative unless a requirement explicitly says otherwise. -->
+<!-- requirementが明示的に別の指定をしない限り、exampleはnon-normativeである。 -->
 
-## Open Questions
+## 未解決事項（Open Questions）
 
-<!-- Unresolved questions remain non-normative and cannot be silently resolved. -->
+<!-- 未解決のQuestionはここに残す。黙って解決してはならない。 -->
 
-## Non-Goals
+## 非目標
 
-<!-- Explicitly exclude adjacent behavior that this specification does not settle. -->
+<!-- このspecificationが扱わない隣接behaviorを明示的に除外する。 -->

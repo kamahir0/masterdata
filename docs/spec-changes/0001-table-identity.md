@@ -1,61 +1,53 @@
-# Specification change: adopt current table identity boundary
+# 仕様変更: 現在のtable identity boundaryを採用（Specification change）
 
 Status: Applied
 
 ## Affected Specifications
 
 - [`docs/specs/compatibility/table-identity.md`](../specs/compatibility/table-identity.md),
-  `COMPAT-TABLE-001`.
-- [`docs/specs/schema-language.md`](../specs/schema-language.md), current
-  scaffold identity explanation.
-- [`docs/product/terminology.md`](../product/terminology.md), table identity
-  glossary entry.
+  `COMPAT-TABLE-001`。
+- [`docs/specs/schema-language.md`](../specs/schema-language.md)、current scaffoldのidentity explanation。
+- [`docs/product/terminology.md`](../product/terminology.md)、table identityのglossary entry。
 
-## Source Evidence and Classification
+## Source Evidence and Classification（source evidenceと分類）
 
-The repository-hardening task explicitly settled the current-scaffold
-direction: `table` is the project-local stable logical table identity,
-`csharpName` is the generated C# type-name override/presentation name, and
-`tableId` is unnecessary at this stage. This is a human `Decision`, not an
-inference from the existing implementation.
+repository-hardening taskでは、current-scaffoldの方向を明示的に決定した。`table` はproject-localなstable
+logical table identity、`csharpName` はgenerated C# type-name override/presentation name、`tableId` は
+現段階では不要である。これは既存implementationからのinferenceではなく、人間の `Decision` である。
 
-Global table identity, table rename migration, released-schema compatibility,
-legacy `tableId` migration, and cross-project identity remain `Open Question`s.
+Global table identity、table rename migration、released-schema compatibility、legacy `tableId` migration、
+cross-project identityは `Open Question` のままである。
 
-## Proposed Delta
+## Proposed Delta（提案delta）
 
-For the current scaffold, canonical specification text records the accepted
-`table`/`csharpName` distinction and does not define a second `tableId`
-identity. No unresolved compatibility question is promoted to a requirement.
+current scaffoldでは、canonical specificationに採用済みの `table` / `csharpName` の区別を記録し、2つ目の
+`tableId` identityを定義しない。未解決のcompatibility questionをrequirementへ昇格させない。
 
-## Compatibility
+## 互換性（Compatibility）
 
-The current repository has no released schema format. The accepted direction
-does not establish a migration promise or a global identity namespace.
+current repositoryにはreleased schema formatがない。採用した方向はmigration promiseもglobal identity
+namespaceも確立しない。
 
-## Acceptance and Implementation Impact
+## Acceptance and Implementation Impact（受け入れとimplementation impact）
 
-The typed Rust schema model, fixtures, terminology, and generated C# identity
-comments must agree with the canonical direction. Existing tests confirm that
-source location does not determine table identity. This change does not
-implement indexes, references, type resolution, or rename migration.
+typed Rust schema model、fixtures、terminology、generated C# identity commentは、canonical directionと一致
+しなければならない。既存testはsource locationがtable identityを決めないことを確認する。このchangeは
+index、reference、type resolution、rename migrationを実装しない。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Does a project eventually need a globally stable table identity?
-- What migration behavior applies when `table` changes?
-- Should legacy `tableId` input be rejected, preserved as non-semantic
-  metadata, or supported during a migration window?
-- Is cross-project table identity required?
+- Projectは将来globally stableなtable identityを必要とするか。
+- `table` が変更された場合、どのmigration behaviorを適用するか。
+- legacy `tableId` inputをrejectするか、non-semantic metadataとして保持するか、migration window中にsupportするか。
+- cross-project table identityは必要か。
 
-## Review
+## レビュー（Review）
 
-`review-spec` concerns are resolved for the current-scaffold decision. The
-remaining compatibility questions are intentionally retained above.
+current-scaffold decisionに対する `review-spec` のconcernは解消された。残りのcompatibility questionは上記に
+意図的に残している。
 
-## Approval Record
+## 承認記録（Approval Record）
 
-The human decision in the repository-hardening task explicitly approved the
-current-scaffold direction. The delta was applied atomically to the canonical
-documentation and RFC 0001 was moved to `Accepted`. This artifact is retained
-as the durable audit record and is `Applied`.
+repository-hardening taskでのhuman decisionがcurrent-scaffold directionを明示的に承認した。deltaはcanonical
+documentationへatomicに適用され、RFC 0001は `Accepted` へ移された。このartifactはdurable audit recordとして
+保持し、`Applied` とする。

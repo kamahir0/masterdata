@@ -1,22 +1,19 @@
-# ADR 0001: YAML is the source of truth
+# ADR 0001: YAMLをSource of Truthとする
 
 Status: Accepted
 
-## Context
+## 背景（Context）
 
-Generated C# and MasterMemory binary artifacts are derived outputs. Treating a
-generated artifact as authoritative would make review, regeneration, and
-compatibility tracking unreliable.
+Generated C#とMasterMemory binary artifactはderived outputである。generated artifactをauthorityとして
+扱うと、review、regeneration、compatibility trackingが信頼できなくなる。
 
-## Decision
+## 決定（Decision）
 
-YAML schema and data documents are the canonical source of truth. Generated C#,
-builder output, caches, and MasterMemory binaries are reproducible artifacts
-and MUST NOT be the authority for edits.
+YAML schemaとdata documentをcanonicalなSource of Truthとする。Generated C#、builder output、cache、
+MasterMemory binaryは再現可能なartifactであり、editのauthorityとして扱ってはならない（MUST NOT）。
 
-## Consequences
+## 結果（Consequences）
 
-Changes are reviewable in text and can be regenerated in CI. The system needs
-stable IDs and compatibility validation in YAML. GUI edits must write YAML (or
-an explicit future transaction format), never silently patch generated output.
-
+変更をtextとしてreviewでき、CIでregenerateできる。YAMLにはstable IDとcompatibility validationが必要である。
+GUI editはYAML（または将来明示するtransaction format）へwriteしなければならず、generated outputを
+黙ってpatchしてはならない。

@@ -1,157 +1,134 @@
-# RFC: YAML parser/library selection
+# RFC: YAML parser/libraryの選定
 
 Status: Proposed
 
-## Context
+## 背景（Context）
 
-YAML is the project Source of Truth. The current implementation uses
-`serde_yaml = 0.9` for typed deserialization and a `serde_yaml::Value`
-intermediate tree. Parser selection therefore affects diagnostics, future GUI
-editing, and the interpretation of source files. This RFC records an
-investigation and does not authorize a dependency migration.
+YAMLはprojectのSource of Truthである。current implementationはtyped deserializationと
+`serde_yaml::Value` intermediate treeに `serde_yaml = 0.9` を使用している。したがってparserの選定は、
+diagnostic、将来のGUI editing、source fileの解釈に影響する。parserがvalueをloadできるだけでは、
+round-trip editingに適するとは限らない。本RFCは調査結果を記録するものであり、dependency migrationを
+許可するものではない。
 
-## Problem
+## 課題（Problem）
 
-The current parser is convenient for Serde mapping, but its upstream repository
-is archived and the `0.9.34` release states that the crate is no longer
-maintained. A future replacement must be evaluated against both machine
-validation and human-preserving editor requirements; a parser that only loads
-values is not automatically suitable for round-trip editing.
+current parserはSerde mappingには便利だが、upstream repositoryがarchivedであり、`0.9.34` releaseには
+crateがno longer maintainedと記載されている。将来のreplacementはmachine validationと、人間が編集した
+内容を保つeditor requirementの両方で評価しなければならない。valueをloadするだけのparserがround-trip
+editingに適するとは限らない。
 
-## Goals
+## 目標（Goals）
 
-- compare realistic Rust options against the product's actual YAML needs;
-- make unsupported YAML behavior explicit as product Open Questions; and
-- avoid a large parser migration before a human-approved decision.
+- productの実際のYAML needに対して現実的なRust optionを比較する。
+- 未対応のYAML behaviorをproduct Open Questionとして明示する。
+- human-approved decision前の大規模parser migrationを避ける。
 
-## Non-Goals
+## 非目標（Non-Goals）
 
-This RFC does not choose a YAML subset, change `serde_yaml`, implement a
-round-trip editor, or define schema/domain semantics for anchors, tags, or
-multiple documents.
+このRFCは、YAML subset、`serde_yaml` の変更、round-trip editorの実装、anchor、tag、複数documentに関する
+schema/domain semanticsを決めない。
 
-## Options
+## 選択肢（Options）
 
-### Current `serde_yaml 0.9`
+### 現行の `serde_yaml 0.9`（Current）
 
-Strong Serde integration and a small migration surface. The upstream GitHub
-repository is archived and the latest `0.9.34` release is marked as no longer
-maintained. The value-oriented API is not a lossless syntax tree, so comments,
-whitespace, quote style, and exact formatting are not preserved by the current
-model. Error objects expose parser marks, but the repository still needs to
-map them consistently into the core Diagnostic.
+StrongなSerde integrationと小さなmigration surfaceを持つ。upstream GitHub repositoryはarchivedであり、
+latestの `0.9.34` releaseはno longer maintainedと表示される。value-oriented APIはlosslessなsyntax tree
+ではないため、current modelではcomment、whitespace、quote style、exact formattingを保持できない。
+error objectはparser markを公開するが、repositoryにはそれをcore Diagnosticへ一貫してmapする作業が残る。
 
 ### `yaml_serde`
 
-The YAML organization publishes an actively maintained fork intended as a
-minimal migration from `serde_yaml`; its documentation describes package
-renaming as an option. It is a promising Serde-compatible candidate, but this
-RFC does not assume behavioral equivalence for duplicate keys, tags, scalar
-resolution, or error locations without a compatibility test corpus.
+YAML organizationが公開するactively maintained forkであり、`serde_yaml` からのminimal migrationを意図する。
+documentationではpackage renameをoptionとして説明している。Serde-compatibleな有望なcandidateだが、duplicate
+key、tag、scalar resolution、error locationについて、compatibility test corpusなしにbehavior equivalenceを
+仮定しない。
 
 ### `yaml-rust2` / `saphyr`
 
-These are pure-Rust YAML 1.2 parser/document APIs. `yaml-rust2` documents a
-stable/basic-maintenance posture, while `saphyr` is the newer, more actively
-developed API family. They provide document/event access and multiple-document
-loading, but are not drop-in Serde replacements for the current typed model;
-conversion, duplicate-key policy, source spans, and serialization behavior
-would need explicit engineering.
+Pure-RustのYAML 1.2 parser/document APIである。`yaml-rust2` はstable/basic-maintenance postureを記載し、
+`saphyr` はより新しく、よりactiveに開発されるAPI familyである。document/event accessと複数documentのloadを
+提供するが、current typed modelのdrop-in Serde replacementではない。conversion、duplicate-key policy、source
+span、serialization behaviorを明示的にengineeringする必要がある。
 
 ### `yaml-edit`
 
-This option is a lossless syntax-tree editor focused on preserving comments,
-whitespace, and formatting while editing. It is attractive for a future GUI
-write-back path, but it is not a drop-in replacement for the current Serde
-model and would require a deliberate bridge between lossless syntax and the
-typed domain AST.
+comment、whitespace、formattingを保持しながらeditすることに重点を置くlossless syntax-tree editorである。
+将来のGUI write-back pathには魅力的だが、current Serde modelのdrop-in replacementではない。lossless syntaxと
+typed domain ASTの間に、意図的なbridgeが必要になる。
 
 ### `serde-saphyr`
 
-This is a Serde-oriented YAML deserializer built on the Saphyr ecosystem. Its
-documented feature set includes error reporting and comment-aware wrappers,
-but its maturity, duplicate-key behavior, round-trip model, and compatibility
-with this repository's typed AST require a repository-specific evaluation.
+Saphyr ecosystemを基盤とするSerde-oriented YAML deserializerである。documented feature setにはerror
+reportingとcomment-aware wrapperが含まれるが、maturity、duplicate-key behavior、round-trip model、このrepository
+のtyped ASTとのcompatibilityにはrepository固有の評価が必要である。
 
-## Comparison matrix
+## 比較マトリクス（Comparison matrix）
 
-The matrix distinguishes capabilities reported by the candidate projects from
-requirements that still need a local test. `Unknown` means “not established by
-this RFC”, not “allowed by the product”.
+このmatrixでは、candidate projectが公表しているcapabilityと、local testがまだ必要なrequirementを区別する。
+`Unknown` は「このRFCで確立されていない」という意味であり、「productとして許可する」という意味ではない。
 
-| Criterion | serde_yaml 0.9 | yaml_serde | yaml-rust2 / saphyr | yaml-edit | serde-saphyr |
+| 観点 | serde_yaml 0.9 | yaml_serde | yaml-rust2 / saphyr | yaml-edit | serde-saphyr |
 | --- | --- | --- | --- | --- | --- |
-| Maintenance status | Upstream archived/deprecated | Maintained fork candidate | Pure-Rust family; yaml-rust2 favors stability, saphyr moves faster | Focused editor candidate | Active candidate; local maturity check needed |
-| Serde integration | Native | Intended minimal migration | No drop-in native mapping | None as current model | Native Serde path |
-| Error line/column | Parser mark available; local mapping needed | Local compatibility test needed | Event/parser spans need local mapping | Position tracking documented | Error reporting documented |
-| Duplicate mapping keys | Local behavior test required | Local behavior test required | Local behavior test required | Syntax retained; semantic policy local | Local behavior test required |
-| Anchors / aliases | Local behavior test required | Local behavior test required | YAML document/event support; local semantic test required | Syntax can be preserved; semantic policy local | Documented support; product policy local |
-| Merge keys | Local behavior test required | Local behavior test required | Product policy local | Syntax can be preserved; product policy local | Documented support; product policy local |
-| Multiple `---` documents | API behavior must be tested | API behavior must be tested | Documented document loading | Document model behavior must be tested | API behavior must be tested |
-| Custom tags | Local behavior test required | Local behavior test required | Event/document support; product policy local | Syntax preservation possible; policy local | Documented support path; policy local |
-| Numeric interpretation | Compatibility corpus required | Compatibility corpus required | YAML 1.2-oriented; corpus required | Syntax retained; conversion local | Compatibility corpus required |
-| Timestamp interpretation | Compatibility corpus required | Compatibility corpus required | Conversion policy local | Syntax retained; conversion local | Compatibility corpus required |
-| Unknown fields | Serde attributes/local policy | Serde attributes/local policy | Conversion layer policy | Syntax can preserve them | Serde attributes/local policy |
-| Round-trip editing | Not lossless in current model | Not established | Emitter, not lossless editor | Lossless editing is the primary goal | Comment-aware values, not full format guarantee |
-| Comment preservation | Not in current typed model | Not established | Not the current typed model's guarantee | Explicitly supported | Comment wrappers documented |
-| Format/quote preservation | No | Not established | No guarantee from emitter | Explicitly supported | Not established as full format preservation |
-| Performance | Existing baseline | Baseline needed | Candidate benchmark needed | Editor-oriented benchmark needed | Candidate benchmark needed |
-| Cross-platform | Rust/native dependency behavior to test | Test required | Pure Rust | Pure Rust | Pure Rust ecosystem |
-| Ecosystem maturity | Historically mature, now unmaintained | Newer fork | Established lineage, differing maturity | Narrower/newer focus | Newer candidate |
-| License | MIT/Apache-2.0 lineage; verify package metadata | Verify package metadata | MIT/Apache-2.0 family | Verify package metadata | Verify package metadata |
+| Maintenance status（保守状況） | upstreamはarchived/deprecated | 保守されたforkのcandidate | Pure-Rust family。yaml-rust2はstabilityを重視し、saphyrはより速く進化する | editorに特化したcandidate | Active candidate。local maturity checkが必要 |
+| Serde integration（Serde統合） | Native | 最小migrationを想定 | drop-in native mappingなし | current modelではなし | Native Serde path |
+| Error line/column（エラーの行/列） | Parser markは利用可能。local mappingが必要 | local compatibility testが必要 | event/parser spanにlocal mappingが必要 | position trackingをdocumented | error reportingをdocumented |
+| Duplicate mapping keys（重複mapping key） | local behavior testが必要 | local behavior testが必要 | local behavior testが必要 | syntaxは保持し、semantic policyはlocal | local behavior testが必要 |
+| Anchors / aliases（anchor / alias） | local behavior testが必要 | local behavior testが必要 | YAML document/eventをsupport。local semantic testが必要 | syntaxを保持でき、semantic policyはlocal | supportをdocumented。product policyはlocal |
+| Merge keys（merge key） | local behavior testが必要 | local behavior testが必要 | product policyはlocal | syntaxを保持でき、semantic policyはlocal | supportをdocumented。product policyはlocal |
+| Multiple `---` documents（複数document） | API behaviorのtestが必要 | API behaviorのtestが必要 | document loadingをdocumented | document model behaviorのtestが必要 | API behaviorのtestが必要 |
+| Custom tags（custom tag） | local behavior testが必要 | local behavior testが必要 | event/document support。product policyはlocal | syntax preservationは可能。policyはlocal | support pathをdocumented。policyはlocal |
+| Numeric interpretation（numericの解釈） | compatibility corpusが必要 | compatibility corpusが必要 | YAML 1.2-oriented。corpusが必要 | syntaxは保持し、conversionはlocal | compatibility corpusが必要 |
+| Timestamp interpretation（timestampの解釈） | compatibility corpusが必要 | compatibility corpusが必要 | conversion policyはlocal | syntaxは保持し、conversionはlocal | compatibility corpusが必要 |
+| Unknown fields（未知のfield） | Serde attribute/local policy | Serde attribute/local policy | conversion layer policy | preserve可能 | Serde attribute/local policy |
+| Round-trip editing（round-trip編集） | current modelではlosslessでない | 未確立 | emitterであり、lossless editorではない | lossless editingがprimary goal | comment-aware valueだが、完全なformat guaranteeではない |
+| Comment preservation（comment保持） | current typed modelでは対象外 | 未確立 | current typed modelのguaranteeではない | 明示的にsupport | comment wrapperをdocumented |
+| Format/quote preservation（format/quote保持） | なし | 未確立 | emitterによるguaranteeなし | 明示的にsupport | 完全なformat preservationとしては未確立 |
+| Performance（性能） | 既存baseline | baselineが必要 | candidate benchmarkが必要 | editor-oriented benchmarkが必要 | candidate benchmarkが必要 |
+| Cross-platform（cross-platform対応） | Rust/native dependency behaviorのtestが必要 | testが必要 | Pure Rust | Pure Rust | Pure Rust ecosystem |
+| Ecosystem maturity（ecosystemの成熟度） | 歴史的にはmatureだが、現在はunmaintained | newer fork | established lineageだがmaturityは異なる | より狭く新しいfocus | newer candidate |
+| License（license） | MIT/Apache-2.0 lineage。package metadataを確認する | package metadataを確認する | MIT/Apache-2.0 family | package metadataを確認する | package metadataを確認する |
 
-## Trade-offs
+## トレードオフ（Trade-offs）
 
-Keeping `serde_yaml` avoids immediate migration risk and preserves the current
-typed implementation, but carries maintenance risk and does not solve future
-lossless editing. A Serde-compatible fork reduces code churn but still needs a
-corpus. A YAML 1.2 document API improves control over syntax and documents but
-requires an explicit typed conversion layer. A lossless editor best serves GUI
-write-back but should likely complement, rather than silently replace, the
-semantic parser.
+`serde_yaml` を維持すればimmediate migration riskを避け、current typed implementationを保てるが、maintenance
+riskは残り、将来のlossless editingも解決しない。Serde-compatible forkはcode churnを減らすが、やはりcorpusが
+必要である。YAML 1.2 document APIはsyntaxとdocumentを制御しやすくする一方、明示的なtyped conversion layerが
+必要になる。lossless editorはGUI write-backに最も適するが、semantic parserを黙って置き換えるのではなく、補完
+する構成が望ましい可能性が高い。
 
-## Proposal
+## 提案（Proposal）
 
-Keep the current `serde_yaml 0.9` dependency unchanged until a human-approved
-decision is made. Before selecting a replacement, build a compatibility corpus
-covering the matrix above and decide whether the architecture needs two
-layers: a semantic parser for validation and a lossless syntax representation
-for GUI edits. Do not infer the product YAML subset from whichever candidate is
-most convenient.
+human-approved decisionがなされるまで、current `serde_yaml 0.9` dependencyを変更しない。replacementを選ぶ前に、
+上記matrixを網羅するcompatibility corpusを作り、architectureがsemantic parserとlossless syntax representationの
+2層を必要とするか決める。candidateのうち最も便利なものを理由にproduct YAML subsetを推論しない。
 
-## Compatibility
+## 互換性（Compatibility）
 
-Changing parser libraries can alter scalar types, duplicate-key acceptance,
-anchors/aliases, tags, error locations, and serialization output. Any migration
-requires fixture and golden-output comparison plus an explicit compatibility
-decision. No migration is performed by this RFC.
+parser libraryの変更は、scalar type、duplicate-key acceptance、anchor/alias、tag、error location、serialization
+outputを変える可能性がある。migrationにはfixtureとgolden-outputの比較、および明示的なcompatibility decisionが必要
+である。このRFCによるmigrationは行わない。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Which YAML version/dialect is the product contract?
-- Are anchors, aliases, merge keys, multiple documents, and custom tags
-  allowed?
-- Are duplicate mapping keys an error, a first-value rule, a last-value rule,
-  or preserved for a later diagnostic?
-- Which numeric and timestamp forms become typed values?
-- Are unknown fields rejected, ignored, or preserved?
-- Must GUI edits preserve comments, quote style, whitespace, and ordering?
-- Is a two-layer semantic/lossless representation justified?
-- Which license combination and maintenance policy will be accepted for the
-  selected parser stack?
+- product contractはどのYAML version/dialectか。
+- anchor、alias、merge key、複数document、custom tagを許可するか。
+- duplicate mapping keyはerror、first-value rule、last-value rule、または後続diagnosticのために保持するものか。
+- どのnumericとtimestamp formをtyped valueにするか。
+- unknown fieldをreject、ignore、またはpreserveするか。
+- GUI editでcomment、quote style、whitespace、orderingを保持しなければならないか。
+- semantic/lossless representationの2層構成は正当化できるか。
+- 選択するparser stackに対して、どのlicenseの組み合わせとmaintenance policyを受け入れるか。
 
-## Decision
+## 決定（Decision）
 
-Pending explicit human approval. Current recommendation: defer migration, keep
-the dependency pinned at `serde_yaml 0.9`, and resolve the YAML subset and
-editor requirements through a reviewed compatibility corpus.
+明示的なhuman approval待ち。current recommendationはmigrationを延期し、dependencyを `serde_yaml 0.9` にpinした
+まま、review済みcompatibility corpusを通じてYAML subsetとeditor requirementを解決することである。
 
-## References
+## 参照（References）
 
-- [`serde-yaml`](https://github.com/dtolnay/serde-yaml) and its
-  [`0.9.34` release](https://github.com/dtolnay/serde-yaml/releases/tag/0.9.34)
+- [`serde-yaml`](https://github.com/dtolnay/serde-yaml) と [`0.9.34` release](https://github.com/dtolnay/serde-yaml/releases/tag/0.9.34)
 - [`yaml_serde`](https://github.com/yaml/yaml-serde)
-- [`yaml-rust2`](https://github.com/Ethiraric/yaml-rust2) and
-  [`saphyr`](https://github.com/saphyr-rs/saphyr)
+- [`yaml-rust2`](https://github.com/Ethiraric/yaml-rust2) と [`saphyr`](https://github.com/saphyr-rs/saphyr)
 - [`yaml-edit`](https://github.com/jelmer/yaml-edit)
 - [`serde-saphyr`](https://github.com/bourumir-wyngs/serde-saphyr)

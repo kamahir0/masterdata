@@ -1,7 +1,5 @@
-# Future builder template
+# 将来のbuilder template（Future builder template）
 
-Reserved for the generated .NET builder project template. It will eventually
-contain the MasterMemory v3 Source Generator references, generated C# project
-files, and a schema-hash-aware build/cache contract. The current executable one
-directory above is intentionally dependency-free and smoke-test-only.
-
+generated .NET builder project template用の予約領域である。将来、MasterMemory v3 Source Generator reference、generated
+C# project file、schema-hash-awareなbuild/cache contractを含む。1つ上のdirectoryにあるcurrent executableは、意図的に
+dependency-freeで、smoke-test専用である。

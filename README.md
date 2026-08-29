@@ -4,7 +4,7 @@
 
 このリポジトリはproduct Type Systemの実装前段階です。project discovery、設定読込、YAML文書の分類、基本検証、C#生成の足場、CLI、Tauriアプリシェル、.NET bridge smoke test、実際のMasterMemory v3を使う独立technical spikeまでは動作します。schema-drivenのproduction binary buildは、仕様が承認されるまで意図的に未実装です。
 
-## Architecture
+## アーキテクチャ
 
 ```text
        masterdata-cli                 Tauri GUI
@@ -43,7 +43,7 @@ resolve project
   -> atomic output replace
 ```
 
-## Prerequisites
+## 前提条件
 
 - Rust stable（`rust-toolchain.toml`で `rustfmt` / `clippy`も指定）
 - .NET SDK 8以上（`global.json`は8.0系を選択）
@@ -55,7 +55,7 @@ resolve project
 
 Tier 1はmacOS arm64とWindows x64です。Linux x64ではRust core、CLI、CIをサポートし、GUI配布はbest effortとします。path separatorやshell固有の処理をdomain logicに持ち込まない方針です。
 
-## Setup
+## セットアップ
 
 ```bash
 git clone <repository-url>
@@ -70,7 +70,7 @@ GUI依存のインストール方法はTauriの各OS向け公式手順に従っ�
 cargo xtask doctor
 ```
 
-## Development commands
+## 開発コマンド
 
 ```bash
 # CLIでdevelopment fixtureをコピーし、project-infoとvalidateを実行
@@ -106,7 +106,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 
 `build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は全stageが成功するまで最終generated outputへ書き込まず、schema-drivenのMasterMemory binary生成が未実装の現在は明示的なエラーで停止します。失敗したbuildがpartialな最終成果物を残すことはありません。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
-## Project and YAML conventions
+## ProjectとYAMLの規約
 
 project rootは`masterdata.toml`で識別します。明示されたproject pathが最優先で、指定がなければ現在ディレクトリから親方向へ探索します。Unityの`Assets/`検出だけでproject identityを決めません。
 
@@ -120,22 +120,22 @@ records:
     name: Potion
 ```
 
-identity/compatibilityの仕様は[compatibility specification index](docs/specs/compatibility/README.md)を参照してください。table identityは現在`Implemented`ですが、field/enum/index identityの詳細はそれぞれ独立した`Draft`として管理しています。
+identity/compatibilityの仕様は[互換性仕様のindex（compatibility specification index）](docs/specs/compatibility/README.md)を参照してください。table identityは現在`Implemented`ですが、field/enum/index identityの詳細はそれぞれ独立した`Draft`として管理しています。
 
-## Repository guide
+## リポジトリガイド
 
-- [Product vision](docs/product/vision.md)
-- [Terminology](docs/product/terminology.md)
-- [Specification index](docs/specs/README.md)
-- [Specification workflow](docs/contributing/specification-workflow.md)
-- [Repository skills](skills/)
-- [GUI app shell](docs/gui/app-shell.md)
-- [Architecture decisions](docs/adr/)
-- [Agent rules](AGENTS.md)
-- [Minimal fixture](fixtures/minimal/README.md)
+- [プロダクトビジョン（Product vision）](docs/product/vision.md)
+- [用語（Terminology）](docs/product/terminology.md)
+- [仕様index（Specification index）](docs/specs/README.md)
+- [仕様ワークフロー（Specification workflow）](docs/contributing/specification-workflow.md)
+- [repository skills（repository skill）](skills/)
+- [GUIアプリシェル（GUI app shell）](docs/gui/app-shell.md)
+- [アーキテクチャ判断（Architectural decision）](docs/adr/)
+- [agent向けルール（Agent rules）](AGENTS.md)
+- [最小fixture（Minimal fixture）](fixtures/minimal/README.md)
 
 仕様はコードと同じくGit管理する第一級成果物です。未確定事項は各文書の`Status: Draft` / `Proposed`または`Open Questions`に残し、AIが自動で`Approved`へ進めません。
 
-## License
+## ライセンス
 
 このリポジトリはMIT Licenseです。

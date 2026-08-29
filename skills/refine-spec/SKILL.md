@@ -5,224 +5,176 @@ description: Turn a design conversation or request into a traceable Draft/Propos
 
 # refine-spec
 
-## Purpose
+## 目的
 
-Use this skill when a conversation, issue, or request may change product,
-domain, compatibility, or user-visible GUI behavior. Its job is to answer
-“what should become a specification?” It produces a reviewable Draft/Proposed
-change and a concise refinement report. It does not implement product
-behavior, and it MUST NOT set a specification to `Approved` automatically.
+conversation、issue、requestがproduct、domain、compatibility、またはuser-visibleなGUI behaviorを変更する
+可能性がある場合に、このskillを使用する。役割は「何をspecificationにすべきか」を判断することである。
+review可能なDraft/Proposed changeと、簡潔なrefinement reportを作成する。product behaviorを実装せず、
+specificationを `Approved` に自動変更してはならない（MUST NOT）。
 
-Typo fixes, formatting-only changes, and internal refactors with no public or
-domain semantic effect normally do not need this skill. If that boundary is
-unclear, use this skill and record the uncertainty.
+typo fix、formatting-only change、public/domain semantic effectを持たないinternal refactorでは、通常この
+skillは不要である。この境界が不明な場合はskillを使用し、不確実性を記録する。
 
-## Required context
+## 必須のcontext
 
-1. Read `AGENTS.md` before changing repository files.
-2. Read the relevant files under `docs/specs` and the relevant files under
-   `docs/adr` before proposing a semantic change. Read `docs/rfcs` when an
-   alternative design is still being compared.
-3. Read `docs/product/terminology.md` and use its terms. If a term conflicts
-   with the repository glossary, expose the conflict rather than inventing a
-   synonym.
-4. Search existing requirement IDs and related wording with `rg` before
-   allocating an ID or adding a new rule.
-5. Identify whether the request affects the CLI, GUI, `masterdata-core`,
-   `masterdata-codegen-csharp`, `masterdata-dotnet`, fixtures, or tests. This
-   is impact analysis, not permission to implement them.
+1. repository fileを変更する前に `AGENTS.md` を読む。
+2. semantic changeを提案する前に、`docs/specs` の関連fileと `docs/adr` の関連fileを読む。alternative designを
+   まだ比較している場合は `docs/rfcs` も読む。
+3. `docs/product/terminology.md` を読み、そのtermを使用する。termがrepository glossaryと衝突する場合は、
+   synonymを発明せずconflictを明示する。
+4. IDを追加または新ruleを置く前に、`rg` で既存Requirement IDと関連wordingを検索する。
+5. requestがCLI、GUI、`masterdata-core`、`masterdata-codegen-csharp`、`masterdata-dotnet`、fixtures、または
+   testsに影響するかを特定する。これはimpact analysisであり、implementationの許可ではない。
 
-If a referenced conversation, issue, or source document is unavailable, state
-that it was not provided. Do not reconstruct it from memory or from an
-unstated assumption.
+参照されたconversation、issue、source documentが利用できない場合は、提供されていないと明記する。記憶や
+明示されていない仮定から復元しない。
 
-## Procedure
+## 手順
 
-### 1. Extract evidence
+### 1. Evidenceを抽出する
 
-Read the request as evidence and separate what was explicitly said from what
-would merely be convenient. Preserve speaker intent and scope. A statement
-can be important without being normative.
+requestをevidenceとして読み、明示された内容と単に便利そうな内容を分離する。speakerのintentとscopeを保持する。
+statementはnormativeでなくても重要であり得る。
 
-Classify every relevant statement as one of:
+関連する各statementを、次のいずれかに分類する。
 
-- `Decision`: an explicit settled choice. It can support a proposed rule but
-  still needs review and human approval.
-- `Requirement`: a desired capability or outcome. Do not assign MUST,
-  SHOULD, or MAY without examining its wording and context.
-- `Constraint`: a boundary, prohibition, or condition. A clear prohibition can
-  support `MUST NOT` in the proposal.
-- `Preference`: a favored option or priority without a binding commitment.
-- `Proposal`: a candidate solution offered for consideration.
-- `Idea`: an exploratory possibility or brainstorming thought.
-- `Question`: a request for clarification or information.
-- `Open Question`: an unresolved choice or ambiguity that must remain visible.
-- `Rejected`: an option or behavior explicitly ruled out; do not reintroduce
-  it silently.
+- `Decision`: 明示的に確定したchoice。proposed ruleの根拠にはなるが、reviewとhuman approvalはなお必要。
+- `Requirement`: desired capabilityまたはoutcome。発言を確認せずMUST、SHOULD、MAYを割り当てない。
+- `Constraint`: boundary、prohibition、condition。明確なprohibitionはproposal内のMUST NOTを支持し得る。
+- `Preference`: binding commitmentを伴わないfavored optionまたはpriority。
+- `Proposal`: 検討対象として示されたcandidate solution。
+- `Idea`: exploratory possibilityまたはbrainstorming thought。
+- `Question`: informationまたはclarificationのrequest。
+- `Open Question`: unresolved choiceまたはambiguity。follow-upのために残す。
+- `Rejected`: 明示的に退けられたoptionまたはbehavior。黙って再導入してはならない。
 
-The phrases “this might be okay”, “it may be better to”, and “what about X?”
-are not `Decision` evidence by themselves. “We will do X”, “we do not want Y”,
-and “X is mandatory” may be a `Decision` or `Constraint` when their scope is
-clear.
+「これでもよいかもしれない」「こちらの方がよさそう」「Xはどうか？」は、それだけでは `Decision` evidenceでは
+ない。「Xにする」「Yは望まない」「Xは必須である」は、scopeが明確なら `Decision` または `Constraint` となり得る。
 
-### 2. Compare repository contracts
+### 2. Repository contractと比較する
 
-Locate the canonical owning specification. Prefer updating one existing
-requirement over copying the same semantic rule into multiple documents. Check
-for conflicts with approved and proposed specifications, ADR decisions, GUI
-boundaries, and the terminology glossary. Never silently overwrite a conflict;
-report both sides and identify the human decision needed. If the canonical
-document is `Approved` or `Implemented`, do not edit it with a semantic delta:
-write a separate durable proposal under `docs/spec-changes/` (or an RFC when
-alternatives are still being compared). The canonical document remains the
-only authority until a human-approved atomic merge.
+canonical owner specificationを特定する。同じsemantic ruleを複数documentへcopyせず、既存requirementを更新する
+ことを優先する。ApprovedとProposedのspecification、ADR、GUI boundary、terminology glossaryとのconflictを確認する。
+conflictを黙って上書きせず、両方を報告して必要なhuman decisionを示す。
 
-`Status:` applies to the whole canonical specification file. Check whether all
-normative requirements in the candidate file can reasonably share the same
-lifecycle state. If one requirement is ready for approval while unrelated
-requirements in the same broad topic remain Draft, split the canonical file
-into smaller independently approvable files before changing status. Preserve
-all existing Requirement IDs during a structural split; never allocate a new ID
-merely because a requirement moved to another file. Directory `README.md`
-files may index related specs but are not canonical contracts.
+canonical documentが `Approved` または `Implemented` の場合、semantic deltaを直接編集せず、
+`docs/spec-changes/` 配下の別のdurable proposalへ記録する。alternativeを比較中ならRFCを使用し、human-approved
+atomic mergeが完了するまでcanonical documentを唯一のauthorityとして扱う。
 
-An `Accepted` RFC records a selected design direction, but it is not itself a
-product specification and does not authorize implementation. After a human
-decision, route the adopted behavior into the canonical specification (or a
-specification-change artifact when an existing canonical document is affected)
-without copying unresolved compatibility decisions into it.
+`Status:` はcanonical specification file全体に適用される。候補file内のすべてのnormative requirementが同じ
+lifecycle stateを共有できるか確認する。成熟度が異なる場合はapproval前にcanonical fileを分割する。構造上の
+分割では既存Requirement IDを保持し、移動だけを理由に新IDを割り当てない。directoryの `README.md` はnon-canonical
+indexとしてのみ使用できる。
 
-### 3. Preserve normative strength
+`Accepted` RFCは選択されたdesign directionを記録するが、それ自体はproduct specificationではなくimplementationを
+許可しない。human decision後、採用されたbehaviorをcanonical specification（既存canonical documentへのchangeなら
+specification-change artifact）へ送り、未解決のcompatibility decisionをcopyしない。
 
-Use the weakest wording supported by the evidence:
+### 3. Normative strengthを保持する
 
-- `MUST` / `MUST NOT` for explicit requirements and constraints.
-- `SHOULD` / `SHOULD NOT` for an explicitly strong recommendation and its
-  reason.
-- `MAY` for a permission or capability; it is not a recommendation.
+evidenceが支える最も弱いwordingを使う。
 
-Do not turn “possible” into “recommended”, or “recommended” into “required”.
-For example, a request to allow all table files to coexist in one directory
-can support “file location MUST NOT determine table identity” and “multiple
-table data files MAY coexist in one directory”. It does not support “all table
-data files SHOULD be stored in one directory” unless that recommendation was
-explicitly made.
+- `MUST` / `MUST NOT`: 明示的なrequirementとconstraint。
+- `SHOULD` / `SHOULD NOT`: 明示的な強いrecommendationとその理由。
+- `MAY`: permissionまたはcapability。recommendationではない。
 
-Do not invent unspecified defaults, edge-case behavior, error severity,
-ordering, nullability, migration policy, or implementation constraints. Keep
-each unresolved item in `Open Questions`. Do not resolve a question merely to
-make an implementation plan easier.
+「可能」を「推奨」へ、また「推奨」を「必須」へ変換してはならない。例えば、すべてのtable fileを同じdirectoryに
+置けるようにするrequestは、「file location MUST NOT determine table identity」および「multiple table data files
+MAY coexist in one directory」を支持し得る。しかし、明示的なrecommendationがない限り「そこへ置くべきである」
+（SHOULD）とはできない。
 
-### 4. Draft the change
+未指定のdefault、edge-case behavior、error severity、ordering、nullability、migration policy、implementation
+constraintを発明してはならない。各未解決事項を `Open Questions` に残す。implementation planを容易にするために
+questionを解決しない。
 
-Use `docs/specs/_template.md` for a new domain specification and
-`docs/gui/_template.md` for a new GUI surface. Give every new normative
-requirement a stable ID. IDs use uppercase segments and a three-digit terminal
-number, such as `SCHEMA-VO-001` or `GUI-TABLE-EDIT-001`.
+### 4. ChangeをDraftする
 
-Before assigning an ID, search all existing specifications. IDs are never
-reused after deletion. If an existing requirement changes meaning, keep the
-old ID for its old meaning where history requires it and allocate a new ID
-with a predecessor/deprecation note. A reference to an existing requirement is
-not a new requirement.
+新しいdomain specificationには `docs/specs/_template.md`、新しいGUI surface specificationには
+`docs/gui/_template.md` を使用する。新しいnormative requirementにはstable IDを付ける。IDはuppercase segmentと
+3桁の末尾numberを使い、`SCHEMA-VO-001` や `GUI-TABLE-EDIT-001` のような形式にする。
 
-Mark a new document `Draft` while it is being organized, or `Proposed` when it
-is ready for review. Choose a file boundary narrow enough that every normative
-requirement in that file can share that status. A semantic change to an
-existing Approved/Implemented document belongs in a `docs/spec-changes/`
-artifact whose status is `Draft` or `Proposed`; do not downgrade the canonical
-document. `Proposed` is not approval. Do not change a document to `Approved` as
-part of this skill.
+IDを割り当てる前に、すべてのspecificationを検索する。IDは削除後も再利用しない。既存
+requirementの意味が変わる場合、history上旧意味を残す必要があれば旧IDを保ち、predecessor/deprecation noteを持つ
+新IDを割り当てる。既存requirementへのreferenceは新しいrequirementではない。
 
-### 5. Assess downstream work
+整理中のnew documentは `Draft`、review可能になったdocumentは `Proposed` とする。file境界は、そのfile内の
+normative requirementが同じstatusを共有できる程度に狭くする。Approved/Implemented documentへのsemantic changeは
+statusが `Draft` または `Proposed` の `docs/spec-changes/` artifactへ記録し、canonical documentをdowngrade
+してはならない。`Proposed` はapprovalではない。このskill中にdocumentを `Approved` へ変更しない。
 
-Describe compatibility and implementation impact without designing missing
-semantics. Identify likely acceptance tests and fixture needs. Say when a unit
-test is enough; do not require a fixture for every small rule. For GUI behavior,
-identify relevant states and interactions without duplicating core domain
-logic.
+### 5. Downstream workを評価する
 
-If the design compares substantial alternatives, recommend an RFC. If a
-chosen architectural boundary or trade-off needs durable rationale, recommend
-an ADR. Neither recommendation is a silent decision.
+compatibilityとimplementation impactを、missing semanticsを設計せずに記述する。想定するacceptance testとfixture
+needを特定する。小さなruleにはfixtureを必須にせず、unit testで十分な場合はそう記載する。GUI behaviorでは関連
+stateとinteractionを特定するが、core domain logicを重複させない。
 
-### 6. Preserve namespace and implementation boundaries
+大きなalternativeを比較するdesignならRFCをrecommendする。選択したarchitectural boundaryまたはtrade-offの
+rationaleを永続化する必要があればADRをrecommendする。いずれも黙ったdecisionではない。
 
-Requirement IDs describe normative specification rules. Runtime diagnostic
-codes describe observed failures and MUST use a visibly separate namespace
-(for example `PROJECT-001` versus `E-PROJECT-NOT-FOUND`). Never use a
-diagnostic code as a requirement ID or infer a requirement from an existing
-diagnostic/test name. Existing code behavior is evidence to inspect, not
-authority to promote into a product rule.
+### 6. Namespaceとimplementation boundaryを保つ
 
-During refinement, explicitly audit current behavior for assumptions that are
-not supported by the owning specification, such as a field named `id` implying
-a primary key or a diagnostic code being treated as a requirement ID. Such
-behavior is a removal/reporting candidate, not evidence that the assumption is
-approved.
+Requirement IDはnormative specification ruleを表す。runtime diagnostic codeは観測されたfailureを表し、
+`PROJECT-001` と `E-PROJECT-NOT-FOUND` のように明確に分けたnamespaceを使用しなければならない（MUST）。
+Diagnostic codeをRequirement IDとして使用したり、既存のdiagnostic/test nameからrequirementを推測したりしてはならない。
+既存code behaviorはinspectするevidenceであり、product ruleへ昇格するauthorityではない。
+
+refinement中は、field name `id` がprimary keyを意味する、またはdiagnostic codeをRequirement IDとして扱うなど、
+owning specificationに支えられていないcurrent behaviorを明示的に監査する。そのbehaviorはremoval/reportingの候補で
+あり、approvedであることのevidenceではない。
 
 ## Required output
 
-Start with the source evidence and statement classifications, then provide
-these headings exactly. Use “None identified” when a section is empty.
+最初にsource evidenceとstatement classificationを示し、以下の見出しを正確に使用する。空のsectionには
+None identified と記載する。
 
 ### Affected Specifications
 
-- File, current status, and affected requirement IDs.
+- file、current status、affected Requirement ID。
 
 ### Confirmed Decisions
 
-- Only explicit decisions/constraints supported by the supplied evidence.
+- 提供されたevidenceで支持される明示的なdecision/constraintだけを記載する。
 
 ### New Requirements
 
-- New normative requirements with stable IDs and precise MUST/SHOULD/MAY
-  wording.
+- stable IDと正確なMUST/SHOULD/MAY wordingを持つnew normative requirement。
 
 ### Changed Requirements
 
-- Existing IDs, old meaning versus proposed meaning, and compatibility impact.
+- existing ID、old meaningとproposed meaning、compatibility impact。
 
 ### Open Questions
 
-- Every unanswered point that could change behavior, including missing source
-  context. Do not answer it implicitly.
+- behaviorを変え得る、未回答のすべてのpoint。missing source contextも含める。暗黙に回答してはならない。
 
 ### Potential ADRs
 
-- Architectural decisions that may deserve an ADR, or “None identified”.
+- ADRに値する可能性があるarchitectural decision、または None identified。
 
 ### Compatibility Impact
 
-- Stable identity, serialized shape, generated API, file interpretation, and
-  migration implications; explicitly say when not applicable.
+- stable identity、serialized shape、generated API、file interpretation、migration implication。
+  該当しない場合も明示する。
 
 ### Implementation Impact
 
-- Likely crates, GUI/Tauri boundary, .NET adapter, tests, fixtures, and
-  verification. This is a plan, not implementation.
+- likely crate、GUI/Tauri boundary、.NET adapter、tests、fixtures、verification。これはplanでありimplementationではない。
 
-End by stating the proposed document status (`Draft` or `Proposed`) and the
-human approval action still required. A concise change summary is mandatory.
+最後にproposed document status（`Draft` または `Proposed`）と、まだ必要なhuman approval actionを記載する。
+conciseなchange summaryも必須である。
 
-## Non-negotiable safeguards
+## 絶対に外せない安全策
 
-- Conversation alone is never a permanent specification.
-- Do not use stale memory from earlier conversations as evidence.
-- Do not promote `Preference`, `Proposal`, `Idea`, `Question`, or `Open
-  Question` to normative behavior without an explicit decision.
-- Do not strengthen `MAY` to `SHOULD`, `SHOULD` to `MUST`, or a possibility to
-  a recommendation.
-- Do not add unspecified defaults or edge cases.
-- Do not duplicate a rule owned by another specification.
-- Do not silently overwrite conflicting specifications or ADRs.
-- Do not mix requirements at incompatible approval maturity in one canonical
-  file when a structural split can make the status unambiguous.
-- Do not mix a semantic change into an Approved/Implemented canonical document;
-  use a separate change artifact.
-- Do not treat an `Accepted` RFC as a substitute for an `Approved` canonical
-  specification.
-- Do not treat a runtime diagnostic code, test number, or current behavior as a
-  specification requirement without explicit evidence.
-- Do not mark a Draft/Proposed specification `Approved` automatically.
-- Do not implement product features as part of refinement.
+- conversationは恒久的なspecificationではない。
+- 過去のstale memoryを使用しない。
+- `Preference`、`Proposal`、`Idea`、`Question`、`Open Question` を明示的なdecisionなしにnormative behaviorへ昇格させない。
+- `MAY` を `SHOULD` に、`SHOULD` を `MUST` に、可能性をrecommendationへ強めない。
+- 未指定のdefaultとedge caseを追加しない。
+- 1つのruleを複数のcanonical documentへ重複させない。
+- conflicting specificationを黙って上書きしない。
+- 承認成熟度の異なるrequirementを、splitでstatusを明確にできるのに同じcanonical fileへ混在させない。
+- Approved/Implemented canonical documentへsemantic changeを混ぜず、別のchange artifactを使用する。
+- `Accepted` RFCを `Approved` canonical specificationの代替にしない。
+- runtime diagnostic code、test number、current behaviorを、明示的なevidenceなしにspecification requirementとして扱わない。
+- Draft/Proposed specificationを自動的に `Approved` にしない。
+- refinementの一部としてproduct featureを実装しない。

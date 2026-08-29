@@ -1,16 +1,16 @@
-# Enum identity
+# Enum identity仕様（Enum identity）
 
 Status: Draft
 
-This document isolates enum compatibility rules that are not yet approved.
+この文書は、まだ承認されていないenum compatibility ruleを切り出して管理する。
 
 ### COMPAT-ENUM-001
 
-Enum numeric values are stable wire identities and removed values MUST NOT normally be reused.
+Enumのnumeric valueはstableなwire identityであり、削除したvalueは通常再利用してはならない（MUST NOT）。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Which underlying integer types are supported?
-- Is numeric reuse absolutely forbidden or only forbidden within a compatibility window?
-- How are renamed enum members represented in compatibility reports?
-- How are Flags enum values handled differently, if at all, for compatibility analysis?
+- どのunderlying integer typeをサポートするか。
+- numeric valueの再利用を絶対に禁止するのか、それともcompatibility window内だけ禁止するのか。
+- renameされたenum memberをcompatibility reportでどう表現するか。
+- Flags enumのvalueをcompatibility analysisでどのように扱うか。

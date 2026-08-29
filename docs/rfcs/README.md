@@ -1,39 +1,29 @@
-# RFCs
+# RFC
 
-An RFC is a comparatively large design proposal while adoption, alternatives,
-and trade-offs are still being discussed. It is not an approved product
-specification and MUST NOT be used by `implement-spec` as an implementation
-authority.
+RFCは、adoption、alternative、trade-offを検討している段階で使う、比較的大きなdesign proposalである。
+承認済みproduct specificationではなく、`implement-spec` のimplementation authorityとして使用してはならない
+（MUST NOT）。
 
-## RFC lifecycle
+## RFCのlifecycle（RFCのライフサイクル）
 
-- `Draft`: the proposal is being organized and may contain incomplete
-  alternatives or open questions.
-- `Proposed`: the proposal is ready for review but has no adopted decision.
-- `Accepted`: a human maintainer selected the proposal direction. The adopted
-  product behavior still belongs in a canonical `docs/specs` document.
-- `Rejected`: the proposal was explicitly declined and is retained for
-  history.
-- `Superseded`: a later RFC replaced the proposal; the successor should be
-  linked from the document.
+- `Draft`: proposalを整理中で、未完了のalternativeまたはOpen Questionを含んでもよい。
+- `Proposed`: reviewできる状態だが、採用されたdecisionはない。
+- `Accepted`: human maintainerがproposalの方向性を選択した状態。採用されたproduct behaviorはcanonicalな
+  `docs/specs` documentに属する。
+- `Rejected`: proposalが明示的に却下され、historyのために保持される状態。
+- `Superseded`: 後続RFCがproposalを置き換えた状態。successorをdocumentからlinkするべきである。
 
-RFC status is separate from product specification status. In particular,
-`Accepted` does not make a product specification `Approved`, and `Implemented`
-is never an RFC status. An accepted RFC must be reflected in the canonical
-specification through the approved-specification change workflow before it is
-an implementation authority.
+RFC statusはproduct specification statusとは別である。特に、`Accepted` はproduct specificationを
+`Approved` にせず、`Implemented` はRFC statusではない。Accepted RFCがimplementation authorityになるには、
+approved-specification change workflowを通じてcanonical specificationへ反映する必要がある。
 
-When a proposal is selected, its adopted behavior moves into the relevant
-`docs/specs` document. The RFC may remain as rationale and should link to the
-resulting requirement IDs. If the architectural reason is important to keep,
-record it separately in `docs/adr` rather than duplicating normative rules.
+proposalが選択されたら、採用されたbehaviorを関連する `docs/specs` documentへ移す。RFCはrationaleとして
+残してもよく、結果のRequirement IDへlinkするべきである。architectural reasonを保持することが
+重要なら、normative ruleを重複させず、`docs/adr` に別途記録する。
 
-Use `docs/spec-changes/` for a focused semantic delta to an existing
-`Approved` or `Implemented` canonical specification when the alternatives are
-already understood. A change artifact is durable review input, but it is not
-an implementation authority until a human-approved atomic merge updates the
-canonical specification.
+alternativeがすでに理解されている `Approved` または `Implemented` canonical specificationへのfocusedな
+semantic deltaには、`docs/spec-changes/` を使用する。change artifactはdurableなreview inputだが、人間が
+承認したatomic mergeによってcanonical specificationが更新されるまではimplementation authorityではない。
 
-Use [_template.md](_template.md) for new RFCs and the
-[specification workflow](../contributing/specification-workflow.md) for the
-conversation-to-review path.
+新しいRFCには [_template.md](_template.md) を使用し、conversationからreviewへ至る経路には
+[仕様ワークフロー（specification workflow）](../contributing/specification-workflow.md)を使用する。

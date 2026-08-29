@@ -1,14 +1,13 @@
-# Specification workflow
+# 仕様ワークフロー
 
 Workflow status: Active
 
-This document defines the repository process for turning design conversation
-into reviewable, implementable behavior. It is a process document, not a
-meeting transcript, so it uses `Workflow status` rather than the product
-specification lifecycle. Product and domain semantics still require an
-`Approved` specification before implementation.
+この文書は、設計会話をレビュー可能で実装可能なbehaviorへ変換するための、
+repositoryのプロセスを定義する。会議議事録ではないため、product
+specificationのlifecycleとは異なり `Workflow status` を使用する。productと
+domainのsemanticsには、引き続き実装前に `Approved` specificationが必要となる。
 
-## The canonical path
+## 正規の経路（canonical path）
 
 ```text
 conversation or request
@@ -41,163 +40,153 @@ implement-spec -> tests / implementation / fixtures -> verification
 Implemented (only when evidence is complete)
 ```
 
-Conversation is evidence for refinement, not permanent specification. An AI
-agent MUST NOT promote a proposal, preference, question, or remembered context
-to approved behavior without explicit evidence. Long conversation logs do not
-belong in a specification; retain only the decision rationale that deserves an
-ADR.
+Conversationはrefinementのevidenceであり、恒久的なspecificationではない。AI agentは、
+明示的なevidenceなしにProposal、Preference、Question、または記憶していたcontextを
+Approved behaviorへ昇格させてはならない（MUST NOT）。長大なconversation logを
+specificationへ入れてはならない。重要なdecision rationaleだけを、必要に応じて
+ADRへ残す。
 
-## Statement classification
+## 発言の分類（Statement classification）
 
-`refine-spec` classifies each relevant statement before it writes normative
-text. A single conversation may contain several classes.
+`refine-spec` はnormative textを書く前に、関連する各statementを分類する。1つの
+conversationに複数の分類が含まれていてよい。
 
-| Class | Meaning | Normative by itself? |
+| Class（分類） | Meaning（意味） | Normative by itself?（それ自体が規範か） |
 | --- | --- | --- |
-| `Decision` | An explicit choice that the speaker has settled, such as “we will do this”. | It is evidence for a proposed rule, but still goes through review and human approval. |
-| `Requirement` | A desired capability or outcome the product should provide. | No fixed strength; derive MUST/SHOULD/MAY only from the wording and context. |
-| `Constraint` | A boundary, prohibition, or condition, such as “we do not want this”. | A clear constraint can become MUST NOT or another explicit rule in the proposal. |
-| `Preference` | A favored option, priority, or taste without a binding commitment. | No. Keep it non-normative unless explicitly promoted. |
-| `Proposal` | A candidate solution offered for consideration. | No. Compare it or record it as an open choice. |
-| `Idea` | An exploratory possibility or brainstorming thought. | No. Do not implement it as a requirement. |
-| `Question` | A request for information or clarification. | No. Answer it only with evidence; otherwise track it. |
-| `Open Question` | An unresolved decision or ambiguity retained for follow-up. | No. It blocks approval when its answer would change behavior. |
-| `Rejected` | An option or behavior explicitly ruled out. | It is a constraint against silently reintroducing that behavior. |
+| `Decision` | 発言者が「これにする」と確定した明示的な選択。 | 仕様案の根拠にはなるが、reviewと人間による承認はなお必要。 |
+| `Requirement` | productに提供させたいcapabilityまたはoutcome。 | 固定された強度は持たない。発言の表現とcontextからMUST/SHOULD/MAYを導く。 |
+| `Constraint` | 境界、禁止事項、または条件。「これは望まない」など。 | 明確なconstraintは、提案内のMUST NOTまたは別の明示的ruleになり得る。 |
+| `Preference` | 強制的なcommitmentを伴わない、好み・優先順位・選択。 | そのままではnormativeではない。明示的に昇格されない限りnon-normativeに保つ。 |
+| `Proposal` | 検討対象として示されたcandidate solution。 | そのままではnormativeではない。比較するか、未決定の選択として記録する。 |
+| `Idea` | 探索的な可能性またはbrainstormingの発想。 | そのままではnormativeではない。requirementとして実装してはならない。 |
+| `Question` | 情報またはclarificationを求める発言。 | そのままではnormativeではない。evidenceがなければ追跡対象にする。 |
+| `Open Question` | follow-upのために残す未解決のdecisionまたは曖昧さ。 | そのままではnormativeではない。答えがbehaviorを変える場合はapprovalをblockする。 |
+| `Rejected` | 明示的に退けられたoptionまたはbehavior。 | 暗黙に再導入してはならないというconstraintになる。 |
 
-The phrases “this might be okay”, “it may be better to”, and “what about X?”
-are normally a `Preference`, `Proposal`, or `Question`, not a `Decision`.
-Phrases such as “we will do X”, “we do not want Y”, and “X is mandatory” can
-be `Decision` or `Constraint` evidence when their scope is clear.
+「これでもよいかもしれない」「こちらの方がよさそう」「Xはどうか？」という表現は、
+通常は `Preference`、`Proposal`、または `Question` であり、`Decision` ではない。
+「Xにする」「Yは望まない」「Xは必須である」は、scopeが明確なら `Decision` または
+`Constraint` のevidenceになり得る。
 
-## Preserve intent strength
+## 意図の強度を保つ
 
-Normative words are not interchangeable:
+Normative wordは互換ではない。
 
-- `MUST` and `MUST NOT` are reserved for explicit requirements or constraints.
-- `SHOULD` and `SHOULD NOT` express a strong recommendation, not a mere
-  capability or possibility.
-- `MAY` expresses permission or capability; it does not recommend the behavior.
+- `MUST` / `MUST NOT` は、明示的なrequirementまたはconstraintに限って使用する。
+- `SHOULD` / `SHOULD NOT` は、例外を設ける理由が文書化された強いrecommendationを
+  表す。単なるcapabilityや可能性には使わない。
+- `MAY` はpermissionまたはcapabilityを表し、behaviorの利用をrecommendするものではない。
 
-For example, “we want every table to be placeable in the same directory” does
-not justify recommending one shared directory. A faithful proposed
-normalization can say that data-file location MUST NOT determine table
-identity and that multiple table data files MAY coexist in one directory. It
-must not turn “possible” into “SHOULD be stored there”.
+例えば「すべてのtable fileを同じdirectoryに置けるようにしたい」は、data-file locationが
+table identityを決めてはならない（MUST NOT）、また複数のtable data fileが1つのdirectoryに
+共存してもよい（MAY）というfaithfulなnormalizationを根拠づける。しかし、明示的な
+recommendationがない限り、「すべてのtable data fileをそのdirectoryに置くべきである」
+（SHOULD）とはできない。
 
-When strength, default behavior, error severity, ordering, nullability, or an
-edge case is unspecified, preserve the ambiguity in `Open Questions`. Do not
-invent a default for implementation convenience.
+strength、default behavior、error severity、ordering、nullability、edge caseが未指定なら、
+`Open Questions` に曖昧さを残す。implementation convenienceのためにdefaultを発明しては
+ならない。
 
-## Roles and boundaries
+## 役割と境界
 
 ### refine-spec
 
-`refine-spec` answers “what should become a specification?” It reads the
-conversation and repository context, identifies the canonical affected spec,
-classifies statements, detects conflicts, assigns stable IDs, and produces a
-Draft/Proposed change. If the canonical document is already `Approved` or
-`Implemented`, the semantic delta MUST be written to a separate
-`docs/spec-changes/` artifact (or an RFC when alternatives are still open);
-the canonical document MUST NOT be edited to mix in unapproved behavior. It
-must keep requirement IDs and runtime diagnostic codes in separate namespaces,
-and it must not promote current code behavior to a requirement without source
-evidence. It may recommend an RFC or ADR. It does not implement a product
-feature and does not set `Approved` automatically.
+`refine-spec` は「何をspecificationにすべきか」を整理する。conversationとrepository
+contextを読み、canonicalな対象specを特定し、statementを分類し、conflictを検出し、
+stable IDを割り当て、Draft/Proposed changeを作成する。product behaviorを実装せず、
+specificationを `Approved` に自動変更しない。
+
+canonical documentがすでに `Approved` または `Implemented` の場合、semantic deltaは
+`docs/spec-changes/` の別artifactへ記録しなければならない（MUST）。alternativeをまだ
+比較中ならRFCを使用する。canonical documentへ未承認behaviorを混在させてはならない（MUST NOT）。
+Requirement IDとruntime diagnostic codeは別namespaceに保ち、source evidenceなしに
+current code behaviorをrequirementへ昇格させてはならない。RFCまたはADRをrecommendしても
+よいが、product featureは実装せず、`Approved` を自動設定してはならない。
 
 ### review-spec
 
-`review-spec` is an independent challenge pass. It compares the proposed text
-with the source request when available, checks related specs and ADRs, tests
-normative strength and testability, and reports blocking issues, non-blocking
-issues, questions, and whether it is suitable for human approval. Its
-“Approved as Proposed” result is a recommendation only; it does not change the
-specification status. It also checks whether an existing implementation already
-contains unapproved semantics, whether requirement IDs and test names actually
-match, and whether an unapproved change was mixed into an approved canonical
-document.
+`review-spec` は独立したchallenge passである。source requestがある場合はそれと提案文を
+比較し、関連specとADRを確認し、normative strengthとtestabilityを検査する。blocking
+issues、non-blocking issues、questions、および人間によるapprovalに適しているかを報告する。
+Approved as Proposed はrecommendationに過ぎず、specification statusを変更しない。
+
+さらに、既存implementationに未承認semanticsが含まれていないか、Requirement IDとtest nameが
+実際に対応しているか、unapproved changeがApproved canonical documentへ混入していないかを
+確認する。
 
 ### implement-spec
 
-`implement-spec` starts from an explicitly `Approved` specification. It maps
-requirement IDs to acceptance criteria, tests, fixtures, affected crates, GUI
-boundaries, and the .NET adapter, then implements and verifies the approved
-behavior. It treats diagnostic codes as a separate namespace from requirement
-IDs, checks acceptance/test traceability, and does not treat incorrect current
-behavior as authority. A `docs/spec-changes/` proposal, Draft, or Proposed
-document is never an implementation input. It does not design missing
-semantics from conversation. A missing rule is reported as `Specification Gap`
-and sent back to refinement.
+`implement-spec` は明示的にApprovedとなったspecificationから開始する。Requirement IDを
+acceptance criteria、tests、fixtures、affected crate、GUI boundary、.NET adapterへ対応付け、
+Approved behaviorを実装して検証する。Diagnostic codeはRequirement IDとは別namespaceとして
+扱い、acceptance/test traceabilityを確認する。誤ったcurrent behaviorをauthorityとして
+扱わない。
 
-## Approval and lifecycle
+`docs/spec-changes/` proposal、Draft、Proposed documentはimplementation inputにしてはならない。
+conversationから不足するsemanticsを設計してはならない。不足するruleは `Specification Gap`
+として報告し、refinementへ戻す。
 
-The lifecycle and exact status meanings are defined in
-[the specification index](../specs/README.md). In particular:
+## 承認とlifecycle
 
-- `Draft` and `Proposed` are not implementation authority.
-- Only a human maintainer's explicit approval can produce `Approved`.
-- An AI-generated draft is never automatically promoted.
-- `Implemented` means the approved meaning was implemented and evidenced; it
-  is not permission to weaken or reinterpret the specification.
-- A specification-change artifact uses `Draft` -> `Proposed` -> `Approved` ->
-  `Applied`, or `Rejected`. `Applied` records the atomic canonical merge; it
-  is not an implementation status.
-- A semantic change starts another proposed change artifact. A typo,
-  formatting-only change, or internal refactor with no public/domain semantic
-  change may use a normal workflow.
+lifecycleとstatusの正確な意味は、[仕様index（specification index）](../specs/README.md)で定義する。特に、
 
-## Approved specification changes
+- `Draft` と `Proposed` はimplementation authorityではない。
+- `Approved` へ進めることができるのは、人間のmaintainerによる明示的なapprovalだけである。
+- AI-generated draftを自動昇格させない。
+- `Implemented` は、Approvedの意味が実装されevidenceで裏付けられた状態であり、仕様を
+  弱めたり再解釈したりする許可ではない。
+- specification-change artifactは `Draft` -> `Proposed` -> `Approved` -> `Applied` または
+  `Rejected` を使用する。`Applied` はatomicなcanonical mergeを記録するもので、
+  implementation statusではない。
+- semantic changeは新しいproposed change artifactから始める。typo、formatting-only change、
+  public/domain semantic changeを伴わないinternal refactorは通常のworkflowで扱ってよい。
 
-An approved canonical document is immutable with respect to unapproved
-semantics. When refinement discovers a semantic change, create a durable
-artifact under [`docs/spec-changes`](../spec-changes/README.md), link the
-affected requirement IDs, and leave the canonical `Approved`/`Implemented`
-document unchanged. Use `review-spec` on the artifact. After explicit human
-approval, apply the approved delta atomically to the canonical document and
-keep the proposal as an audit record with `Status: Applied`. Only then may
-implementation begin; the proposal itself is never an implementation contract.
-If the canonical document was `Implemented`, applying a semantic delta returns
-it to `Approved` until the new acceptance evidence is complete. This prevents
-an `Approved` document from simultaneously claiming old requirements are
-approved and new requirements are not.
+## Approved specificationの変更
 
-## Normalization and ownership
+Approved canonical documentへ未承認semanticsを混ぜてはならない。refinementでsemantic changeが
+見つかった場合は、影響するRequirement IDをlinkしたdurable artifactを
+[`docs/spec-changes`](../spec-changes/README.md) 配下に作成し、canonicalの `Approved` /
+`Implemented` documentは変更しない。artifactに対して `review-spec` を実行する。
 
-Before adding a requirement, search all existing IDs and read the owning spec.
-One semantic rule has one canonical home. A related document should link to
-that requirement or summarize its relationship without copying a second
-normative version. Conflicts are surfaced to the reviewer; they are never
-silently overwritten.
+明示的な人間の承認後、承認済みdeltaをcanonical documentへatomicに適用し、proposalは
+`Status: Applied` のaudit recordとして残す。この時点で初めてimplementationを開始できる。
+proposal自体はimplementation contractではない。canonical documentが `Implemented` だった場合、
+semantic deltaの適用後は新しいacceptance evidenceが揃うまで `Approved` に戻す。これにより、
+1つの `Approved` documentが、旧requirementはApprovedで新ruleは未承認という状態を同時に
+主張することを防ぐ。
 
-Use [product terminology](../product/terminology.md) as the vocabulary
-baseline. If a term has competing meanings, record the ambiguity as an Open
-Question or refine the terminology document before relying on it.
+## 正規化とownership（Normalization and ownership）
 
-## Tests and fixtures
+requirementを追加する前に、既存の全IDと関連wordingを検索し、ownerのspecを読む。1つの
+semantic ruleには1つのcanonical homeを置く。関連documentは2つ目のnormative versionを
+copyするのではなく、そのrequirementへlinkするか関係を要約する。conflictはreviewerへ
+提示し、黙って上書きしてはならない。
 
-Every approved behavior receives a proportionate verification plan. Prefer a
-requirement ID in a test name or nearby comment when it clarifies traceability.
-Use `fixtures/minimal`, `fixtures/full`, or `fixtures/invalid` for stable
-end-to-end cases where a fixture is useful; a focused unit test is enough for
-small or internal rules. Fixtures remain fixed inputs and are copied into
-`target/dev-project` by repository tooling rather than edited during a run.
+[product terminology（用語）](../product/terminology.md) をvocabularyの基準として使用する。termが
+複数の意味を持つ場合は、Open Questionとして曖昧さを記録するか、terminology documentを
+refineしてから使用する。
 
-`implement-spec` runs the relevant tests and finishes with
-`cargo xtask check-all` when the environment supports it. The final report
-states any unavailable checks and any explicitly unimplemented boundary.
+## Testsとfixtures
 
-## Keeping the workflow healthy
+すべてのApproved behaviorには、規模に応じたverification planを用意する。traceabilityが
+明確になる場合は、test nameまたは近接するcommentにRequirement IDを含める。安定した
+end-to-end caseにfixtureが有用なら `fixtures/minimal`、`fixtures/full`、`fixtures/invalid`
+を使用する。小さなruleにfixtureを必須とせず、focused unit testで十分な場合はそれを使う。
+fixtureは固定入力として保持し、repository toolingによって `target/dev-project` にcopyする。
 
-The three skills are repository artifacts under `skills/` and are reviewed and
-versioned like code. When an incident reveals a recurring failure mode—such as
-an agent changing `MAY` into `SHOULD`—add a focused rule or regression example
-to the relevant skill and, where useful, to this document. Skill improvements
-must preserve the role boundaries and the human approval gate.
+`implement-spec` は関連testを実行し、環境が対応していれば最後に `cargo xtask check-all` を
+実行する。最終報告には、実行できなかったcheckと、明示的に未実装としたboundaryを記載する。
 
-## RFC and ADR routing
+## Workflowを健全に保つ
 
-Use an RFC when a significant design is still comparing alternatives. Once a
-choice is adopted, put the actual product/domain behavior in a specification.
-Use an ADR for the reason an architectural option was chosen, especially when
-it affects crate boundaries, schema representation, identity, compatibility,
-or an external bridge. Neither an RFC nor an ADR silently overrides an
-approved specification.
+3つのskillは `skills/` 配下のrepository artifactであり、codeと同様にreview・version control
+する。agentが `MAY` を `SHOULD` に変更するなど、incidentによって反復するfailure modeが
+判明した場合は、該当skillと、必要に応じてこの文書へfocusedなruleまたはregression exampleを
+追加する。skillの改善でもrole boundaryと人間によるapproval gateを保たなければならない。
+
+## RFCとADRへの振り分け
+
+大きなdesignについてalternativeを比較中ならRFCを使用する。choiceを採用した後の実際の
+product/domain behaviorはspecificationへ記録する。crate boundary、schema representation、
+identity、compatibility、external bridgeに影響するなど、architectural optionを選んだ理由を
+残す必要がある場合はADRを使用する。RFCもADRもApproved specificationを暗黙に上書きしない。

@@ -1,16 +1,15 @@
-# Type-system specifications
+# Type System仕様（Type-system）
 
-Type-system rules are split into independently reviewable canonical documents
-so Primitive, Field Modifier, Value Object, Enum/Flags, and Custom Type
-behavior can progress through Draft, Proposed, Approved, and Implemented
-without sharing one document-wide status. This directory index is
-non-normative; the linked documents own their requirements.
+Type-system ruleは、独立してreviewできるcanonical documentへ分割している。これにより、
+Primitive、Field Modifier、Value Object、Enum/Flags、Custom Typeのbehaviorを、1つの
+document-wide statusに縛られずDraft、Proposed、Approved、Implementedへ進められる。この
+directory indexはnon-normativeであり、要件を所有するのはlink先のdocumentである。
 
-- [Primitives](primitives.md) — `Status: Proposed`
-- [Field modifiers](field-modifiers.md) — `Status: Proposed`
-- [Value objects](value-objects.md) — `Status: Proposed`
-- [Enums and flags](enums.md) — `Status: Draft`
-- [Custom types](custom-types.md) — `Status: Draft`
+- [Primitive Types仕様](primitives.md) — `Status: Proposed`
+- [Field Modifiers仕様](field-modifiers.md) — `Status: Proposed`
+- [Value Objects仕様](value-objects.md) — `Status: Proposed`
+- [Enums and Flags仕様](enums.md) — `Status: Draft`
+- [Custom Types仕様](custom-types.md) — `Status: Draft`
 
-These files preserve the existing Requirement IDs. Splitting a document does
-not rename or reassign an ID.
+これらのfileでは既存のRequirement IDを保持する。documentを分割してもIDをrenameまたは
+reassignしない。

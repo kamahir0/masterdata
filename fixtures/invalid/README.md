@@ -1,10 +1,8 @@
-# Invalid fixture
+# 不正fixture（Invalid fixture）
 
-This project intentionally omits the required stable `project.id` field from
-`masterdata.toml`. It is used to verify that project/config errors are
-reported as structured diagnostics instead of being silently accepted.
+このprojectは、requiredなstable `project.id` fieldを `masterdata.toml` から意図的に除いている。project/config
+errorがstructured diagnosticとして報告され、黙って受け入れられないことを検証するために使用する。
 
-Additional invalid source snippets live beside this project for focused parser,
-validator, and code-generation tests: missing/unknown `kind`, duplicate table
-declarations, active/reserved field-ID collisions, and invalid generated C#
-identifiers. A field named `id` is intentionally not an implicit primary key.
+追加のinvalid source snippetは、このprojectの隣にあり、parser、validator、code-generationのfocused testに使用する。
+対象は、missing/unknown `kind`、duplicate table declaration、active/reserved field-ID collision、invalid generated C#
+identifierである。`id` という名前のfieldは、意図的にimplicit primary keyではない。

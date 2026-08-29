@@ -1,16 +1,17 @@
-# Index identity
+# Index identity仕様（Index identity）
 
 Status: Draft
 
-This document isolates compatibility rules concerning schema field identity and generated MasterMemory index metadata.
+この文書は、schema field identityとgenerated MasterMemory index metadataに関するcompatibility ruleを
+切り出して管理する。
 
 ### COMPAT-INDEX-001
 
-Field IDs and MasterMemory index numbers MUST remain distinct in the model.
+Field IDとMasterMemory index numberはmodel内で別物として保持しなければならない（MUST）。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- What stable logical identity does a secondary index have in the source schema?
-- How are generated MasterMemory `indexNo` values assigned deterministically?
-- Which index changes are wire-compatible, generated-API-compatible, or breaking?
-- How do references target indexes without depending on generated numeric index numbers?
+- source schemaにおいて、secondary indexが持つstable logical identityは何か。
+- generated MasterMemory `indexNo` をdeterministicに割り当てる方法は何か。
+- どのindex changeがwire-compatible、generated-API-compatible、またはbreakingか。
+- generated numeric index numberに依存せず、referenceがindexを指定するにはどうするか。

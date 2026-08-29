@@ -1,11 +1,11 @@
-# ADR NNN: Title
+# ADR NNN: タイトル（Title）
 
 Status: Proposed
 
-## Context
+## 背景（Context）
 
-## Decision
+## 決定（Decision）
 
-## Consequences
+## 結果（Consequences）
 
-## Alternatives
+## 代替案（Alternatives）

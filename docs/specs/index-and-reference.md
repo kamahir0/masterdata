@@ -1,38 +1,37 @@
-# Index and reference model
+# Indexとreferenceのmodel（Index and reference model）
 
 Status: Draft
 
-Tables are planned to support primary keys, composite primary keys, multiple
-secondary indexes, unique/non-unique secondary indexes, and composite
-secondary indexes wherever MasterMemory makes them practical. Field identity
-and index number are separate concepts.
+Tableは、MasterMemoryが実用的にサポートできる範囲で、primary key、composite primary key、
+複数のsecondary index、unique/non-unique secondary index、composite secondary indexをサポート
+する予定である。Field identityとindex numberは別のconceptである。
 
-Planned requirement IDs:
+予定しているRequirement ID:
 
 ### INDEX-PRIMARY-001
 
-A table MAY declare one primary key, including a composite key.
+Tableは、composite keyを含む1つのprimary keyを宣言してもよい（MAY）。
 
 ### INDEX-SECONDARY-001
 
-A table MAY declare multiple secondary indexes.
+Tableは複数のsecondary indexを宣言してもよい（MAY）。
 
 ### INDEX-UNIQUE-001
 
-Uniqueness is an explicit property, not inferred from field names.
+Uniquenessは明示的なpropertyであり、field nameからの推論ではない。
 
 ### REF-001
 
-A MasterReference MUST name a source field and target table/index.
+MasterReferenceはsource fieldとtarget table/indexを指定しなければならない（MUST）。
 
 ### REF-002
 
-A unique target resolves to one; a non-unique target resolves to many.
+unique targetは1件にresolveし、non-unique targetは複数件にresolveする。
 
 ### REF-003
 
-References MUST be validated during build and generated helpers MUST receive a
-`MemoryDatabase` from the caller rather than storing one on a master record.
+Referenceはbuild中にvalidateしなければならず（MUST）、generated helperはmaster recordに
+`MemoryDatabase`を保持せず、callerから受け取らなければならない（MUST）。
 
-Open Questions: exact YAML syntax, nullability, missing-reference severity,
-and the generated helper naming policy.
+Open Questions: exact YAML syntax、nullability、missing-reference severity、generated helperの
+naming policy。

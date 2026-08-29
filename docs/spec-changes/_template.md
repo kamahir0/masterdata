@@ -1,38 +1,38 @@
-# Specification change: Title
+# 仕様変更: タイトル（Specification change: Title）
 
 Status: Draft
 
-<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied, or Rejected. Human
-     approval is required before the canonical specification is changed. -->
+<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied、またはRejected。canonical
+     specificationを変更する前にhuman approvalが必要である。 -->
 
 ## Affected Specifications
 
-<!-- Canonical paths, statuses, and requirement IDs. -->
+<!-- Canonical path、status、Requirement IDを記載する。 -->
 
-## Source Evidence and Classification
+## 根拠と分類（Source Evidence and Classification）
 
-<!-- Link the request/context and classify Decision, Requirement, Constraint,
-     Preference, Proposal, Idea, Question, Open Question, and Rejected items. -->
+<!-- request/contextをlinkし、Decision、Requirement、Constraint、Preference、Proposal、
+     Idea、Question、Open Question、Rejected itemを分類する。 -->
 
-## Proposed Delta
+## 提案する差分（Proposed Delta）
 
-<!-- State only the proposed normative change. Preserve MUST/SHOULD/MAY. -->
+<!-- proposed normative changeだけを記載する。MUST/SHOULD/MAYを保持する。 -->
 
-## Compatibility
+## 互換性（Compatibility）
 
-<!-- State compatibility, migration, and generated/API impact. -->
+<!-- compatibility、migration、generated/APIへのimpactを記載する。 -->
 
-## Acceptance and Implementation Impact
+## 受け入れと実装への影響（Acceptance and Implementation Impact）
 
-<!-- Describe observable tests, fixtures, and affected boundaries without
-     treating this proposal as implementation authority. -->
+<!-- observableなtests、fixtures、affected boundaryを記載する。このproposalを
+     implementation authorityとして扱わない。 -->
 
-## Open Questions
+## 未解決事項（Open Questions）
 
-## Review
+## レビュー（Review）
 
-<!-- Record review findings and the human approval/rejection operation here. -->
+<!-- review findingとhuman approval/rejection operationをここに記録する。 -->
 
-## Approval Record
+## 承認記録（Approval Record）
 
-<!-- Leave empty until a human maintainer explicitly approves the change. -->
+<!-- human maintainerが明示的にchangeを承認するまで空欄にする。 -->

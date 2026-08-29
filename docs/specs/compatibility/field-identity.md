@@ -1,29 +1,32 @@
-# Field identity
+# Field identity仕様（Field identity）
 
 Status: Draft
 
-This document isolates the field-identity rules that still require refinement and explicit approval. Existing scaffold behavior is evidence to review, not authority for these Draft requirements.
+この文書は、refinementと明示的なapprovalがまだ必要なfield-identity ruleを切り出して管理する。
+既存scaffoldのbehaviorはreview対象のevidenceであり、これらDraft requirementのauthorityではない。
 
 ### COMPAT-FIELD-001
 
-Field IDs are intended for MessagePack integer keys and MUST be unique within a table.
+Field IDはMessagePack integer keyに使用することを想定し、table内でuniqueでなければならない（MUST）。
 
 ### COMPAT-FIELD-002
 
-Active field IDs MUST NOT be reused after removal.
+Active field IDは削除後に再利用してはならない（MUST NOT）。
 
 ### COMPAT-FIELD-003
 
-Removed IDs MAY be retained as `reservedFields` tombstones carrying former name/type information.
+削除したIDは、former name/type informationを持つ `reservedFields` tombstoneとして保持してもよい（MAY）。
 
-## Non-normative product direction
+## 非規範のproduct方向性（Non-normative）
 
-The GUI is expected to make stable-ID bookkeeping unobtrusive during normal editing while still allowing advanced users and review tooling to inspect persisted IDs. Exact allocation, visibility, migration, and wire-compatibility behavior remains to be specified.
+GUIは通常のedit中にstable-ID bookkeepingを意識させないことが期待される。一方でadvanced userと
+review toolingからは、persisted IDを確認できることが期待される。正確なallocation、visibility、migration、
+wire-compatibilityのbehaviorは、まだ仕様化されていない。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Is numeric MessagePack key generation mandatory for all persisted schema fields?
-- What is the exact allocation policy for new field IDs?
-- Is reuse permanently forbidden, or only forbidden within a defined compatibility window?
-- Which tombstone metadata is required versus optional?
-- How do nullability, default values, type changes, and custom-type evolution affect compatibility?
+- すべてのpersisted schema fieldでnumeric MessagePack key generationを必須にするか。
+- 新しいfield IDの正確なallocation policyは何か。
+- 再利用を永久に禁止するのか、それとも定義したcompatibility window内だけ禁止するのか。
+- 必須とoptionalのtombstone metadataは何か。
+- nullability、default value、type change、custom-type evolutionはcompatibilityにどう影響するか。

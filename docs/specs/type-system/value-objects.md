@@ -1,59 +1,52 @@
-# Value Objects
+# Value Objects仕様（Value Objects）
 
 Status: Proposed
 
 Domain: Type System
 
-## Summary
+## 概要
 
-This proposal defines a Value Object as a named immutable wrapper around one
-primitive value. It defines the unified type-declaration boundary, scalar data
-representation, generated C# category, equality, capability inheritance,
-directional implicit-conversion configuration, and underlying-value
-`ToString()` behavior. Enums, Flags Enums, and Custom Types remain separate
-future type categories.
+本proposalは、Value Objectを1つのprimitive valueをwrapするnamed immutable wrapperとして定義する。
+unified type-declaration boundary、scalar data representation、generated C# category、equality、
+capability inheritance、directional implicit-conversion configuration、underlying-value `ToString()`
+behaviorを定める。Enum、Flags Enum、Custom Typeは、将来の別のtype categoryとして扱う。
 
-## Terminology
+## 用語
 
-The terms Value Object, Primitive Type, Type Declaration, and Generated C#
-Type Name follow [product terminology](../../product/terminology.md). The
-primitive capability table is owned by [Primitive Types](primitives.md), and
-field-level Nullable/Array behavior is owned by [Field Modifiers](field-modifiers.md).
+Value Object、Primitive Type、Type Declaration、Generated C# Type Nameというtermは
+[product terminology（用語）](../../product/terminology.md)に従う。primitive capability tableは[Primitive Types仕様](primitives.md)が
+所有し、field-levelのNullable/Array behaviorは[Field Modifiers](field-modifiers.md)が所有する。
 
-`SCHEMA-VO-001` is retained from the earlier Draft type-system overview and
-is refined here as the canonical Value Object requirement. Approval and
-implementation should preserve the dependency on the referenced primitive and
-field-modifier contracts without merging their file-level statuses.
+`SCHEMA-VO-001` は以前のDraft type-system overviewから引き継ぎ、ここでcanonical Value Object requirementとして
+refineする。approvalとimplementationでは、参照するprimitiveおよびfield-modifier contractへのdependencyを
+保ったまま、それぞれのfile-level statusを混在させない。
 
-## Normative Requirements
+## 規範要件
 
 ### SCHEMA-VO-001
 
-A Value Object MUST be immutable, equality-capable, and serializable through
-the repository's future MessagePack integration. The generated representation
-and serialization details in this proposal MUST preserve those observable
-properties without making generated artifacts the source of truth.
+Value Objectはimmutable、equality-capable、かつrepositoryの将来のMessagePack integrationを通じて
+serializableでなければならない（MUST）。このproposalにおけるgenerated representationとserialization
+detailは、generated artifactをeditのSource of Truthにせず、これらのobservable propertyを保たなければ
+ならない（MUST）。
 
 ### SCHEMA-VO-002
 
-A Value Object MUST wrap exactly one underlying primitive type. Its underlying
-type MUST be selected from the primitive vocabulary defined by
-`TYPE-PRIMITIVE-001`.
+Value Objectは、正確に1つのunderlying primitive typeをwrapしなければならない（MUST）。underlying typeは
+`TYPE-PRIMITIVE-001` が定義するprimitive vocabularyから選ばなければならない（MUST）。
 
 ### SCHEMA-VO-003
 
-A Value Object MUST NOT wrap another Value Object, an Enum, a Flags Enum, a
-Custom Type, an Array shape, or a Nullable shape. A Value Object's underlying
-type is a primitive before field-level modifiers are applied.
+Value Objectは、別のValue Object、Enum、Flags Enum、Custom Type、Array shape、Nullable shapeをwrapしては
+ならない（MUST NOT）。Value Objectのunderlying typeは、field-level modifierを適用する前のprimitiveである。
 
 ### SCHEMA-VO-004
 
-Value Objects MUST use the unified type-declaration model rather than a
-Value-Object-only top-level declaration family. One YAML document MUST contain
-exactly one type declaration, and a type document's path or filename MUST NOT
-determine the type identity.
+Value Objectは、Value Object専用のtop-level declaration familyではなくunified type-declaration modelを
+使用しなければならない（MUST）。1つのYAML documentには、正確に1つのtype declarationだけを含めなければ
+ならず（MUST）、type documentのpathまたはfilenameがtype identityを決定してはならない（MUST NOT）。
 
-The canonical surface for one Value Object declaration is:
+1つのValue Object declarationにおけるcanonical surfaceは次のとおりである。
 
 ```yaml
 kind: type
@@ -62,23 +55,21 @@ valueObject:
   underlying: int
 ```
 
-The `kind` member MUST be `type`. The declaration MUST contain a top-level
-`name` member identifying the Value Object and a top-level `valueObject`
-mapping. The `valueObject` mapping MUST contain the `underlying` member. This
-surface reserves the same type-document boundary for future Enum, Flags Enum,
-and Custom Type categories without defining those categories here.
+`kind` memberは `type` でなければならない（MUST）。declarationはValue Objectを識別するtop-levelの
+`name` memberと、top-levelの `valueObject` mappingを含まなければならない（MUST）。`valueObject` mappingは
+`underlying` memberを含まなければならない（MUST）。このsurfaceは、ここでcategory自体を定義することなく、
+将来のEnum、Flags Enum、Custom Typeにも同じtype-document boundaryを確保する。
 
 ### SCHEMA-VO-005
 
-The data representation of a Value Object MUST use the same scalar
-representation as its underlying primitive. For example, an `ItemId` wrapping
-`int` is represented as `itemId: 1001`, not as a wrapper object containing a
-`value` property.
+Value Objectのdata representationは、underlying primitiveと同じscalar representationを使用しなければ
+ならない（MUST）。例えば、`int` をwrapする `ItemId` は `itemId: 1001` と表現し、`value` propertyを含む
+wrapper objectとしては表現しない。
 
 ### SCHEMA-VO-006
 
-The generated C# representation of every Value Object MUST be a public
-`readonly struct` with the following minimum public API:
+すべてのValue Objectのgenerated C# representationは、次のminimum public APIを持つpublic `readonly struct`
+でなければならない（MUST）。
 
 ```csharp
 public readonly struct ItemId
@@ -91,41 +82,35 @@ public readonly struct ItemId
 }
 ```
 
-For an underlying type `T` and Value Object name `N`, the generated type MUST
-be `public readonly struct N`, MUST expose `public T Value { get; }` without a
-public setter, and MUST expose a public constructor `N(T value)` that stores
-the argument in `Value`. A Value Object MUST NOT be selectable as a `class`,
-`record`, or `record struct` through per-type representation options. The
-parameter name and generated source formatting are not part of this contract.
-MessagePack attributes and serialization members remain governed by a separate
-future decision.
+underlying typeを `T`、Value Object nameを `N` とすると、generated typeは `public readonly struct N` で
+なければならず（MUST）、public setterなしの `public T Value { get; }` を公開し（MUST）、argumentを `Value` に
+格納するpublic constructor `N(T value)` を公開しなければならない（MUST）。Value Objectは、typeごとの
+representation optionによって `class`、`record`、または `record struct` として選べてはならない（MUST NOT）。
+parameter nameとgenerated source formattingはこのcontractの対象外である。MessagePack attributeとserialization
+memberは、別の将来decisionで管理する。
 
 ### SCHEMA-VO-007
 
-A Value Object MUST generate equality behavior. For each capability explicitly
-defined for the underlying primitive by an approved type-system specification,
-a Value Object MUST inherit that capability rather than independently opting
-in or out. In particular:
+Value Objectはequality behaviorを生成しなければならない（MUST）。approved type-system specificationが
+underlying primitiveについて明示的に定義した各capabilityについて、Value Objectは独自にopt inまたはopt out
+せず、そのcapabilityを継承しなければならない（MUST）。特に:
 
-- key compatibility MUST be inherited from the underlying primitive's
-  `TYPE-PRIMITIVE-005` classification; and
-- ordering or comparison capability MUST be inherited when the underlying
-  primitive provides that capability.
+- key compatibilityはunderlying primitiveの `TYPE-PRIMITIVE-005` classificationから継承しなければならない（MUST）。
+- orderingまたはcomparison capabilityは、underlying primitiveが提供する場合に継承しなければならない（MUST）。
 
-Therefore, `ItemId(int)` and `UserCode(string)` are key-compatible, while
-`Ratio(double)` and `Enabled(bool)` are key-incompatible. Nullable and Array
-field modifiers still make a field shape key-incompatible under
-`TYPE-FIELD-004`.
+したがって、`ItemId(int)` と `UserCode(string)` はkey-compatibleであり、`Ratio(double)` と `Enabled(bool)` は
+key-incompatibleである。NullableとArrayのfield modifierは、`TYPE-FIELD-004` に従い、field shapeを引き続き
+key-incompatibleにする。
 
 ### SCHEMA-VO-008
 
-A Value Object declaration MUST be able to independently enable or disable
-implicit conversion in each of these directions:
+Value Object declarationは、次の各方向のimplicit conversionを独立してenableまたはdisableできなければ
+ならない（MUST）。
 
-- underlying primitive to Value Object; and
-- Value Object to underlying primitive.
+- underlying primitiveからValue Objectへ。
+- Value Objectからunderlying primitiveへ。
 
-The canonical YAML properties for these capabilities are:
+これらのcapabilityに対するcanonical YAML propertyは次のとおりである。
 
 ```yaml
 valueObject:
@@ -135,109 +120,94 @@ valueObject:
     toUnderlyingImplicit: false
 ```
 
-`fromUnderlyingImplicit` and `toUnderlyingImplicit` MUST be boolean options
-under `valueObject.conversions`. The `conversions` mapping MAY be omitted. If
-it is omitted, or if either option is omitted from it, the corresponding
-capability MUST be disabled. All four combinations of those two independent
-capabilities MUST be representable.
+`fromUnderlyingImplicit` と `toUnderlyingImplicit` は `valueObject.conversions` 配下のboolean optionでなければ
+ならない（MUST）。`conversions` mappingは省略してもよい（MAY）。省略した場合、またはmapping内のいずれかの
+optionを省略した場合、対応するcapabilityはdisableしなければならない（MUST）。この2つの独立したcapabilityの
+4つの組み合わせをすべて表現できなければならない（MUST）。
 
-When `fromUnderlyingImplicit` is enabled, the generated C# API MUST provide
-an implicit conversion from the underlying C# type to the Value Object. When
-it is disabled, that implicit conversion MUST NOT be provided. The same rule
-applies independently to `toUnderlyingImplicit` for conversion from the Value
-Object to the underlying C# type. The exact generated source formatting and
-member ordering are not part of this contract.
+`fromUnderlyingImplicit` がenableの場合、generated C# APIはunderlying C# typeからValue Objectへのimplicit
+conversionを提供しなければならない（MUST）。disableの場合、そのimplicit conversionを提供してはならない
+（MUST NOT）。Value Objectからunderlying C# typeへのconversionについても、`toUnderlyingImplicit` に同じruleを
+独立して適用する。generated source formattingとmember orderingは、このcontractの対象外である。
 
 ### SCHEMA-VO-009
 
-The directional implicit-conversion settings MUST affect only generated C# API
-conversion behavior. They MUST NOT alter key compatibility, comparison
-capability, equality, MessagePack wire identity, underlying primitive
-identity, or field modifier semantics. Key compatibility continues to be
-determined by `TYPE-PRIMITIVE-005` and `TYPE-FIELD-004`, independently of
-conversion settings.
+directional implicit-conversion settingは、generated C# APIのconversion behaviorだけに影響しなければならない
+（MUST）。key compatibility、comparison capability、equality、MessagePack wire identity、underlying primitive
+identity、field modifier semanticsを変更してはならない（MUST NOT）。key compatibilityはconversion settingとは
+独立して `TYPE-PRIMITIVE-005` と `TYPE-FIELD-004` によって決定する。
 
 ### SCHEMA-VO-010
 
-The generated Value Object MUST expose `public override string ToString()`.
-That method MUST return the textual representation of its underlying value. It
-MUST NOT use a type-name-wrapped debug representation such as `ItemId(1001)`
-as the default contract.
+generated Value Objectは `public override string ToString()` を公開しなければならない（MUST）。このmethodは
+underlying valueのtextual representationを返さなければならない（MUST）。`ItemId(1001)` のようなtype-name-wrapped
+debug representationをdefault contractとして使用してはならない（MUST NOT）。
 
-- For `int`, `uint`, `long`, `ulong`, `float`, and `double`, the textual
-  representation MUST use invariant-culture formatting and MUST NOT vary with
-  the runtime `CurrentCulture`.
-- For `string`, the result MUST be the underlying string value itself.
-- For `bool`, the result MUST follow the underlying .NET Boolean textual
-  representation (`"True"` or `"False"`), without a culture-dependent
-  transformation.
+- `int`、`uint`、`long`、`ulong`、`float`、`double` では、textual representationにinvariant-culture formattingを
+  使用し、runtime `CurrentCulture` によって変化してはならない（MUST）。
+- `string` では、結果はunderlying string valueそのものでなければならない（MUST）。
+- `bool` では、結果はunderlying .NET Boolean textual representation（`"True"` または `"False"`）に従わなければ
+  ならず（MUST）、culture-dependentな変換を行ってはならない（MUST NOT）。
 
 ### SCHEMA-VO-011
 
-Each generated Value Object MUST implement `IEquatable<N>`, where `N` is the
-generated Value Object type, and MUST expose all of the following public API:
+各generated Value Objectは、generated Value Object typeを `N` として、`IEquatable<N>` を実装しなければならず
+（MUST）、次のpublic APIをすべて公開しなければならない（MUST）。
 
-- `public bool Equals(N other)`;
-- `public override bool Equals(object obj)`;
-- `public override int GetHashCode()`;
-- `public static bool operator ==(N left, N right)`; and
-- `public static bool operator !=(N left, N right)`.
+- `public bool Equals(N other)`
+- `public override bool Equals(object obj)`
+- `public override int GetHashCode()`
+- `public static bool operator ==(N left, N right)`
+- `public static bool operator !=(N left, N right)`
 
-For a Value Object `N<T>`, typed equality `N(a).Equals(N(b))` MUST have the
-same logical result as equality of the underlying values `a` and `b`. The
-`Equals(object)` override MUST use typed equality when `obj` is the same Value
-Object type and MUST return `false` when `obj` is `null` or a different type.
-`GetHashCode()` MUST be derived from the underlying value's equality semantics,
-so equal Value Objects always have equal hash codes. The `==` operator MUST
-have the same logical result as typed equality, and `!=` MUST be the logical
-negation of `==`.
+Value Object `N<T>` では、typed equality `N(a).Equals(N(b))` はunderlying value `a` と `b` のequalityと同じ
+logical resultを持たなければならない（MUST）。`Equals(object)` overrideは、`obj` が同じValue Object typeの場合は
+typed equalityを使用しなければならない（MUST）。`obj` が `null` または異なるtypeの場合は `false` を
+返さなければならない（MUST）。
+`GetHashCode()` はunderlying valueのequality semanticsから導出し、equalなValue Objectが常にequalなhash codeを
+持たなければならない（MUST）。`==` operatorはtyped equalityと同じlogical resultを持たなければならない
+（MUST）。`!=` は `==` のlogical negationでなければならない（MUST）。
 
-Equality is independent from key compatibility and ordering/comparison
-capability. Every Value Object is equality-capable, while key compatibility
-continues to follow `TYPE-PRIMITIVE-005` and `TYPE-FIELD-004`. Equality MUST
-also be identical for all four combinations of the independent implicit
-conversion settings in `SCHEMA-VO-008`. This requirement does not define
-`IComparable<N>`, `CompareTo`, or ordering operators; those remain governed by
-the applicable primitive comparison capability specification.
+Equalityはkey compatibilityおよびordering/comparison capabilityから独立している。すべてのValue Objectは
+equality-capableである一方、key compatibilityは `TYPE-PRIMITIVE-005` と `TYPE-FIELD-004` に従う。Equalityは
+`SCHEMA-VO-008` の独立したimplicit conversion settingの4つの組み合わせすべてで同一でなければならない（MUST）。
+このrequirementは `IComparable<N>`、`CompareTo`、またはordering operatorを定義しない。それらは該当する
+primitive comparison capability specificationが引き続き管理する。
 
-## Validation Rules
+## 検証ルール
 
-The observable validation outcomes for this proposal are defined by
-`SCHEMA-VO-001` through `SCHEMA-VO-011`: underlying type and wrapper
-restrictions, one-document/one-declaration structure, scalar representation,
-readonly-struct category, equality API and semantics, inherited capabilities,
-directional conversion configuration, conversion isolation, and
-underlying-value `ToString()` behavior. Exact diagnostic codes and the final
-MessagePack attribute shape remain unassigned.
+このproposalの観測可能なvalidation outcomeは、`SCHEMA-VO-001` から `SCHEMA-VO-011` によって定義する。
+対象は、underlying typeとwrapper restriction、one-document/one-declaration structure、scalar representation、
+readonly-struct category、equality APIとsemantics、inherited capability、directional conversion configuration、
+conversion isolation、underlying-value `ToString()` behaviorである。exact diagnostic codeとfinal MessagePack
+attribute shapeは未割り当てである。
 
-## Acceptance Evidence
+## 受け入れ証拠
 
-| Requirement | Success observation | Failure observation | Suggested evidence |
+| Requirement（要件） | Success observation（成功時の観測） | Failure observation（失敗時の観測） | Suggested evidence（推奨する証拠） |
 | --- | --- | --- | --- |
-| `SCHEMA-VO-001` | A Value Object is immutable, equality-capable, and serializable through the approved integration. | A mutable, non-equality-capable, or non-serializable representation is rejected. | Generated representation and serialization tests. |
-| `SCHEMA-VO-002` | One declared primitive is accepted as the underlying type. | A missing or non-primitive underlying type is rejected. | Type declaration validation tests. |
-| `SCHEMA-VO-003` | A direct primitive wrapper is accepted. | Nested, enum, custom, array, or nullable wrappers are rejected. | Forbidden-wrapper tests. |
-| `SCHEMA-VO-004` | One type document with `kind: type`, top-level `name`, and top-level `valueObject.underlying` yields one named Value Object declaration independent of its path. | Multiple declarations, a missing canonical member, or path-derived identity is rejected. | Type document structure tests. |
-| `SCHEMA-VO-005` | A Value Object field uses the underlying primitive scalar representation. | A wrapper object with a `value` property is not required or accepted as the defined representation. | Data representation tests. |
-| `SCHEMA-VO-006` | Generated output is a public readonly struct with a public `Value` get-only property initialized by the public underlying-value constructor. | A private type, setter-bearing `Value` property, missing public constructor, constructor that does not store its argument, or class/record representation is rejected. | C# generation golden/compile/API-surface test. |
-| `SCHEMA-VO-007` | Equality and inherited capability outcomes match the underlying primitive. | An independent capability override produces a mismatch. | Capability inheritance tests. |
-| `SCHEMA-VO-008` | `valueObject.conversions.fromUnderlyingImplicit` and `toUnderlyingImplicit` represent `false/false`, `true/false`, `false/true`, and `true/true` independently; omitted mapping/options produce `false/false`, and only enabled directions have implicit C# operators. | A missing direction defaults to enabled, one setting changes the other, or an operator is emitted for a disabled direction. | Conversion syntax, default, and generated-operator tests. |
-| `SCHEMA-VO-009` | Changing conversion settings changes only the generated C# conversion surface. | Key compatibility, comparison, equality, wire identity, underlying identity, or field modifier behavior changes with conversion settings. | Conversion-isolation tests. |
-| `SCHEMA-VO-010` | A Value Object's `ToString()` returns the underlying textual value, such as `"1001"` for an `ItemId` wrapping `1001`, with numeric output invariant to `CurrentCulture`, the underlying string returned unchanged, and .NET Boolean text for `bool`. | The result varies with `CurrentCulture`, changes the underlying string, or adds a type-name wrapper such as `ItemId(1001)`. | Generated API behavior tests under multiple cultures and all primitive categories. |
-| `SCHEMA-VO-011` | The generated type implements `IEquatable<N>` and exposes typed/object equality, `GetHashCode()`, `==`, and `!=`; `N(a).Equals(N(a))` and `N(a) == N(a)` are true, `N(a) != N(a)` is false, unequal underlying values follow underlying equality, equal objects have equal hashes, and `Equals(object)` is false for null or a different type. | A required API member is missing, typed/object equality disagrees with underlying equality, equal values produce different hashes, or `!=` is not the negation of `==`. | API-surface compile/reflection test plus typed equality, object equality, hash-consistency, and operator tests. |
+| `SCHEMA-VO-001` | Value Objectがimmutable、equality-capableであり、approved integrationを通じてserializableである。 | mutable、non-equality-capable、またはnon-serializableなrepresentationがrejectされる。 | Generated representation and serialization tests。 |
+| `SCHEMA-VO-002` | 宣言された1つのprimitiveがunderlying typeとして受け入れられる。 | underlying typeの欠落またはnon-primitiveがrejectされる。 | Type declaration validation tests。 |
+| `SCHEMA-VO-003` | 直接のprimitive wrapperが受け入れられる。 | nested、enum、custom、array、またはnullable wrapperがrejectされる。 | Forbidden-wrapper tests。 |
+| `SCHEMA-VO-004` | `kind: type`、top-level `name`、top-level `valueObject.underlying` を持つ1つのtype documentが、pathに依存せずnamed Value Object declarationを生成する。 | 複数declaration、canonical memberの欠落、またはpath-derived identityがrejectされる。 | Type document structure tests。 |
+| `SCHEMA-VO-005` | Value Object fieldがunderlying primitiveと同じscalar representationを使用する。 | `value` propertyを含むwrapper objectが、定義されたrepresentationとして要求または受け入れられる。 | Data representation tests。 |
+| `SCHEMA-VO-006` | generated outputが、public `Value` get-only propertyとpublic underlying-value constructorを持つpublic readonly structである。 | private type、setterを持つ `Value` property、public constructorの欠落、argumentを保存しないconstructor、またはclass/record representation。 | C# generation golden/compile/API-surface test。 |
+| `SCHEMA-VO-007` | equalityとinherited capabilityのoutcomeがunderlying primitiveと一致する。 | 独立したcapability overrideによって不一致が生じる。 | Capability inheritance tests。 |
+| `SCHEMA-VO-008` | `valueObject.conversions.fromUnderlyingImplicit` と `toUnderlyingImplicit` が `false/false`、`true/false`、`false/true`、`true/true` を独立して表現し、省略されたmapping/optionが `false/false` となり、enableされた方向だけimplicit C# operatorを持つ。 | 欠落した方向がenableになる、一方のsettingが他方を変える、またはdisableされた方向のoperatorが生成される。 | Conversion syntax, default, and generated-operator tests。 |
+| `SCHEMA-VO-009` | conversion settingの変更がgenerated C# conversion surfaceだけを変更する。 | key compatibility、comparison、equality、wire identity、underlying identity、field modifier behaviorがconversion settingで変化する。 | Conversion-isolation tests。 |
+| `SCHEMA-VO-010` | Value Objectの `ToString()` がunderlying textual valueを返す。例えば `1001` をwrapする `ItemId` では `"1001"` となり、numeric outputは `CurrentCulture` に依存せず、underlying stringは変更されず、`bool` では.NET Boolean textとなる。 | resultが `CurrentCulture` で変化する、underlying stringを変更する、または `ItemId(1001)` のようなtype-name wrapperを追加する。 | Generated API behavior tests under multiple cultures and all primitive categories。 |
+| `SCHEMA-VO-011` | generated typeが `IEquatable<N>` を実装し、typed/object equality、`GetHashCode()`、`==`、`!=` を公開する。`N(a).Equals(N(a))` と `N(a) == N(a)` はtrue、`N(a) != N(a)` はfalse、異なるunderlying valueはunderlying equalityに従い、equal objectはequal hashを持ち、`Equals(object)` はnullまたは異なるtypeに対してfalseとなる。 | required API memberの欠落、typed/object equalityとunderlying equalityの不一致、equal valueで異なるhash、または `!=` が `==` のnegationでない。 | API-surface compile/reflection test plus typed equality, object equality, hash-consistency, and operator tests。 |
 
-## Compatibility
+## 互換性
 
-The scalar data representation avoids adding a Value Object wrapper node, but
-the generated C# API and MessagePack wire shape can still affect compatibility.
-This proposal does not define implicit migration, released-schema
-compatibility classification for generated API changes, or field-ID behavior.
-Those choices remain Open Questions and are not implementation authority until
-this proposal is approved.
+scalar data representationはValue Object用のwrapper nodeを追加しないが、generated C# APIとMessagePack wire shapeは
+compatibilityに影響し得る。このproposalはimplicit migration、generated API changeのreleased-schema compatibility
+classification、field-ID behaviorを定義しない。これらのchoiceはOpen Questionであり、このproposalがApprovedになる
+までimplementation authorityではない。
 
-## Examples
+## 例
 
-The following examples are non-normative:
+次のexampleはnon-normativeである。
 
 ```yaml
 # type declaration
@@ -252,8 +222,7 @@ valueObject:
 userCode: "player-001"
 ```
 
-The following is a non-normative example of the canonical declaration with
-directional conversion settings:
+次は、directional conversion settingを持つcanonical declarationのnon-normative exampleである。
 
 ```yaml
 kind: type
@@ -265,8 +234,7 @@ valueObject:
     toUnderlyingImplicit: false
 ```
 
-The following declarations are invalid under this proposal because the
-underlying type is not a primitive:
+次のdeclarationは、underlying typeがprimitiveではないため、このproposalではinvalidである。
 
 ```yaml
 kind: type
@@ -282,26 +250,17 @@ valueObject:
   underlying: int?
 ```
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Should explicit conversion operators or helper APIs also be generated, and
-  what compatibility guarantees would they have?
-- What MessagePack attributes and generated shape are required by MasterMemory
-  and Unity-compatible C# projects?
-- How do nullable reference types and nullable value types differ in the
-  generated C# contract?
-- Which ordering/comparison capabilities exist for each primitive, especially
-  for `bool`, `float`, and `double`? This includes the ordering contract for
-  finite floating-point values; the primitive specification rejects non-finite
-  values.
-- What custom validation constraints may be added without changing the
-  primitive wrapper contract?
-- How are Value Object additions, underlying-type changes, and renames
-  classified against released schemas?
+- explicit conversion operatorまたはhelper APIも生成するか。また、それらにどのcompatibility guaranteeを与えるか。
+- MasterMemoryとUnity-compatible C# projectに必要なMessagePack attributeとgenerated shapeは何か。
+- nullable reference typeとnullable value typeは、generated C# contractでどのように異なるか。
+- 各primitive、特に `bool`、`float`、`double` にどのordering/comparison capabilityがあるか。finite floating-point valueのordering contractも含む。primitive specificationはnon-finite valueをrejectする。
+- primitive wrapper contractを変更せずに、どのcustom validation constraintを追加できるか。
+- Value Objectの追加、underlying typeの変更、renameをreleased schemaに対してどうclassificationするか。
 
-## Non-Goals
+## 非目標
 
-This proposal does not implement a type registry, AST/IR resolver, Value
-Object parser, nullable/array validator, readonly-struct generator, MessagePack
-generator, key generator, Enum, Flags Enum, Custom Type, Index,
-MasterReference, or production binary builder.
+このproposalは、type registry、AST/IR resolver、Value Object parser、nullable/array validator、readonly-struct generator、
+MessagePack generator、key generator、Enum、Flags Enum、Custom Type、Index、MasterReference、production binary
+builderを実装しない。

@@ -1,75 +1,66 @@
-# RFC: Generated C# naming policy
+# RFC: 生成C#の命名方針（Generated C# naming policy）
 
 Status: Proposed
 
-## Context
+## 背景（Context）
 
-The current C# generator is a scaffold. It derives names from `table`, accepts
-an optional `csharpName`, and turns field names into C# properties and
-constructor parameters. Name normalization can create collisions, and C# has
-reserved keywords and namespace rules that are not domain semantics.
+current C# generatorはscaffoldである。`table` からnameを導出し、任意の `csharpName` を受け取り、field nameを
+C# propertyとconstructor parameterへ変換する。name normalizationによってcollisionが生じる可能性があり、
+C#にはreserved keywordとnamespace ruleがある。これらはdomain semanticsではない。
 
-## Problem
+## 課題（Problem）
 
-Invalid or colliding generated names can fail only after C# compilation, which
-makes diagnostics late and difficult to associate with a schema. A complete
-naming policy also needs to distinguish a source field/table identity from its
-generated presentation name.
+invalidまたはcollisionしたgenerated nameがC# compile後までfailureにならないため、diagnosticが遅く、schemaとの
+関連付けも難しい。completeなnaming policyでは、source field/table identityとgenerated presentation nameを区別
+する必要もある。
 
-## Goals
+## 目標（Goals）
 
-- define the questions a future naming specification must answer;
-- keep obvious invalid output at the code-generation validation boundary; and
-- avoid silently choosing a Unicode, escaping, or rename compatibility policy.
+- 将来のnaming specificationが回答すべきquestionを定義する。
+- obvious invalid outputをcode-generation validation boundaryで止める。
+- Unicode、escaping、rename compatibility policyを黙って選択しない。
 
-## Non-Goals
+## 非目標（Non-Goals）
 
-This RFC does not approve a final naming convention, rename migration policy,
-or Unicode identifier policy. It does not add Type System semantics.
+このRFCは、final naming convention、rename migration policy、Unicode identifier policyを承認しない。
+Type System semanticsも追加しない。
 
-## Options
+## 選択肢（Options）
 
-- reject invalid/reserved names and normalization collisions;
-- escape or prefix names that are invalid or reserved; or
-- require explicit generated names and avoid normalization for ambiguous
-  source names.
+- invalid/reserved nameとnormalization collisionをrejectする。
+- invalidまたはreserved nameをescapeまたはprefixする。
+- explicit generated nameを必須にし、ambiguousなsource nameに対するnormalizationを避ける。
 
-## Trade-offs
+## トレードオフ（Trade-offs）
 
-Rejection is predictable and keeps source identity visible, but asks authors to
-rename inputs. Escaping preserves more inputs but changes generated API names
-and can make compatibility less obvious. Requiring explicit names gives users
-control but increases schema noise and does not remove namespace/file
-collisions.
+rejectionは予測可能でsource identityを保てるが、authorにinputのrenameを求める。escapingはより多くのinputを
+保持できるが、generated API nameを変え、compatibilityを分かりにくくする。explicit nameの要求はuserにcontrolを
+与えるが、schemaの記述量を増やし、namespace/file collisionは取り除かない。
 
-## Proposal
+## 提案（Proposal）
 
-The current scaffold performs a conservative validation boundary: namespace,
-type, property, and constructor-parameter names must be valid ASCII C#
-identifiers; reserved keywords, normalized type/property/parameter collisions,
-and case-insensitive generated filename collisions are errors. This is an
-implementation guard, not an Approved naming specification. The eventual
-product policy must be refined and reviewed before generated API names become
-a compatibility promise.
+current scaffoldはconservativeなvalidation boundaryを持つ。namespace、type、property、constructor-parameter
+nameはvalidなASCII C# identifierでなければならず、reserved keyword、normalized type/property/parameter collision、
+case-insensitiveなgenerated filename collisionはerrorとする。これはimplementation guardであり、Approved naming
+specificationではない。generated API nameがcompatibility promiseになる前に、最終的なproduct policyをrefineし、
+reviewしなければならない。
 
-## Compatibility
+## 互換性（Compatibility）
 
-Changing normalization, escaping, case sensitivity, file naming, or Unicode
-handling can change generated public APIs and filenames. A final decision needs
-golden tests and an explicit migration policy.
+normalization、escaping、case sensitivity、file naming、Unicode handlingを変更すると、generated public APIと
+filenameが変わる可能性がある。最終decisionにはgolden testと明示的なmigration policyが必要である。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Should reserved keywords be rejected or escaped with `@`?
-- Is the current ASCII-only policy acceptable for source names and namespaces?
-- What Unicode normalization and case-folding rules apply?
-- How are `foo-bar` and `foo_bar` collisions resolved?
-- Are type, property, constructor-parameter, namespace, and filename
-  collisions all errors?
-- Is a C# type rename compatible when the `table` identity is unchanged?
-- Which generated API and filename forms are stable compatibility surfaces?
+- reserved keywordをrejectするか、`@` でescapeするか。
+- source nameとnamespaceに対するcurrent ASCII-only policyを受け入れるか。
+- どのUnicode normalizationとcase-folding ruleを適用するか。
+- `foo-bar` と `foo_bar` のcollisionをどう解決するか。
+- type、property、constructor-parameter、namespace、filenameのcollisionをすべてerrorとするか。
+- `table` identityが変わらない場合、C# type renameはcompatibleか。
+- どのgenerated APIとfilename formをstable compatibility surfaceとするか。
 
-## Decision
+## 決定（Decision）
 
-Pending explicit human approval. The conservative validation boundary may
-prevent obviously invalid output while this RFC remains Proposed.
+明示的なhuman approval待ち。currentのconservative validation boundaryは、このRFCがProposedである間、obviously
+invalidなoutputを防ぐ可能性がある。

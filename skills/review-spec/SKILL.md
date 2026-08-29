@@ -5,196 +5,157 @@ description: Independently audit a Draft or Proposed specification change agains
 
 # review-spec
 
-## Purpose
+## 目的
 
-Use this skill to challenge a specification change produced by refinement. The
-reviewer should not share the author's assumptions: inspect the target change,
-the original request or conversation when available, related specifications,
-ADRs, RFCs, and the terminology glossary. The result is a review report, not a
-status transition.
+refinementで作成されたspecification changeにchallengeを行うskillである。reviewerはauthorと同じ仮定を共有せず、
+target change、元のrequestまたはconversation（利用可能な場合）、関連specification、ADR、RFC、terminology glossaryを
+確認する。結果はreview reportであり、status transitionではない。
 
-`Approved as Proposed` means “the reviewer found no blocking issue for human
-consideration”. It MUST NOT change `Status: Proposed` to `Status: Approved`.
-Only a human maintainer performs that approval operation.
+`Approved as Proposed` は「reviewerがhuman considerationを妨げるblocking issueを見つけなかった」という意味である。
+`Status: Proposed` を `Status: Approved` へ変更してはならない（MUST NOT）。approval operationを行うのは人間の
+maintainerだけである。
 
-## Inputs and scope
+## Inputとscope
 
-Required inputs are the target spec change and its path. Preferably also
-provide the source request/conversation and the affected test or fixture plan.
-If the source is missing, say so and treat intent fidelity as unverified; do
-not fill the gap from memory.
+必須inputはtarget spec changeとそのpathである。source request/conversationとaffected testまたはfixture planも、
+可能なら提供する。sourceがない場合はintent fidelityを検証できないと記載し、memoryから補完してはならない。
 
-Read:
+次を読む。
 
-1. `AGENTS.md`.
-2. The entire target specification, including status, IDs, Open Questions,
-   examples, and Non-Goals.
-3. Related `docs/specs` and the canonical owner of each referenced ID.
-4. Related `docs/adr`, `docs/rfcs`, and `docs/product/terminology.md`.
-5. Existing tests/fixtures only as evidence of current behavior, never as
-   permission to override an approved contract.
+1. `AGENTS.md`。
+2. target specification全体（status、ID、Open Questions、examples、Non-Goalsを含む）。
+3. 関連する `docs/specs` と、referenceされた各IDのcanonical owner。
+4. 関連する `docs/adr`、`docs/rfcs`、`docs/product/terminology.md`。
+5. current behaviorのevidenceとしてexisting tests/fixturesを読む。ただし、Approved contractを上書きする許可とは
+   扱わない。
 
-If the change targets an `Approved` or `Implemented` canonical document,
-require a separate proposal artifact under `docs/spec-changes/` (or an RFC for
-alternative comparison). A canonical approved document must not contain a
-mixture of approved old behavior and unapproved new behavior.
+changeが `Approved` または `Implemented` canonical documentを対象とする場合は、`docs/spec-changes/` 配下の別proposal
+（alternative比較にはRFC）を要求する。approved canonical documentには、approvedな旧behaviorとunapprovedな新behaviorを
+混在させてはならない。
 
-`Status:` applies to the entire canonical file. If a document combines
-requirements that are at materially different maturity levels, require a
-structural split before recommending a status transition. A split must preserve
-existing Requirement IDs; moving a requirement is not a semantic change by
-itself. Directory `README.md` files may index a spec family but do not own
-normative requirements.
+`Status:` はcanonical file全体に適用される。document内のrequirementがmaterially異なるmaturityを持つ場合は、status
+transitionをrecommendする前にstructural splitを要求する。splitでは既存Requirement IDを保持する。requirementの移動
+だけではsemantic changeではない。directoryの `README.md` はspec familyのindexであり、normative requirementを所有しない。
 
-Treat RFC status separately from product-spec status: an `Accepted` RFC is a
-decision record, not an implementation input. For a specification-change
-artifact, verify that `Approved` records an explicit human decision and
-`Applied` is used only after the atomic canonical merge.
+RFC statusはproduct-spec statusとは別に扱う。`Accepted` RFCはdecision recordでありimplementation inputではない。
+specification-change artifactでは、`Approved` が明示的なhuman decisionを記録し、`Applied` はatomic canonical merge
+後だけに使われていることを確認する。
 
-Use `rg` to search for duplicate IDs, terminology variants, and conflicting
-normative phrases. Keep the review focused on semantics; do not demand a
-specification for a typo or a purely internal refactor.
+duplicate ID、terminology variant、conflicting phraseは `rg` で検索する。reviewはsemanticに集中し、typoまたはpurely
+internal refactorのためのspecificationを要求しない。
 
 ## Review checklist
 
-Record a finding with file, requirement ID, evidence, impact, and a concrete
-resolution when a check fails.
+findingを作る場合は、file、Requirement ID、evidence、impact、具体的なresolutionを記録する。
 
 ### Intent fidelity
 
-- Does every normative rule have evidence in the supplied request or an
-  existing approved contract?
-- Were `Preference`, `Proposal`, `Idea`, `Question`, and `Open Question`
-  kept non-normative?
-- Were rejected choices kept out?
-- Did the wording preserve the speaker's scope and certainty?
-- Does the proposal avoid promoting current implementation behavior, a
-  diagnostic code, or a test name into a requirement without source evidence?
+- すべてのnormative ruleに、supplied requestまたはexisting approved contractのevidenceがあるか。
+- `Preference`、`Proposal`、`Idea`、`Question`、`Open Question` をnon-normativeに保ったか。
+- Rejected choiceを排除したか。
+- wordingがspeakerのscopeとcertaintyを保持しているか。
+- source evidenceなしにcurrent implementation behavior、diagnostic code、test nameをrequirementへ昇格していないか。
 
 ### Internal consistency
 
-- Are status, Summary, Normative Requirements, Validation Rules,
-  Compatibility, Examples, Open Questions, and Non-Goals consistent?
-- Can every normative requirement in the file legitimately share the declared
-  document status, or should the file be split before approval?
-- Are requirement IDs unique within the change and stable across edits?
-- Does a requirement contradict another requirement in the same document?
-- Does the proposal distinguish requirement definitions from references, and
-  are referenced IDs owned by exactly one canonical document?
+- status、Summary、Normative Requirements、Validation Rules、Compatibility、Examples、Open Questions、Non-Goalsが
+  整合しているか。
+- file内のnormative requirementが宣言されたdocument statusを合法的に共有できるか。splitが必要ではないか。
+- Requirement IDがchange内でuniqueであり、editをまたいでstableか。
+- requirement同士が同一document内で矛盾していないか。
+- requirement definitionとreferenceを区別し、referenceされたIDをcanonical documentが1つだけ所有しているか。
 
 ### Cross-spec consistency
 
-- Does the change agree with all affected approved and proposed specs?
-- Does it respect ADR architecture, especially core/CLI/GUI and the .NET
-  bridge boundary?
-- Is the canonical owner clear, with links rather than copied normative text?
-- Are duplicate or conflicting requirements present elsewhere?
-- Does the existing implementation already contain semantics not authorized by
-  the target specification, requiring removal or a separate proposal instead
-  of retroactive approval?
-- Does any diagnostic-to-requirement relation actually describe the requirement
-  semantics, rather than merely sharing a project or numeric prefix?
+- changeがaffectedなApproved/Proposed specすべてと一致しているか。
+- core/CLI/GUIと.NET bridge boundaryなど、ADRのarchitectureを尊重しているか。
+- canonical ownerが明確で、copyではなくlinkを使っているか。
+- duplicateまたはconflicting requirementが他に存在しないか。
+- existing implementationにtarget specが許可していないsemanticsがあり、retroactive approvalではなくremovalまたは
+  別proposalが必要になっていないか。
+- diagnostic-to-requirement relationが実際にrequirement semanticsを表しているか。単にprojectまたはnumber prefixを
+  共有するだけではないか。
 
 ### Terminology consistency
 
-- Do terms follow `docs/product/terminology.md`?
-- Are distinctions such as table/file, field ID/index number,
-  unique/non-unique, and source/generated artifact preserved?
-- Does the change introduce a term without defining or routing it?
+- termが `docs/product/terminology.md` に従っているか。
+- table/file、field ID/index number、unique/non-unique、source/generated artifactなどの区別を保っているか。
+- 定義またはroutingなしに新しいtermを導入していないか。
 
 ### Normative strength
 
-- Is every `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` justified?
-- Has a capability been strengthened into a recommendation or requirement?
-- Are recommendations clearly labeled as such and supported by a reason?
-- Are examples or implementation notes accidentally written as normative
-  behavior?
-- Are runtime diagnostic codes visibly distinct from requirement IDs, with no
-  shared namespace or misleading numeric suffix reuse?
+- 各 `MUST`、`MUST NOT`、`SHOULD`、`SHOULD NOT`、`MAY` が根拠を持つか。
+- capabilityをrecommendationまたはrequirementへ強めていないか。
+- recommendationにlabelを付け、理由を示しているか。
+- exampleまたはimplementation noteがnormative behaviorとして誤読されないか。
+- runtime Diagnostic CodeとRequirement IDが明確に区別され、shared namespaceやmisleadingなnumeric suffix reuseがないか。
 
 ### Testability
 
-- Can each normative requirement be observed and tested?
-- Are success, validation failure, error, and compatibility outcomes specified
-  enough to write an acceptance test?
-- Is a requirement ID mapped to a test name or nearby comment where useful?
-- Is fixture coverage requested only where an end-to-end fixture adds value?
-- Do requirement IDs in test names/comments actually describe the behavior they
-  cover, rather than merely borrowing a number?
+- 各normative requirementを観測しtestできるか。
+- success、validation failure、error、compatibility outcomeがacceptance testを書ける程度に定義されているか。
+- 有用な場合、Requirement IDをtest nameまたは近接commentに対応付けているか。
+- fixtureが必要なend-to-end ruleにだけfixture coverageを要求しているか。
+- test name/comment内のRequirement IDが、単にnumberを借りるのではなく実際に対象behaviorを説明しているか。
 
 ### Backward compatibility
 
-- Does the change affect stable table/field/enum identity, serialized data,
-  generated APIs, file interpretation, or migration?
-- Is compatibility explicitly stated, including “not applicable” when true?
-- Are deprecated IDs and migration/replacement notes preserved?
+- stable table/field/enum identity、serialized data、generated API、file interpretation、migrationへ影響するか。
+- not applicable を含め、compatibilityを明示しているか。
+- deprecated IDとmigration/replacement noteを保っているか。
 
 ### Unresolved ambiguity
 
-- Are defaults, nullability, ordering, error severity, missing data, and edge
-  cases either specified by evidence or listed as Open Questions?
-- Has any Open Question been silently answered in prose, examples, or a test
-  plan?
-- Would an unanswered question change implementation behavior enough to block
-  approval?
+- default、nullability、ordering、error severity、missing data、edge caseが、evidenceで定義されるかOpen Questionに
+  記録されているか。
+- Open Questionをprose、example、test planで黙って解決していないか。
+- 未回答のquestionがimplementation behaviorを変えるほど大きく、approvalをblockするか。
 
 ### Implementation leakage
 
-- Does the spec define observable behavior rather than a convenient data
-  structure, algorithm, crate layout, or shell command?
-- Does GUI text stay at the GUI behavior boundary and leave domain semantics
-  in `masterdata-core`?
-- Does it avoid reimplementing MasterMemory internals or moving .NET process
-  invocation into another crate?
+- convenientなdata structure、algorithm、crate layout、shell commandではなくobservable behaviorを定義しているか。
+- GUI textがGUI behavior boundaryに留まり、domain semanticsを `masterdata-core` に残しているか。
+- MasterMemory internalの再実装や、.NET process invocationの別crateへの移動を避けているか。
 
 ### Unrequested behavior
 
-- Did the change add features, defaults, validations, UI states, or migration
-  behavior not requested or supported by an approved contract?
-- Were adjacent ideas placed in Non-Goals, an RFC, or Open Questions instead?
-- Is any semantic change mixed directly into an Approved/Implemented canonical
-  file instead of being isolated in a durable proposal artifact?
-- Does an `Accepted` RFC or a current implementation appear to bypass the
-  canonical `Approved` specification gate?
+- requestまたはapproved contractにないfeature、default、validation、UI state、migration behaviorを追加していないか。
+- adjacent ideaをNon-Goals、RFC、Open Questionsへ置いているか。
+- semantic changeをApproved/Implemented canonical fileへ直接混ぜず、durable proposalへ隔離しているか。
+- Accepted RFCまたはcurrent implementationがcanonical `Approved` specification gateを迂回していないか。
 
 ## Required output
 
-Use this structure so a human can make the approval decision quickly:
+人間が素早くapprovalを判断できるよう、次の構造を使用する。
 
 ### Blocking Issues
 
-Issues that make the proposal unsafe, ambiguous, contradictory, untestable,
-over-specified, or unsupported by the source. Include `None identified` when
-empty.
+proposalをunsafe、ambiguous、contradictory、untestable、over-specified、またはsource evidenceで支持されない状態に
+するissue。空なら `None identified` と記載する。
 
 ### Non-blocking Issues
 
-Editorial, traceability, or maintainability concerns that do not prevent
-approval. Include `None identified` when empty.
+approvalを妨げないeditorial、traceability、maintainability上のconcern。空なら `None identified` と記載する。
 
 ### Questions
 
-Questions for the author or human maintainer, especially unresolved behavior
-that is not yet a blocking issue. Include `None identified` when empty.
+authorまたはhuman maintainerへのquestion。特に、blocking issueではないが未決定のbehaviorを含む。空なら
+`None identified` と記載する。
 
 ### Approved as Proposed
 
-State `Yes` or `No`, followed by a short reason. This is a review
-recommendation only; explicitly state that human approval and the status
-transition remain outstanding.
+`Yes` または `No` と短い理由を記載する。これはreview recommendationに過ぎず、human approvalとstatus transitionが
+まだ必要であることを明記する。
 
-Also include a compact verdict table or list covering Intent fidelity,
-Internal consistency, Cross-spec consistency, Terminology consistency,
-Normative strength, Testability, Backward compatibility, Unresolved ambiguity,
-Implementation leakage, and Unrequested behavior.
+さらに、Intent fidelity、Internal consistency、Cross-spec consistency、Terminology consistency、Normative strength、
+Testability、Backward compatibility、Unresolved ambiguity、Implementation leakage、Unrequested behaviorを含むcompactな
+verdict tableまたはlistを付ける。
 
-## Safeguards
+## 安全策
 
-- Never solve an Open Question while reviewing it.
-- Never normalize a weak statement into a stronger requirement for neatness.
-- Never mark the spec `Approved` or `Implemented`.
-- Never review only the changed paragraph when an ID or term is shared across
-  specifications.
-- Do not turn current code behavior into a new requirement without evidence.
-- Do not treat implementation, diagnostics, or mismatched test labels as
-  authority for a requirement.
+- review中にOpen Questionを解決しない。
+- weak statementをneatnessのために強い表現へnormalizeしない。
+- specを `Approved` または `Implemented` に変更しない。
+- IDまたはtermが共有される場合、変更されたparagraphだけをreviewしない。
+- 明示的なevidenceなしにcurrent code behaviorを新しいrequirementにしない。
+- implementation、diagnostic、mismatched test labelをrequirementのauthorityとして扱わない。

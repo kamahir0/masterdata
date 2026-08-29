@@ -1,85 +1,44 @@
-# Terminology
+# 用語
 
 Status: Draft
 
-- **Project**: a directory identified by `masterdata.toml`.
-- **Source root**: a configured filesystem search root. It has no table or
-  schema meaning by itself.
-- **Schema**: the logical declaration of tables, fields, types, and related
-  constraints. Its exact language is defined by the owning specifications.
-- **Primitive Type**: a scalar type with a directly declared value domain. The
-  supported vocabulary is owned by the Primitive Types specification.
-- **Field Modifier**: a field-level choice that changes a base type into a
-  Required, Nullable, or Array field. Its syntax and presence rules are owned
-  by the Field Modifiers specification.
-- **Required**: a field shape whose data entry is present and contains a
-  non-null value of its base type.
-- **Nullable**: a field shape whose data entry is present and may contain
-  `null` or a value of its base type.
-- **Array**: a field shape whose data entry is present and contains zero or
-  more values of its base type; an empty array represents no values.
-- **Underlying Type**: the single primitive wrapped by a Value Object. It is
-  not inferred from a source file path or generated type name.
-- **Type Declaration**: a YAML document that declares one named type category.
-- **Type Capability**: an observable permission or behavior, such as direct
-  key compatibility, that a type may expose. The type-system specifications
-  define capabilities without requiring a particular implementation data
-  structure.
-- **Schema document**: a YAML file with `kind: schema` that declares a table's
-  stable identity and fields.
-- **Data**: values and records supplied for tables; data does not redefine the
-  meaning of a schema.
-- **Data document**: a YAML file with `kind: data` that contributes records to
-  the declared table.
-- **Table**: a logical collection of records identified by the declared
-  project-local `table` identity, independent of a source file's path.
-- **Record**: one instance or row belonging to a table.
-- **Field**: a named, typed member of a record with a stable field identity
-  where the schema requires one.
-- **Schema AST**: typed Rust structures representing schema declarations.
-- **Data AST**: typed Rust structures for data document shape with YAML values
-  retained at field leaves until type resolution.
-- **Table identity**: the project-local stable identity carried by the `table`
-  field. It is distinct from a generated C# type name and from a source file
-  path. The current scaffold does not define a second `tableId` identity;
-  global identity, rename migration, released compatibility, legacy migration,
-  and cross-project identity remain open in the table-identity RFC.
-- **Generated C# type name**: a presentation/code-generation name, supplied by
-  `csharpName` when present or derived by the generator when absent. It MAY be
-  changed independently only where the compatibility specification permits.
-- **Field ID**: persistent MessagePack integer-key identity, separate from a
-  MasterMemory index number.
-- **Value Object**: an immutable domain type that wraps one underlying value.
-  The Value Objects specification proposes that the underlying value is one
-  primitive and defines its generated representation and capabilities.
-- **Enum**: a named type whose declared members have stable numeric values
-  when the type-system and compatibility specifications require them.
-- **Flags Enum**: an enum intended to represent bitwise combinations; its
-  permitted use as a field or key is defined by the type-system specification.
-- **Custom Type**: a user-declared composite type made from supported types.
-- **Index**: a lookup structure declared for a table; its key shape and
-  generated behavior belong to the index specification.
-- **Primary Key**: the index that identifies records for a table, subject to
-  the owning specification's cardinality rules.
-- **Secondary Key**: an additional lookup key for a table.
-- **Unique**: an index property requiring at most one matching record.
-- **Non-Unique**: an index property allowing multiple matching records.
-- **MasterReference**: a declared relationship from one table field to another
-  table/index.
-- **Fixture**: a fixed, version-controlled test input. Tools may copy it to a
-  development project, but normal CLI/GUI execution MUST NOT rewrite it.
-- **Generated Artifact**: a reproducible output such as generated C# or a
-  binary, derived from source inputs and not authoritative for edits.
-- **Source of Truth**: the canonical input that humans edit and review. For
-  project schema/data, the YAML documents are the source of truth.
-- **Build plan**: the validated, hashed input passed from Rust toward the .NET
-  builder boundary.
-- **Schema source-content hash**: a deterministic hash of schema source bytes
-  in the current scaffold. It is not a semantic schema hash or a builder cache
-  key.
-- **Semantic schema hash**: a future hash of canonical parsed/resolved schema
-  meaning; it is not currently implemented.
-- **Builder cache key**: a future composite identity for reusable builder
-  output. It is distinct from both source-content and semantic schema hashes.
-- **Builder**: the .NET-side process that will eventually compile generated C#,
-  invoke MasterMemory v3 Source Generator, and write a binary.
+- **Project**: `masterdata.toml` によって識別されるdirectory。
+- **Source root**: filesystemの探索範囲を設定するroot。それ自体はtableやschemaの意味を持たない。
+- **Schema**: table、field、type、および関連するconstraintの論理的な宣言。その正確なlanguageは、各owner specificationで定義する。
+- **Primitive Type**: value domainが直接宣言されたscalar type。サポートするvocabularyはPrimitive Types specificationが管理する。
+- **Field Modifier**: base typeをRequired、Nullable、またはArray fieldへ変えるfield-levelの選択。syntaxとpresence ruleはField Modifiers specificationが管理する。
+- **Required**: field entryが存在し、base typeのnon-null valueを含むfield shape。
+- **Nullable**: field entryが存在し、`null` またはbase typeのvalueを含んでもよいfield shape。
+- **Array**: field entryが存在し、base typeのvalueを0個以上含むfield shape。空のarrayはvalueなしを表す。
+- **Underlying Type**: Value Objectがwrapする単一のprimitive。source fileのpathやgenerated type nameから推測してはならない。
+- **Type Declaration**: named type categoryを1つ宣言するYAML document。
+- **Type Capability**: direct key compatibilityなど、typeが公開し得る観測可能なpermissionまたはbehavior。type-system specificationsは、特定のimplementation data structureを要求せずにcapabilityを定義する。
+- **Schema document**: `kind: schema` を持ち、tableのstable identityとfieldsを宣言するYAML file。
+- **Data**: tableへ供給するvalueとrecord。dataがschemaの意味を再定義することはない。
+- **Data document**: `kind: data` を持ち、宣言したtableへrecordsを提供するYAML file。
+- **Table**: source fileのpathに依存せず、宣言されたproject-localな `table` identityによって識別されるrecordの論理的なcollection。
+- **Record**: tableに属する1つのinstanceまたはrow。
+- **Field**: recordのnamed・typed member。schemaが要求する場合はstable field identityを持つ。
+- **Schema AST**: schema declarationを表すtyped Rust structure。
+- **Data AST**: data documentのshapeを表すtyped data structure。type resolutionまで、field leafのYAML valueを保持する。
+- **Table identity**: `table` fieldが持つproject-localなstable identity。generated C# type nameおよびsource fileのpathとは別物である。現在のscaffoldは2つ目の `tableId` identityを定義しない。global identity、rename migration、released compatibility、legacy migration、cross-project identityはtable-identity RFCで未解決のままである。
+- **Generated C# type name**: presentation/code-generation name。`csharpName` があればそれを使用し、なければgeneratorが導出する。compatibility specificationが許す場合に限り、独立して変更してもよい（MAY）。
+- **Field ID**: persistentなMessagePack integer-key identity。MasterMemoryのindex numberとは別物である。
+- **Value Object**: 1つのunderlying valueをwrapするimmutableなdomain type。Value Objects specificationでは、underlying valueを1つのprimitiveとし、generated representationとcapabilityを定義することを提案している。
+- **Enum**: named type。その宣言memberは、type-systemとcompatibility specificationが要求する場合にstableなnumeric valueを持つ。
+- **Flags Enum**: bitwise combinationを表すことを意図したenum。fieldまたはkeyとして許可するかはtype-system specificationが定義する。
+- **Custom Type**: supported typeから構成されるuser-declared composite type。
+- **Index**: tableに対して宣言されるlookup structure。key shapeとgenerated behaviorはindex specificationに属する。
+- **Primary Key**: tableのrecordを識別するindex。cardinality ruleはowner specificationに従う。
+- **Secondary Key**: tableに追加されるlookup key。
+- **Unique**: matching recordを高々1件に制限するindex property。
+- **Non-Unique**: 複数のmatching recordを許可するindex property。
+- **MasterReference**: あるtable fieldから別のtable/indexへ向けた宣言済みrelationship。
+- **Fixture**: 固定されたversion-controlled test input。toolはdevelopment projectへcopyしてもよいが、通常のCLI/GUI executionはそれを書き換えてはならない（MUST NOT）。
+- **Generated Artifact**: generated C#やbinaryなど、source inputから導出される再現可能なoutput。editのauthorityではない。
+- **Source of Truth**: 人間が編集・reviewするcanonical input。project schema/dataではYAML documentがSource of Truthである。
+- **Build plan**: validated documentとdeterministicなschema source-content hashを含み、Rustから.NET builder boundaryへ渡すinput。
+- **Schema source-content hash**: current scaffoldにおけるschema source bytesのdeterministicなhash。semantic schema hashでもbuilder cache keyでもない。
+- **Semantic schema hash**: parsed/resolvedされたschema meaningのcanonical formから将来計算するhash。現在は実装されていない。
+- **Builder cache key**: 再利用可能なbuilder outputを識別する将来のcomposite identity。source-content hashともsemantic schema hashとも別物である。
+- **Builder**: .NET側のprocess。将来、generated C#のcompile、MasterMemory v3 Source Generatorの呼び出し、binaryの書き出しを行う。

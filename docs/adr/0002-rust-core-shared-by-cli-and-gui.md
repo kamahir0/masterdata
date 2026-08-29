@@ -1,25 +1,22 @@
-# ADR 0002: Rust core is shared by CLI and GUI
+# ADR 0002: Rust coreをCLIとGUIで共有する
 
 Status: Accepted
 
-## Context
+## 背景（Context）
 
-The CLI and GUI need identical project discovery, parsing, validation, and
-build semantics. A GUI subprocess call to the CLI would make error handling,
-testing, and lifecycle behavior unnecessarily indirect.
+CLIとGUIは、project discovery、parsing、validation、build semanticsを同一にする必要がある。
+GUIからCLIをsubprocess callすると、error handling、testing、lifecycle behaviorが不要に間接的になる。
 
-## Decision
+## 決定（Decision）
 
-`masterdata-app` owns shared application orchestration such as project info,
-validation, build preparation, C# generation, and the .NET boundary.
-`masterdata-core` owns shared domain/document operations. The CLI and Tauri
-invoke the application service as a Rust library; neither frontend may
-reimplement domain logic or invoke the CLI subprocess.
+`masterdata-app` はproject info、validation、build preparation、C# generation、.NET boundaryなどの
+shared application orchestrationを所有する。`masterdata-core` はshared domain/document operationを
+所有する。CLIとTauriはRust libraryとしてapplication serviceを呼び出し、どちらのfrontendもdomain
+logicを再実装したり、CLI subprocessを呼び出したりしてはならない。
 
-## Consequences
+## 結果（Consequences）
 
-Core/application APIs need structured serializable results and diagnostics.
-UI-specific formatting belongs in adapters. A change to project semantics is
-made once and tested once at the core boundary. Tauri preserves diagnostic
-code, kind, source location, schema path, record identity, suggestion, and
-related requirement references in its error DTO.
+Core/application APIにはstructuredでserializableなresultとdiagnosticが必要になる。UI固有のformattingは
+adapterに置く。project semanticsへの変更はcore boundaryで一度だけ行い、一度だけtestする。Tauriは
+diagnostic code、kind、source location、schema path、record identity、suggestion、related requirement
+referenceをerror DTOに保持する。

@@ -1,27 +1,21 @@
-# GUI app shell
+# GUI app shell（GUIアプリシェル）
 
 Status: Draft
 
-The Tauri v2 application is a thin desktop adapter. On startup it invokes the
-`project_info` Tauri command. The command calls the shared `masterdata-app`
-service, which delegates domain work to `masterdata-core`, and returns a
-serializable `ProjectInfo`; the React frontend does not inspect the filesystem,
-parse YAML, or spawn the CLI.
+Tauri v2 applicationは薄いdesktop adapterである。起動時に `project_info` Tauri commandを呼び出す。
+commandはshared `masterdata-app` serviceを呼び、domain workを `masterdata-core` に委譲し、serializableな
+`ProjectInfo`を返す。React frontendはfilesystemをinspectせず、YAMLをparseせず、CLIをspawnしない。
 
-The initial shell contains:
+初期shellには次を含む。
 
-- a project identity card with root/config/source paths;
-- placeholder navigation for tables and types;
-- Reload project action;
-- placeholder Validate and Build controls. Their backend commands use the
-  shared application service; richer interaction remains future GUI scope.
+- root/config/source pathを表示するproject identity card
+- tableとtypeに対するplaceholder navigation
+- projectの再読み込みaction
+- placeholderのValidateとBuild control。backend commandはshared application serviceを使い、より詳細なinteractionは将来のGUI scopeに残す。
 
-The planned layout is left navigation, central record/editor area, right
-inspector, and top Save/Validate/Build actions. GUI errors preserve the
-structured diagnostic code, kind, path, line/column, schema path, record
-identity, suggestion, and related requirement references. The frontend may
-choose how much of that data to render without flattening it at the Tauri
-boundary.
+計画中のlayoutは、左navigation、中央のrecord/editor area、右inspector、上部のSave/Validate/Build actionである。
+GUI errorはstructuredなdiagnostic code、kind、path、line/column、schema path、record identity、suggestion、
+related requirement referenceを保持する。frontendはTauri boundaryでflattenしない限り、そのdataのどこまでrenderするかを
+選択してよい。
 
-Open Questions: project picker UX, unsaved changes policy, and native file
-watcher strategy.
+Open Questions: project picker UX、unsaved changes policy、native file watcher strategy。

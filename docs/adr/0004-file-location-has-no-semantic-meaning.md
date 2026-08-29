@@ -1,24 +1,20 @@
-# ADR 0004: File location has no semantic meaning
+# ADR 0004: File locationはsemantic meaningを持たない
 
 Status: Accepted
 
-## Context
+## 背景（Context）
 
-Projects may split a table across files, keep all YAML in one directory, or
-organize files by feature/team. Inferring table identity from a directory
-would make harmless moves into semantic changes.
+Projectはtableを複数fileに分割しても、すべてのYAMLを1つのdirectoryに置いても、feature/teamごとに
+fileを整理してもよい。directoryからtable identityを推測すると、無害なfile移動がsemantic changeになる。
 
-## Decision
+## 決定（Decision）
 
-Filesystem location is only a discovery boundary. Each YAML file declares its
-`kind` and `table`; schema fields and future index/reference declarations carry
-the remaining meaning.
+Filesystem locationはdiscovery boundaryに過ぎない。各YAML fileが `kind` と `table` を宣言し、schema fieldと
+将来のindex/reference declarationが残りの意味を担う。
 
-## Consequences
+## 結果（Consequences）
 
-Discovery scans configured roots recursively and sorts paths only for
-deterministic processing/hash input. Moving a file inside a source root does
-not change its table identity. Source roots themselves are explicit project
-configuration, not hard-coded directory conventions. The current traversal
-does not follow symlink entries as an internal cycle-safety guard; whether
-source discovery follows symlinks is a separate product Open Question.
+Discoveryはconfigured rootをrecursiveにscanし、deterministicなprocessing/hash inputのためにpathをsortする。
+source root内でfileを移動してもtable identityは変わらない。source root自体は明示的なproject configurationで
+あり、hard-coded directory conventionではない。current traversalはcycle-safetyのinternal guardとして
+symlink entryをfollowしない。source discoveryがsymlinkをfollowするかどうかは、別のproduct Open Questionである。

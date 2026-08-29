@@ -1,26 +1,26 @@
-# RFC: Title
+# RFC: タイトル（Title）
 
 Status: Draft
 
-## Context
+## 背景（Context）
 
-## Problem
+## 課題（Problem）
 
-## Goals
+## 目標（Goals）
 
-## Non-Goals
+## 非目標（Non-Goals）
 
-## Options
+## 選択肢（Options）
 
-## Trade-offs
+## トレードオフ（Trade-offs）
 
-## Proposal
+## 提案（Proposal）
 
-## Compatibility
+## 互換性（Compatibility）
 
-## Open Questions
+## 未解決事項（Open Questions）
 
-## Decision
+## 決定（Decision）
 
-<!-- RFC status uses Draft, Proposed, Accepted, Rejected, or Superseded.
-     Record the outcome after discussion; move adopted behavior into docs/specs. -->
+<!-- RFC statusにはDraft、Proposed、Accepted、Rejected、またはSupersededを使用する。
+     discussion後にoutcomeを記録し、採用したbehaviorはdocs/specsへ移す。 -->

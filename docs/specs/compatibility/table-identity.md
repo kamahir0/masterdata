@@ -1,28 +1,32 @@
-# Table identity
+# Table identity仕様（Table identity）
 
 Status: Implemented
 
-## Summary
+## 概要
 
-The current scaffold has one project-local logical identity for a table. Generated C# naming is a separate presentation concern.
+current scaffoldでは、tableのproject-localなlogical identityは1つだけである。generated C# namingは
+別のpresentation concernである。
 
 ### COMPAT-TABLE-001
 
-For the current scaffold, `table` is the project-local stable table identity and the generated C# type name is a separate, renameable presentation name.
+current scaffoldでは、`table` がproject-localなstable table identityであり、generated C# type nameは
+別のrename可能なpresentation nameである。
 
-This requirement does not define global identity, table rename migration, released-schema compatibility, legacy `tableId` migration, or cross-project identity.
+このrequirementは、global identity、table rename migration、released-schema compatibility、legacy
+`tableId` migration、cross-project identityを定義しない。
 
-## Implementation evidence
+## Implementation evidence（実装evidence）
 
-- Schema and data documents associate by their declared `table` value rather than source path.
-- The C# generator uses `csharpName` only as a generated type-name override while retaining the source `table` identity separately.
-- Project discovery tests verify that source directory placement cannot relabel a document.
+- Schemaとdata documentは、source pathではなく宣言された `table` valueによって関連付く。
+- C# generatorは `csharpName` をgenerated type-name overrideとしてのみ使用し、source `table` identityは別に保持する。
+- Project discovery testは、source directoryの配置によってdocumentのtable identityを変更できないことを確認する。
 
-The accepted design rationale is recorded in [RFC 0001](../../rfcs/0001-table-identity.md), and the applied approval record is [specification change 0001](../../spec-changes/0001-table-identity.md).
+Accepted designのrationaleは [RFC 0001](../../rfcs/0001-table-identity.md) に記録し、適用済みapprovalの
+recordは [specification change 0001](../../spec-changes/0001-table-identity.md) である。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Does a project eventually need a globally stable table identity?
-- What compatibility and migration behavior applies when `table` changes?
-- Should legacy `tableId` input be rejected, preserved as non-semantic metadata, or supported during a migration window?
-- Is cross-project table identity required?
+- Projectは将来globally stableなtable identityを必要とするか。
+- `table` が変更されたとき、どのcompatibilityとmigration behaviorを適用するか。
+- legacy `tableId` inputをrejectするか、non-semantic metadataとして保持するか、migration windowの間だけサポートするか。
+- cross-project table identityは必要か。

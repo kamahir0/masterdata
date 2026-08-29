@@ -1,26 +1,22 @@
-# ADR 0003: .NET is the MasterMemory bridge
+# ADR 0003: .NETをMasterMemory bridgeとする
 
 Status: Accepted
 
-## Context
+## 背景（Context）
 
-MasterMemory v3 Source Generator and binary details belong to the .NET library
-ecosystem. Reimplementing those internals in Rust would create compatibility
-and maintenance risk.
+MasterMemory v3 Source Generatorとbinary detailは、.NET library ecosystemに属する。これらのinternalを
+Rustで再実装すると、compatibilityとmaintenanceのriskが生じる。
 
-## Decision
+## 決定（Decision）
 
-Rust prepares validated inputs, generated C# scaffolding, and a schema
-source-content hash.
-`masterdata-dotnet` owns .NET process invocation and will eventually invoke a
-repository builder that compiles C# and produces/validates MasterMemory binary.
+Rustはvalidated input、generated C# scaffold、schema source-content hashを準備する。
+`masterdata-dotnet` は.NET process invocationを所有し、将来はrepository builderを呼び出してC#をcompileし、
+MasterMemory binaryを生成・validateする。
 
-## Consequences
+## 結果（Consequences）
 
-The process boundary must be explicit and testable. The repository includes a
-dependency-free builder smoke test and an isolated, hand-written MasterMemory
-v3 technical spike that exercises Source Generator, binary build, reload, and
-lookup. Production schema-driven generation remains an explicit
-not-implemented stage. Future cache reuse must use a semantic schema/cache-key
-design rather than treating the schema source-content hash as semantic
-identity.
+process boundaryは明示的かつtest可能でなければならない。repositoryにはdependency-freeなbuilder
+smoke testと、Source Generator、binary build、reload、lookupを実行する独立したhand-written MasterMemory v3
+technical spikeを含める。production schema-driven generationは明示的なnot-implemented stageとして残る。
+将来のcache reuseでは、schema source-content hashをsemantic identityとして扱わず、semantic schema/cache-key
+designを使用する必要がある。

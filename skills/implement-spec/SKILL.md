@@ -5,126 +5,104 @@ description: Implement and verify behavior from an explicitly Approved specifica
 
 # implement-spec
 
-## Purpose and gate
+## 目的とgate
 
-Use this skill only when the requested behavior is identified by one or more
-specification IDs whose canonical documents have `Status: Approved`. The
-approved specification—not the conversation, an idea, a Draft, a Proposed
-document, or an implementation convenience—is the input contract.
+このskillは、canonical documentが `Status: Approved` である1つ以上のspecification IDによって対象behaviorが識別
+される場合だけ使用する。Approved specificationは、conversation、idea、Draft、Proposed document、implementation
+convenienceではなく、input contractである。
 
-If the target is `Draft`, `Proposed`, or `Deprecated`, stop before changing
-product code and report that human approval or a replacement specification is
-required. If the target is already `Implemented`, verify the evidence or
-report the remaining gap instead of silently changing semantics.
+targetが `Draft`、`Proposed`、または `Deprecated` の場合は、product codeを変更する前に停止し、人間のapprovalまたは
+replacement specificationが必要だと報告する。targetがすでに `Implemented` の場合は、evidenceを検証し、semanticsを
+黙って変更せず残りのgapを報告する。
 
-This skill does not auto-approve specifications and does not change their
-meaning. A status may become `Implemented` only after the acceptance evidence
-and repository checks are complete.
+このskillはspecificationをauto-approveせず、意味を変更しない。statusを `Implemented` にできるのは、acceptance
+evidenceとrepository checksが完了した後だけである。
 
-## Required preparation
+## 必須の準備
 
-1. Read `AGENTS.md`.
-2. Confirm every target specification ID, canonical file, exact status, and
-   predecessor/deprecation relationship.
-3. Read the full target spec, related specifications, relevant ADRs, RFC
-   outcome, and `docs/product/terminology.md`.
-4. Extract the normative requirements, validation rules, compatibility notes,
-   non-goals, and any non-blocking Open Questions.
-5. Search the repository for current implementations, tests, fixtures, codegen
-   snapshots/golden files, GUI commands, and .NET bridge calls affected by the
-   IDs.
+1. `AGENTS.md` を読む。
+2. 各target specification ID、canonical file、exact status、predecessor/deprecation relationshipを確認する。
+3. target spec全体、関連specification、relevant ADR、RFCのoutcome、`docs/product/terminology.md` を読む。
+4. normative requirement、validation rule、compatibility note、non-goal、non-blocking Open Questionを抽出する。
+5. 対象IDの影響を受けるcurrent implementation、tests、fixtures、codegen snapshot/golden file、GUI command、.NET bridge
+   callをrepositoryから検索する。
 
-Do not use a `docs/spec-changes/` proposal, RFC, Draft, or Proposed document as
-the implementation input. If the canonical spec is `Approved` but a proposed
-delta is present elsewhere, implement the canonical meaning only and report
-the delta as out of scope until a human-approved atomic merge.
+`docs/spec-changes/` proposal、RFC、Draft、Proposed documentをimplementation inputにしてはならない。
+canonical specが `Approved` でもproposed deltaが別にある場合、canonical meaningだけを実装し、そのdeltaはhuman-approved
+atomic mergeが完了するまでscope外として報告する。
 
-An `Accepted` RFC, an `Approved`-but-not-`Applied` specification-change
-artifact, and current code behavior are not substitutes for the canonical
-specification. If the canonical file has been changed semantically without the
-required atomic workflow, stop and report the workflow violation before
-implementing the new behavior.
+`Accepted` RFC、`Approved` だが `Applied` ではないspecification-change artifact、current code behaviorはcanonical
+specificationの代替ではない。canonical fileがrequired atomic workflowなしにsemanticに変更されている場合は、新しい
+behaviorを実装せずworkflow violationを報告する。
 
-Do not treat a current implementation, fixture, or generated artifact as
-authority when it disagrees with an approved specification. Do not implement a
-Draft Type System or any other unapproved future feature merely because its
-document exists.
+Approved specificationと一致しないcurrent implementation、fixture、generated artifactをauthorityとして扱わない。
+Approvedでないfuture Type Systemや他のfeatureを、documentが存在するという理由で実装しない。
 
-## Implementation flow
+## 実装フロー（Implementation flow）
 
-### 1. Build an acceptance matrix
+### 1. Acceptance matrixを作成する
 
-For each requirement ID, record:
+各Requirement IDについて、次を記録する。
 
-- the observable behavior;
-- success and failure conditions;
-- compatibility expectation;
-- unit/integration/GUI test;
-- fixture or generated artifact evidence, if useful;
-- the source file and code boundary expected to own it.
+- observable behavior
+- successとfailure condition
+- compatibility expectation
+- unit/integration/GUI test
+- 必要に応じたfixtureまたはgenerated artifact evidence
+- 所有すべきsource fileとcode boundary
 
-Use requirement IDs in test names or nearby comments when that makes the
-mapping clear. A test must verify the approved wording, not silently choose an
-answer to an Open Question.
+traceabilityを明確にできる場合は、test nameまたは近接commentにRequirement IDを使う。testはApproved wordingを検証し、
+Open Questionへの答えを黙って選んではならない。
 
-Keep runtime diagnostic codes in their own namespace (for example
-`E-PROJECT-NOT-FOUND`), never reuse a requirement ID such as `PROJECT-004` as
-the diagnostic code, and preserve any related-requirement metadata separately.
+runtime Diagnostic Codeは独自のnamespaceに保つ（例: `E-PROJECT-NOT-FOUND`）。`PROJECT-004` のようなRequirement IDを
+再利用してはならない。related-requirement metadataは別に保持する。
 
-### 2. Identify architecture impact
+### 2. Architecture impactを特定する
 
-Keep domain logic in `masterdata-core`, with CLI and GUI sharing that core.
-GUI code must not discover files or interpret YAML semantics; use a Tauri
-command that calls core. Keep .NET process invocation in
-`masterdata-dotnet`. Do not reimplement MasterMemory internals, binary format,
-or Source Generator behavior in Rust. Do not move the semantic rule to a
-convenient adapter or duplicate it in several layers.
+domain logicは `masterdata-core` に置き、CLIとGUIで共有する。GUI codeはfile discoveryやYAML semanticsを扱っては
+ならず、coreを呼ぶTauri commandを使用する。.NET process invocationは `masterdata-dotnet` に置く。
+MasterMemory internal、binary format、Source Generator behaviorをRustで再実装してはならない。semantic ruleを
+便利なadapterへ移したり、複数layerで重複させたりしない。
 
-### 3. Plan tests and fixtures
+### 3. Testsとfixturesをplanする
 
-Prefer tests first when the behavior is testable. Add or update
-`fixtures/minimal`, `fixtures/full`, or `fixtures/invalid` when a stable
-end-to-end input communicates the rule. A focused unit or integration test is
-enough for a small rule. Fixtures are fixed inputs; copy them through
-`cargo xtask` and never let normal CLI/GUI execution rewrite them.
+behaviorがtest可能なら、testを先に用意することを優先する。stableなend-to-end inputがruleを伝える場合は、
+`fixtures/minimal`、`fixtures/full`、`fixtures/invalid` を追加または更新する。小さなruleにはfocused unitまたは
+integration testで十分である。fixtureは固定inputであり、`cargo xtask` 経由でcopyする。通常のCLI/GUI executionにfixtureを
+書き換えさせてはならない。
 
-For generated C#, update snapshot/golden evidence only when it is part of the
-approved behavior. Do not add a snapshot merely to bless an unapproved output.
+generated C#では、Approved behaviorの一部である場合だけsnapshot/golden evidenceを更新する。未承認のoutputを承認済み
+に見せるためだけにsnapshotを追加しない。
 
-### 4. Implement and verify
+### 4. 実装して検証する
 
-Implement the smallest change that satisfies the acceptance matrix. Then run
-the relevant unit, integration, frontend, GUI, codegen, and .NET bridge checks.
-Finish with `cargo xtask check-all` when the environment supports it. If a
-check cannot run, record the exact reason and do not claim complete
-verification.
+acceptance matrixを満たす最小の変更を実装する。その後、関連するunit、integration、frontend、GUI、codegen、.NET bridge
+checkを実行する。環境が対応していれば最後に `cargo xtask check-all` を実行する。checkを実行できない場合は正確な
+理由を記録し、完全なverificationを主張してはならない。
 
-### 5. Reconcile specification and implementation
+### 5. Specificationとimplementationを照合する
 
-Before changing status, review every requirement ID against the implementation
-and test evidence. The specification may be updated only for a separately
-approved semantic change; implementation work must not rewrite the contract to
-make an incomplete implementation appear correct.
+statusを変更する前に、すべてのRequirement IDをimplementationとtest evidenceに照合する。specificationを更新できるのは
+別途approvedされたsemantic changeだけであり、implementation workによってcontractを変更して未完成implementationを
+正しく見せてはならない。
 
-Also check that existing implementation does not contain an unapproved domain
-assumption. Remove or report it rather than using it as evidence—for example,
-an `id` field is not a primary key unless an approved index specification says
-so. Verify that diagnostic `related_requirements` entries are semantically
-accurate and that test names/comments do not claim unrelated requirement IDs.
+既存implementationにunapproved domain assumptionがないかも確認する。例として、approved index specificationがない限り、
+`id` fieldはprimary keyではない。このようなassumptionはevidenceにせず、removeまたはreportする。Diagnosticの
+`related_requirements` entryがsemantically正確であること、test name/commentが主張するRequirement IDと実際に対応する
+ことも確認する。
 
-Change `Status: Approved` to `Status: Implemented` only when:
+次の条件をすべて満たした場合だけ、`Status: Approved` を `Status: Implemented` に変更する。
 
-- all in-scope acceptance criteria have evidence;
-- tests and appropriate fixtures are synchronized;
-- compatibility behavior is verified or explicitly documented;
-- repository checks pass, or unavailable checks are explicitly reported; and
-- no unresolved Specification Gap affects the claimed behavior.
+- scope内の全acceptance criteriaにevidenceがある。
+- testsと適切なfixturesが同期している。
+- compatibility behaviorが検証済みまたは明示的に文書化されている。
+- repository checksが成功している、または実行不能なcheckを明示的に報告している。
+- 主張するbehaviorに影響する未解決のSpecification Gapがない。
 
-## Specification Gap protocol
+## Specification Gapの扱い（Specification Gap protocol）
 
-If an Approved specification leaves behavior necessary for implementation
-undefined—such as nullable value objects, missing-reference severity, ordering,
-or an error policy—do not choose a domain rule silently. Report:
+Approved specificationがimplementationに必要なbehaviorを未定義のまま残している場合、domain ruleを黙って選択しては
+ならない。次の形式で報告する。
 
 ```text
 Specification Gap
@@ -135,34 +113,29 @@ Specification Gap
 - Proposed route: refine-spec (and review-spec before approval)
 ```
 
-An internal non-semantic choice, such as a private helper name or allocation
-strategy that cannot affect observable behavior, may be made normally. If the
-choice could affect public behavior, compatibility, diagnostics, ordering,
-serialization, or a user-visible GUI state, it is a specification gap.
+private helper nameやallocation strategyなど、observable behaviorに影響しないinternal choiceは通常どおり決めてもよい。
+public behavior、compatibility、diagnostics、ordering、serialization、user-visible GUI stateに影響し得るchoiceは
+specification gapである。
 
-## Required completion report
+## 完了報告（Required completion report）
 
-Report:
+次を報告する。
 
-- target specification IDs and their before/after status;
-- acceptance criteria and test/fixture mapping;
-- implementation boundaries changed;
-- compatibility impact;
-- commands run and results, including `cargo xtask check-all`;
-- any unimplemented boundary or Specification Gap.
+- target specification IDとbefore/after status
+- acceptance criteriaとtest/fixture mapping
+- 変更したimplementation boundary
+- compatibility impact
+- 実行したcommandと結果（`cargo xtask check-all` を含む）
+- 未実装boundaryまたはSpecification Gap
 
-## Non-negotiable safeguards
+## 絶対に外せない安全策
 
-- Never implement directly from conversation when an approved spec is
-  required.
-- Never promote a Draft or Proposed spec during implementation.
-- Never resolve an Open Question by coding a default.
-- Never weaken or strengthen normative language to fit the code.
-- Never use current implementation behavior as authority when it contains
-  unapproved semantics; remove it, report it, or return to refinement.
-- Never implement a proposed Approved-spec change before its canonical
-  specification has been atomically updated by explicit human approval.
-- Never treat a diagnostic code as a requirement ID, and verify that test names
-  or comments describe the requirement they claim to cover.
-- Never duplicate core domain semantics in CLI, GUI, or the .NET adapter.
-- Never claim `Implemented` without test and verification evidence.
+- Approved specが必要な場合、conversationから直接実装しない。
+- DraftまたはProposed specを実装中に昇格させない。
+- Open Questionをcodeでdefaultへ解決しない。
+- codeに合わせるためnormative languageを弱めたり強めたりしない。
+- unapproved semanticsを含むcurrent implementation behaviorをauthorityとして扱わない。remove、report、またはrefinementへ戻す。
+- canonical specificationがatomicに更新される前に、proposed Approved-spec changeを実装しない。
+- Diagnostic CodeをRequirement IDとして扱わず、test name/commentが主張するrequirementを説明していることを確認する。
+- CLI、GUI、.NET adapterでcore domain semanticsを重複させない。
+- testとverification evidenceなしに `Implemented` と主張しない。

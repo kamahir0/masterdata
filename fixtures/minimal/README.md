@@ -1,11 +1,8 @@
-# Minimal fixture
+# 最小fixture（Minimal fixture）
 
-This fixed project is used by `cargo xtask cli`, `cargo xtask gui`, and the
-integration smoke test. `target/dev-project` is recreated from this directory
-before those commands run, so the fixture itself is never edited by a
-development session.
+この固定projectは、`cargo xtask cli`、`cargo xtask gui`、integration smoke testで使用する。
+これらのcommandを実行する前に、`target/dev-project` はこのdirectoryから再作成されるため、fixture自体がdevelopment
+sessionによって編集されることはない。
 
-The schema and data files intentionally share a source directory but declare
-their own `kind` and `table`. A second data file for `item` demonstrates that
-one table may be split across multiple YAML files.
-
+schemaとdata fileは意図的に同じsource directoryを共有するが、それぞれが独自の `kind` と `table` を宣言する。
+2つ目の `item` 用data fileは、1つのtableを複数のYAML fileに分割できることを示す。

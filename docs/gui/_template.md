@@ -1,29 +1,29 @@
-# GUI specification: Title
+# GUI仕様: タイトル（GUI specification: Title）
 
 Status: Draft
 
-## Purpose
+## 目的
 
-## Layout
+## レイアウト（Layout）
 
-## States
+## 状態（States）
 
-## Interactions
+## 操作（Interactions）
 
-## Keyboard
+## キーボード（Keyboard）
 
-## Focus
+## フォーカス（Focus）
 
-## Validation
+## 検証（Validation）
 
-## Errors
+## エラー（Errors）
 
-## Accessibility
+## アクセシビリティ（Accessibility）
 
-## Reference Artifacts
+## 参照artifact（Reference Artifacts）
 
-<!-- List each image path and label it Normative or Reference-only. Include state and viewport when Normative. -->
+<!-- 各imageのpathと、NormativeまたはReference-onlyのlabelを記載する。Normativeの場合はstateとviewportも含める。 -->
 
-## Open Questions
+## 未解決事項（Open Questions）
 
-<!-- Keep unresolved GUI behavior here; do not silently resolve it in code. -->
+<!-- 未解決のGUI behaviorをここに残す。codeで黙って解決してはならない。 -->

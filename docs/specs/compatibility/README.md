@@ -1,10 +1,13 @@
-# Compatibility specifications
+# Compatibility仕様
 
-Compatibility rules are split into canonical files whose requirements can move through the specification lifecycle together. This avoids one broad `Status:` value accidentally applying to unrelated requirements at different maturity levels.
+Compatibility ruleは、requirementが一緒にspecification lifecycleを進められるcanonical fileへ
+分割して管理する。これにより、1つの広い `Status:` valueが、成熟度の異なる無関係なrequirementへ
+誤って適用されることを防ぐ。
 
-- [Table identity](table-identity.md) — current project-local table identity contract.
-- [Field identity](field-identity.md) — Draft field-ID and tombstone rules.
-- [Enum identity](enum-identity.md) — Draft enum wire-identity rules.
-- [Index identity](index-identity.md) — Draft distinction between field IDs and MasterMemory index numbers.
+- [Table identity仕様](table-identity.md) — current project-local table identity contract。
+- [Field identity仕様](field-identity.md) — Draftのfield-IDとtombstone rule。
+- [Enum identity仕様](enum-identity.md) — Draftのenum wire-identity rule。
+- [Index identity仕様](index-identity.md) — field IDとMasterMemory index numberの区別に関するDraft rule。
 
-Requirement IDs remain stable when a document is split or moved. Directory structure is documentation organization only and has no product semantic meaning.
+documentを分割または移動してもRequirement IDはstableに保つ。directory structureはdocumentationの
+organizationに過ぎず、product semantic meaningを持たない。

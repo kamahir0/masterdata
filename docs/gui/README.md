@@ -1,18 +1,15 @@
-# GUI specifications
+# GUI仕様
 
-GUI behavior is specification-worthy when it affects a user's observable
-workflow. GUI specs use the same `Draft`, `Proposed`, `Approved`,
-`Implemented`, and `Deprecated` lifecycle as domain specs. Use a `GUI-` prefix
-for requirement IDs, followed by the surface and a stable three-digit number.
+GUI behaviorがuserのobservable workflowに影響する場合、それは仕様化の対象である。GUI specはdomain specと同じ
+`Draft`、`Proposed`、`Approved`、`Implemented`、`Deprecated` lifecycleを使用する。Requirement IDには `GUI-`
+prefixを付け、その後にsurfaceとstableな3桁のnumberを続ける。
 
-The GUI specification should describe behavior rather than duplicate
-`masterdata-core` semantics. It may cover layout, state, selection, editing,
-validation, focus, keyboard and mouse interaction, loading, empty/error/
-disabled states, unsaved changes, and build-in-progress behavior. The
-Tauri command remains the adapter boundary for shared domain operations.
+GUI specでは `masterdata-core` のsemanticsを重複させず、behaviorを記述する。layout、state、selection、editing、
+validation、focus、keyboardとmouse interaction、loading、empty/error/disabled state、unsaved change、build-in-progress
+behaviorを扱ってよい。shared domain operationに対するadapter boundaryはTauri commandである。
 
-Use [_template.md](_template.md) when starting a new surface specification.
-For a larger surface, keep visual artifacts beside its specification:
+新しいsurface specificationは [_template.md](_template.md) から始める。大きなsurfaceでは、visual artifactを
+specificationの隣に置く。
 
 ```text
 docs/gui/table-editor/
@@ -22,17 +19,13 @@ docs/gui/table-editor/
 └── empty-state.png
 ```
 
-Every image listed by a spec MUST be labeled either `Normative` (the reviewed
-visual is part of the acceptance contract, with the relevant state and
-viewport described) or `Reference-only` (a design aid that does not add
-behavior). A reference image never overrides written normative requirements.
-If an image is changed, review the affected GUI requirement IDs and update the
-compatibility/acceptance notes as needed. This task intentionally adds no
-Table Editor images or behavior.
+specに列挙するすべてのimageは、`Normative`（review済みvisualがacceptance contractの一部で、対象stateとviewportを
+記述する）または `Reference-only`（behaviorを追加しないdesign aid）のいずれかにlabelしなければならない（MUST）。
+reference imageがwritten normative requirementを上書きすることはない。imageを変更した場合は、影響するGUI
+Requirement IDをreviewし、compatibility/acceptance noteを必要に応じて更新する。このtaskではTable Editorのimageも
+behaviorも追加しない。
 
-Keep one canonical GUI rule in one surface specification. Use requirement IDs
-such as `GUI-TABLE-SEL-001` for observable layout, state, selection, editing,
-keyboard, focus, validation, loading, empty/error/disabled, unsaved-change,
-and build-progress behavior. Shared domain meaning remains in
-`masterdata-core`; a GUI spec should describe only the user's observable
-adapter behavior and its boundary with Tauri.
+各canonical GUI ruleは、1つのsurface specificationに1つだけ置く。observableなlayout、state、selection、editing、
+keyboard、focus、validation、loading、empty/error/disabled、unsaved-change、build-progress behaviorには、
+`GUI-TABLE-SEL-001` のようなRequirement IDを使用する。shared domain meaningは `masterdata-core` に残し、GUI specは
+userのobservableなadapter behaviorとTauriとのboundaryだけを記述する。

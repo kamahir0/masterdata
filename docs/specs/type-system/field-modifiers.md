@@ -1,42 +1,40 @@
-# Field Modifiers
+# Field Modifiers仕様（Field Modifiers）
 
 Status: Proposed
 
 Domain: Type System
 
-## Summary
+## 概要
 
-This proposal defines the field-level representation of Required, Nullable,
-and Array values for a supported base type. It keeps modifiers out of the
-type-name string and defines field presence independently from the value
-stored in a field.
+本proposalは、supported base typeに対するRequired、Nullable、Array valueのfield-levelな表現を
+定義する。modifierをtype-name stringへ埋め込まず、fieldのpresenceをfieldに格納されたvalueから
+独立して定義する。
 
-## Terminology
+## 用語
 
-For this document, `T` means one supported field value type, such as a
-primitive or a Value Object after its own specification is available. A
-**base type** is the type named by the field's `type` property. A **field
-modifier** is the field-level choice between Required, Nullable, and Array.
-These terms extend [product terminology](../../product/terminology.md).
+このdocumentでは、`T` はprimitiveや、固有のspecificationが利用可能になった後のValue Objectなど、
+supported field value typeの1つを表す。**base type** はfieldの `type` propertyが指定するtypeである。
+**field modifier** はRequired、Nullable、Arrayのいずれかを選ぶfield-levelの選択である。これらの
+termは[product terminology（用語）](../../product/terminology.md)を拡張する。
 
-## Normative Requirements
+## 規範要件
 
 ### TYPE-FIELD-001
 
-Every supported field value type MUST have one of these modifier shapes:
+すべてのsupported field value typeは、次のmodifier shapeのいずれか1つでなければならない（MUST）。
 
-- `T` — Required;
-- `T?` — Nullable; or
-- `T[]` — Array.
+- `T` — Required
+- `T?` — Nullable
+- `T[]` — Array
 
-The combinations `T?[]` and `T[]?` MUST NOT be supported. Nullable and Array
-are mutually exclusive modifiers in this proposal. When neither modifier is
-active, the field has the Required shape `T`.
+`T?[]` と `T[]?` の組み合わせはサポートしてはならない（MUST NOT）。このproposalではNullableと
+Arrayは相互排他的なmodifierである。どちらのmodifierもactiveでない場合、fieldのshapeはRequiredの
+`T` となる。
 
 ### TYPE-FIELD-002
 
-Field modifiers MUST be expressed as field-level options, not embedded in the
-type-name string. For a base type `T`, the proposed YAML surface is:
+Field modifierはtype-name stringへ埋め込まず、field-level optionとして表現しなければならない
+（MUST）。base type `T` に対するproposed YAML surfaceは次のとおりである。
 
 ```yaml
 fields:
@@ -50,72 +48,63 @@ fields:
     array: true
 ```
 
-The `type` value MUST name the base type without `?` or `[]` modifier
-suffixes. Setting both `nullable: true` and `array: true` MUST be a schema
-validation error.
+`type` valueは `?` または `[]` のmodifier suffixなしでbase typeを指定しなければならない（MUST）。
+`nullable: true` と `array: true` の両方を設定した場合、schema validation errorとしなければならない（MUST）。
 
 ### TYPE-FIELD-003
 
-The field entry in a data record MUST be present for Required, Nullable, and
-Array fields alike.
+data record内のfield entryは、Required、Nullable、Arrayのいずれでも存在しなければならない（MUST）。
 
-- A Required field MUST contain a non-null value valid for `T`.
-- A Nullable field MAY contain `null`; when it is non-null, the value MUST be
-  valid for `T`. Omitting the field MUST be invalid.
-- An Array field MUST contain an array whose elements are valid for `T`.
-  An empty array `[]` MUST be valid, `null` MUST be invalid, and omitting the
-  field MUST be invalid.
+- Required fieldは、`T` としてvalidなnon-null valueを含まなければならない（MUST）。
+- Nullable fieldは `null` を含んでもよい（MAY）。non-nullの場合、そのvalueは `T` としてvalidで
+  なければならない（MUST）。fieldを省略した場合はinvalidでなければならない（MUST）。
+- Array fieldは、要素が `T` としてvalidなarrayを含まなければならない（MUST）。空array `[]` はvalidで
+  なければならず（MUST）、`null` はinvalidでなければならず（MUST）、fieldを省略した場合はinvalidでなければならない（MUST）。
 
 ### TYPE-FIELD-004
 
-A Nullable field and an Array field MUST be key-incompatible for direct
-MasterMemory Primary Key or Secondary Key use, regardless of the key
-compatibility of their base type. In particular, `ItemId?` and `ItemId[]` are
-key-incompatible shapes when those declarations are supported.
+Nullable fieldとArray fieldは、base typeのkey compatibilityにかかわらず、MasterMemoryのPrimary Key
+またはSecondary Keyとして直接利用する場合にkey-incompatibleでなければならない（MUST）。特に、
+そのdeclarationがsupportされた場合の `ItemId?` と `ItemId[]` はkey-incompatible shapeである。
 
-This requirement defines the modifier effect on capability; the declaration
-and validation of indexes belong to the future index specification.
+このrequirementが定義するのはmodifierがcapabilityへ与える影響だけであり、indexのdeclarationとvalidationは
+将来のindex specificationに属する。
 
 ### TYPE-FIELD-005
 
-An explicitly supplied `nullable: false` or `array: false` option MUST be
-accepted. Each `false` value MUST be semantically equivalent to the
-corresponding option being absent. Therefore, both options absent and both
-options explicitly `false` MUST resolve to the same Required shape. This does
-not change the rule that enabling both modifiers with `true` is invalid. The
-equivalence applies independently: `nullable: false, array: true` resolves to
-`T[]`, and `nullable: true, array: false` resolves to `T?`.
+明示的に指定された `nullable: false` または `array: false` optionは受け入れなければならない（MUST）。
+各 `false` valueは、対応するoptionが存在しない場合とsemanticに同値でなければならない（MUST）。したがって、
+両optionがない場合と、両optionを明示的に `false` とした場合は、同じRequired shapeへresolveしなければならない（MUST）。
+このことは、両modifierを `true` でenableした場合にinvalidとするruleを変更しない。equivalenceは独立して適用し、
+`nullable: false, array: true` は `T[]`、`nullable: true, array: false` は `T?` へresolveする。
 
-## Validation Rules
+## 検証ルール
 
-The observable validation outcomes for this proposal are defined by
-`TYPE-FIELD-001` through `TYPE-FIELD-005`: mutually exclusive shapes,
-field-level syntax, presence/null/empty-array behavior, key capability, and
-explicit-false normalization. The exact diagnostic codes, source paths, and
-parser-specific YAML node classification remain unassigned here.
+このproposalの観測可能なvalidation outcomeは、`TYPE-FIELD-001` から `TYPE-FIELD-005` によって定義する。
+対象は、mutually exclusiveなshape、field-level syntax、presence/null/empty-array behavior、key capability、
+explicit-false normalizationである。exact diagnostic code、source path、parser-specific YAML node classificationは、
+ここでは未割り当てのままとする。
 
-## Acceptance Evidence
+## 受け入れ証拠
 
-| Requirement | Success observation | Failure observation | Suggested evidence |
+| Requirement（要件） | Success observation（成功時の観測） | Failure observation（失敗時の観測） | Suggested evidence（推奨する証拠） |
 | --- | --- | --- | --- |
-| `TYPE-FIELD-001` | `T`, `T?`, and `T[]` are distinct supported shapes. | `T?[]` and `T[]?` are rejected. | Modifier-shape validation tests. |
-| `TYPE-FIELD-002` | Field-level `nullable` or `array` selects the shape while `type` remains the base name. | Suffix syntax or both enabled options produce a schema validation failure. | Schema syntax tests. |
-| `TYPE-FIELD-003` | Required values, nullable `null`, and array `[]` are accepted when the field entry exists. | Omission, invalid `null`, or invalid array shape is rejected. | Data presence and null/array tests. |
-| `TYPE-FIELD-004` | Modifier capability is reported independently of the base primitive. | Nullable and Array shapes cannot be used as direct keys. | Key-capability tests after index declarations exist. |
-| `TYPE-FIELD-005` | Omitted options and explicit `nullable: false` / `array: false` resolve to the same Required shape. | An explicit `false` is rejected or changes the shape relative to omission. | Modifier normalization tests. |
+| `TYPE-FIELD-001` | `T`、`T?`、`T[]` が別々のsupported shapeである。 | `T?[]` と `T[]?` がrejectされる。 | Modifier-shape validation tests。 |
+| `TYPE-FIELD-002` | field-levelの `nullable` または `array` がshapeを選び、`type` はbase nameのままである。 | suffix syntaxまたは両方のenabled optionがschema validation failureを生む。 | Schema syntax tests。 |
+| `TYPE-FIELD-003` | field entryが存在すれば、Required value、nullable `null`、array `[]` が受け入れられる。 | omission、invalid `null`、invalid array shapeがrejectされる。 | Data presence and null/array tests。 |
+| `TYPE-FIELD-004` | modifier capabilityがbase primitiveから独立して報告される。 | NullableとArray shapeをdirect keyにできない。 | Key-capability tests after index declarations exist。 |
+| `TYPE-FIELD-005` | optionの省略と明示的な `nullable: false` / `array: false` が同じRequired shapeへresolveする。 | 明示的な `false` がrejectされるか、省略時とshapeが変わる。 | Modifier normalization tests。 |
 
-## Compatibility
+## 互換性
 
-Field modifiers change the accepted data shape and will affect generated C#
-and serialized representation once implemented. Existing field identity rules
-remain owned by the [field identity specification](../compatibility/field-identity.md),
-including the separation between field IDs and index numbers. Released-schema
-compatibility and migration classification for adding or changing a modifier
-remain Open Questions.
+Field modifierはaccepted data shapeを変え、実装後はgenerated C#とserialized representationへ影響する。
+既存のfield identity ruleは[field identity仕様（field identity specification）](../compatibility/field-identity.md)が所有し、
+field IDとindex numberの分離もそこに含まれる。modifierを追加、削除、変更した場合のreleased-schema
+compatibilityとmigration classificationは、引き続きOpen Questionである。
 
-## Examples
+## 例
 
-The following examples are non-normative illustrations:
+次はnon-normativeな例である。
 
 ```yaml
 # Required: the key must be present and the value cannot be null.
@@ -128,11 +117,10 @@ optionalReward: null
 rewards: []
 ```
 
-Explicit `nullable: false` and `array: false` are non-normative syntax
-examples of the Required shape; each has the same meaning as omitting that
-option.
+Explicit `nullable: false` と `array: false` は、Required shapeのnon-normativeなsyntax exampleであり、
+それぞれoptionを省略した場合と同じ意味を持つ。
 
-The following shape is invalid because it enables both modifiers:
+次のshapeは、両modifierをenableしているためinvalidである。
 
 ```yaml
 type: ItemId
@@ -140,24 +128,16 @@ nullable: true
 array: true
 ```
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- How should non-boolean YAML nodes supplied to `nullable` or `array` be
-  classified across parser candidates, and is any coercion permitted at that
-  boundary?
-- What exact YAML node classification is required for arrays and nulls across
-  parser candidates?
-- How are nullable reference types and nullable value types represented in
-  generated C# while preserving Unity compatibility?
-- What released-schema compatibility classification applies when a modifier
-  is added, removed, or changed?
-- What exact diagnostic code and source path identify a missing field,
-  invalid null, or invalid array element?
-- Can future type categories introduce additional modifiers, and if so how
-  will they remain distinct from the three initial shapes?
+- `nullable` または `array` に指定されたnon-boolean YAML nodeをparser candidate間でどのように分類し、そのboundaryでcoercionを許可するか。
+- arrayとnullに必要なexact YAML node classificationは何か。
+- Unity compatibilityを保ちながら、nullable reference typeとnullable value typeをgenerated C#でどう表現するか。
+- modifierを追加、削除、変更した場合、どのreleased-schema compatibility classificationを適用するか。
+- missing field、invalid null、invalid array elementを特定するexact diagnostic codeとsource pathは何か。
+- future type categoryがadditional modifierを導入できるか。導入する場合、初期の3 shapeとどう区別するか。
 
-## Non-Goals
+## 非目標
 
-This proposal does not implement schema parsing, nullable or array validation,
-Value Object resolution, index generation, MessagePack attributes, C#
-generation, or MasterMemory binary generation.
+このproposalは、schema parsing、nullableまたはarray validation、Value Object resolution、index generation、
+MessagePack attributes、C# generation、MasterMemory binary generationを実装しない。

@@ -1,15 +1,13 @@
-# Full reference fixture
+# 完全な参照fixture（Full reference fixture）
 
-This directory is the planned dogfood project for the complete schema model.
-It is intentionally descriptive while the initial parser and builder are
-still being expanded. The eventual fixture will exercise:
+このdirectoryは、completeなschema modelをdogfoodするためのplanned projectである。initial parserとbuilderがまだ
+拡張中のため、現時点では意図的に説明用としている。将来のfixtureでは次を検証する。
 
-- value objects and immutable custom types
-- normal and flags enums
-- primary and composite keys
-- unique, non-unique, and composite secondary indexes
-- one-to-one and one-to-many `MasterReference`
+- value objectとimmutable custom type
+- 通常のenumとflags enum
+- primary keyとcomposite key
+- unique、non-unique、composite secondary index
+- one-to-oneとone-to-manyの `MasterReference`
 
-The current files use declarations that the core can preserve in its schema
-AST. Type resolution, index materialization, reference helpers, and
-MasterMemory generation remain open implementation work.
+current fileは、coreがschema ASTに保持できるdeclarationを使用している。Type resolution、index materialization、
+reference helper、MasterMemory generationは引き続き未解決のimplementation workである。

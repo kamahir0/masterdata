@@ -1,8 +1,8 @@
-# Build pipeline
+# Build pipeline仕様（Build pipeline）
 
 Status: Draft
 
-The intended pipeline is:
+想定するpipelineは次のとおりである。
 
 ```text
 resolve project
@@ -20,54 +20,42 @@ resolve project
  -> atomically replace final output
 ```
 
-The Rust core owns the first stages and exposes a `BuildPlan` with validated
-documents and a deterministic schema source-content hash. `masterdata-codegen-csharp` owns
-structured C# rendering. `masterdata-dotnet` is the only process boundary for
-the .NET builder. MasterMemory binary format and Source Generator behavior
-MUST remain in .NET dependencies.
+Rust coreは最初のstageを担当し、validated documentとdeterministicなschema source-content hashを
+持つ `BuildPlan` を公開する。`masterdata-codegen-csharp` はstructured C# renderingを担当する。
+.NET builderとの唯一のprocess boundaryは `masterdata-dotnet` である。MasterMemory binary
+formatとSource Generatorのbehaviorは、.NET dependencyに残さなければならない（MUST）。
 
-Current behavior is intentionally smaller: `prepare_build` validates and
-calculates a schema source-content hash, the C# crate plans a primitive immutable
-scaffold, and the .NET crate can run both a bridge smoke test and a separate
-MasterMemory v3 technical spike. Production schema-driven binary generation
-remains an explicit not-implemented boundary. A non-dry-run application build
-invokes that boundary before publishing generated C#; therefore the current
-not-implemented failure leaves no misleading final generated directory. When
-the production builder becomes available, generated C#, binary output, and
-cache writes MUST use staging and be published only after all required stages
-have succeeded.
+current behaviorは意図的に小さい。`prepare_build` はvalidationとschema source-content hashの
+計算を行い、C# crateはprimitive immutable scaffoldをplanし、.NET crateはbridge smoke testと
+独立したMasterMemory v3 technical spikeの双方を実行できる。production schema-driven binary
+generationは、明示的なnot-implemented boundaryとして残る。non-dry-run application buildは
+generated C#をpublishする前にそのboundaryを呼び出すため、現在のnot-implemented failureが
+misleadingなfinal generated directoryを残すことはない。production builderが利用可能になった
+場合、generated C#、binary output、cacheへのwriteはstagingを使い、必要なすべてのstageが成功した
+後にのみpublishしなければならない（MUST）。
 
-Generated identifier validation is a conservative scaffold guard. The complete
-C# naming policy is tracked in the Proposed
-[`C# naming RFC`](../rfcs/0003-csharp-naming.md), not silently defined here.
+Generated identifier validationはconservativeなscaffold guardである。completeなC# naming policyは、
+ここで黙って定義せず、Proposedの [`C# naming RFC`](../rfcs/0003-csharp-naming.md) で管理する。
 
-## Output and identity boundaries
+## Outputとidentityの境界
 
-The current configuration treats `build.output` as the generated C# output
-directory. An optional `build.binary_output` can identify a future
-MasterMemory binary destination, while `build.cache` identifies a separate
-cache directory. These paths are represented separately in the build plan and
-must not be inferred from one another. The final configuration contract,
-atomic replacement details, and Unity placement policy remain Open Questions.
+current configurationでは `build.output` をgenerated C# output directoryとして扱う。任意の
+`build.binary_output` は将来のMasterMemory binary destinationを指定でき、`build.cache` は独立した
+cache directoryを指定する。これらのpathはbuild plan内で分離して表現し、互いから推論してはならない。final
+configuration contract、atomic replacementの詳細、Unityへの配置policyは
+引き続きOpen Questionである。
 
-The following identities are distinct and MUST NOT be conflated:
+次のidentityは別物であり、混同してはならない（MUST NOT）。
 
-- **Schema source-content hash**: a hash of schema source bytes used for diagnostics and
-  change detection in the current scaffold. Whitespace/comments can change it.
-- **Semantic schema hash**: a future hash of parsed, resolved, canonical
-  schema meaning. It is not implemented until the type system and YAML subset
-  are specified.
-- **Builder cache key**: a future composite identity that may include the
-  semantic schema hash, C# generator version, MasterMemory version, MessagePack
-  version, builder protocol version, and target/runtime compatibility inputs.
+- **Schema source-content hash**: current scaffoldでdiagnosticsとchange detectionに使う、schema source bytesのhash。whitespaceやcommentによって変化し得る。
+- **Semantic schema hash**: parsed、resolved、canonicalなschema meaningから将来計算するhash。type systemとYAML subsetが仕様化されるまで実装しない。
+- **Builder cache key**: semantic schema hash、C# generator version、MasterMemory version、MessagePack version、builder protocol version、target/runtime compatibility inputなどを含む可能性がある、将来のcomposite identity。
 
-The current `BuildPlan` exposes only the schema source-content hash. It MUST NOT be
-described or used as a semantic builder cache key. Generated C# output,
-MasterMemory binary output, and cache directory are separate concepts; the
-eventual configuration shape remains an Open Question. Output replacement MUST
-be atomic once binary build exists.
+current `BuildPlan` が公開するのはschema source-content hashだけである。これをsemantic builder
+cache keyとして説明または使用してはならない（MUST NOT）。generated C# output、MasterMemory binary
+output、cache directoryは別概念であり、将来のconfiguration shapeはOpen Questionのままである。
+binary buildが存在する場合、output replacementはatomicでなければならない（MUST）。
 
-Open Questions: generated project ownership, cache eviction, and how Unity
-asset import should observe atomic output replacement. The product-level
-symlink follow/ignore policy for source discovery is also unresolved; the
-current traversal guard does not follow symlink entries to prevent cycles.
+Open Questions: generated projectのownership、cache eviction、Unity asset importがatomicなoutput
+replacementをどう観測するか。source discoveryでsymlinkをfollowまたはignoreするproduct-level policyも
+未解決であり、current traversal guardはcycle防止のためsymlink entryをfollowしない。

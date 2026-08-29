@@ -1,22 +1,24 @@
-# Enums and flags
+# EnumとFlags
 
 Status: Draft
 
-Normal enums and Flags enums are distinct schema categories whose numeric representation and key capabilities require explicit specification.
+通常のEnumとFlags Enumは別のschema categoryであり、numeric representationとkey capabilityを
+明示的に仕様化する必要がある。
 
 ### SCHEMA-ENUM-001
 
-Enum numeric values MUST be treated as persistent wire identities; removed values MUST NOT normally be reused.
+Enumのnumeric valueはpersistentなwire identityとして扱わなければならず（MUST）、削除したvalueは
+通常再利用してはならない（MUST NOT）。
 
 ### SCHEMA-FLAGS-001
 
-Flags enums MUST NOT be primary or secondary keys.
+Flags Enumはprimary keyまたはsecondary keyであってはならない（MUST NOT）。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-- Which underlying integer types are supported?
-- Are explicit numeric values mandatory?
-- Is `None = 0` required or recommended for Flags enums?
-- Must Flags values be powers of two except named composites?
-- Are normal enums always key-compatible?
-- What compatibility behavior applies to rename, removal, and numeric-value changes?
+- どのunderlying integer typeをサポートするか。
+- 明示的なnumeric valueを必須とするか。
+- Flags Enumでは `None = 0` を必須または推奨とするか。
+- named compositeを除き、Flags valueは2の累乗でなければならないか。
+- 通常のEnumは常にkey-compatibleか。
+- rename、削除、numeric value変更にどのcompatibility behaviorを適用するか。

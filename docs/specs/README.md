@@ -1,147 +1,117 @@
-# Specifications
+# 仕様（Specifications）
 
-Specifications are version-controlled product and domain contracts. They state
-observable behavior and compatibility rules in language that a person can
-review and a test can exercise. Code may implement only a subset while a
-specification is being drafted, but code MUST NOT silently contradict the
-current `Approved` or `Implemented` specification.
+Specificationはversion-controlledなproduct/domain contractである。人間がreviewでき、
+testで検証できる言葉で、観測可能なbehaviorとcompatibility ruleを記述する。仕様が
+Draftの間はcodeが一部だけを実装していてもよいが、current `Approved` または
+`Implemented` specificationと黙って矛盾してはならない（MUST NOT）。
 
-This directory is the canonical home for product and domain specifications.
-The repository workflow for turning conversation into a proposed change is
-documented in [Specification workflow](../contributing/specification-workflow.md).
+このdirectoryはproductおよびdomain specificationのcanonicalな場所である。conversationを
+proposed changeへ変換するrepository workflowは、[仕様ワークフロー（Specification workflow）](../contributing/specification-workflow.md) に記載する。
 
-## Normative and non-normative content
+## Normativeとnon-normativeの内容
 
-Normative content defines behavior that an implementation is required or
-permitted to expose. It lives primarily in `Normative Requirements`,
-`Validation Rules`, and explicitly marked compatibility rules. Each normative
-requirement has a stable ID.
+Normative contentは、implementationが公開する必要のある、または公開を許可されたbehaviorを定義する。主に
+`Normative Requirements`、`Validation Rules`、明示的に
+compatibility ruleと記した箇所に置く。各normative requirementはstable IDを持つ。
 
-Non-normative content includes summaries, rationale, examples, implementation
-notes, references, and design discussion. It helps people understand a
-specification but does not add behavior. An example MUST NOT be the only place
-where a product rule is stated.
+Non-normative contentには、summary、rationale、examples、implementation notes、references、
+design discussionを含む。人がspecificationを理解する助けにはなるが、behaviorを追加しない。
+exampleだけをproduct ruleの唯一の記述場所にしてはならない（MUST NOT）。
 
-Specifications are not meeting minutes. Conversation history belongs in the
-change or review context, decision rationale belongs in an ADR when it is
-important, and the specification contains the resulting behavior only.
+Specificationはmeeting minutesではない。conversation historyはchangeまたはreview contextへ、
+decision rationaleは重要な場合にADRへ置き、specificationにはそこから得られたbehaviorだけを記載する。
 
-## Status lifecycle
+## Statusのlifecycle
 
-The `Status:` header uses exactly one of these values:
+`Status:` headerは、次の値のいずれか1つだけを使用する。
 
-- `Draft`: still being organized; it may contain unresolved questions and is
-  not an implementation authority.
-- `Proposed`: sufficiently structured to review as an implementation
-  candidate, but not finally approved by a human maintainer.
-- `Approved`: the current normative contract. New implementation work SHOULD
-  use this status as its source of truth.
-- `Implemented`: an `Approved` contract whose acceptance criteria have
-  corresponding implementation, tests, and appropriate fixture evidence. The
-  meaning of the requirements does not change when this status is applied.
-- `Deprecated`: an old contract retained for history or compatibility context;
-  it is no longer a target for new implementation. A replacement or reason
-  SHOULD be linked.
+- `Draft`: まだ整理中の状態。不明点を含んでもよく、implementation authorityではない。
+- `Proposed`: implementation candidateとしてreviewできる程度に整理済みだが、人間のmaintainerによる最終承認は受けていない。
+- `Approved`: current normative contract。新しいimplementation workは原則としてこのstatusをSource of Truthにするべきである（SHOULD）。
+- `Implemented`: acceptance criteriaに対応するimplementation、tests、適切なfixture evidenceを備えた `Approved` contract。適用してもrequirementの意味は変わらない。
+- `Deprecated`: historyまたはcompatibility contextのために残す旧contract。新しいimplementationの対象ではない。replacementまたは理由をlinkするべきである（SHOULD）。
 
-The normal progression is `Draft` -> `Proposed` -> `Approved` ->
-`Implemented`. A human maintainer may move a specification to `Deprecated`.
-Only an explicit human approval (for example, a reviewed repository change or
-an equivalent maintainer operation) may move a proposal to `Approved`. An AI
-agent MUST NOT make that transition automatically. A review recommendation of
-“Approved as Proposed” is evidence for a human reviewer, not the approval
-operation itself.
+通常の進行は `Draft` -> `Proposed` -> `Approved` -> `Implemented` である。人間のmaintainerは
+specificationを `Deprecated` へ移してもよい。`Approved` へ移せるのは、明示的なhuman approval
+（review済みrepository changeまたは同等のmaintainer operationなど）がある場合だけである。
+AI agentはこのtransitionを自動で行ってはならない（MUST NOT）。「Approved as Proposed」という
+review recommendationはhuman reviewerへのevidenceであり、approval operationそのものではない。
 
-A semantic change to an approved or implemented document is a new proposed
-change artifact. The canonical document remains unchanged and authoritative
-while that artifact is under review. After explicit human approval, the
-approved change is merged atomically into the canonical document; unchanged
-requirement IDs remain stable, while replaced or split requirements receive
-new IDs and retain a reference to their predecessor. An incomplete
-implementation keeps the canonical document `Approved` and reports the gap
-rather than changing the contract to match the code.
+ApprovedまたはImplemented documentへのsemantic changeは、新しいproposed change artifactとする。
+そのartifactがreview中はcanonical documentを変更せず、引き続きauthorityとする。明示的なhuman
+approval後、承認済みchangeをcanonical documentへatomicにmergeする。変更されないRequirement IDは
+stableに保ち、置換または分割されたrequirementには新しいIDを付け、predecessorへのreferenceを
+残す。implementationが不完全な場合、canonical documentは `Approved` のままとし、contractを
+codeに合わせて変更せずgapを報告する。
 
-## Approval granularity
+## 承認の粒度
 
-`Status:` applies to the entire canonical specification file. A canonical file
-therefore SHOULD contain requirements that can reasonably progress through the
-lifecycle together. Do not place an already-approved contract and unrelated
-Draft requirements in the same file merely because they share a broad topic.
+`Status:` はcanonical specification file全体に適用される。したがってcanonical fileには、
+lifecycleを一緒に進められるrequirementを含めるべきである（SHOULD）。広いtopicが共通するという
+理由だけで、すでに承認済みのcontractと無関係なDraft requirementを同じfileへ置いてはならない。
 
-When requirements in one broad document reach different maturity levels, split
-the document into smaller canonical files before changing status. The split is
-organizational only: existing Requirement IDs MUST remain unchanged and MUST
-NOT be reassigned. Use directory `README.md` files as non-canonical indexes for
-a family of related specifications.
+1つの広いdocument内でrequirementのmaturityが分かれた場合、statusを変更する前に小さなcanonical
+fileへ分割する。分割はorganization上の変更に限る。既存Requirement IDは変更せず（MUST）、再割り当ても
+してはならない（MUST NOT）。関連するspec familyのnon-canonical indexとしてdirectoryの
+`README.md`を使用する。
 
-Prefer this file-level granularity over per-requirement status metadata. The
-goal is that `Status: Approved` or `Status: Implemented` has one unambiguous
-meaning for every normative requirement in the file.
+requirementごとのstatus metadataよりも、このfile-level granularityを優先する。`Status: Approved`
+または `Status: Implemented` がfile内のすべてのnormative requirementに対して曖昧さなく同じ意味を
+持つことが目的である。
 
-## Normative language
+## Normative language（規範語）
 
-Use the following words literally and consistently in normative requirements:
+normative requirementでは、次の語を文字どおり一貫して使用する。
 
-- `MUST` / `MUST NOT`: required or forbidden behavior.
-- `SHOULD` / `SHOULD NOT`: a strong default with a documented reason for the
-  exceptional case.
-- `MAY`: permitted behavior or capability; it does not recommend that the
-  behavior be used.
+- `MUST` / `MUST NOT`: 必須または禁止されるbehavior。
+- `SHOULD` / `SHOULD NOT`: 例外を設ける理由を文書化した強いdefault。
+- `MAY`: 許可されるbehaviorまたはcapability。behaviorの利用をrecommendするものではない。
 
-The wording must preserve the strength of the evidence. “Can be placed” or
-“should be possible” does not by itself mean that all callers SHOULD or MUST
-do it. Questions, ideas, preferences, and proposals are not normative until a
-separate explicit decision resolves them. If the source conversation does not
-settle a default or edge case, keep it as an `Open Question`.
+wordingはevidenceの強度を保つ必要がある。「置くことができる」または「可能である
+べき」は、それだけで全callerに `SHOULD` または `MUST` を課す根拠にはならない。Question、Idea、
+Preference、Proposalは、別の明示的decisionが解決するまでnormativeではない。source conversationが
+defaultやedge caseを確定していない場合は、`Open Question` に残す。
 
-## Requirement ID convention
+## Requirement IDの規約
 
-Requirement IDs use uppercase ASCII segments separated by hyphens and a
-three-digit terminal number: `<DOMAIN>-NNN` or `<DOMAIN>-<TOPIC>-NNN` (for
-example `PROJECT-001`, `SCHEMA-VO-001`, `INDEX-PRIMARY-001`, and `REF-001`).
-GUI requirements use a `GUI-` domain prefix, such as
-`GUI-TABLE-EDIT-001`. The domain should identify the canonical owning area.
+Requirement IDは、uppercase ASCII segmentをhyphenで区切り、末尾に3桁のnumberを置く。
+形式は `<DOMAIN>-NNN` または `<DOMAIN>-<TOPIC>-NNN` である（例: `PROJECT-001`、
+`SCHEMA-VO-001`、`INDEX-PRIMARY-001`、`REF-001`）。GUI requirementは `GUI-` domain prefixを
+持つ（例: `GUI-TABLE-EDIT-001`）。domainはcanonical owner areaを示すべきである。
 
-IDs are allocated by searching all existing specification definitions before
-adding one.
-Once published, an ID MUST NOT be renamed, reassigned, or reused after
-deletion. A changed meaning gets a new ID and a predecessor/deprecation note.
-The same normative rule belongs in one canonical specification; other
-documents link to its ID instead of copying it. The lightweight
-`cargo xtask check-specs` command checks explicit requirement definitions,
-references, duplicate definitions, malformed IDs, status/header metadata,
-duplicate ADR numbers, RFC/proposal numbering and metadata, and broken relative
-links. A requirement reference such as `See PROJECT-001` is not an owner.
+IDを追加する前に、既存のすべてのspecification definitionを検索して割り当てる。一度公開したIDは、
+rename、reassign、削除後の再利用をしてはならない（MUST NOT）。意味を変更する場合は新しいIDを
+割り当て、predecessor/deprecation noteを付ける。同じnormative ruleは1つのcanonical specificationに
+置き、他のdocumentからはそのIDへlinkし、内容をcopyしない。軽量な `cargo xtask check-specs`
+commandは、明示的なrequirement definitionとreference、duplicate definition、malformed ID、
+status/header metadata、duplicate ADR number、RFC/proposal numberingとmetadata、broken relative linkを
+検査する。`See PROJECT-001` のようなrequirement referenceはownerではない。
 
-## Requirement IDs and diagnostics
+## Requirement IDとDiagnostic
 
-Requirement IDs identify normative rules and are allocated from the
-specification namespace, for example `PROJECT-004` or `SCHEMA-VO-001`. Runtime
-diagnostic codes identify observed failures and use a separate, visibly marked
-namespace such as `E-PROJECT-NOT-FOUND` or `E-YAML-PARSE`. The `E-` prefix is
-reserved for diagnostics; a requirement ID MUST NOT begin with it. A
-diagnostic may carry `related_requirements` metadata as references, but a
-diagnostic code is never a requirement definition and must not be used as one.
+Requirement IDはnormative ruleを識別し、specification namespaceから割り当てる（例:
+`PROJECT-004`、`SCHEMA-VO-001`）。runtime Diagnostic Codeは観測されたfailureを識別し、
+`E-PROJECT-NOT-FOUND` や `E-YAML-PARSE` のように明確に分離されたnamespaceを使用する。
+`E-` prefixはDiagnostic専用であり、Requirement IDは `E-` で始めてはならない（MUST NOT）。
+Diagnosticはreferenceとして `related_requirements` metadataを持ってもよいが、Diagnostic Codeは
+requirement definitionではなく、definitionとして使用してはならない。
 
-## Open Questions
+## Open Questions（未解決事項）
 
-An `Open Questions` section records unresolved choices, ambiguity, and missing
-acceptance detail. It is non-normative. A question that would change behavior
-MUST block approval or be explicitly excluded from the current proposal. No
-agent may silently resolve it for implementation convenience. Once answered,
-the decision is recorded in the appropriate proposed specification change and,
-when useful, an ADR.
+`Open Questions` sectionには、未解決の選択、曖昧さ、acceptance detailの不足を記録する。これは
+non-normativeである。答えによってbehaviorが変わるQuestionは、approvalをblockするか、current
+proposalの対象外として明示しなければならない（MUST）。agentはimplementation convenienceのために
+これを黙って解決してはならない。回答が得られたら、適切なproposed specification changeへdecision
+を記録し、必要ならADRにも残す。
 
-## Compatibility and traceability
+## 互換性とtraceability
 
-Every change to stable identity, serialized shape, generated API, file
-interpretation, or other public behavior considers backward compatibility. The
-specification should say whether the change is compatible, requires migration,
-or is intentionally breaking; “not applicable” is also a valid explicit
-answer.
+stable identity、serialized shape、generated API、file interpretation、その他のpublic behaviorを
+変更するたびにbackward compatibilityを検討する。互換、migrationが必要、意図的なbreaking、または
+「not applicable」のいずれかをspecificationに明記する。
 
-Tests and fixtures are evidence for requirements, not substitutes for them.
-Where a one-to-one mapping is useful, include the requirement ID in a test
-name or a nearby comment, for example:
+Testsとfixturesはrequirementのevidenceであり、requirementの代替ではない。1対1の対応が有用な場合は、
+test nameまたは近接するcommentにRequirement IDを含める。例えば次のようにする。
 
 ```rust
 #[test]
@@ -150,79 +120,63 @@ fn schema_vo_001_rejects_invalid_underlying_type() {
 }
 ```
 
-Add a case to `fixtures/minimal`, `fixtures/full`, or `fixtures/invalid` when a
-stable end-to-end input makes the rule clearer. A focused unit or integration
-test is sufficient for rules that do not need a fixture. Fixture files are
-fixed test inputs and MUST NOT be rewritten by CLI or GUI execution.
+stableなend-to-end inputによってruleが明確になる場合は `fixtures/minimal`、`fixtures/full`、
+`fixtures/invalid` にcaseを追加する。fixtureが不要なruleではfocused unitまたはintegration testで
+十分である。fixture fileは固定されたtest inputであり、CLIまたはGUI executionで書き換えてはならない
+（MUST NOT）。
 
-## Specification change procedure
+## Specification change procedure（仕様変更手順）
 
-1. Extract intent from the conversation or request and classify each statement.
-2. Read the affected specifications, ADRs, RFCs, and
-   [terminology](../product/terminology.md).
-3. For a new contract, update or create a `Draft`/`Proposed` specification
-   with stable IDs, explicit open questions, compatibility impact, and test
-   impact. Choose a canonical file whose requirements can share one lifecycle
-   status; split a broad topic before approval if necessary. For a semantic
-   change to an `Approved`/`Implemented` canonical document, create a separate
-   artifact under [`docs/spec-changes`](../spec-changes/README.md) (or an RFC
-   when alternatives are still being compared). Do not edit the canonical
-   document to contain unapproved semantics.
-4. Run `review-spec` against the draft or change artifact. Resolve blocking
-   issues or record why a human reviewer accepts them.
-5. A human maintainer explicitly approves the proposal by the repository's
-   review operation. The artifact becomes `Approved`; only then may the delta
-   be applied atomically to the canonical specification, after which the
-   artifact becomes `Applied`. A semantic delta applied to an `Implemented`
-   specification returns that canonical document to `Approved` until its new
-   evidence is complete.
-6. Use `implement-spec` to implement only the canonical approved behavior,
-   synchronize tests and fixtures, and run repository verification. A change
-   artifact that is not `Applied` is never an implementation input.
-7. Change the canonical status to `Implemented` only after the evidence is
-   complete.
+1. conversationまたはrequestからintentを抽出し、各statementを分類する。
+2. affected specification、ADR、RFC、および [用語（terminology）](../product/terminology.md) を読む。
+3. 新しいcontractでは、stable ID、明示的なOpen Questions、compatibility impact、test impactを備えた
+   `Draft` / `Proposed` specificationを更新または作成する。requirementsが同じlifecycle statusを
+   共有できるcanonical fileを選ぶ。approval前に広いtopicを分割する必要がある場合は分割する。
+   `Approved` / `Implemented` canonical documentへのsemantic changeでは、
+   [`docs/spec-changes`](../spec-changes/README.md) 配下に別artifactを作成する（alternative比較中ならRFC）。
+   canonical documentへ未承認semanticsを入れてはならない。
+4. Draftまたはchange artifactに対して `review-spec` を実行する。blocking issueを解消するか、
+   human reviewerが受け入れる理由を記録する。
+5. human maintainerがrepositoryのreview operationで明示的に承認する。artifactは `Approved` となり、
+   その後初めてdeltaをcanonical specificationへatomicに適用する。適用後、artifactを `Applied` とする。
+   `Implemented` specificationへsemantic deltaを適用した場合は、新しいevidenceが揃うまでcanonical
+   documentを `Approved` に戻す。
+6. `implement-spec` でcanonicalなapproved behaviorだけを実装し、testsとfixturesを同期し、repository
+   verificationを実行する。`Applied` でないchange artifactはimplementation inputにしてはならない。
+7. evidenceが揃った後にのみcanonical statusを `Implemented` に変更する。
 
-Typo fixes, formatting-only edits, and internal refactors with no public or
-domain semantic change may use the ordinary code/document workflow. When the
-semantic boundary is uncertain, use the specification workflow.
+typo fix、formatting-only edit、public/domain semantic changeを伴わないinternal refactorは通常の
+code/document workflowで扱ってよい。semantic boundaryが不明な場合はspecification workflowを使う。
 
-## RFC, specification, and ADR
+## RFC・specification・ADRの役割
 
-- An **RFC** is a comparatively large design proposal while adoption and
-  alternatives are still under discussion. It is not an implementation
-  authority.
-- A **specification** is the adopted product/domain behavior, including its
-  normative requirements and compatibility contract.
-- An **ADR** records why an important architectural choice was selected. It
-  should point to affected requirements but should not become a second copy of
-  their semantics.
+- **RFC**: adoptionとalternativeの検討中に使う、比較的大きなdesign proposal。implementation authorityではない。
+- **Specification**: 採用されたproduct/domain behavior。normative requirementとcompatibility contractを含む。
+- **ADR**: 重要なarchitectural choiceを選んだ理由を記録する。affected requirementへpointするべきだが、
+  semanticsの2つ目のcopyになってはならない。
 
-The usual relationship is RFC -> approved specification, with an ADR added
-when the rationale or trade-off is important to preserve.
+通常の関係はRFC -> approved specificationであり、rationaleまたはtrade-offを残す必要がある場合にADRを追加する。
 
-## Documents
+## 文書一覧（Documents）
 
-- [Project layout and discovery](project-layout.md)
-- [Schema language](schema-language.md)
-- [Type-system specifications](type-system/README.md)
-  - [Primitive types](type-system/primitives.md)
-  - [Field modifiers](type-system/field-modifiers.md)
-  - [Value objects](type-system/value-objects.md)
-  - [Enums and flags](type-system/enums.md)
-  - [Custom types](type-system/custom-types.md)
-- [Indexes and references](index-and-reference.md)
-- [Build pipeline](build-pipeline.md)
-- [Compatibility specifications](compatibility/README.md)
-  - [Table identity](compatibility/table-identity.md)
-  - [Field identity](compatibility/field-identity.md)
-  - [Enum identity](compatibility/enum-identity.md)
-  - [Index identity](compatibility/index-identity.md)
+- [Projectの構成と探索仕様](project-layout.md)
+- [Schema言語仕様](schema-language.md)
+- [Type System仕様](type-system/README.md)
+  - [Primitive Types仕様](type-system/primitives.md)
+  - [Field Modifiers仕様](type-system/field-modifiers.md)
+  - [Value Objects仕様](type-system/value-objects.md)
+  - [Enum / Flags仕様](type-system/enums.md)
+  - [Custom Types仕様](type-system/custom-types.md)
+- [Index / reference仕様](index-and-reference.md)
+- [Build pipeline仕様](build-pipeline.md)
+- [Compatibility仕様](compatibility/README.md)
+  - [Table identity仕様](compatibility/table-identity.md)
+  - [Field identity仕様](compatibility/field-identity.md)
+  - [Enum identity仕様](compatibility/enum-identity.md)
+  - [Index identity仕様](compatibility/index-identity.md)
 
-The initial Rust implementation currently covers the project contract, YAML
-document envelope, basic field identity checks, source-content hashing, and
-build-plan formation, including a clearly named schema source-content hash. A
-field named `id` has no implicit primary-key meaning. The Proposed type-system
-documents are contracts awaiting human approval; the current parser,
-validator, and generator do not implement them. Type resolution, indexes,
-references, MasterMemory binary generation, and the full GUI remain
-deliberately incomplete.
+現在のRust implementationは、project contract、YAML document envelope、basic field identity check、
+source-content hash、明確に命名されたschema source-content hashを含むbuild-plan formationを扱う。
+`id` という名前のfieldにはimplicit primary-key meaningがない。Proposed type-system documentは人間の
+approvalを待つcontractであり、current parser、validator、generatorはそれを実装していない。
+Type resolution、indexes、references、MasterMemory binary generation、full GUIは意図的に未完了である。

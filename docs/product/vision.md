@@ -1,33 +1,24 @@
-# Product vision
+# プロダクトビジョン（Product vision）
 
 Status: Draft
 
-`masterdata` is a local-first authoring and build system for Unity projects
-that use MasterMemory. YAML is the human-editable source of truth. A Rust
-application core provides one set of project, schema, data, and validation
-semantics to both the CLI and the Tauri desktop application. A narrow .NET
-adapter owns the MasterMemory-specific compilation and binary build.
+`masterdata` は、MasterMemoryを利用するUnity project向けのlocal-first authoring・build systemである。YAMLを人間が編集するSource of Truthとする。Rust application coreは、CLIとTauri desktop applicationの双方へ、project、schema、data、validationの同一semanticsを提供する。MasterMemory固有のcompileとbinary buildは、狭い.NET adapterが担当する。
 
-The product should make a cloneable repository understandable to both a human
-developer and an AI agent: behavior is specified in Git, generated artifacts
-are reproducible, errors have structured locations, and unsupported features
-are visible rather than silently approximated.
+clone可能なrepositoryを、人間のdeveloperとAI agentの双方が理解できる状態にする。behaviorはGitで仕様化し、generated artifactは再現可能にし、errorはstructured locationを持たせ、未対応featureは黙って近似せず明示する。
 
-## Success criteria
+## 成功条件
 
-- A developer can discover and validate a project without opening Unity.
-- The same validation result is available from CLI and GUI.
-- YAML files can be split or moved without changing table identity.
-- Schema evolution has explicit stable IDs and compatibility checks.
-- MasterMemory internals remain delegated to the .NET ecosystem.
+- developerがUnityを開かずにprojectをdiscoverし、validateできる。
+- 同じvalidation resultをCLIとGUIの双方から取得できる。
+- YAML fileを分割または移動してもtable identityが変わらない。
+- schema evolutionにstable IDとcompatibility checkが明示されている。
+- MasterMemory internalsは.NET ecosystemへ委譲されたままである。
 
-## Non-goals for the initial setup
+## 初期セットアップにおける非目標
 
-- Full schema language implementation
-- MasterMemory Source Generator or binary-format reimplementation
-- Production-grade table editor
-- Code signing, notarization, or distribution automation
+- 完全なschema language実装
+- MasterMemory Source Generatorまたはbinary formatの再実装
+- production-gradeなtable editor
+- code signing、notarization、またはdistribution automation
 
-Open product questions are tracked in the relevant specification rather than
-being hidden in initial code.
-
+未解決のproduct questionは初期codeへ隠さず、関連するspecificationで管理する。

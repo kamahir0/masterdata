@@ -2,7 +2,7 @@
 
 このrepositoryで作業するAI agentと開発者向けのルールです。
 
-## Before changing code
+## コードを変更する前に
 
 - 実装前に関連する `docs/specs` と `docs/adr` を読む。
 - `docs/specs` の `Status: Approved` または `Status: Implemented` な仕様を
@@ -11,7 +11,7 @@
 - domain semanticsを変更する場合は、同じ変更で仕様書も更新する。
 - public behaviorを追加・変更したら、対応するtestを追加または更新する。
 
-## Architecture rules
+## アーキテクチャ規則
 
 - CLIとGUIは `masterdata-app` のapplication workflowと
   `masterdata-core` を共有し、domain logicを重複させない。
@@ -30,39 +30,39 @@
 - 将来のSchema ASTを単なる `HashMap<String, serde_yaml::Value>` に固定しない。
 - C# code generationを巨大なstring concat一関数に押し込まない。
 
-## Specification workflow
+## 仕様ワークフロー
 
-- Approved specs are authoritative for domain behavior. Conversation alone is
-  not permanent specification.
-- Significant domain or public behavior changes MUST go through
-  `refine-spec`, then `review-spec`, then explicit human approval before
-  implementation.
-- `Status:` is file-wide. Canonical specification files SHOULD contain
-  requirements that can progress through Draft/Proposed/Approved/Implemented
-  together. When maturity diverges, split the file without renaming or
-  reassigning existing Requirement IDs; use directory `README.md` files only
-  as non-canonical indexes.
-- Do not promote proposals, preferences, ideas, or questions to approved
-  behavior without evidence. Preserve MUST / SHOULD / MAY strength and keep
-  unresolved decisions as Open Questions.
-- Use `implement-spec` only from an explicitly Approved specification. If
-  implementation exposes a specification gap, report it and return to
-  refinement instead of silently inventing behavior.
-- Keep ADRs for architectural decisions and keep one canonical owner for each
-  normative rule; link to it instead of duplicating semantics.
-- GUI behavior is also specification-worthy. Keep GUI requirements at the
-  adapter boundary and shared domain semantics in `masterdata-core`.
-- Keep tests and fixtures synchronized with specifications where appropriate,
-  and include requirement IDs in test names or nearby comments when useful.
-- AI-generated Draft/Proposed text MUST NOT be changed to Approved
-  automatically. `cargo xtask check-specs` is the lightweight integrity check
-  and is included in `cargo xtask check-all`; it also checks numbered RFC and
-  specification-change metadata.
-- RFC `Accepted` is an RFC decision, not product-spec `Approved`. A
-  specification-change artifact reaches `Applied` only after an explicit human
-  approval and atomic canonical merge.
+- Approved仕様はdomain behaviorのauthorityであり、会話だけでは恒久的な仕様に
+  ならない。
+- domainまたはpublic behaviorの重要な変更は、実装前に
+  `refine-spec`、`review-spec`、明示的な人間による承認の順を経なければ
+  ならない（MUST）。
+- `Status:` はファイル全体に適用される。canonical specification fileには、
+  Draft/Proposed/Approved/Implementedを一緒に進められる要件を含めるべきで
+  ある（SHOULD）。成熟度が分かれる場合は、既存のRequirement IDをrenameまたは
+  reassignせずにファイルを分割する。ディレクトリの `README.md` は
+  non-canonicalなindexとしてのみ使用する。
+- evidenceなしにProposal、Preference、Idea、QuestionをApproved behaviorへ
+  昇格させてはならない。MUST / SHOULD / MAYの強度を保ち、未解決の判断は
+  Open Questionとして残す。
+- `implement-spec` は明示的にApprovedとなった仕様からのみ使用する。実装が
+  specification gapを示した場合は報告し、黙ってbehaviorを発明せずrefinementへ
+  戻す。
+- architectural decisionはADRに残し、各normative ruleにはcanonical ownerを
+  1つだけ置く。意味を重複させず、ownerへlinkする。
+- GUI behaviorも仕様化の対象である。GUI要件はadapter boundaryに置き、共有する
+  domain semanticsは `masterdata-core` に置く。
+- 適切な範囲でtestsとfixturesを仕様に同期させ、traceabilityに有用ならtest name
+  または近接するcommentへRequirement IDを含める。
+- AIが生成したDraft/Proposed textをApprovedへ自動変更してはならない（MUST NOT）。
+  `cargo xtask check-specs` は軽量なintegrity checkであり、
+  `cargo xtask check-all` に含まれる。また、番号付きRFCとspecification-changeの
+  metadataも検査する。
+- RFCの `Accepted` はRFC上のdecisionであり、product-specの `Approved` ではない。
+  specification-change artifactは、明示的な人間による承認とcanonical mergeが
+  atomicに完了した後にのみ `Applied` となる。
 
-## Fixtures and workflow
+## Fixtureとワークフロー
 
 - fixtureはテスト用の固定入力であり、CLI/GUI実行時に直接書き換えない。
 - development projectは `target/dev-project` にfixtureからコピーする。
@@ -70,7 +70,7 @@
 - shell scriptへ主要ロジックを分散させず、repository workflowは `cargo xtask` に集約する。
 - 作業完了前に `cargo xtask check-all` を実行し、実行できない場合は理由を報告する。
 
-## Completion checklist
+## 完了チェックリスト
 
 1. 関連spec / ADRを更新したか
 2. fixtureとtestを更新したか
@@ -79,7 +79,7 @@
 5. frontend checkとintegration smoke testが通るか
 6. `cargo xtask check-all` の結果と未実装事項を報告したか
 
-## Specification workflow guardrails
+## 仕様ワークフローのガードレール
 
 - 会話は仕様の証拠であり、永久的な仕様ではない。`refine-spec` で発言を
   Decision / Requirement / Constraint / Preference / Proposal / Idea /

@@ -37,6 +37,11 @@
 - Significant domain or public behavior changes MUST go through
   `refine-spec`, then `review-spec`, then explicit human approval before
   implementation.
+- `Status:` is file-wide. Canonical specification files SHOULD contain
+  requirements that can progress through Draft/Proposed/Approved/Implemented
+  together. When maturity diverges, split the file without renaming or
+  reassigning existing Requirement IDs; use directory `README.md` files only
+  as non-canonical indexes.
 - Do not promote proposals, preferences, ideas, or questions to approved
   behavior without evidence. Preserve MUST / SHOULD / MAY strength and keep
   unresolved decisions as Open Questions.

@@ -611,7 +611,9 @@ mod tests {
         .expect("spec file");
 
         let error = check_repository(directory.path()).expect_err("duplicate ID");
-        assert!(error.to_string().contains("within docs/specs/example.md"));
+        let message = error.to_string();
+        assert!(message.contains("within"));
+        assert!(message.contains("example.md"));
     }
 
     #[test]

@@ -42,6 +42,12 @@ The Rust AST keeps schema declarations typed (`SchemaDocument`,
 `FieldDefinition`, and `ReservedField`) so future type/index/reference
 features do not collapse into an unstructured map.
 
+The current scaffold recognizes `schema` and `data` documents only. The
+Proposed [Value Objects specification](type-system/value-objects.md) defines
+`kind: type` as the direction for a future unified type-declaration document;
+that proposed kind is not accepted by the current parser and is not an
+implementation contract until the specification is approved and implemented.
+
 The current scaffold uses `table` as the project-local logical table identity.
 `csharpName`, when present, is a generated C# type-name override and is not a
 second table identity. The previously shown `tableId` field was not consumed by

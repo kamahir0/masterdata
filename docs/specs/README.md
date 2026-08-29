@@ -206,6 +206,7 @@ when the rationale or trade-off is important to preserve.
 - [Schema language](schema-language.md)
 - [Type-system specifications](type-system/README.md)
   - [Primitive types](type-system/primitives.md)
+  - [Field modifiers](type-system/field-modifiers.md)
   - [Value objects](type-system/value-objects.md)
   - [Enums and flags](type-system/enums.md)
   - [Custom types](type-system/custom-types.md)
@@ -220,7 +221,8 @@ when the rationale or trade-off is important to preserve.
 The initial Rust implementation currently covers the project contract, YAML
 document envelope, basic field identity checks, source-content hashing, and
 build-plan formation, including a clearly named schema source-content hash. A
-field named `id` has no implicit primary-key meaning.
-Type resolution, indexes, references,
-MasterMemory binary generation, and the full GUI remain deliberately
-incomplete; their current documents remain `Draft` until refined and approved.
+field named `id` has no implicit primary-key meaning. The Proposed type-system
+documents are contracts awaiting human approval; the current parser,
+validator, and generator do not implement them. Type resolution, indexes,
+references, MasterMemory binary generation, and the full GUI remain
+deliberately incomplete.

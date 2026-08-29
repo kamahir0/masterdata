@@ -7,6 +7,24 @@ Status: Draft
   schema meaning by itself.
 - **Schema**: the logical declaration of tables, fields, types, and related
   constraints. Its exact language is defined by the owning specifications.
+- **Primitive Type**: a scalar type with a directly declared value domain. The
+  supported vocabulary is owned by the Primitive Types specification.
+- **Field Modifier**: a field-level choice that changes a base type into a
+  Required, Nullable, or Array field. Its syntax and presence rules are owned
+  by the Field Modifiers specification.
+- **Required**: a field shape whose data entry is present and contains a
+  non-null value of its base type.
+- **Nullable**: a field shape whose data entry is present and may contain
+  `null` or a value of its base type.
+- **Array**: a field shape whose data entry is present and contains zero or
+  more values of its base type; an empty array represents no values.
+- **Underlying Type**: the single primitive wrapped by a Value Object. It is
+  not inferred from a source file path or generated type name.
+- **Type Declaration**: a YAML document that declares one named type category.
+- **Type Capability**: an observable permission or behavior, such as direct
+  key compatibility, that a type may expose. The type-system specifications
+  define capabilities without requiring a particular implementation data
+  structure.
 - **Schema document**: a YAML file with `kind: schema` that declares a table's
   stable identity and fields.
 - **Data**: values and records supplied for tables; data does not redefine the
@@ -31,9 +49,9 @@ Status: Draft
   changed independently only where the compatibility specification permits.
 - **Field ID**: persistent MessagePack integer-key identity, separate from a
   MasterMemory index number.
-- **Value Object**: an immutable domain type that wraps a value according to
-  the type-system specification. Whether a particular underlying type is
-  allowed is not inferred from this glossary.
+- **Value Object**: an immutable domain type that wraps one underlying value.
+  The Value Objects specification proposes that the underlying value is one
+  primitive and defines its generated representation and capabilities.
 - **Enum**: a named type whose declared members have stable numeric values
   when the type-system and compatibility specifications require them.
 - **Flags Enum**: an enum intended to represent bitwise combinations; its

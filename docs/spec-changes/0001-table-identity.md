@@ -4,7 +4,7 @@ Status: Applied
 
 ## Affected Specifications
 
-- [`docs/specs/compatibility.md`](../specs/compatibility.md),
+- [`docs/specs/compatibility/table-identity.md`](../specs/compatibility/table-identity.md),
   `COMPAT-TABLE-001`.
 - [`docs/specs/schema-language.md`](../specs/schema-language.md), current
   scaffold identity explanation.

@@ -39,6 +39,12 @@ the implementation input. If the canonical spec is `Approved` but a proposed
 delta is present elsewhere, implement the canonical meaning only and report
 the delta as out of scope until a human-approved atomic merge.
 
+An `Accepted` RFC, an `Approved`-but-not-`Applied` specification-change
+artifact, and current code behavior are not substitutes for the canonical
+specification. If the canonical file has been changed semantically without the
+required atomic workflow, stop and report the workflow violation before
+implementing the new behavior.
+
 Do not treat a current implementation, fixture, or generated artifact as
 authority when it disagrees with an approved specification. Do not implement a
 Draft Type System or any other unapproved future feature merely because its
@@ -99,6 +105,12 @@ Before changing status, review every requirement ID against the implementation
 and test evidence. The specification may be updated only for a separately
 approved semantic change; implementation work must not rewrite the contract to
 make an incomplete implementation appear correct.
+
+Also check that existing implementation does not contain an unapproved domain
+assumption. Remove or report it rather than using it as evidence—for example,
+an `id` field is not a primary key unless an approved index specification says
+so. Verify that diagnostic `related_requirements` entries are semantically
+accurate and that test names/comments do not claim unrelated requirement IDs.
 
 Change `Status: Approved` to `Status: Implemented` only when:
 

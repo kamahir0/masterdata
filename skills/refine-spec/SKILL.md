@@ -77,6 +77,12 @@ write a separate durable proposal under `docs/spec-changes/` (or an RFC when
 alternatives are still being compared). The canonical document remains the
 only authority until a human-approved atomic merge.
 
+An `Accepted` RFC records a selected design direction, but it is not itself a
+product specification and does not authorize implementation. After a human
+decision, route the adopted behavior into the canonical specification (or a
+specification-change artifact when an existing canonical document is affected)
+without copying unresolved compatibility decisions into it.
+
 ### 3. Preserve normative strength
 
 Use the weakest wording supported by the evidence:
@@ -138,6 +144,12 @@ diagnostic code as a requirement ID or infer a requirement from an existing
 diagnostic/test name. Existing code behavior is evidence to inspect, not
 authority to promote into a product rule.
 
+During refinement, explicitly audit current behavior for assumptions that are
+not supported by the owning specification, such as a field named `id` implying
+a primary key or a diagnostic code being treated as a requirement ID. Such
+behavior is a removal/reporting candidate, not evidence that the assumption is
+approved.
+
 ## Required output
 
 Start with the source evidence and statement classifications, then provide
@@ -195,6 +207,8 @@ human approval action still required. A concise change summary is mandatory.
 - Do not silently overwrite conflicting specifications or ADRs.
 - Do not mix a semantic change into an Approved/Implemented canonical document;
   use a separate change artifact.
+- Do not treat an `Accepted` RFC as a substitute for an `Approved` canonical
+  specification.
 - Do not treat a runtime diagnostic code, test number, or current behavior as a
   specification requirement without explicit evidence.
 - Do not mark a Draft/Proposed specification `Approved` automatically.

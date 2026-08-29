@@ -7,10 +7,11 @@ stable identities.
 
 ### COMPAT-TABLE-001
 
-The current proposed direction is for `table` to be the project-local stable
-table identity and for the generated C# type name to remain a separate,
-renameable presentation name. This direction is not approved as a broader
-compatibility contract until the table identity proposal is reviewed.
+For the current scaffold, `table` is the project-local stable table identity
+and the generated C# type name is a separate, renameable presentation name.
+This requirement does not define global identity, table rename migration,
+released-schema compatibility, legacy `tableId` migration, or cross-project
+identity.
 
 ### COMPAT-FIELD-001
 
@@ -40,5 +41,6 @@ editing. Advanced users and review tooling still need to see the resulting
 stable IDs.
 
 Open Questions: compatibility levels, migration tooling, whether table
-identifiers need a globally stable namespace, and whether the proposed
-`table`/`csharpName` split should be adopted as the compatibility contract.
+identifiers need a globally stable namespace, and what released-schema
+compatibility guarantees (if any) should apply to the `table`/`csharpName`
+split.

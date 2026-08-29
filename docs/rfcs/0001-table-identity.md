@@ -1,6 +1,6 @@
 # RFC: Table identity and generated C# names
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -52,8 +52,10 @@ For the current scaffold, use `table` as the project-local stable table
 identity, treat `csharpName` as a renameable generated C# presentation name,
 and remove the unused `tableId` field from the typed schema model and fixtures.
 The `table`/`csharpName` distinction is documented in terminology and schema
-language. This RFC remains Proposed; it is not an Approved compatibility
-contract until a human maintainer accepts it.
+language. The explicit human decision recorded for this repository hardening
+task accepts this direction for the current scaffold. This acceptance does
+not decide global identity, rename migration, released-schema compatibility,
+legacy `tableId` migration, or cross-project identity.
 
 ## Compatibility
 
@@ -72,5 +74,8 @@ an Open Question. No global identity or rename migration is defined here.
 
 ## Decision
 
-Pending explicit human approval. Until then, this RFC and the related Draft
-specification text are not implementation authority for new product behavior.
+Accepted for the current scaffold by explicit human decision in the repository
+hardening task. The canonical Draft specifications record the adopted
+`table`/`csharpName` distinction; this RFC remains the rationale and option
+comparison. RFC `Accepted` is not the same lifecycle state as a product
+specification `Approved`, and unresolved compatibility questions remain open.

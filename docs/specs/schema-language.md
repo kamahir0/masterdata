@@ -48,7 +48,9 @@ second table identity. The previously shown `tableId` field was not consumed by
 the Rust model or generator and is intentionally absent from the current
 scaffold. The compatibility implications of this direction are tracked in
 [`docs/rfcs/0001-table-identity.md`](../rfcs/0001-table-identity.md), which is
-not approved.
+accepted for this current-scaffold direction. Global identity, rename
+migration, released-schema compatibility, legacy `tableId` migration, and
+cross-project identity remain Open Questions.
 
 ## YAML subset open questions
 

@@ -165,8 +165,7 @@ impl Project {
                         root_path.display()
                     ),
                 )
-                .with_source(root_path)
-                .with_related_requirement("PROJECT-006"));
+                .with_source(root_path));
             }
             collect_yaml_files(&root_path, &mut files)?;
         }

@@ -30,7 +30,7 @@ enum CommandKind {
     Gui,
     /// Run fixture discovery, validation, build-plan, and .NET bridge smoke test.
     TestIntegration,
-    /// Check specification headers, IDs, ADR numbers, and relative links.
+    /// Check specification, RFC, proposal, ADR, and relative-link integrity.
     CheckSpecs,
     /// Run the isolated real MasterMemory v3 .NET technical spike.
     MastermemorySpike,
@@ -282,11 +282,13 @@ fn mastermemory_spike() -> Result<()> {
 fn check_specs() -> Result<()> {
     let summary = spec_check::check_repository(&repository_root())?;
     println!(
-        "spec checks passed: {} spec file(s), {} GUI spec file(s), {} requirement ID(s), {} ADR number(s), {} relative link(s)",
+        "spec checks passed: {} spec file(s), {} GUI spec file(s), {} requirement ID(s), {} ADR number(s), {} RFC number(s), {} proposal number(s), {} relative link(s)",
         summary.spec_files,
         summary.gui_spec_files,
         summary.requirement_ids,
         summary.adr_numbers,
+        summary.rfc_numbers,
+        summary.proposal_numbers,
         summary.relative_links
     );
     Ok(())

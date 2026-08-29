@@ -22,4 +22,5 @@ Status: Draft
 
 ## Decision
 
-<!-- Record the outcome after discussion; move adopted behavior into docs/specs. -->
+<!-- RFC status uses Draft, Proposed, Accepted, Rejected, or Superseded.
+     Record the outcome after discussion; move adopted behavior into docs/specs. -->

@@ -51,7 +51,11 @@
   and include requirement IDs in test names or nearby comments when useful.
 - AI-generated Draft/Proposed text MUST NOT be changed to Approved
   automatically. `cargo xtask check-specs` is the lightweight integrity check
-  and is included in `cargo xtask check-all`.
+  and is included in `cargo xtask check-all`; it also checks numbered RFC and
+  specification-change metadata.
+- RFC `Accepted` is an RFC decision, not product-spec `Approved`. A
+  specification-change artifact reaches `Applied` only after an explicit human
+  approval and atomic canonical merge.
 
 ## Fixtures and workflow
 
@@ -84,5 +88,5 @@
   implementationで仕様の穴を見つけた場合、既存コードを正本にせず
   refine-specへ戻す。
 - `cargo xtask check-specs` はRequirement IDのdefinitionとreferenceを区別
-  し、duplicate definition、malformed ID/status、duplicate ADR number、
-  broken linkを確認する。
+  し、duplicate definition、malformed ID/status、duplicate ADR/RFC/proposal
+  number、change metadata、broken linkを確認する。

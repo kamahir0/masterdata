@@ -92,8 +92,8 @@ The same normative rule belongs in one canonical specification; other
 documents link to its ID instead of copying it. The lightweight
 `cargo xtask check-specs` command checks explicit requirement definitions,
 references, duplicate definitions, malformed IDs, status/header metadata,
-duplicate ADR numbers, and broken relative links. A requirement reference such
-as `See PROJECT-001` is not an owner.
+duplicate ADR numbers, RFC/proposal numbering and metadata, and broken relative
+links. A requirement reference such as `See PROJECT-001` is not an owner.
 
 ## Requirement IDs and diagnostics
 
@@ -153,11 +153,14 @@ fixed test inputs and MUST NOT be rewritten by CLI or GUI execution.
 4. Run `review-spec` against the draft or change artifact. Resolve blocking
    issues or record why a human reviewer accepts them.
 5. A human maintainer explicitly approves the proposal by the repository's
-   review operation. Only then may the change artifact be applied atomically
-   to the canonical specification and its status become `Approved`.
+   review operation. The artifact becomes `Approved`; only then may the delta
+   be applied atomically to the canonical specification, after which the
+   artifact becomes `Applied`. A semantic delta applied to an `Implemented`
+   specification returns that canonical document to `Approved` until its new
+   evidence is complete.
 6. Use `implement-spec` to implement only the canonical approved behavior,
    synchronize tests and fixtures, and run repository verification. A change
-   artifact marked Proposed is never an implementation input.
+   artifact that is not `Applied` is never an implementation input.
 7. Change the canonical status to `Implemented` only after the evidence is
    complete.
 

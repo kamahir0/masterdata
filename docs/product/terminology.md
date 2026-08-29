@@ -23,9 +23,9 @@ Status: Draft
   retained at field leaves until type resolution.
 - **Table identity**: the project-local stable identity carried by the `table`
   field. It is distinct from a generated C# type name and from a source file
-  path. The current Rust schema model does not define a second `tableId`
-  identity; the compatibility implications are tracked by the table-identity
-  RFC.
+  path. The current scaffold does not define a second `tableId` identity;
+  global identity, rename migration, released compatibility, legacy migration,
+  and cross-project identity remain open in the table-identity RFC.
 - **Generated C# type name**: a presentation/code-generation name, supplied by
   `csharpName` when present or derived by the generator when absent. It MAY be
   changed independently only where the compatibility specification permits.

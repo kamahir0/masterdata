@@ -85,7 +85,7 @@ cargo xtask test-integration
 # 実際のMasterMemory v3 Source Generator -> binary -> reload/lookup spike
 cargo xtask mastermemory-spike
 
-# specification headers / IDs / ADR numbers / relative links
+# specification / RFC / change metadata, IDs, and relative links
 cargo xtask check-specs
 
 # commit前のformat / clippy / Rust test / frontend check / GUI compile / integration
@@ -104,7 +104,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`はC# scaffoldを作成する設計境界まで進めますが、schema-drivenのMasterMemory binary生成は未実装エラーとして停止します。未実装機能を成功したように見せません。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は全stageが成功するまで最終generated outputへ書き込まず、schema-drivenのMasterMemory binary生成が未実装の現在は明示的なエラーで停止します。失敗したbuildがpartialな最終成果物を残すことはありません。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## Project and YAML conventions
 

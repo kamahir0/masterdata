@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use masterdata_core::{ErrorKind, MasterdataError, Result};
 
 const SPEC_STATUSES: &[&str] = &["Draft", "Proposed", "Approved", "Implemented", "Deprecated"];
+const RFC_STATUSES: &[&str] = &["Draft", "Proposed", "Accepted", "Rejected", "Superseded"];
+const SPEC_CHANGE_STATUSES: &[&str] = &["Draft", "Proposed", "Approved", "Applied", "Rejected"];
 
 #[derive(Debug, Default)]
 pub struct SpecCheckSummary {
@@ -12,6 +14,8 @@ pub struct SpecCheckSummary {
     pub gui_spec_files: usize,
     pub requirement_ids: usize,
     pub adr_numbers: usize,
+    pub rfc_numbers: usize,
+    pub proposal_numbers: usize,
     pub relative_links: usize,
 }
 
@@ -19,6 +23,8 @@ pub fn check_repository(root: &Path) -> Result<SpecCheckSummary> {
     let spec_files = markdown_files(&root.join("docs/specs"))?;
     let gui_files = markdown_files(&root.join("docs/gui"))?;
     let adr_files = markdown_files(&root.join("docs/adr"))?;
+    let rfc_files = markdown_files(&root.join("docs/rfcs"))?;
+    let proposal_files = markdown_files(&root.join("docs/spec-changes"))?;
     let mut issues = Vec::new();
     let mut summary = SpecCheckSummary {
         spec_files: spec_files
@@ -94,6 +100,56 @@ pub fn check_repository(root: &Path) -> Result<SpecCheckSummary> {
             if let Some(previous) = adr_owners.insert(number, path.clone()) {
                 issues.push(format!(
                     "duplicate ADR number `{number:04}` in {} and {}",
+                    display_path(root, &previous),
+                    display_path(root, path)
+                ));
+            }
+        }
+    }
+
+    let mut rfc_owners = BTreeMap::new();
+    for path in rfc_files.iter().filter(|path| is_numbered_document(path)) {
+        let contents = read_text(path)?;
+        check_document_header(root, path, &contents, RFC_STATUSES, "RFC", &mut issues);
+        check_numbered_filename(root, path, "RFC", &mut issues);
+        if let Some(number) = numbered_document_number(path) {
+            summary.rfc_numbers += 1;
+            if let Some(previous) = rfc_owners.insert(number, path.clone()) {
+                issues.push(format!(
+                    "duplicate RFC number `{number:04}` in {} and {}",
+                    display_path(root, &previous),
+                    display_path(root, path)
+                ));
+            }
+        }
+    }
+
+    let mut proposal_owners = BTreeMap::new();
+    for path in proposal_files
+        .iter()
+        .filter(|path| is_numbered_document(path))
+    {
+        let contents = read_text(path)?;
+        check_document_header(
+            root,
+            path,
+            &contents,
+            SPEC_CHANGE_STATUSES,
+            "specification change",
+            &mut issues,
+        );
+        check_numbered_filename(root, path, "specification change", &mut issues);
+        if !has_section(&contents, "Affected Specifications") {
+            issues.push(format!(
+                "malformed specification change in {}: missing `## Affected Specifications` section",
+                display_path(root, path)
+            ));
+        }
+        if let Some(number) = numbered_document_number(path) {
+            summary.proposal_numbers += 1;
+            if let Some(previous) = proposal_owners.insert(number, path.clone()) {
+                issues.push(format!(
+                    "duplicate specification change number `{number:04}` in {} and {}",
                     display_path(root, &previous),
                     display_path(root, path)
                 ));
@@ -185,6 +241,17 @@ fn is_canonical_document(path: &Path) -> bool {
 }
 
 fn check_spec_header(root: &Path, path: &Path, contents: &str, issues: &mut Vec<String>) {
+    check_document_header(root, path, contents, SPEC_STATUSES, "specification", issues);
+}
+
+fn check_document_header(
+    root: &Path,
+    path: &Path,
+    contents: &str,
+    statuses: &[&str],
+    document_kind: &str,
+    issues: &mut Vec<String>,
+) {
     let mut first_content_line = None;
     let mut status = None;
     for line in contents.lines().take(12) {
@@ -202,19 +269,19 @@ fn check_spec_header(root: &Path, path: &Path, contents: &str, issues: &mut Vec<
         .is_some_and(|line| line.starts_with("# "))
     {
         issues.push(format!(
-            "malformed specification header in {}: first content line must be a level-one title",
-            display_path(root, path)
+            "malformed {document_kind} header in {}: first content line must be a level-one title",
+            display_path(root, path),
         ));
     }
     match status {
-        Some(value) if SPEC_STATUSES.contains(&value) => {}
+        Some(value) if statuses.contains(&value) => {}
         Some(value) => issues.push(format!(
-            "invalid specification status `{value}` in {}: expected one of Draft, Proposed, Approved, Implemented, Deprecated",
-            display_path(root, path)
+            "invalid {document_kind} status `{value}` in {}",
+            display_path(root, path),
         )),
         None => issues.push(format!(
-            "malformed specification header in {}: missing `Status:` within the header",
-            display_path(root, path)
+            "malformed {document_kind} header in {}: missing `Status:` within the header",
+            display_path(root, path),
         )),
     }
 }
@@ -262,11 +329,58 @@ fn malformed_requirement_headings(contents: &str) -> Vec<(String, usize)> {
 }
 
 fn looks_like_requirement_heading(heading: &str) -> bool {
-    heading.contains('-')
-        || heading.contains('_')
-        || (!heading.bytes().any(|byte| byte.is_ascii_whitespace())
-            && heading.bytes().any(|byte| byte.is_ascii_uppercase())
-            && heading.bytes().any(|byte| byte.is_ascii_digit()))
+    // A normal Markdown title may contain hyphens and mixed case. Only flag a
+    // compact, identifier-shaped heading whose author appears to have tried
+    // to write a requirement ID but missed the repository grammar.
+    if heading.is_empty() || heading.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return false;
+    }
+
+    if heading.contains('_') {
+        let parts = heading.split('_').collect::<Vec<_>>();
+        if parts.len() >= 2
+            && parts.iter().all(|part| is_ascii_identifier_segment(part))
+            && parts[0].bytes().any(|byte| byte.is_ascii_uppercase())
+        {
+            return true;
+        }
+    }
+
+    if heading.contains('-') {
+        let parts = heading.split('-').collect::<Vec<_>>();
+        let Some(number) = parts.last() else {
+            return false;
+        };
+        if parts.len() >= 2
+            && parts[..parts.len() - 1]
+                .iter()
+                .all(|part| is_ascii_identifier_segment(part))
+            && !parts[..parts.len() - 1].is_empty()
+            && number.len() <= 3
+            && !number.is_empty()
+            && number.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return true;
+        }
+    }
+
+    let mut uppercase_prefix = 0;
+    for byte in heading.bytes() {
+        if byte.is_ascii_uppercase() {
+            uppercase_prefix += 1;
+        } else {
+            break;
+        }
+    }
+    uppercase_prefix >= 3
+        && heading.len() > uppercase_prefix
+        && heading[uppercase_prefix..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit())
+}
+
+fn is_ascii_identifier_segment(segment: &str) -> bool {
+    !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
 fn is_requirement_id(token: &str) -> bool {
@@ -304,6 +418,63 @@ fn adr_number(path: &Path) -> Option<u16> {
     } else {
         None
     }
+}
+
+fn is_numbered_document(path: &Path) -> bool {
+    !matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("README.md") | Some("_template.md")
+    )
+}
+
+fn numbered_document_number(path: &Path) -> Option<u16> {
+    let stem = path.file_stem()?.to_str()?;
+    let number = stem.get(..4)?;
+    if number.len() == 4 && number.bytes().all(|byte| byte.is_ascii_digit()) {
+        number.parse().ok()
+    } else {
+        None
+    }
+}
+
+fn check_numbered_filename(
+    root: &Path,
+    path: &Path,
+    document_kind: &str,
+    issues: &mut Vec<String>,
+) {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        issues.push(format!(
+            "invalid {document_kind} filename in {}",
+            display_path(root, path)
+        ));
+        return;
+    };
+    let stem = name.strip_suffix(".md");
+    let valid = stem.is_some_and(|stem| {
+        let Some((number, slug)) = stem.split_once('-') else {
+            return false;
+        };
+        number.len() == 4
+            && number.bytes().all(|byte| byte.is_ascii_digit())
+            && !slug.is_empty()
+            && !slug.starts_with('-')
+            && !slug.ends_with('-')
+            && slug
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    });
+    if !valid {
+        issues.push(format!(
+            "invalid {document_kind} filename `{name}` in {}: expected NNNN-lowercase-slug.md",
+            display_path(root, path)
+        ));
+    }
+}
+
+fn has_section(contents: &str, title: &str) -> bool {
+    let expected = format!("## {title}");
+    contents.lines().any(|line| line.trim() == expected)
 }
 
 fn check_relative_links(
@@ -380,6 +551,34 @@ mod tests {
     }
 
     #[test]
+    fn natural_hyphenated_heading_is_allowed() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### Round-trip editing\n\n### Cross-platform behavior\n",
+        )
+        .expect("spec file");
+
+        check_repository(directory.path()).expect("natural headings are allowed");
+    }
+
+    #[test]
+    fn natural_mixed_case_title_is_allowed() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### Value-object compatibility\n\n### yaml Parser Notes\n",
+        )
+        .expect("spec file");
+
+        check_repository(directory.path()).expect("natural title is allowed");
+    }
+
+    #[test]
     fn duplicate_requirement_ids_are_reported() {
         let directory = tempdir().expect("temporary directory");
         let specs = directory.path().join("docs/specs");
@@ -446,6 +645,27 @@ mod tests {
     }
 
     #[test]
+    fn malformed_requirement_like_headings_are_reported() {
+        let directory = tempdir().expect("temporary directory");
+        let specs = directory.path().join("docs/specs");
+        fs::create_dir_all(&specs).expect("spec directory");
+        fs::write(
+            specs.join("example.md"),
+            "# Example\n\nStatus: Draft\n\n### TEST_001\n\n### TEST-01\n\n### SCHEMA-vo-001\n\n### PROJECT001\n",
+        )
+        .expect("spec file");
+
+        let error = check_repository(directory.path()).expect_err("malformed IDs");
+        let message = error.to_string();
+        for heading in ["TEST_001", "TEST-01", "SCHEMA-vo-001", "PROJECT001"] {
+            assert!(
+                message.contains(heading),
+                "missing malformed heading {heading}"
+            );
+        }
+    }
+
+    #[test]
     fn diagnostic_namespace_is_not_a_requirement_definition() {
         let directory = tempdir().expect("temporary directory");
         let specs = directory.path().join("docs/specs");
@@ -491,5 +711,67 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("invalid specification status `Accepted`"));
         assert!(message.contains("duplicate ADR number `0001`"));
+    }
+
+    #[test]
+    fn specification_change_requires_number_header_and_affected_section() {
+        let directory = tempdir().expect("temporary directory");
+        let changes = directory.path().join("docs/spec-changes");
+        fs::create_dir_all(&changes).expect("change directory");
+        fs::write(
+            changes.join("0001-example.md"),
+            "# Specification change: Example\n\nStatus: Proposed\n\n## Affected Specifications\n\n- `docs/specs/example.md`\n",
+        )
+        .expect("change file");
+
+        let summary = check_repository(directory.path()).expect("valid change proposal");
+        assert_eq!(summary.proposal_numbers, 1);
+    }
+
+    #[test]
+    fn duplicate_specification_change_numbers_are_reported() {
+        let directory = tempdir().expect("temporary directory");
+        let changes = directory.path().join("docs/spec-changes");
+        fs::create_dir_all(&changes).expect("change directory");
+        for name in ["0001-first.md", "0001-second.md"] {
+            fs::write(
+                changes.join(name),
+                "# Specification change\n\nStatus: Draft\n\n## Affected Specifications\n",
+            )
+            .expect("change file");
+        }
+
+        let error = check_repository(directory.path()).expect_err("duplicate proposal number");
+        assert!(
+            error
+                .to_string()
+                .contains("duplicate specification change number `0001`")
+        );
+    }
+
+    #[test]
+    fn rfc_filename_and_status_are_checked() {
+        let directory = tempdir().expect("temporary directory");
+        let rfcs = directory.path().join("docs/rfcs");
+        fs::create_dir_all(&rfcs).expect("RFC directory");
+        fs::write(rfcs.join("bad-name.md"), "# RFC\n\nStatus: Approved\n").expect("RFC file");
+
+        let error = check_repository(directory.path()).expect_err("invalid RFC metadata");
+        let message = error.to_string();
+        assert!(message.contains("invalid RFC filename"));
+        assert!(message.contains("invalid RFC status `Approved`"));
+    }
+
+    #[test]
+    fn duplicate_rfc_numbers_are_reported() {
+        let directory = tempdir().expect("temporary directory");
+        let rfcs = directory.path().join("docs/rfcs");
+        fs::create_dir_all(&rfcs).expect("RFC directory");
+        for name in ["0001-first.md", "0001-second.md"] {
+            fs::write(rfcs.join(name), "# RFC\n\nStatus: Proposed\n").expect("RFC file");
+        }
+
+        let error = check_repository(directory.path()).expect_err("duplicate RFC number");
+        assert!(error.to_string().contains("duplicate RFC number `0001`"));
     }
 }

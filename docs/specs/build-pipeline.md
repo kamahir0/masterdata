@@ -30,7 +30,12 @@ Current behavior is intentionally smaller: `prepare_build` validates and
 calculates a schema source-content hash, the C# crate plans a primitive immutable
 scaffold, and the .NET crate can run both a bridge smoke test and a separate
 MasterMemory v3 technical spike. Production schema-driven binary generation
-remains an explicit not-implemented boundary.
+remains an explicit not-implemented boundary. A non-dry-run application build
+invokes that boundary before publishing generated C#; therefore the current
+not-implemented failure leaves no misleading final generated directory. When
+the production builder becomes available, generated C#, binary output, and
+cache writes MUST use staging and be published only after all required stages
+have succeeded.
 
 Generated identifier validation is a conservative scaffold guard. The complete
 C# naming policy is tracked in the Proposed

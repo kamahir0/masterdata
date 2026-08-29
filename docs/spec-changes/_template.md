@@ -2,6 +2,9 @@
 
 Status: Draft
 
+<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied, or Rejected. Human
+     approval is required before the canonical specification is changed. -->
+
 ## Affected Specifications
 
 <!-- Canonical paths, statuses, and requirement IDs. -->

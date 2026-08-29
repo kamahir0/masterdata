@@ -1890,6 +1890,7 @@ dependencies = [
  "masterdata-codegen-csharp",
  "masterdata-core",
  "masterdata-dotnet",
+ "tempfile",
 ]
 
 [[package]]

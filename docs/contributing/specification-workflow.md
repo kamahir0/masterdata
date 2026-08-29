@@ -138,6 +138,9 @@ The lifecycle and exact status meanings are defined in
 - An AI-generated draft is never automatically promoted.
 - `Implemented` means the approved meaning was implemented and evidenced; it
   is not permission to weaken or reinterpret the specification.
+- A specification-change artifact uses `Draft` -> `Proposed` -> `Approved` ->
+  `Applied`, or `Rejected`. `Applied` records the atomic canonical merge; it
+  is not an implementation status.
 - A semantic change starts another proposed change artifact. A typo,
   formatting-only change, or internal refactor with no public/domain semantic
   change may use a normal workflow.
@@ -150,10 +153,12 @@ artifact under [`docs/spec-changes`](../spec-changes/README.md), link the
 affected requirement IDs, and leave the canonical `Approved`/`Implemented`
 document unchanged. Use `review-spec` on the artifact. After explicit human
 approval, apply the approved delta atomically to the canonical document and
-keep the proposal as an audit record. Only then may implementation begin; the
-proposal itself is never an implementation contract. This prevents an
-`Approved` document from simultaneously claiming old requirements are approved
-and new requirements are not.
+keep the proposal as an audit record with `Status: Applied`. Only then may
+implementation begin; the proposal itself is never an implementation contract.
+If the canonical document was `Implemented`, applying a semantic delta returns
+it to `Approved` until the new acceptance evidence is complete. This prevents
+an `Approved` document from simultaneously claiming old requirements are
+approved and new requirements are not.
 
 ## Normalization and ownership
 

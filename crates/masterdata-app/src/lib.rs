@@ -80,12 +80,10 @@ impl ApplicationService {
         let written_files = if dry_run {
             Vec::new()
         } else {
+            self.dotnet.build_mastermemory(&plan)?;
             self.generator
                 .write_to(&generation, &plan.generated_output)?
         };
-        if !dry_run {
-            self.dotnet.build_mastermemory(&plan)?;
-        }
         Ok(BuildExecution {
             plan,
             generation,
@@ -107,4 +105,40 @@ pub struct BuildExecution {
     pub plan: BuildPlan,
     pub generation: CSharpGenerationPlan,
     pub written_files: Vec<PathBuf>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::ApplicationService;
+    use masterdata_core::PROJECT_CONFIG_FILENAME;
+
+    #[test]
+    fn failed_mastermemory_build_does_not_write_final_generated_output() {
+        let directory = tempdir().expect("temporary directory");
+        fs::create_dir(directory.path().join("sources")).expect("sources");
+        fs::write(
+            directory.path().join(PROJECT_CONFIG_FILENAME),
+            "[project]\nid = \"build.test\"\nname = \"Build Test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("config");
+        fs::write(
+            directory.path().join("sources/item.yaml"),
+            "kind: schema\ntable: item\nfields: []\nreservedFields: []\n",
+        )
+        .expect("schema");
+
+        let error = ApplicationService::new()
+            .build(Some(directory.path()), directory.path(), false)
+            .expect_err("production MasterMemory build is not implemented");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-DOTNET-MASTERMEMORY-NOT-IMPLEMENTED"
+        );
+        assert!(!directory.path().join(".masterdata/generated").exists());
+    }
 }

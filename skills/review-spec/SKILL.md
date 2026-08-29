@@ -39,6 +39,11 @@ require a separate proposal artifact under `docs/spec-changes/` (or an RFC for
 alternative comparison). A canonical approved document must not contain a
 mixture of approved old behavior and unapproved new behavior.
 
+Treat RFC status separately from product-spec status: an `Accepted` RFC is a
+decision record, not an implementation input. For a specification-change
+artifact, verify that `Approved` records an explicit human decision and
+`Applied` is used only after the atomic canonical merge.
+
 Use `rg` to search for duplicate IDs, terminology variants, and conflicting
 normative phrases. Keep the review focused on semantics; do not demand a
 specification for a typo or a purely internal refactor.
@@ -78,6 +83,8 @@ resolution when a check fails.
 - Does the existing implementation already contain semantics not authorized by
   the target specification, requiring removal or a separate proposal instead
   of retroactive approval?
+- Does any diagnostic-to-requirement relation actually describe the requirement
+  semantics, rather than merely sharing a project or numeric prefix?
 
 ### Terminology consistency
 
@@ -138,6 +145,8 @@ resolution when a check fails.
 - Were adjacent ideas placed in Non-Goals, an RFC, or Open Questions instead?
 - Is any semantic change mixed directly into an Approved/Implemented canonical
   file instead of being isolated in a durable proposal artifact?
+- Does an `Accepted` RFC or a current implementation appear to bypass the
+  canonical `Approved` specification gate?
 
 ## Required output
 

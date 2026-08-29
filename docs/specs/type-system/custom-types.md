@@ -10,8 +10,8 @@ Domain: Type System
 Value Objectとは異なり、field数ではなくtype categoryとdata shapeによって識別される。Custom Typeのdata representationは
 常にmappingであり、generated C# representationはpublic `readonly struct`に固定する。
 
-このdocumentは、canonical declaration、field type、field modifier、mapping validation、dependency cycle、stable field ID、
-generated public API、structural equality、およびconstructor validation boundaryを定義する。Enum、Flags Enum、
+このdocumentは、canonical declaration、field type、field modifier、mapping validation、dependency cycle、stable field IDと
+`reservedFields`、generated public API、structural equality、およびconstructor validation boundaryを定義する。Enum、Flags Enum、
 MessagePackのexact shape、C# naming policyの詳細は、それぞれのowner specificationへ委譲する。
 
 ## 用語
@@ -107,11 +107,10 @@ dependency graph上ではそれぞれ `A -> B` edgeとして扱う。
 ### SCHEMA-CUSTOM-010
 
 Custom Typeの各fieldはstableなnumeric Field IDを必須としなければならない（MUST）。Field IDはCustom Type内でuniqueで
-なければならず（MUST）、field nameとは独立したidentityでなければならない（MUST）。field nameをrenameしてもField IDを
-維持しなければならず（MUST）、一度そのCustom Typeで使用したField IDはfield削除後も同じCustom Type内で再利用しては
-ならない（MUST NOT）。各Custom TypeのField ID namespaceは、他のCustom Typeおよびtableのnamespaceから独立していなければ
-ならない（MUST）。共通ruleは[Field identity仕様](../compatibility/field-identity.md)の `COMPAT-FIELD-001`、
-`COMPAT-FIELD-002`、および `COMPAT-FIELD-004` を参照する。
+なければならず（MUST）、field nameとは独立したidentityでなければならない（MUST）。Custom TypeのField ID namespaceは、
+他のCustom Typeおよびtableのnamespaceから独立していなければならない（MUST）。active/reserved IDのshared used-ID namespace、
+collision、削除後の再利用禁止、およびrename時のID維持は、[Field identity仕様](../compatibility/field-identity.md)の
+`COMPAT-FIELD-001`、`COMPAT-FIELD-002`、`COMPAT-FIELD-003`、および `COMPAT-FIELD-004` に従わなければならない（MUST）。
 
 このstable Field IDはfuture MessagePack field identityの基礎となるが、exact attribute、numeric keyの配置、formatter、
 wire shapeをこのproposalで決定するものではない。
@@ -121,7 +120,9 @@ wire shapeをこのproposalで決定するものではない。
 Generated Custom Typeは、次のcategoryに固定されたpublic `readonly struct`でなければならない（MUST）。各declared fieldは
 public get-only propertyとして公開しなければならない（MUST）。Custom Typeごとに `class`、`record`、または `record struct`
 を選択可能にしてはならない（MUST NOT）。property identifierのnormalization、namespace、collision、reserved keyword policy
-は、Custom Typeのstructural semanticsとは別に、適用可能なC# naming specificationが所有する。
+は、Custom Typeのstructural semanticsとは別に、[C# naming RFC](../../rfcs/0003-csharp-naming.md)などの適用可能なC# naming
+specificationが所有する。人間のnaming decisionが得られるまで、`implement-spec` はこのmappingを補完してはならない
+（MUST NOT）。
 
 ```csharp
 public readonly struct Reward
@@ -178,11 +179,30 @@ constructorは、nested Value Objectまたはnested Custom Typeのrecursive vali
 nested typeのdefault stateをschema-validとする意味ではない。完全なschema/data validityはmaster-data build時のvalidationで
 保証する。
 
+### SCHEMA-CUSTOM-016
+
+削除したCustom Type fieldのField IDは、同じCustom Typeの `custom.reservedFields` にreserved identityとして保持しなければ
+ならない（MUST）。Custom Typeのcanonical reserved entryは、次のminimum shapeを使用しなければならない（MUST）。
+
+```yaml
+custom:
+  reservedFields:
+    - id: 1
+      formerName: legacyAmount
+      formerType: long
+```
+
+各entryは `id`、`formerName`、`formerType` を含まなければならない（MUST）。reserved IDは新しいactive fieldへ再利用しては
+ならず（MUST NOT）、field renameではactive fieldのIDを維持し、`reservedFields` へ移してはならない（MUST NOT）。
+`reservedFields` はCustom Typeごとのnamespaceに属し、別のCustom Typeの同じnumeric IDまたはtable field IDとはcollision
+しない。このrequirementは、minimum shapeを超えるdeletion timestamp、reason、replacement、migration、compatibility
+version、serialization metadataを定義しない。
+
 ## 検証ルール
 
-このproposalの観測可能なvalidation outcomeは、`SCHEMA-CUSTOM-001` から `SCHEMA-CUSTOM-015` によって定義する。対象は、
+このproposalの観測可能なvalidation outcomeは、`SCHEMA-CUSTOM-001` から `SCHEMA-CUSTOM-016` によって定義する。対象は、
 Custom Type categoryとfield数の境界、unified declaration surface、許可されるfield base type、field modifier、mapping shape、
-unknown member、key incompatibility、direct/indirect cycle、stable Field ID、readonly-struct public API、constructor order、
+unknown member、key incompatibility、direct/indirect cycle、stable Field IDとreserved identity、readonly-struct public API、constructor order、
 structural equality/hash、およびconstructor/default stateである。Enum/Flags Enumの詳細、C# naming policy、MessagePack exact shape、
 released-schema migrationはこのproposalでは割り当てない。
 
@@ -205,14 +225,50 @@ released-schema migrationはこのproposalでは割り当てない。
 | `SCHEMA-CUSTOM-013` | same structural valuesが `Equals(N)`、`Equals(object)`、`==` でequal、異なるfield valueまたはtypeがnot equal、`!=` がnegationとなり、`IEquatable<N>` と全required APIが存在する。 | reference identityだけの比較、required API欠落、またはordering APIをこのspecのcontractへ混入。 | Equality API and structural-equality tests。 |
 | `SCHEMA-CUSTOM-014` | equalなCustom Typeと同じcontents/orderのArray fieldがequal hashを持つ。 | equal valuesのhash不一致、またはArray reference identityだけに依存。 | Structural hash-consistency and sequence tests。 |
 | `SCHEMA-CUSTOM-015` | Required stringのnullがconstructorでrejectされ、Nullable nullと `ImmutableArray<T>.Empty` が受け入れられ、default Arrayがrejectされる。`default(CustomType)` はinvalidになり得る。nested typeのrecursive validityはconstructorの必須検査ではない。 | null/default Arrayが受理される、またはconstructorがnested default stateを再帰的に必須検証すると主張する。 | Constructor validation-boundary and default-state tests。 |
+| `SCHEMA-CUSTOM-016` | `custom.reservedFields` が `id`、`formerName`、`formerType` を保持し、active IDとのcollisionなしに削除IDを保持する。renameはactive IDを維持する。 | active/reserved ID collision、reserved IDの再利用、minimum memberの欠落、またはrename時のreservedへの移動。 | Reserved-field-ID schema validation and evolution tests。 |
+
+`SCHEMA-CUSTOM-016` のminimum shapeとactive/reserved namespaceは、次のsuccess caseで観測できる。
+
+```yaml
+kind: type
+name: Reward
+custom:
+  fields:
+    - id: 0
+      name: itemId
+      type: ItemId
+  reservedFields:
+    - id: 1
+      formerName: oldAmount
+      formerType: int
+```
+
+次はactive/reserved collisionのfailure caseである。
+
+```yaml
+kind: type
+name: Reward
+custom:
+  fields:
+    - id: 1
+      name: amount
+      type: int
+  reservedFields:
+    - id: 1
+      formerName: oldAmount
+      formerType: long
+```
+
+あるfieldをID `1` で削除してreserved identityへ移した後、そのID `1` を新しいactive fieldへ割り当てる変更も、同じ
+used-ID namespaceにおける再利用としてfailureになる。
 
 ## 互換性
 
-Custom Typeのcategory、mapping representation、stable Field ID、field ID順のconstructor、generated public API、structural equality、
-Array immutabilityは、将来のschema/dataとgenerated artifactに影響する。Field IDの共通identity ruleと削除後の再利用禁止は
-[Field identity仕様](../compatibility/field-identity.md)を参照する。Custom Typeのdeleted Field IDをどのsyntaxでtombstoneとして
-保持するか、MessagePack attribute/wire shape、generated API naming、released schema evolutionのclassificationは、このproposalでは
-決定しない。
+Custom Typeのcategory、mapping representation、stable Field ID、reserved identity、field ID順のconstructor、generated public API、
+structural equality、Array immutabilityは、将来のschema/dataとgenerated artifactに影響する。Field IDの共通identity ruleと削除後の
+再利用禁止は[Field identity仕様](../compatibility/field-identity.md)を参照し、Custom Typeのdeleted Field IDは
+`custom.reservedFields` に保持する。このproposalは、minimum shapeを超えるtombstone metadata、MessagePack attribute/wire shape、
+generated API naming、released schema evolutionのclassificationを決定しない。
 
 ## 例
 
@@ -283,7 +339,8 @@ A -> B[] -> A
 
 ## Open Questions（未解決事項）
 
-- Custom Type field IDのallocation policyと、削除したCustom Type field IDをどの形式でreserved/tombstoneとして保持するか。
+- Custom Type field IDのallocation policyは何か。
+- `custom.reservedFields` のminimum shapeを超えて、deletion timestamp、reason、replacement、migration、compatibility version、serialization metadataを保持するか。
 - Custom Type field nameからgenerated C# property identifierへ変換するexact naming、namespace、collision、reserved keyword policy。関連するcandidateは[C# naming RFC](../../rfcs/0003-csharp-naming.md)で管理する。
 - EnumおよびFlags Enumをfield base typeとして使用する際の、各仕様とのdependency boundaryと実装順序。
 - MasterMemory/MessagePack integrationで必要なexact attribute、wire shape、formatter、serialization constructor、およびresolver behavior。

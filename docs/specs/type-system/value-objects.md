@@ -100,8 +100,9 @@ underlying typeを `T`、Value Object nameを `N` とすると、generated type�
 なければならず（MUST）、public setterなしの `public T Value { get; }` を公開し（MUST）、argumentを `Value` に
 格納するpublic constructor `N(T value)` を公開しなければならない（MUST）。Value Objectは、typeごとの
 representation optionによって `class`、`record`、または `record struct` として選べてはならない（MUST NOT）。
-parameter nameとgenerated source formattingはこのcontractの対象外である。MessagePack attributeとserialization
-memberは、別の将来decisionで管理する。
+parameter nameとgenerated source formattingはこのcontractの対象外である。`N` へ到達するsource nameのmappingは、
+[C# naming RFC](../../rfcs/0003-csharp-naming.md)で管理する。このrequirementはnaming normalization、keyword handling、
+collision handlingを決定しない。MessagePack attributeとserialization memberは、別の将来decisionで管理する。
 
 ### SCHEMA-VO-007
 
@@ -158,12 +159,9 @@ debug representationをdefault contractとして使用してはならない（MU
 - 現在 `SCHEMA-VO-002` が許可するnumeric underlying（`int`、`uint`、`long`、`ulong`）では、textual representationに
   invariant-culture formattingを使用し、runtime `CurrentCulture` によって変化してはならない（MUST）。
 - `string` では、結果はunderlying string valueそのものでなければならない（MUST）。
-- `bool` のunderlying valueに関する既存のdecisionは、.NET Boolean textual representation（`"True"` または `"False"`）を
-  返さなければならず（MUST）、culture-dependentな変換を行ってはならない（MUST NOT）というものである。ただし `bool` は
-  `SCHEMA-VO-002` で現行のValue Object underlyingとして許可されていないため、このruleは現行declarationを許可するものではない。
-- `float` または `double` をunderlyingとして許可する将来のapproved specification changeが行われた場合、そのnumeric
-  textual representationにもinvariant-culture formattingを適用しなければならない（MUST）。この条件付きruleは、
-  現行のValue Object underlying制限を変更しない。
+
+このrequirementは、現行の `SCHEMA-VO-002` が許可するunderlying typeにだけ適用する。現行未許可のprimitiveを将来の
+specification changeでunderlyingへ追加する場合、そのtypeの `ToString()` contractも同じchangeで別途定義する。
 
 ### SCHEMA-VO-011
 
@@ -204,7 +202,7 @@ validityを再検証するcontractは定義しない。
 このproposalの観測可能なvalidation outcomeは、`SCHEMA-VO-001` から `SCHEMA-VO-012` によって定義する。対象は、
 key-compatible underlying restriction、wrapper restriction、one-document/one-declaration structure、scalar
 representation、readonly-struct category、minimum public API、equality APIとsemantics、inherited capability、
-directional conversion configuration、conversion isolation、underlying-value `ToString()` behavior、default/constructor
+directional conversion configuration、conversion isolation、supported-underlying valueの `ToString()` behavior、default/constructor
 boundaryである。exact diagnostic codeとfinal MessagePack attribute shapeは未割り当てである。
 
 ## 受け入れ証拠

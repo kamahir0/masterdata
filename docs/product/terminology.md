@@ -23,7 +23,7 @@ Status: Draft
 - **Data AST**: data documentのshapeを表すtyped data structure。type resolutionまで、field leafのYAML valueを保持する。
 - **Table identity**: `table` fieldが持つproject-localなstable identity。generated C# type nameおよびsource fileのpathとは別物である。現在のscaffoldは2つ目の `tableId` identityを定義しない。global identity、rename migration、released compatibility、legacy migration、cross-project identityはtable-identity RFCで未解決のままである。
 - **Generated C# type name**: presentation/code-generation name。`csharpName` があればそれを使用し、なければgeneratorが導出する。compatibility specificationが許す場合に限り、独立して変更してもよい（MAY）。
-- **Field ID**: container内でfieldを識別するpersistentなnumeric identity。将来のMessagePack integer-key identityの基礎となるが、MasterMemoryのindex numberおよびwire formatとは別物である。
+- **Field ID**: container内でfieldを識別するpersistentなnumeric identity。active field IDとreserved field IDは同じcontainerのused-ID namespaceを共有し、一度usedになったIDは再利用してはならない（MUST NOT）。将来のMessagePack integer-key identityの基礎となるが、MasterMemoryのindex numberおよびwire formatとは別物である。
 - **Value Object**: key-compatibleなprimitive scalarにnominal identityを与えるimmutableなdomain type。現行のunderlying vocabularyは `int`、`uint`、`long`、`ulong`、`string` であり、Value Object自身は常にkey-compatibleである。scalar data representationとgenerated representationはValue Objects specificationが管理する。
 - **Enum**: named type。その宣言memberは、type-systemとcompatibility specificationが要求する場合にstableなnumeric valueを持つ。
 - **Flags Enum**: bitwise combinationを表すことを意図したenum。fieldまたはkeyとして許可するかはtype-system specificationが定義する。

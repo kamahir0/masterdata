@@ -93,8 +93,12 @@ productが承認したYAML subsetはまだない。refinementでは、current pa
 - custom tagを許可するか。
 - duplicate mapping keyをどのようにdiagnoseするか。
 - numericおよびtimestamp-looking scalarをどのように解釈するか。
-- unknown fieldをreject、ignore、またはround-trip editingのためにpreserveするか。
+- schema/document-levelでcanonical specificationが所有していないunknown YAML memberをreject、ignore、またはround-trip editingのためにpreserveするか。
 
 Open Questionsには、GUIがYAMLを書き戻す際にcomment、formatting、quoteを保持する必要があるかも含まれる。
 parser/library selectionは、[`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md)
 で別途追跡する。
+
+このOpen Questionはschema/document envelopeなどのgenericなmemberの扱いだけを対象とする。Custom Type data mapping内の
+schema未定義memberは、この一般的なquestionの対象外であり、`SCHEMA-CUSTOM-007` が所有するvalidation ruleに従って
+validation errorとする。

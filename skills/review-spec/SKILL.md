@@ -124,6 +124,25 @@ findingを作る場合は、file、Requirement ID、evidence、impact、具体�
 - semantic changeをApproved/Implemented canonical fileへ直接混ぜず、durable proposalへ隔離しているか。
 - Accepted RFCまたはcurrent implementationがcanonical `Approved` specification gateを迂回していないか。
 
+### Reverse traceabilityとimplementation rationale
+
+implementation diff、current code、または関連evidenceがreview scopeに含まれる場合は、
+次も確認する。全branch、clone、allocationへcommentを要求するのではなく、straightforwardな
+実装から意図的に外れたnon-obvious codeを対象にする。
+
+- non-obvious codeに、必要な範囲でrecoverableな`WHY`と、削除・簡略化時のfailure modeがあるか。
+- rationaleがWHATの説明だけでなく、protected invariantを説明しているか。
+- referenced regression testが、commentで主張されたbehaviorを実際に保護しているか。
+- Requirement ID referenceが、実際のrequirement semanticsを正しく指しているか。
+- platform/library/toolchain workaroundのaffected constraint、protected behavior、removal condition、durable evidenceが古くなっていないか。
+- refactorによってrationaleが旧locationに取り残されていないか。
+- performance optimizationにbenchmark、profile、allocation evidence、またはknown hot pathがあるか。
+- undocumented invariantを越えてcodeがsimplify、delete、deduplicateされていないか。
+
+local rationaleはproduct specificationの代替ではない。Approved specが既に定義するbehavior
+へのimplementation違反はbug findingとし、specを後付けで正当化しない。behaviorの選択自体が
+必要なら`Specification Gap`としてrefinementへ戻す。
+
 ## Required output
 
 人間が素早くapprovalを判断できるよう、次の構造を使用する。
@@ -150,6 +169,9 @@ authorまたはhuman maintainerへのquestion。特に、blocking issueではな
 さらに、Intent fidelity、Internal consistency、Cross-spec consistency、Terminology consistency、Normative strength、
 Testability、Backward compatibility、Unresolved ambiguity、Implementation leakage、Unrequested behaviorを含むcompactな
 verdict tableまたはlistを付ける。
+
+implementation rationaleをreviewした場合は、rationale gap、orphaned rationale、stale reference、
+または `None identified` をこのreportへ含める。
 
 ## 安全策
 

@@ -80,6 +80,10 @@ impl ApplicationService {
         let written_files = if dry_run {
             Vec::new()
         } else {
+            // Keep final generated output untouched until the build boundary
+            // succeeds; writing first would leave a misleading partial artifact
+            // after a failed build. Regression:
+            // failed_mastermemory_build_does_not_write_final_generated_output.
             self.dotnet.build_mastermemory(&plan)?;
             self.generator
                 .write_to(&generation, &plan.generated_output)?

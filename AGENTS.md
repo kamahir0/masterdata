@@ -95,3 +95,23 @@
 - `cargo xtask check-specs` はRequirement IDのdefinitionとreferenceを区別
   し、duplicate definition、malformed ID/status、duplicate ADR/RFC/proposal
   number、change metadata、broken linkを確認する。
+
+## 実装理由とReverse Traceability
+
+- straightforwardな実装から意図的に外れたnon-obvious codeは、将来その理由と保護している
+  invariantを復元できるだけのrationaleを保持しなければならない（MUST）。
+- unusual、冗長に見える、削除・簡略化できそうなcodeを変更する前に、nearby rationale
+  comment、Requirement ID、regression test、ADR、issue/reference、benchmark、
+  platform/library/toolchain constraintを検索しなければならない（MUST）。
+- 理由を確認せず `looks unnecessary -> delete` と進めてはならない（MUST NOT）。
+- non-obvious codeを追加する場合は、必要に応じて`WHY`、削除・簡略化時のfailure mode、
+  `EVIDENCE / REFERENCE`、`REMOVAL CONDITION`をprotected invariantの近くへ残す。reference
+  だけで理由を置き換えてはならない（MUST NOT）。
+- `Spec`はobservable behavior、`ADR`はarchitecture、`Test`はregression evidence、
+  `Comment`はlocal implementation rationaleを所有する。rationale commentを新しいproduct
+  requirementへ自動昇格させてはならない（MUST NOT）。
+- Approved specがすでにbehaviorを定義しimplementationだけが違反している場合は、specを
+  変更せずbug fixとfocused regression testを行う。behaviorを選択する必要がある場合は
+  `Specification Gap`として`refine-spec`へ戻す。
+- refactorでcodeの場所が移動する場合、rationaleはprotected invariantとともに移動しなければ
+  ならない（MUST）。詳細は[実装理由ガイド](docs/contributing/implementation-rationale.md)を参照する。

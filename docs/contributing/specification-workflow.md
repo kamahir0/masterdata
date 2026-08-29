@@ -177,6 +177,34 @@ fixtureは固定入力として保持し、repository toolingによって `targe
 `implement-spec` は関連testを実行し、環境が対応していれば最後に `cargo xtask check-all` を
 実行する。最終報告には、実行できなかったcheckと、明示的に未実装としたboundaryを記載する。
 
+## 実装から理由を復元する（Reverse Traceability）
+
+このworkflowは `Spec -> Test -> Implementation` のforward traceabilityだけでなく、
+`Implementation -> Why -> Evidence` のreverse traceabilityも維持する。straightforwardな
+実装から意図的に外れたnon-obvious codeは、将来その理由を復元できるだけのrationaleを
+保持しなければならない（MUST）。詳細な分類とcomment方針は[実装理由ガイド](implementation-rationale.md)
+を参照する。
+
+理由のownerは次のように分ける。
+
+- observable product/domain behaviorはSpecification。
+- cross-cutting architectureはADR。
+- regressionまたはknown bugはfocused regression testと、必要な場合のnearby rationale comment。
+- platform/library/toolchain workaroundは、protected behaviorとremoval conditionを含むnearby rationale commentに、testまたはdurable referenceを補う。
+- performance optimizationはbenchmark、profile、allocation evidence、またはknown hot pathにtraceする。
+- obvious private implementation detailにはdocumentationを要求しない。
+
+Approved specificationがすでにbehaviorを定義しているのにimplementationだけが違反している
+場合、specificationを変更してはならない（MUST NOT）。bug fix、focused regression test、
+必要に応じたlocal rationaleで修正する。Approved specからbehaviorを選択できない場合だけ、
+`Specification Gap`として`refine-spec`へ戻す。local rationaleを新しいproduct requirementへ
+昇格させてはならない。
+
+unusual codeをsimplify、delete、deduplicate、replaceする前に、nearby rationale、Requirement ID、
+regression test、ADR、issue/reference、benchmark、platform/library/toolchain constraintを検索
+しなければならない（MUST）。refactorで実装位置が移動する場合、rationaleもprotected invariantと
+ともに移動する。acceptance matrixは作業用mappingに留め、恒久的な巨大traceability表は作成しない。
+
 ## Workflowを健全に保つ
 
 3つのskillは `skills/` 配下のrepository artifactであり、codeと同様にreview・version control

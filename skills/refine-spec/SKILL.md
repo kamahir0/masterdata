@@ -122,6 +122,20 @@ refinement中は、field name `id` がprimary keyを意味する、またはdiag
 owning specificationに支えられていないcurrent behaviorを明示的に監査する。そのbehaviorはremoval/reportingの候補で
 あり、approvedであることのevidenceではない。
 
+### Local implementation rationaleをsemantic authorityと混同しない
+
+existing code comment、regression test、benchmark、platform/library workaroundは、現在の
+implementation constraintを理解するためのevidenceになり得る。ただし、それだけで新しい
+product/domain requirementへ昇格させてはならない。Approved specificationがbehaviorを既に
+定義している場合は、そのbehaviorとの差異をbugまたはimplementation gapとして扱う。comment、
+test、benchmarkからobservable behaviorを選択しなければならない場合は、黙ってspecへ昇格せず
+`Specification Gap`として報告する。
+
+既存のnon-obvious codeを変更するimpact analysisでは、nearby rationale、Requirement ID、
+regression test、ADR、issue/reference、benchmark、platform/library/toolchain constraintを
+確認する。rationaleはrefactor時にもprotected invariantの近くに保ち、単なるreferenceだけを
+新しい根拠として作らない。
+
 ## Required output
 
 最初にsource evidenceとstatement classificationを示し、以下の見出しを正確に使用する。空のsectionには

@@ -80,6 +80,27 @@ acceptance matrixを満たす最小の変更を実装する。その後、関連
 checkを実行する。環境が対応していれば最後に `cargo xtask check-all` を実行する。checkを実行できない場合は正確な
 理由を記録し、完全なverificationを主張してはならない。
 
+### Reverse traceabilityとlocal rationale
+
+implementation中に、non-obviousなworkaround、optimization、ordering constraint、platform-specific
+path、timing/concurrency rule、intentionalなredundancy、clone/copy/cache/allocation、または unusual
+error/filesystem operationを導入する場合は、future developerまたはAIが理由を復元できるlocal
+rationaleをprotected invariantの近くに保持しなければならない（MUST）。必要に応じて、`WHY`、
+削除・簡略化した場合のfailure mode、`EVIDENCE / REFERENCE`、`REMOVAL CONDITION`を記録する。
+
+regressionでは、behaviorを説明するfocused test nameを優先し、必要ならRequirement IDをnearby
+commentまたはmetadataで対応付ける。performance optimizationは、可能な範囲でbenchmark、profile、
+allocation evidence、またはknown hot pathへtraceする。issueやURLは理由の代わりにならない。
+
+refactorで実装位置を移動する場合、rationaleもprotected invariantとともに移動する。rationaleが
+不要になった場合は、なぜ不要になったかをtest、commit、ADR、または変更後のcode structureから
+確認してから削除する。
+
+local implementation rationaleを新しいproduct requirementへ変換してはならない（MUST NOT）。
+observable behaviorが変更される場合だけ、既存のApproved specと照合し、必要なら`refine-spec`
+へ戻す。Approved specが既にbehaviorを定義していて実装だけが違反する場合は、specを変更せず
+bug fixとregression evidenceを行う。
+
 ### 5. Specificationとimplementationを照合する
 
 statusを変更する前に、すべてのRequirement IDをimplementationとtest evidenceに照合する。specificationを更新できるのは

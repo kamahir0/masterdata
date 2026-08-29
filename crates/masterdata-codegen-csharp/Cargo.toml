@@ -1,0 +1,15 @@
+[package]
+name = "masterdata-codegen-csharp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Structured C# scaffold generation boundary for masterdata schemas"
+
+[dependencies]
+masterdata-core = { path = "../masterdata-core" }
+
+[dev-dependencies]
+tempfile.workspace = true
+

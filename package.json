@@ -1,0 +1,16 @@
+{
+  "name": "masterdata",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/gui"
+  ],
+  "scripts": {
+    "frontend:lint": "npm --workspace @masterdata/gui run lint",
+    "frontend:test": "npm --workspace @masterdata/gui run test",
+    "frontend:build": "npm --workspace @masterdata/gui run build",
+    "gui:dev": "npm --workspace @masterdata/gui run tauri -- dev",
+    "gui:build": "npm --workspace @masterdata/gui run tauri -- build"
+  }
+}
+

@@ -1,0 +1,6 @@
+kind: data
+table: item
+records:
+  - id: 1003
+    name: Ether
+

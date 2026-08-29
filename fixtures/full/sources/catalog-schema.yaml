@@ -1,0 +1,22 @@
+kind: schema
+table: item
+tableId: "catalog.item"
+csharpName: ItemMaster
+fields:
+  - id: 0
+    name: id
+    type: int
+  - id: 1
+    name: code
+    type: ItemCode
+  - id: 2
+    name: rarity
+    type: Rarity
+  - id: 3
+    name: tags
+    type: ItemTags
+reservedFields:
+  - id: 4
+    formerName: legacyName
+    formerType: string
+

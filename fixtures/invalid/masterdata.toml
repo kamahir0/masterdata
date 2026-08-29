@@ -1,0 +1,7 @@
+[project]
+name = "Invalid Fixture"
+version = "0.1.0"
+
+[sources]
+roots = ["sources"]
+

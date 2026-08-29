@@ -1,0 +1,8 @@
+kind: data
+table: item
+records:
+  - id: 1001
+    name: Potion
+  - id: 1002
+    name: Hi-Potion
+

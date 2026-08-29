@@ -1,0 +1,13 @@
+[project]
+id = "fixture.minimal"
+name = "Minimal Fixture"
+version = "0.1.0"
+
+[sources]
+# This is only a scan root. YAML kind/table declarations own semantics.
+roots = ["sources"]
+
+[build]
+output = ".masterdata/generated"
+cache = ".masterdata/cache"
+

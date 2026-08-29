@@ -1,0 +1,13 @@
+kind: schema
+table: item
+tableId: "catalog.item"
+csharpName: ItemMaster
+fields:
+  - id: 0
+    name: id
+    type: int
+  - id: 1
+    name: name
+    type: string
+reservedFields: []
+

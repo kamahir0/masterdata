@@ -1,0 +1,21 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Repository development workflow commands"
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
+masterdata-dotnet = { path = "../masterdata-dotnet" }
+masterdata-core = { path = "../masterdata-core" }
+
+[dev-dependencies]
+tempfile.workspace = true

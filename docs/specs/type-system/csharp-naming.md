@@ -29,20 +29,24 @@ contextual keywordをこの仕様のreserved keywordへ暗黙に追加しない�
 
 ### TYPE-NAMING-001
 
-Value ObjectまたはCustom Typeのtop-level `name`は、この仕様のPascalCase ASCII C# identifierでなければ
+Value ObjectまたはCustom Typeのtop-level `name`は、この仕様のtype-name ASCII C# identifierでなければ
 ならず（MUST）、generated C# type identifierはYAML `name`をそのまま使用しなければならない（MUST）。
 `name`を別のidentifierへnormalization、split、re-case、transliterationしてはならない（MUST NOT）。
 
 ### TYPE-NAMING-002
 
-Type declarationのPascalCase nameは、次のlexical ruleを満たさなければならない（MUST）。
+Type declarationのnameは、次の正規表現に完全一致するtype-name ASCII identifierでなければならない（MUST）。
 
-- nameは空であってはならず、ASCII letterまたはASCII digitだけで構成する。
-- 先頭characterはuppercase ASCII letterでなければならない。
-- nameが1 characterより長い場合、先頭以外にlowercase ASCII letterまたはASCII digitを少なくとも1つ含めなければならない。
+```text
+^[A-Z][A-Za-z0-9]*$
+```
 
-このruleでは、`A`、`A1`、`Item2`、`HTTPServer`、`XML2Data` はvalidであり、`REWARD` はinvalidである。
-word boundary、acronymの分割、culture-sensitive case mapping、Unicode normalizationは判定に使用しない。
+このruleは、空でないname、先頭のuppercase ASCII letter、および2文字目以降のASCII letterまたはASCII digitを定める。
+`PascalCase` はこのlexical ruleを説明するための便宜的なlabelに過ぎず、word boundary、acronymの分割、または
+ALL-CAPS styleをvalidatorで追加強制してはならない（MUST NOT）。したがって、`A`、`AB`、`ID`、`URL`、`HTTP`、
+`REWARD`、`ItemId`、`Reward`、`HTTPServer`、`XML2Data`、`A1`、`Item2` はvalidである。非ASCII character、lowercase
+で始まるname、separatorを含むname、digitで始まるnameはこのruleを満たさない。culture-sensitive case mappingと
+Unicode normalizationは判定に使用しない。
 
 ### TYPE-NAMING-003
 
@@ -113,7 +117,7 @@ emissionされる範囲を指す。namespaceの導出方法自体はこの仕様
 | Requirement（要件） | Success observation（成功時の観測） | Failure observation（失敗時の観測） | Suggested evidence（推奨する証拠） |
 | --- | --- | --- | --- |
 | `TYPE-NAMING-001` | `name: Reward` が生成type identifier `Reward` になる。 | source nameが別のidentifierへ変換される、またはValue Object/Custom Typeのtype nameがTable namingから推測される。 | Generated type-name API test。 |
-| `TYPE-NAMING-002` | `A`、`A1`、`Item2`、`HTTPServer`、`XML2Data` がvalidとして扱われる。 | `itemId`、`reward`、`reward_condition`、`reward-condition`、`REWARD`、非ASCII nameがrejectされる。 | PascalCase lexical validation tests。 |
+| `TYPE-NAMING-002` | `A`、`AB`、`ID`、`URL`、`HTTP`、`REWARD`、`ItemId`、`HTTPServer`、`XML2Data`、`A1`、`Item2` がvalidとして扱われる。 | `itemId`、`reward`、`_reward`、`reward_condition`、`reward-condition`、`1Reward`、非ASCII nameがrejectされる。 | Type-name lexical validation tests。 |
 | `TYPE-NAMING-003` | `x`、`item2`、`httpServer`、`xml2Data` がCustom Type field nameとして受け入れられる。 | `ItemId`、`ITEM_ID`、`item-id`、非ASCII field nameがrejectされる。 | lowerCamelCase lexical validation tests。 |
 | `TYPE-NAMING-004` | `id -> Id`、`itemId -> ItemId`、`fooBar -> FooBar` が生成される。 | `fooBar -> Foobar`、separator除去、全体re-case、または自動suffixが行われる。 | Property-name mapping test。 |
 | `TYPE-NAMING-005` | source field `itemId` のconstructor parameterが `itemId` となり、field ID順とは独立してexact nameが保持される。 | parameter nameがproperty nameへ変換される、またはgeneratorごとに変動する。 | Constructor reflection/named-argument API test。 |

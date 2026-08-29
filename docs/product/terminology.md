@@ -12,7 +12,7 @@ Status: Draft
 - **Array**: field entryが存在し、base typeのvalueを0個以上含む順序付きimmutable sequenceのfield shape。空のarrayはvalueなしを表す。
 - **Underlying Type**: Value Objectがwrapする単一のkey-compatible primitive。source fileのpathやgenerated type nameから推測してはならない。
 - **Type Declaration**: named type categoryを1つ宣言するYAML document。1つのYAML documentには1つのtype declarationだけを置く。
-- **Type Declaration Name**: Value ObjectまたはCustom Typeを識別するtop-level `name`。現行のtype-system naming contractではPascalCase ASCII C# identifierであり、generated C# type identifierへそのまま使用する。
+- **Type Declaration Name**: Value ObjectまたはCustom Typeを識別するtop-level `name`。現行のtype-system naming contractでは正規表現 `^[A-Z][A-Za-z0-9]*$` に一致するtype-name ASCII C# identifierであり、generated C# type identifierへそのまま使用する。
 - **Type Capability**: direct key compatibilityなど、typeが公開し得る観測可能なpermissionまたはbehavior。type-system specificationsは、特定のimplementation data structureを要求せずにcapabilityを定義する。
 - **Schema document**: `kind: schema` を持ち、tableのstable identityとfieldsを宣言するYAML file。
 - **Data**: tableへ供給するvalueとrecord。dataがschemaの意味を再定義することはない。

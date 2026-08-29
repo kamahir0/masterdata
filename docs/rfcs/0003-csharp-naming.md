@@ -37,8 +37,9 @@ Value ObjectとCustom Typeの仕様は、generated public C# type、property、c
 
 ### 1. Type declaration nameからgenerated type identifierへのmapping
 
-**Decision**: YAML type declarationの `name` はPascalCase ASCII C# identifierでなければならず、generated C# type identifierは
-そのsource nameをそのまま使用する。追加normalizationは行わない。詳細は `TYPE-NAMING-001`、`TYPE-NAMING-002` が所有する。
+**Decision**: YAML type declarationの `name` は、`TYPE-NAMING-002` が定義するtype-name ASCII C# identifierでなければならず、
+generated C# type identifierはそのsource nameをそのまま使用する。追加normalizationは行わない。詳細は `TYPE-NAMING-001`、
+`TYPE-NAMING-002` が所有する。
 
 - **Option A**: YAML `name` が有効なC# identifierであることを要求し、そのidentifierをそのまま使用する。
 - **Option B**: YAML `name` を決定的なnormalization ruleでC# identifierへ変換し、変換後のcollisionを検出する。
@@ -106,6 +107,14 @@ escape、normalizationまたはその他のdisambiguationは行わない。gener
 - **Option C**: collisionしたfield/typeごとにexplicit generated nameを要求する。
 
 **Why it matters**: `foo-bar` と `foo_bar` のような入力を同一APIへ黙ってmergeせず、生成結果を一意にする必要がある。
+
+### Type-name lexical ruleのhuman-confirmed refinement
+
+上記1のDecisionで使っていたstyle labelのうち、type nameのlexical boundaryは後続のhuman decisionによって明確化された。
+canonical ruleは `^[A-Z][A-Za-z0-9]*$` であり、ASCII only、先頭のuppercase ASCII letter、および後続のASCII letterまたは
+ASCII digitを要求する。`A`、`AB`、`ID`、`URL`、`HTTP`、`REWARD`、`ItemId`、`Reward`、`HTTPServer`、`XML2Data`、`A1`、
+`Item2` はvalidである。ALL-CAPS acronymを含むstyle上の区別、word boundary、acronymの分割をvalidatorで追加要求しない。
+このobservable contractは `docs/specs/type-system/csharp-naming.md` の `TYPE-NAMING-002` が所有する。
 
 ## 補助的な命名事項
 

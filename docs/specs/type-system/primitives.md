@@ -105,7 +105,7 @@ assigned by this proposal.
 | `TYPE-PRIMITIVE-001` | Each initial canonical name resolves to its declared domain. | A name outside the initial vocabulary is not treated as one of these primitives. | Type vocabulary table test. |
 | `TYPE-PRIMITIVE-002` | Future-only names remain outside the initial profile. | Each listed excluded name is rejected as an initial primitive. | Unsupported-name validation test. |
 | `TYPE-PRIMITIVE-003` | A scalar with the declared category and representation is accepted. | `1.0` for `int`, a negative `uint`, or an implicit type conversion is rejected. | Strict scalar validation tests. |
-| `TYPE-PRIMITIVE-004` | Boundary values for each integer domain are accepted. | Values just outside each range are rejected without wrapping or narrowing. | Integer boundary tests. |
+| `TYPE-PRIMITIVE-004` | Boundary values for each integer domain are accepted. | Values just outside each range are rejected without narrowing, wrapping, saturation, or implicit conversion. | Integer boundary tests. |
 | `TYPE-PRIMITIVE-005` | The five listed key-compatible primitives are classified as compatible. | `bool`, `float`, and `double` are classified as incompatible. | Capability classification test. |
 | `TYPE-PRIMITIVE-006` | `""` is accepted as a string value. | No failure is reported solely because a string is empty. | Empty-string validation test. |
 | `TYPE-PRIMITIVE-007` | Representative finite `float` and `double` values are accepted when their scalar category and precision are valid. | `NaN`, positive infinity, and negative infinity are rejected as final values for either floating-point primitive. | Finite/non-finite boundary validation tests. |

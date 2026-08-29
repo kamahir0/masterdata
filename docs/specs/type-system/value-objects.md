@@ -53,7 +53,7 @@ Value-Object-only top-level declaration family. One YAML document MUST contain
 exactly one type declaration, and a type document's path or filename MUST NOT
 determine the type identity.
 
-The proposed surface for one Value Object declaration is:
+The canonical surface for one Value Object declaration is:
 
 ```yaml
 kind: type
@@ -62,8 +62,11 @@ valueObject:
   underlying: int
 ```
 
-This surface reserves the same type-document boundary for future Enum, Flags
-Enum, and Custom Type categories without defining those categories here.
+The `kind` member MUST be `type`. The declaration MUST contain a top-level
+`name` member identifying the Value Object and a top-level `valueObject`
+mapping. The `valueObject` mapping MUST contain the `underlying` member. This
+surface reserves the same type-document boundary for future Enum, Flags Enum,
+and Custom Type categories without defining those categories here.
 
 ### SCHEMA-VO-005
 
@@ -74,12 +77,28 @@ representation as its underlying primitive. For example, an `ItemId` wrapping
 
 ### SCHEMA-VO-006
 
-The generated C# representation of every Value Object MUST be a `readonly
-struct`. A Value Object MUST NOT be selectable as a `class`, `record`, or
-`record struct` through per-type representation options.
+The generated C# representation of every Value Object MUST be a public
+`readonly struct` with the following minimum public API:
 
-The exact accessibility, member names, constructor signature, and MessagePack
-attributes are not fixed by this requirement.
+```csharp
+public readonly struct ItemId
+{
+    public int Value { get; }
+    public ItemId(int value)
+    {
+        Value = value;
+    }
+}
+```
+
+For an underlying type `T` and Value Object name `N`, the generated type MUST
+be `public readonly struct N`, MUST expose `public T Value { get; }` without a
+public setter, and MUST expose a public constructor `N(T value)` that stores
+the argument in `Value`. A Value Object MUST NOT be selectable as a `class`,
+`record`, or `record struct` through per-type representation options. The
+parameter name and generated source formatting are not part of this contract.
+MessagePack attributes and serialization members remain governed by a separate
+future decision.
 
 ### SCHEMA-VO-007
 
@@ -106,10 +125,28 @@ implicit conversion in each of these directions:
 - underlying primitive to Value Object; and
 - Value Object to underlying primitive.
 
-All four combinations of those two independent capabilities MUST be
-representable. When no conversion setting is supplied, both capabilities MUST
-be disabled. The exact YAML property names and placement used to express these
-choices are not fixed by this requirement.
+The canonical YAML properties for these capabilities are:
+
+```yaml
+valueObject:
+  underlying: int
+  conversions:
+    fromUnderlyingImplicit: true
+    toUnderlyingImplicit: false
+```
+
+`fromUnderlyingImplicit` and `toUnderlyingImplicit` MUST be boolean options
+under `valueObject.conversions`. The `conversions` mapping MAY be omitted. If
+it is omitted, or if either option is omitted from it, the corresponding
+capability MUST be disabled. All four combinations of those two independent
+capabilities MUST be representable.
+
+When `fromUnderlyingImplicit` is enabled, the generated C# API MUST provide
+an implicit conversion from the underlying C# type to the Value Object. When
+it is disabled, that implicit conversion MUST NOT be provided. The same rule
+applies independently to `toUnderlyingImplicit` for conversion from the Value
+Object to the underlying C# type. The exact generated source formatting and
+member ordering are not part of this contract.
 
 ### SCHEMA-VO-009
 
@@ -122,11 +159,18 @@ conversion settings.
 
 ### SCHEMA-VO-010
 
-The generated `ToString()` for a Value Object MUST return the textual
-representation of its underlying value. It MUST NOT use a type-name-wrapped
-debug representation such as `ItemId(1001)` as the default contract. The
-culture, provider, and other formatting details of that textual
-representation remain outside this requirement.
+The generated Value Object MUST expose `public override string ToString()`.
+That method MUST return the textual representation of its underlying value. It
+MUST NOT use a type-name-wrapped debug representation such as `ItemId(1001)`
+as the default contract.
+
+- For `int`, `uint`, `long`, `ulong`, `float`, and `double`, the textual
+  representation MUST use invariant-culture formatting and MUST NOT vary with
+  the runtime `CurrentCulture`.
+- For `string`, the result MUST be the underlying string value itself.
+- For `bool`, the result MUST follow the underlying .NET Boolean textual
+  representation (`"True"` or `"False"`), without a culture-dependent
+  transformation.
 
 ## Validation Rules
 
@@ -145,22 +189,22 @@ attribute shape remain unassigned.
 | `SCHEMA-VO-001` | A Value Object is immutable, equality-capable, and serializable through the approved integration. | A mutable, non-equality-capable, or non-serializable representation is rejected. | Generated representation and serialization tests. |
 | `SCHEMA-VO-002` | One declared primitive is accepted as the underlying type. | A missing or non-primitive underlying type is rejected. | Type declaration validation tests. |
 | `SCHEMA-VO-003` | A direct primitive wrapper is accepted. | Nested, enum, custom, array, or nullable wrappers are rejected. | Forbidden-wrapper tests. |
-| `SCHEMA-VO-004` | One type document yields one named type declaration independent of its path. | Multiple declarations or path-derived identity are rejected. | Type document structure tests. |
+| `SCHEMA-VO-004` | One type document with `kind: type`, top-level `name`, and top-level `valueObject.underlying` yields one named Value Object declaration independent of its path. | Multiple declarations, a missing canonical member, or path-derived identity is rejected. | Type document structure tests. |
 | `SCHEMA-VO-005` | A Value Object field uses the underlying primitive scalar representation. | A wrapper object with a `value` property is not required or accepted as the defined representation. | Data representation tests. |
-| `SCHEMA-VO-006` | Generated output uses a readonly struct category. | A per-type class, record, or record struct selection is not accepted. | C# generation golden/compile test. |
+| `SCHEMA-VO-006` | Generated output is a public readonly struct with a public `Value` get-only property initialized by the public underlying-value constructor. | A private type, setter-bearing `Value` property, missing public constructor, constructor that does not store its argument, or class/record representation is rejected. | C# generation golden/compile/API-surface test. |
 | `SCHEMA-VO-007` | Equality and inherited capability outcomes match the underlying primitive. | An independent capability override produces a mismatch. | Capability inheritance tests. |
-| `SCHEMA-VO-008` | The declaration model represents `false/false`, `true/false`, `false/true`, and `true/true` independently; omitted settings produce `false/false`. | Enabling one direction implicitly enables the other, or omitted settings enable either direction. | Conversion-capability model tests. |
+| `SCHEMA-VO-008` | `valueObject.conversions.fromUnderlyingImplicit` and `toUnderlyingImplicit` represent `false/false`, `true/false`, `false/true`, and `true/true` independently; omitted mapping/options produce `false/false`, and only enabled directions have implicit C# operators. | A missing direction defaults to enabled, one setting changes the other, or an operator is emitted for a disabled direction. | Conversion syntax, default, and generated-operator tests. |
 | `SCHEMA-VO-009` | Changing conversion settings changes only the generated C# conversion surface. | Key compatibility, comparison, equality, wire identity, underlying identity, or field modifier behavior changes with conversion settings. | Conversion-isolation tests. |
-| `SCHEMA-VO-010` | A Value Object's `ToString()` returns the underlying textual value, such as `"1001"` for an `ItemId` wrapping `1001`. | The default result adds a type-name wrapper such as `ItemId(1001)`. | Generated API behavior test, with formatting cases added after the culture policy is decided. |
+| `SCHEMA-VO-010` | A Value Object's `ToString()` returns the underlying textual value, such as `"1001"` for an `ItemId` wrapping `1001`, with numeric output invariant to `CurrentCulture`, the underlying string returned unchanged, and .NET Boolean text for `bool`. | The result varies with `CurrentCulture`, changes the underlying string, or adds a type-name wrapper such as `ItemId(1001)`. | Generated API behavior tests under multiple cultures and all primitive categories. |
 
 ## Compatibility
 
 The scalar data representation avoids adding a Value Object wrapper node, but
 the generated C# API and MessagePack wire shape can still affect compatibility.
 This proposal does not define implicit migration, released-schema
-compatibility, constructor compatibility, or field-ID behavior. Those choices
-remain Open Questions and are not implementation authority until this proposal
-is approved.
+compatibility classification for generated API changes, or field-ID behavior.
+Those choices remain Open Questions and are not implementation authority until
+this proposal is approved.
 
 ## Examples
 
@@ -179,10 +223,8 @@ valueObject:
 userCode: "player-001"
 ```
 
-The following is a non-normative candidate syntax for the two directional
-conversion settings. It illustrates four independent states but intentionally
-does not establish the property names or their placement as part of the
-contract:
+The following is a non-normative example of the canonical declaration with
+directional conversion settings:
 
 ```yaml
 kind: type
@@ -190,7 +232,7 @@ name: ItemId
 valueObject:
   underlying: int
   conversions:
-    fromUnderlyingImplicit: false
+    fromUnderlyingImplicit: true
     toUnderlyingImplicit: false
 ```
 
@@ -213,15 +255,10 @@ valueObject:
 
 ## Open Questions
 
-- What exact YAML properties and placement express the two directional
-  implicit-conversion settings?
+- What exact equality interface and operator surface, if any, must be
+  generated beyond the required equality behavior?
 - Should explicit conversion operators or helper APIs also be generated, and
   what compatibility guarantees would they have?
-- Which culture, format provider, or invariant-formatting policy applies to
-  the textual representation returned by `ToString()` for numeric underlying
-  values?
-- What exact constructor and public member API must a generated readonly
-  struct expose?
 - What MessagePack attributes and generated shape are required by MasterMemory
   and Unity-compatible C# projects?
 - How do nullable reference types and nullable value types differ in the
@@ -234,8 +271,6 @@ valueObject:
   primitive wrapper contract?
 - How are Value Object additions, underlying-type changes, and renames
   classified against released schemas?
-- Are the exact `kind`, `name`, and `valueObject.underlying` key names final,
-  or should the unified type declaration use another spelling?
 
 ## Non-Goals
 

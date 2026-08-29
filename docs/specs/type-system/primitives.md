@@ -7,9 +7,9 @@ Domain: Type System
 ## Summary
 
 This proposal defines the initial primitive type vocabulary, direct key
-compatibility, strict scalar validation, and the initial string rules. It does
-not define a YAML parser dialect or the implementation data structures used to
-represent capabilities.
+compatibility, strict scalar validation, finite floating-point values, and the
+initial string rules. It does not define a YAML parser dialect or the
+implementation data structures used to represent capabilities.
 
 ## Terminology
 
@@ -59,11 +59,11 @@ type system to reinterpret a parser classification silently.
 
 ### TYPE-PRIMITIVE-004
 
-The integer ranges for the initial vocabulary MUST be the ranges of their
-named domains: `int` is -2^31 through 2^31-1, `uint` is 0 through 2^32-1,
-`long` is -2^63 through 2^63-1, and `ulong` is 0 through 2^64-1. Values
-outside those ranges MUST be rejected rather than narrowed, wrapped, or
-otherwise converted.
+The integer ranges for the initial vocabulary MUST match the C#/.NET
+fixed-width signed and unsigned domains: `int` is -2^31 through 2^31-1,
+`uint` is 0 through 2^32-1, `long` is -2^63 through 2^63-1, and `ulong` is 0
+through 2^64-1. Values outside those ranges MUST be rejected. Validation
+MUST NOT narrow, wrap, saturate, or implicitly convert an out-of-range value.
 
 ### TYPE-PRIMITIVE-005
 
@@ -82,13 +82,21 @@ validation MUST NOT reject a value solely because it is empty. Whether a field
 accepts `null` is owned by the field modifier rules, not by the `string`
 primitive itself.
 
+### TYPE-PRIMITIVE-007
+
+The final value of a field declared as `float` or `double` MUST be finite.
+`NaN`, positive infinity, and negative infinity MUST NOT be accepted as the
+value of either primitive. This is a type-system rule and does not select the
+YAML scalar syntax, if any, that a parser uses to expose a non-finite value.
+
 ## Validation Rules
 
 The observable validation outcomes for this proposal are defined by
-`TYPE-PRIMITIVE-001` through `TYPE-PRIMITIVE-006`: unsupported names,
-scalar-category mismatches, integer range violations, invalid direct key
-capability, and empty-string acceptance. Exact diagnostic codes and
-source-location mapping are not assigned by this proposal.
+`TYPE-PRIMITIVE-001` through `TYPE-PRIMITIVE-007`: unsupported names,
+scalar-category mismatches, fixed-width integer range violations, finite
+floating-point values, invalid direct key capability, and empty-string
+acceptance. Exact diagnostic codes and source-location mapping are not
+assigned by this proposal.
 
 ## Acceptance Evidence
 
@@ -100,6 +108,7 @@ source-location mapping are not assigned by this proposal.
 | `TYPE-PRIMITIVE-004` | Boundary values for each integer domain are accepted. | Values just outside each range are rejected without wrapping or narrowing. | Integer boundary tests. |
 | `TYPE-PRIMITIVE-005` | The five listed key-compatible primitives are classified as compatible. | `bool`, `float`, and `double` are classified as incompatible. | Capability classification test. |
 | `TYPE-PRIMITIVE-006` | `""` is accepted as a string value. | No failure is reported solely because a string is empty. | Empty-string validation test. |
+| `TYPE-PRIMITIVE-007` | Representative finite `float` and `double` values are accepted when their scalar category and precision are valid. | `NaN`, positive infinity, and negative infinity are rejected as final values for either floating-point primitive. | Finite/non-finite boundary validation tests. |
 
 ## Compatibility
 
@@ -130,13 +139,10 @@ dialect.
   disagree?
 - Are hexadecimal, octal, binary, exponent, and other non-decimal numeric
   forms accepted for integer and floating-point primitives?
-- Are `NaN`, positive infinity, and negative infinity accepted for `float` and
-  `double`?
+- If a selected YAML parser exposes `NaN` or an infinity token, how is that
+  parser-level scalar represented before the type-system finite-value check?
 - How are timestamp-looking scalars treated when the declared type is
   `string` or a numeric primitive?
-- Should the proposed .NET-style 32-bit and 64-bit range mapping in
-  `TYPE-PRIMITIVE-004` be the product contract, or should another target
-  domain define these ranges?
 - Will future compatibility aliases for primitive names be allowed?
 - What exact diagnostic code and source span should represent each scalar
   validation failure?

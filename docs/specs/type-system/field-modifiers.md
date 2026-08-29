@@ -76,13 +76,23 @@ key-incompatible shapes when those declarations are supported.
 This requirement defines the modifier effect on capability; the declaration
 and validation of indexes belong to the future index specification.
 
+### TYPE-FIELD-005
+
+An explicitly supplied `nullable: false` or `array: false` option MUST be
+accepted. Each `false` value MUST be semantically equivalent to the
+corresponding option being absent. Therefore, both options absent and both
+options explicitly `false` MUST resolve to the same Required shape. This does
+not change the rule that enabling both modifiers with `true` is invalid. The
+equivalence applies independently: `nullable: false, array: true` resolves to
+`T[]`, and `nullable: true, array: false` resolves to `T?`.
+
 ## Validation Rules
 
 The observable validation outcomes for this proposal are defined by
-`TYPE-FIELD-001` through `TYPE-FIELD-004`: mutually exclusive shapes,
-field-level syntax, presence/null/empty-array behavior, and key capability.
-The exact diagnostic codes, source paths, and parser-specific YAML node
-classification remain unassigned here.
+`TYPE-FIELD-001` through `TYPE-FIELD-005`: mutually exclusive shapes,
+field-level syntax, presence/null/empty-array behavior, key capability, and
+explicit-false normalization. The exact diagnostic codes, source paths, and
+parser-specific YAML node classification remain unassigned here.
 
 ## Acceptance Evidence
 
@@ -92,6 +102,7 @@ classification remain unassigned here.
 | `TYPE-FIELD-002` | Field-level `nullable` or `array` selects the shape while `type` remains the base name. | Suffix syntax or both enabled options produce a schema validation failure. | Schema syntax tests. |
 | `TYPE-FIELD-003` | Required values, nullable `null`, and array `[]` are accepted when the field entry exists. | Omission, invalid `null`, or invalid array shape is rejected. | Data presence and null/array tests. |
 | `TYPE-FIELD-004` | Modifier capability is reported independently of the base primitive. | Nullable and Array shapes cannot be used as direct keys. | Key-capability tests after index declarations exist. |
+| `TYPE-FIELD-005` | Omitted options and explicit `nullable: false` / `array: false` resolve to the same Required shape. | An explicit `false` is rejected or changes the shape relative to omission. | Modifier normalization tests. |
 
 ## Compatibility
 
@@ -117,6 +128,10 @@ optionalReward: null
 rewards: []
 ```
 
+Explicit `nullable: false` and `array: false` are non-normative syntax
+examples of the Required shape; each has the same meaning as omitting that
+option.
+
 The following shape is invalid because it enables both modifiers:
 
 ```yaml
@@ -127,8 +142,9 @@ array: true
 
 ## Open Questions
 
-- Are explicit `nullable: false` and `array: false` accepted, or must an
-  inactive option be omitted?
+- How should non-boolean YAML nodes supplied to `nullable` or `array` be
+  classified across parser candidates, and is any coercion permitted at that
+  boundary?
 - What exact YAML node classification is required for arrays and nulls across
   parser candidates?
 - How are nullable reference types and nullable value types represented in

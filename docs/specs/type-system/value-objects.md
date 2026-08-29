@@ -8,8 +8,10 @@ Domain: Type System
 
 This proposal defines a Value Object as a named immutable wrapper around one
 primitive value. It defines the unified type-declaration boundary, scalar data
-representation, generated C# category, equality, and capability inheritance.
-Enums, Flags Enums, and Custom Types remain separate future type categories.
+representation, generated C# category, equality, capability inheritance,
+directional implicit-conversion configuration, and underlying-value
+`ToString()` behavior. Enums, Flags Enums, and Custom Types remain separate
+future type categories.
 
 ## Terminology
 
@@ -96,13 +98,45 @@ Therefore, `ItemId(int)` and `UserCode(string)` are key-compatible, while
 field modifiers still make a field shape key-incompatible under
 `TYPE-FIELD-004`.
 
+### SCHEMA-VO-008
+
+A Value Object declaration MUST be able to independently enable or disable
+implicit conversion in each of these directions:
+
+- underlying primitive to Value Object; and
+- Value Object to underlying primitive.
+
+All four combinations of those two independent capabilities MUST be
+representable. When no conversion setting is supplied, both capabilities MUST
+be disabled. The exact YAML property names and placement used to express these
+choices are not fixed by this requirement.
+
+### SCHEMA-VO-009
+
+The directional implicit-conversion settings MUST affect only generated C# API
+conversion behavior. They MUST NOT alter key compatibility, comparison
+capability, equality, MessagePack wire identity, underlying primitive
+identity, or field modifier semantics. Key compatibility continues to be
+determined by `TYPE-PRIMITIVE-005` and `TYPE-FIELD-004`, independently of
+conversion settings.
+
+### SCHEMA-VO-010
+
+The generated `ToString()` for a Value Object MUST return the textual
+representation of its underlying value. It MUST NOT use a type-name-wrapped
+debug representation such as `ItemId(1001)` as the default contract. The
+culture, provider, and other formatting details of that textual
+representation remain outside this requirement.
+
 ## Validation Rules
 
 The observable validation outcomes for this proposal are defined by
-`SCHEMA-VO-001` through `SCHEMA-VO-007`: underlying type and wrapper
+`SCHEMA-VO-001` through `SCHEMA-VO-010`: underlying type and wrapper
 restrictions, one-document/one-declaration structure, scalar representation,
-readonly-struct category, equality, and inherited capabilities. Exact
-diagnostic codes and the final MessagePack attribute shape remain unassigned.
+readonly-struct category, equality, inherited capabilities, directional
+conversion configuration, conversion isolation, and underlying-value
+`ToString()` behavior. Exact diagnostic codes and the final MessagePack
+attribute shape remain unassigned.
 
 ## Acceptance Evidence
 
@@ -115,6 +149,9 @@ diagnostic codes and the final MessagePack attribute shape remain unassigned.
 | `SCHEMA-VO-005` | A Value Object field uses the underlying primitive scalar representation. | A wrapper object with a `value` property is not required or accepted as the defined representation. | Data representation tests. |
 | `SCHEMA-VO-006` | Generated output uses a readonly struct category. | A per-type class, record, or record struct selection is not accepted. | C# generation golden/compile test. |
 | `SCHEMA-VO-007` | Equality and inherited capability outcomes match the underlying primitive. | An independent capability override produces a mismatch. | Capability inheritance tests. |
+| `SCHEMA-VO-008` | The declaration model represents `false/false`, `true/false`, `false/true`, and `true/true` independently; omitted settings produce `false/false`. | Enabling one direction implicitly enables the other, or omitted settings enable either direction. | Conversion-capability model tests. |
+| `SCHEMA-VO-009` | Changing conversion settings changes only the generated C# conversion surface. | Key compatibility, comparison, equality, wire identity, underlying identity, or field modifier behavior changes with conversion settings. | Conversion-isolation tests. |
+| `SCHEMA-VO-010` | A Value Object's `ToString()` returns the underlying textual value, such as `"1001"` for an `ItemId` wrapping `1001`. | The default result adds a type-name wrapper such as `ItemId(1001)`. | Generated API behavior test, with formatting cases added after the culture policy is decided. |
 
 ## Compatibility
 
@@ -142,6 +179,21 @@ valueObject:
 userCode: "player-001"
 ```
 
+The following is a non-normative candidate syntax for the two directional
+conversion settings. It illustrates four independent states but intentionally
+does not establish the property names or their placement as part of the
+contract:
+
+```yaml
+kind: type
+name: ItemId
+valueObject:
+  underlying: int
+  conversions:
+    fromUnderlyingImplicit: false
+    toUnderlyingImplicit: false
+```
+
 The following declarations are invalid under this proposal because the
 underlying type is not a primitive:
 
@@ -161,9 +213,13 @@ valueObject:
 
 ## Open Questions
 
-- Should implicit or explicit conversion operators exist between a Value
-  Object and its primitive, and what compatibility guarantees would they have?
-- What is the `ToString()` policy for generated Value Objects?
+- What exact YAML properties and placement express the two directional
+  implicit-conversion settings?
+- Should explicit conversion operators or helper APIs also be generated, and
+  what compatibility guarantees would they have?
+- Which culture, format provider, or invariant-formatting policy applies to
+  the textual representation returned by `ToString()` for numeric underlying
+  values?
 - What exact constructor and public member API must a generated readonly
   struct expose?
 - What MessagePack attributes and generated shape are required by MasterMemory
@@ -171,9 +227,9 @@ valueObject:
 - How do nullable reference types and nullable value types differ in the
   generated C# contract?
 - Which ordering/comparison capabilities exist for each primitive, especially
-  for `bool`, `float`, and `double`?
-- Are `NaN` and infinities comparable if they are later allowed as primitive
-  values?
+  for `bool`, `float`, and `double`? This includes the ordering contract for
+  finite floating-point values; the primitive specification rejects non-finite
+  values.
 - What custom validation constraints may be added without changing the
   primitive wrapper contract?
 - How are Value Object additions, underlying-type changes, and renames

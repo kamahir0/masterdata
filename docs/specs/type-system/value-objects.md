@@ -172,15 +172,43 @@ as the default contract.
   representation (`"True"` or `"False"`), without a culture-dependent
   transformation.
 
+### SCHEMA-VO-011
+
+Each generated Value Object MUST implement `IEquatable<N>`, where `N` is the
+generated Value Object type, and MUST expose all of the following public API:
+
+- `public bool Equals(N other)`;
+- `public override bool Equals(object obj)`;
+- `public override int GetHashCode()`;
+- `public static bool operator ==(N left, N right)`; and
+- `public static bool operator !=(N left, N right)`.
+
+For a Value Object `N<T>`, typed equality `N(a).Equals(N(b))` MUST have the
+same logical result as equality of the underlying values `a` and `b`. The
+`Equals(object)` override MUST use typed equality when `obj` is the same Value
+Object type and MUST return `false` when `obj` is `null` or a different type.
+`GetHashCode()` MUST be derived from the underlying value's equality semantics,
+so equal Value Objects always have equal hash codes. The `==` operator MUST
+have the same logical result as typed equality, and `!=` MUST be the logical
+negation of `==`.
+
+Equality is independent from key compatibility and ordering/comparison
+capability. Every Value Object is equality-capable, while key compatibility
+continues to follow `TYPE-PRIMITIVE-005` and `TYPE-FIELD-004`. Equality MUST
+also be identical for all four combinations of the independent implicit
+conversion settings in `SCHEMA-VO-008`. This requirement does not define
+`IComparable<N>`, `CompareTo`, or ordering operators; those remain governed by
+the applicable primitive comparison capability specification.
+
 ## Validation Rules
 
 The observable validation outcomes for this proposal are defined by
-`SCHEMA-VO-001` through `SCHEMA-VO-010`: underlying type and wrapper
+`SCHEMA-VO-001` through `SCHEMA-VO-011`: underlying type and wrapper
 restrictions, one-document/one-declaration structure, scalar representation,
-readonly-struct category, equality, inherited capabilities, directional
-conversion configuration, conversion isolation, and underlying-value
-`ToString()` behavior. Exact diagnostic codes and the final MessagePack
-attribute shape remain unassigned.
+readonly-struct category, equality API and semantics, inherited capabilities,
+directional conversion configuration, conversion isolation, and
+underlying-value `ToString()` behavior. Exact diagnostic codes and the final
+MessagePack attribute shape remain unassigned.
 
 ## Acceptance Evidence
 
@@ -196,6 +224,7 @@ attribute shape remain unassigned.
 | `SCHEMA-VO-008` | `valueObject.conversions.fromUnderlyingImplicit` and `toUnderlyingImplicit` represent `false/false`, `true/false`, `false/true`, and `true/true` independently; omitted mapping/options produce `false/false`, and only enabled directions have implicit C# operators. | A missing direction defaults to enabled, one setting changes the other, or an operator is emitted for a disabled direction. | Conversion syntax, default, and generated-operator tests. |
 | `SCHEMA-VO-009` | Changing conversion settings changes only the generated C# conversion surface. | Key compatibility, comparison, equality, wire identity, underlying identity, or field modifier behavior changes with conversion settings. | Conversion-isolation tests. |
 | `SCHEMA-VO-010` | A Value Object's `ToString()` returns the underlying textual value, such as `"1001"` for an `ItemId` wrapping `1001`, with numeric output invariant to `CurrentCulture`, the underlying string returned unchanged, and .NET Boolean text for `bool`. | The result varies with `CurrentCulture`, changes the underlying string, or adds a type-name wrapper such as `ItemId(1001)`. | Generated API behavior tests under multiple cultures and all primitive categories. |
+| `SCHEMA-VO-011` | The generated type implements `IEquatable<N>` and exposes typed/object equality, `GetHashCode()`, `==`, and `!=`; `N(a).Equals(N(a))` and `N(a) == N(a)` are true, `N(a) != N(a)` is false, unequal underlying values follow underlying equality, equal objects have equal hashes, and `Equals(object)` is false for null or a different type. | A required API member is missing, typed/object equality disagrees with underlying equality, equal values produce different hashes, or `!=` is not the negation of `==`. | API-surface compile/reflection test plus typed equality, object equality, hash-consistency, and operator tests. |
 
 ## Compatibility
 
@@ -255,8 +284,6 @@ valueObject:
 
 ## Open Questions
 
-- What exact equality interface and operator surface, if any, must be
-  generated beyond the required equality behavior?
 - Should explicit conversion operators or helper APIs also be generated, and
   what compatibility guarantees would they have?
 - What MessagePack attributes and generated shape are required by MasterMemory

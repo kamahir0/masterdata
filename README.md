@@ -120,7 +120,7 @@ records:
     name: Potion
 ```
 
-安定したtable ID、field ID、enum numeric valueの互換性方針は[compatibility spec](docs/specs/compatibility.md)を参照してください。
+identity/compatibilityの仕様は[compatibility specification index](docs/specs/compatibility/README.md)を参照してください。table identityは現在`Implemented`ですが、field/enum/index identityの詳細はそれぞれ独立した`Draft`として管理しています。
 
 ## Repository guide
 

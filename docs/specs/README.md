@@ -60,6 +60,23 @@ new IDs and retain a reference to their predecessor. An incomplete
 implementation keeps the canonical document `Approved` and reports the gap
 rather than changing the contract to match the code.
 
+## Approval granularity
+
+`Status:` applies to the entire canonical specification file. A canonical file
+therefore SHOULD contain requirements that can reasonably progress through the
+lifecycle together. Do not place an already-approved contract and unrelated
+Draft requirements in the same file merely because they share a broad topic.
+
+When requirements in one broad document reach different maturity levels, split
+the document into smaller canonical files before changing status. The split is
+organizational only: existing Requirement IDs MUST remain unchanged and MUST
+NOT be reassigned. Use directory `README.md` files as non-canonical indexes for
+a family of related specifications.
+
+Prefer this file-level granularity over per-requirement status metadata. The
+goal is that `Status: Approved` or `Status: Implemented` has one unambiguous
+meaning for every normative requirement in the file.
+
 ## Normative language
 
 Use the following words literally and consistently in normative requirements:
@@ -145,11 +162,12 @@ fixed test inputs and MUST NOT be rewritten by CLI or GUI execution.
    [terminology](../product/terminology.md).
 3. For a new contract, update or create a `Draft`/`Proposed` specification
    with stable IDs, explicit open questions, compatibility impact, and test
-   impact. For a semantic change to an `Approved`/`Implemented` canonical
-   document, create a separate artifact under
-   [`docs/spec-changes`](../spec-changes/README.md) (or an RFC when
-   alternatives are still being compared). Do not edit the canonical document
-   to contain unapproved semantics.
+   impact. Choose a canonical file whose requirements can share one lifecycle
+   status; split a broad topic before approval if necessary. For a semantic
+   change to an `Approved`/`Implemented` canonical document, create a separate
+   artifact under [`docs/spec-changes`](../spec-changes/README.md) (or an RFC
+   when alternatives are still being compared). Do not edit the canonical
+   document to contain unapproved semantics.
 4. Run `review-spec` against the draft or change artifact. Resolve blocking
    issues or record why a human reviewer accepts them.
 5. A human maintainer explicitly approves the proposal by the repository's
@@ -186,10 +204,18 @@ when the rationale or trade-off is important to preserve.
 
 - [Project layout and discovery](project-layout.md)
 - [Schema language](schema-language.md)
-- [Type system](type-system.md)
+- [Type-system specifications](type-system/README.md)
+  - [Primitive types](type-system/primitives.md)
+  - [Value objects](type-system/value-objects.md)
+  - [Enums and flags](type-system/enums.md)
+  - [Custom types](type-system/custom-types.md)
 - [Indexes and references](index-and-reference.md)
 - [Build pipeline](build-pipeline.md)
-- [Compatibility](compatibility.md)
+- [Compatibility specifications](compatibility/README.md)
+  - [Table identity](compatibility/table-identity.md)
+  - [Field identity](compatibility/field-identity.md)
+  - [Enum identity](compatibility/enum-identity.md)
+  - [Index identity](compatibility/index-identity.md)
 
 The initial Rust implementation currently covers the project contract, YAML
 document envelope, basic field identity checks, source-content hashing, and

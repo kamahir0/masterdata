@@ -39,6 +39,13 @@ require a separate proposal artifact under `docs/spec-changes/` (or an RFC for
 alternative comparison). A canonical approved document must not contain a
 mixture of approved old behavior and unapproved new behavior.
 
+`Status:` applies to the entire canonical file. If a document combines
+requirements that are at materially different maturity levels, require a
+structural split before recommending a status transition. A split must preserve
+existing Requirement IDs; moving a requirement is not a semantic change by
+itself. Directory `README.md` files may index a spec family but do not own
+normative requirements.
+
 Treat RFC status separately from product-spec status: an `Accepted` RFC is a
 decision record, not an implementation input. For a specification-change
 artifact, verify that `Approved` records an explicit human decision and
@@ -68,6 +75,8 @@ resolution when a check fails.
 
 - Are status, Summary, Normative Requirements, Validation Rules,
   Compatibility, Examples, Open Questions, and Non-Goals consistent?
+- Can every normative requirement in the file legitimately share the declared
+  document status, or should the file be split before approval?
 - Are requirement IDs unique within the change and stable across edits?
 - Does a requirement contradict another requirement in the same document?
 - Does the proposal distinguish requirement definitions from references, and

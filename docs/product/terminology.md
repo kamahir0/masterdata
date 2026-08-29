@@ -9,25 +9,25 @@ Status: Draft
 - **Field Modifier**: base typeをRequired、Nullable、またはArray fieldへ変えるfield-levelの選択。syntaxとpresence ruleはField Modifiers specificationが管理する。
 - **Required**: field entryが存在し、base typeのnon-null valueを含むfield shape。
 - **Nullable**: field entryが存在し、`null` またはbase typeのvalueを含んでもよいfield shape。
-- **Array**: field entryが存在し、base typeのvalueを0個以上含むfield shape。空のarrayはvalueなしを表す。
-- **Underlying Type**: Value Objectがwrapする単一のprimitive。source fileのpathやgenerated type nameから推測してはならない。
-- **Type Declaration**: named type categoryを1つ宣言するYAML document。
+- **Array**: field entryが存在し、base typeのvalueを0個以上含む順序付きimmutable sequenceのfield shape。空のarrayはvalueなしを表す。
+- **Underlying Type**: Value Objectがwrapする単一のkey-compatible primitive。source fileのpathやgenerated type nameから推測してはならない。
+- **Type Declaration**: named type categoryを1つ宣言するYAML document。1つのYAML documentには1つのtype declarationだけを置く。
 - **Type Capability**: direct key compatibilityなど、typeが公開し得る観測可能なpermissionまたはbehavior。type-system specificationsは、特定のimplementation data structureを要求せずにcapabilityを定義する。
 - **Schema document**: `kind: schema` を持ち、tableのstable identityとfieldsを宣言するYAML file。
 - **Data**: tableへ供給するvalueとrecord。dataがschemaの意味を再定義することはない。
 - **Data document**: `kind: data` を持ち、宣言したtableへrecordsを提供するYAML file。
 - **Table**: source fileのpathに依存せず、宣言されたproject-localな `table` identityによって識別されるrecordの論理的なcollection。
 - **Record**: tableに属する1つのinstanceまたはrow。
-- **Field**: recordのnamed・typed member。schemaが要求する場合はstable field identityを持つ。
+- **Field**: recordまたはCustom Typeのnamed・typed member。schemaが要求する場合は、field nameとは独立したstable field identityを持つ。
 - **Schema AST**: schema declarationを表すtyped Rust structure。
 - **Data AST**: data documentのshapeを表すtyped data structure。type resolutionまで、field leafのYAML valueを保持する。
 - **Table identity**: `table` fieldが持つproject-localなstable identity。generated C# type nameおよびsource fileのpathとは別物である。現在のscaffoldは2つ目の `tableId` identityを定義しない。global identity、rename migration、released compatibility、legacy migration、cross-project identityはtable-identity RFCで未解決のままである。
 - **Generated C# type name**: presentation/code-generation name。`csharpName` があればそれを使用し、なければgeneratorが導出する。compatibility specificationが許す場合に限り、独立して変更してもよい（MAY）。
-- **Field ID**: persistentなMessagePack integer-key identity。MasterMemoryのindex numberとは別物である。
-- **Value Object**: 1つのunderlying valueをwrapするimmutableなdomain type。Value Objects specificationでは、underlying valueを1つのprimitiveとし、generated representationとcapabilityを定義することを提案している。
+- **Field ID**: container内でfieldを識別するpersistentなnumeric identity。将来のMessagePack integer-key identityの基礎となるが、MasterMemoryのindex numberおよびwire formatとは別物である。
+- **Value Object**: key-compatibleなprimitive scalarにnominal identityを与えるimmutableなdomain type。現行のunderlying vocabularyは `int`、`uint`、`long`、`ulong`、`string` であり、Value Object自身は常にkey-compatibleである。scalar data representationとgenerated representationはValue Objects specificationが管理する。
 - **Enum**: named type。その宣言memberは、type-systemとcompatibility specificationが要求する場合にstableなnumeric valueを持つ。
 - **Flags Enum**: bitwise combinationを表すことを意図したenum。fieldまたはkeyとして許可するかはtype-system specificationが定義する。
-- **Custom Type**: supported typeから構成されるuser-declared composite type。
+- **Custom Type**: 1つ以上のnamed fieldから構成されるstructural value type。field数ではValue Objectと区別せず、1-field Custom TypeもCustom Typeとして扱う。data representationは常にmappingで、Custom Type自身はkey-incompatibleである。
 - **Index**: tableに対して宣言されるlookup structure。key shapeとgenerated behaviorはindex specificationに属する。
 - **Primary Key**: tableのrecordを識別するindex。cardinality ruleはowner specificationに従う。
 - **Secondary Key**: tableに追加されるlookup key。

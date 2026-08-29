@@ -5,7 +5,7 @@ Compatibility ruleは、requirementが一緒にspecification lifecycleを進め�
 誤って適用されることを防ぐ。
 
 - [Table identity仕様](table-identity.md) — current project-local table identity contract。
-- [Field identity仕様](field-identity.md) — Draftのfield-IDとtombstone rule。
+- [Field identity仕様](field-identity.md) — tableとCustom Typeに共通するDraftのfield-ID、rename、tombstone rule。
 - [Enum identity仕様](enum-identity.md) — Draftのenum wire-identity rule。
 - [Index identity仕様](index-identity.md) — field IDとMasterMemory index numberの区別に関するDraft rule。
 

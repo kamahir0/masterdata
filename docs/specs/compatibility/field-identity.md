@@ -7,15 +7,25 @@ Status: Draft
 
 ### COMPAT-FIELD-001
 
-Field IDはMessagePack integer keyに使用することを想定し、table内でuniqueでなければならない（MUST）。
+TableまたはCustom Typeのpersisted fieldはnumeric Field IDを持ち、各container内でuniqueでなければならない（MUST）。
+Field IDはfield nameから独立し、table、各Custom Type、およびMasterMemoryのindex numberとは別のnamespaceとidentityを
+持たなければならない（MUST）。Field IDを将来MessagePack integer keyへ使用することは想定するが、exact wire shapeはこの
+documentでは定義しない。
 
 ### COMPAT-FIELD-002
 
-Active field IDは削除後に再利用してはならない（MUST NOT）。
+Tableまたは同じCustom Typeで一度使用されたField IDは、active fieldの削除後も同じcontainer内で再利用してはならない
+（MUST NOT）。
 
 ### COMPAT-FIELD-003
 
-削除したIDは、former name/type informationを持つ `reservedFields` tombstoneとして保持してもよい（MAY）。
+削除したtable field IDは、former name/type informationを持つ `reservedFields` tombstoneとして保持してもよい（MAY）。
+Custom Typeで削除したField IDを保持するtombstoneのexact representationは、まだ定義しない。
+
+### COMPAT-FIELD-004
+
+Field nameのrenameだけではField IDを変更してはならない（MUST NOT）。同じcontainer内でfield identityを維持するrenameは、
+既存のField IDを保持しなければならない（MUST）。
 
 ## 非規範のproduct方向性（Non-normative）
 
@@ -27,6 +37,5 @@ wire-compatibilityのbehaviorは、まだ仕様化されていない。
 
 - すべてのpersisted schema fieldでnumeric MessagePack key generationを必須にするか。
 - 新しいfield IDの正確なallocation policyは何か。
-- 再利用を永久に禁止するのか、それとも定義したcompatibility window内だけ禁止するのか。
 - 必須とoptionalのtombstone metadataは何か。
 - nullability、default value、type change、custom-type evolutionはcompatibilityにどう影響するか。

@@ -54,6 +54,34 @@ current scaffoldは `table` をproject-localなlogical table identityとして�
 rename migration、released-schema compatibility、legacy `tableId` migration、cross-project identityは
 引き続きOpen Questionである。
 
+## Planned type declaration（予定するtype declaration）
+
+Type Systemは、Value Object、Enum、Flags Enum、Custom Typeを同じunified type-declaration boundaryで扱う方向である。
+Value Objectのcanonical surfaceは[Value Objects仕様](type-system/value-objects.md)、Custom Typeのcanonical surfaceは
+[Custom Type仕様](type-system/custom-types.md)が所有する。
+
+```yaml
+kind: type
+name: ItemId
+valueObject:
+  underlying: int
+```
+
+```yaml
+kind: type
+name: Reward
+custom:
+  fields:
+    - id: 0
+      name: itemId
+      type: ItemId
+```
+
+これらのtype declarationはProposed specificationのdirectionであり、current parserは `kind: type`、`valueObject`、または
+`custom` をまだ受け付けない。specificationがApprovedかつImplementedになるまで、current parserのimplementation contract
+ではない。type documentのpathまたはfilenameはtype identityを決めない。1つのYAML documentに複数のtype declarationを入れる
+形式は使用しない。
+
 ## YAML subsetのOpen Questions
 
 productが承認したYAML subsetはまだない。refinementでは、current parserからこれらの選択を導出せず、

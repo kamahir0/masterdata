@@ -77,6 +77,15 @@ write a separate durable proposal under `docs/spec-changes/` (or an RFC when
 alternatives are still being compared). The canonical document remains the
 only authority until a human-approved atomic merge.
 
+`Status:` applies to the whole canonical specification file. Check whether all
+normative requirements in the candidate file can reasonably share the same
+lifecycle state. If one requirement is ready for approval while unrelated
+requirements in the same broad topic remain Draft, split the canonical file
+into smaller independently approvable files before changing status. Preserve
+all existing Requirement IDs during a structural split; never allocate a new ID
+merely because a requirement moved to another file. Directory `README.md`
+files may index related specs but are not canonical contracts.
+
 An `Accepted` RFC records a selected design direction, but it is not itself a
 product specification and does not authorize implementation. After a human
 decision, route the adopted behavior into the canonical specification (or a
@@ -118,10 +127,12 @@ with a predecessor/deprecation note. A reference to an existing requirement is
 not a new requirement.
 
 Mark a new document `Draft` while it is being organized, or `Proposed` when it
-is ready for review. A semantic change to an existing Approved/Implemented
-document belongs in a `docs/spec-changes/` artifact whose status is `Draft` or
-`Proposed`; do not downgrade the canonical document. `Proposed` is not
-approval. Do not change a document to `Approved` as part of this skill.
+is ready for review. Choose a file boundary narrow enough that every normative
+requirement in that file can share that status. A semantic change to an
+existing Approved/Implemented document belongs in a `docs/spec-changes/`
+artifact whose status is `Draft` or `Proposed`; do not downgrade the canonical
+document. `Proposed` is not approval. Do not change a document to `Approved` as
+part of this skill.
 
 ### 5. Assess downstream work
 
@@ -205,6 +216,8 @@ human approval action still required. A concise change summary is mandatory.
 - Do not add unspecified defaults or edge cases.
 - Do not duplicate a rule owned by another specification.
 - Do not silently overwrite conflicting specifications or ADRs.
+- Do not mix requirements at incompatible approval maturity in one canonical
+  file when a structural split can make the status unambiguous.
 - Do not mix a semantic change into an Approved/Implemented canonical document;
   use a separate change artifact.
 - Do not treat an `Accepted` RFC as a substitute for an `Approved` canonical

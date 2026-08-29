@@ -134,6 +134,9 @@ dialect.
   `double`?
 - How are timestamp-looking scalars treated when the declared type is
   `string` or a numeric primitive?
+- Should the proposed .NET-style 32-bit and 64-bit range mapping in
+  `TYPE-PRIMITIVE-004` be the product contract, or should another target
+  domain define these ranges?
 - Will future compatibility aliases for primitive names be allowed?
 - What exact diagnostic code and source span should represent each scalar
   validation failure?

@@ -18,6 +18,11 @@ Type Name follow [product terminology](../../product/terminology.md). The
 primitive capability table is owned by [Primitive Types](primitives.md), and
 field-level Nullable/Array behavior is owned by [Field Modifiers](field-modifiers.md).
 
+`SCHEMA-VO-001` is retained from the earlier Draft type-system overview and
+is refined here as the canonical Value Object requirement. Approval and
+implementation should preserve the dependency on the referenced primitive and
+field-modifier contracts without merging their file-level statuses.
+
 ## Normative Requirements
 
 ### SCHEMA-VO-001

@@ -82,6 +82,37 @@
 - shell scriptへ主要ロジックを分散させず、repository workflowは `cargo xtask` に集約する。
 - 作業完了前に `cargo xtask check-all` を実行し、実行できない場合は理由を報告する。
 
+## Git上の文章と説明
+
+Git historyとGitHub上の説明は、後から変更理由と検証根拠を復元できるdurable evidenceとして扱う。
+
+- commit title、commit body、Pull Requestのtitle/body、Issueのtitle/body、review summary、およびAI agentのrepository作業完了報告は、特別な理由がない限り日本語で記述しなければならない（MUST）。technical token、identifier、code、外部error messageなどは「ドキュメント言語」の例外に従い原文を保持してよい。
+- commit titleは変更によって達成した結果を日本語で簡潔に要約しなければならない（MUST）。`update files`、`fix stuff`のように内容を特定できないtitleを使用してはならない（MUST NOT）。tooling上の要求がない限り、`feat:`、`fix:`、`docs:`のような英語prefixを慣習だけで付けない。
+- AI agentがrepository変更をcommitする場合、変更が小さくてもcommit bodyを省略してはならない（MUST NOT）。bodyは最低限、`背景/目的`、`変更内容`、`検証`を日本語で説明しなければならない（MUST）。semantic change、architecture decision、compatibility impact、既知の制約、残課題がある場合は、それらも記載する。
+- commit bodyはdiffの逐語的な再説明ではなく、「なぜ必要だったか」「何を変えたか」「何を確認したか」を将来の開発者が理解できる内容にする。関連するRequirement ID、ADR/RFC、issue、test、CIなどがtraceabilityに有用なら参照する。
+- Pull Requestを作成または更新する場合、bodyには最低限、目的、主要な変更、検証結果、未解決事項またはriskを日本語で記載する。単にcommit一覧やdiffを貼るだけの説明にしてはならない（MUST NOT）。
+- review結果やAI agentの完了報告では、結論だけでなく、重要な判断理由、実行したcheck、未検証事項、commit SHA、push結果、CI statusを必要な範囲で日本語で報告する。
+- commit messageやPR説明を充実させるために、存在しない検証結果、未実施test、未確認のrationaleを記載してはならない（MUST NOT）。
+
+推奨するAI agent commit形式:
+
+```text
+<変更結果を表す日本語のtitle>
+
+背景/目的:
+<なぜこの変更が必要か>
+
+変更内容:
+- <主要変更1>
+- <主要変更2>
+
+検証:
+- <実行したcheckと結果>
+
+関連/影響:
+- <必要な場合のみRequirement ID、ADR、互換性、残課題など>
+```
+
 ## Git完了ポリシー
 
 repositoryを変更するtaskでは、人間が明示的に `commitしない`、`pushしない`、または同等の指示をした場合を除き、
@@ -94,7 +125,7 @@ review/reportだけでrepository差分がないtaskではempty commitを作ら�
   Specification Gapがある場合は、自動commit/pushを行わず理由を報告する。
 - Draft/Proposed specificationがOpen Questionを正しく保持したまま`refine-spec`として完了する場合は、それ自体を
   failureとみなさない。Open Questionを黙って解決せず、review可能なspec差分としてcommit/pushしてよい。
-- commit messageは変更scopeを要約する簡潔な内容にする。
+- commit messageは「Git上の文章と説明」に従い、日本語のtitleと十分なbodyを持たせる。
 - push先は現在のworking branchだけとし、通常のfast-forward pushを使う。自動でbranchを切り替えたり、
   force-push、history rewrite、rebaseによる公開historyの書き換えを行ってはならない（MUST NOT）。
 - pushがbranch protection、permission、non-fast-forwardなどで拒否された場合は迂回せず報告する。
@@ -115,6 +146,7 @@ review/reportだけでrepository差分がないtaskではempty commitを作ら�
 7. `cargo xtask check-all` の結果と未実装事項を報告したか
 8. repository差分があるtaskでは、scope内の変更だけをcommitしたか
 9. 自動pushが許可されるtaskではcurrent working branchへpushし、commit SHAとpush結果を報告したか
+10. commit title/body、PR説明、完了報告が「Git上の文章と説明」に従い、変更理由と検証結果を十分に残しているか
 
 ## 仕様ワークフローのガードレール
 

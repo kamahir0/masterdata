@@ -285,8 +285,8 @@ fn csharp_type(type_name: &str) -> Result<&'static str> {
 // Keep this deterministic separator-to-Pascal mapping for the current Table
 // scaffold; removing it changes generated Table presentation names and their
 // collision checks. Do not reuse it for Value Object or Custom Type names:
-// their strict source-name contract rejects implicit repair. Future context
-// (the Proposed spec is not current implementation authority):
+// their approved source-name contract rejects implicit repair. The Table-only
+// scaffold and type-declaration naming remain separate contracts:
 // docs/specs/type-system/csharp-naming.md (TYPE-NAMING-008) and the generation
 // collision tests.
 fn pascal_case(value: &str) -> String {

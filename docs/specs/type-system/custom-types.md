@@ -1,6 +1,6 @@
 # Custom Type仕様（Custom Type）
 
-Status: Proposed
+Status: Approved
 
 Domain: Type System
 

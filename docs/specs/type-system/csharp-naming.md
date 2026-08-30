@@ -1,6 +1,6 @@
 # C#命名仕様（C# naming）
 
-Status: Proposed
+Status: Approved
 
 Domain: Type System
 

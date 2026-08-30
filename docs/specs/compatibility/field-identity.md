@@ -1,9 +1,9 @@
 # Field identity仕様（Field identity）
 
-Status: Proposed
+Status: Approved
 
-この文書は、Custom Typeを含むfield-identity ruleをreview可能な形で切り出して管理する。明示的なhuman approvalはまだ必要で
-あり、既存scaffoldのbehaviorはreview対象のevidenceであって、これらProposed requirementのauthorityではない。
+この文書は、Custom Typeを含むfield-identity ruleをcanonicalな形で管理する。既存scaffoldのbehaviorはreview対象のevidenceで
+あって、これらApproved requirementの代替ではない。
 
 ### COMPAT-FIELD-001
 

@@ -1,6 +1,6 @@
 # Value Objects仕様（Value Objects）
 
-Status: Proposed
+Status: Approved
 
 Domain: Type System
 
@@ -271,8 +271,8 @@ codeとfinal MessagePack attribute shapeは未割り当てである。
 
 Value Objectのunderlying vocabularyをkey-compatible primitiveへ狭めること、scalar data representation、generated
 C# API、implicit conversion surface、およびcomparison APIは将来のschema/dataとgenerated artifactに影響し得る。この
-proposalは既存のreleased schemaに対するimplicit migration、generated API changeのcompatibility classification、field-ID
-behaviorを定義しない。これらのchoiceはOpen Questionであり、このproposalがApprovedになるまでimplementation authorityでは
+specificationは既存のreleased schemaに対するimplicit migration、generated API changeのcompatibility classification、field-ID
+behaviorを定義しない。これらのchoiceはOpen Questionであり、Approved scopeの外にあるためimplementation authorityでは
 ない。`IComparable<N>`、`CompareTo(N)`、およびordering operatorはpublic generated API surfaceであるため、将来の削除または
 意味変更にはcompatibility considerationが必要になる。
 `float`、`double`、`bool` をValue Object underlyingへ許可することは、別のsemantic changeでなければならない。

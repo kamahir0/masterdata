@@ -155,5 +155,6 @@ filenameが変わる可能性がある。最終decisionにはgolden testと明�
 
 今回のhuman decisionは、6つのminimum naming questionについて、`docs/specs/type-system/csharp-naming.md` に記録されたpolicyを
 示した。RFCはrationaleとalternative comparisonを保持し、`Status: Proposed` のままとする。RFCの `Accepted` transitionと
-canonical specificationの `Approved` transitionは別のworkflow operationであり、このrefinementでは実行しない。したがって、
-このRFCもcanonical specificationも、human maintainerによる明示的なapprovalが完了するまで `implement-spec` のauthorityではない。
+canonical specificationの `Approved` transitionは別のworkflow operationである。今回の明示的なhuman approvalによりcanonical
+specificationは `Approved` となったが、このRFCの `Accepted` transitionは実行しない。RFCはrationaleとalternativeの記録であり、
+canonical specificationの代替となるimplementation authorityではない。

@@ -1,6 +1,6 @@
 # Field Modifiers仕様（Field Modifiers）
 
-Status: Proposed
+Status: Approved
 
 Domain: Type System
 

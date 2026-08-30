@@ -178,6 +178,6 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 
 現在のRust implementationは、project contract、YAML document envelope、basic field identity check、
 source-content hash、明確に命名されたschema source-content hashを含むbuild-plan formationを扱う。
-`id` という名前のfieldにはimplicit primary-key meaningがない。Proposed type-system documentは人間の
-approvalを待つcontractであり、current parser、validator、generatorはそれを実装していない。
+`id` という名前のfieldにはimplicit primary-key meaningがない。今回Approvedとなったtype-system contractはimplementation
+authorityだが、current parser、validator、generatorはそれをまだ実装していない。
 Type resolution、indexes、references、MasterMemory binary generation、full GUIは意図的に未完了である。

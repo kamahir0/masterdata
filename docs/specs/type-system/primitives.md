@@ -1,6 +1,6 @@
 # Primitive Types仕様（Primitive Types）
 
-Status: Proposed
+Status: Approved
 
 Domain: Type System
 

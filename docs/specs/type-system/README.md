@@ -30,12 +30,12 @@ Value ObjectおよびCustom Typeのtype name、Custom Type fieldのsource name�
 parameterのmappingは[C#命名仕様](csharp-naming.md)が所有する。Tableの`table` identityと`csharpName` presentation nameは
 この仕様の対象外である。
 
-- [Primitive Types仕様](primitives.md) — `Status: Proposed`
-- [Field Modifiers仕様](field-modifiers.md) — `Status: Proposed`
-- [Value Objects仕様](value-objects.md) — `Status: Proposed`
-- [C#命名仕様](csharp-naming.md) — `Status: Proposed`
+- [Primitive Types仕様](primitives.md) — `Status: Approved`
+- [Field Modifiers仕様](field-modifiers.md) — `Status: Approved`
+- [Value Objects仕様](value-objects.md) — `Status: Approved`
+- [C#命名仕様](csharp-naming.md) — `Status: Approved`
 - [Enums and Flags仕様](enums.md) — `Status: Draft`
-- [Custom Types仕様](custom-types.md) — `Status: Proposed`
+- [Custom Types仕様](custom-types.md) — `Status: Approved`
 
 これらのfileでは既存のRequirement IDを保持する。documentを分割してもIDをrenameまたは
 reassignしない。

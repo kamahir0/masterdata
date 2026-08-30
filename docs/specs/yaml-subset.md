@@ -37,7 +37,9 @@ explicit document end marker `...`、複数document、`%YAML`、`%TAG`、およ�
 ### YAML-SUBSET-003
 
 すべてのmappingにおいてduplicate mapping keyを禁止しなければならない（MUST）。duplicate keyはstructural parse/source errorで
-あり、first-winsまたはlast-winsとして解釈してはならない（MUST NOT）。
+あり、first-winsまたはlast-winsとして解釈してはならない（MUST NOT）。duplicate判定は、YAML subsetのscalar semanticsに従って
+decodedされたmapping-key identityに対して行わなければならない（MUST）。したがって、plain `name`、double-quoted `"name"`、
+single-quoted `'name'` は、quote styleが異なっていても同じmapping keyである。
 
 ### YAML-SUBSET-004
 
@@ -59,7 +61,11 @@ custom tagを含む。
 ### YAML-SUBSET-007
 
 block mappingはサポートしなければならない（MUST）。flow mappingはサポートしてはならない（MUST NOT）。block sequenceとflow
-sequenceはサポートしなければならない（MUST）。
+sequenceはサポートしなければならない（MUST）。flow sequenceのpunctuation、separator、whitespace、および改行は、custom
+Masterdata grammarではなく、standard YAML flow-sequence syntaxに従わなければならない（MUST）。したがって、standard YAML syntaxとして
+validなmultiline flow sequenceも受理しなければならない（MUST）。flow sequence内のnested valueまたはconstructにも、このsubsetの
+unsupported ruleを適用しなければならない（MUST）。flow mapping、anchor、alias、explicit tag、およびunsupported scalar formは、
+flow sequence内であることを理由に許可してはならない（MUST NOT）。
 
 ### YAML-SUBSET-008
 
@@ -119,19 +125,47 @@ string scalarである。不正なnumeric-looking formやunsupportedなnull/nume
 fallbackさせてはならない（MUST NOT）。これらは`YAML-SUBSET-010`、`YAML-SUBSET-011`、`YAML-SUBSET-012`に従いinvalidまたは
 unsupportedとする。
 
-timestamp-looking plain scalarは、このrequirementのstring fallbackから除外する。unquoted timestamp-looking plain scalarの意味は
-`Open Questions`で扱う。
+single-quoted scalarはstandard YAML single-quoted scalar semanticsに従わなければならない（MUST）。single quoteを表す`''`はdecoded
+valueの1つの`'`でなければならず（MUST）、backslashはsingle-quoted scalar内のescape sequenceを開始してはならない（MUST NOT）。
+double-quoted scalarはstandard YAML double-quoted scalar escape semanticsに従ってdecodedしなければならない（MUST）。例えば、
+standardで定義される範囲の`\n`、`\t`、`\"`、`\\`、`\uXXXX`などは、そのstandard semanticsでdecodedしなければならない（MUST）。
+Masterdata固有の別のescape languageを定義してはならない（MUST NOT）。decoded string valueがsemantic valueであり、quote styleそのものを
+semantic inputとして扱ってはならない（MUST NOT）。
+
+Unicode characterはplain、single-quoted、double-quoted、およびbare `|` literal blockのstring valueとして受理しなければならない（MUST）。Masterdataは、
+textがUnicodeであることだけを理由にUnicode normalizationを自動適用してはならない（MUST NOT）。このrequirementは、既存のtype name、
+field name、またはRecord Tagのlexical ruleを変更しない。timestamp-looking plain scalarは、このrequirementのstring fallbackから除外する。
+unquoted timestamp-looking plain scalarの意味は`Open Questions`で扱う。
 
 ### YAML-SUBSET-015
 
-literal block scalar `|`をサポートしなければならず（MUST）、そのdecoded stringではliteral block内のapplicable newlineを保持
-しなければならない（MUST）。folded block scalar `>`はサポートしてはならない（MUST NOT）。このdocumentは、custom folding behaviorを
-追加してはならない（MUST NOT）。
+literal block scalarのindicatorとしてbare `|`だけをサポートしなければならない（MUST）。chomping indicatorまたはexplicit indentation
+indicatorを付加した形式（`|-`、`|+`、`|2`、`|2-`、`|2+`など）はサポートしてはならない（MUST NOT）。bare `|`のdecoded stringにおける
+trailing newline semanticsは、通常のYAML literal-block clip behaviorに従わなければならず（MUST）、Masterdata固有のchompingまたは
+folding behaviorを追加してはならない（MUST NOT）。folded block scalar `>`およびその形式もサポートしてはならない（MUST NOT）。
+
+### YAML-SUBSET-016
+
+Masterdata YAMLのすべてのmapping keyはstring scalarでなければならない（MUST）。plainまたはquotedなstring keyはサポートしなければ
+ならない（MUST）。numeric、boolean、null、およびcomplex mapping keyはサポートしてはならない（MUST NOT）。したがって、`1`、`true`、
+`null`のようなunquoted key、ならびに`? [a, b]`のようなcomplex-key formはinvalidである。mapping keyをstringへimplicit coerceしてこの
+restrictionを回避してはならない（MUST NOT）。
+
+このrequirementはmappingのstructural key typeだけを定義する。schema、type、またはその他のMasterdata-owned structureで、decoded string
+keyが有効なmember nameであるかどうかは、関連するcanonical specificationが所有する。したがって、quoted string keyをstructuralに受理
+することは、structure-specific identifier grammarを満たすことを意味しない。
+
+### YAML-SUBSET-017
+
+mapping entryにexplicit valueがない場合、そのentryをinvalid Masterdata YAMLとしてrejectしなければならない（MUST）。例えば`name:`を
+implicit nullとして解釈してはならない（MUST NOT）。`null`はexplicitなnull literal、`""`はempty string、`[]`はempty sequenceとして、
+それぞれのsemantic valueを明示しなければならない（MUST）。mapping memberの省略、explicit null、empty string、およびempty collectionを
+同一視してはならない（MUST NOT）。
 
 ## 検証ルール
 
-source fileごとにdocument数、directive、document marker、duplicate mapping key、anchor/alias/merge、explicit tag、collection
-shape、comment、scalar categoryを検証する。scalarがtarget Primitive Typeへ渡される場合、scalar categoryとrepresentable valueは
+source fileごとにdocument数、directive、document marker、duplicate mapping key、mapping key type、explicit value presence、anchor/alias/merge、
+explicit tag、collection shape、comment、scalar categoryを検証する。scalarがtarget Primitive Typeへ渡される場合、scalar categoryとrepresentable valueは
 [Primitive Types仕様](type-system/primitives.md)のstrict validationへ渡され、implicit coercionを行わない。
 
 `kind`、`table`、`records`、schema fields、type declarationなどMasterdata-owned memberの具体的なrequired/unknown ruleは、
@@ -154,19 +188,21 @@ parser libraryの変更はこのsubset contractを変更せず、選択された
 | --- | --- | --- |
 | `YAML-SUBSET-001` | 異なるparser candidateでもproduct subsetのclassificationとreject ruleが同じである。 | parserのdefault implicit typingだけでproduct behaviorが決まる。 |
 | `YAML-SUBSET-002` | 1 file 1 documentが受理される。 | `---`、`...`、directive、複数documentが受理される。 |
-| `YAML-SUBSET-003` | unique key mappingが受理される。 | duplicate keyがfirst-wins/last-winsで受理される。 |
+| `YAML-SUBSET-003` | unique key mappingが受理され、decoded mapping-key identityに基づいてduplicateが判定される。 | duplicate keyがfirst-wins/last-winsで受理される、またはplain/quotedの同じdecoded keyが別keyとして扱われる。 |
 | `YAML-SUBSET-004` | unknown semantic memberがerrorになる。 | unknown memberがsilent ignoreされる、またはGUI preservationをsemantic acceptanceとみなす。 |
 | `YAML-SUBSET-005` | 通常のmapping/sequenceが受理される。 | anchor、alias、`<<` mergeが受理される。 |
 | `YAML-SUBSET-006` | explicit tagなしのscalarが受理される。 | `!!str`、`!!int`、`!!timestamp`、custom tagが受理される。 |
-| `YAML-SUBSET-007` | block mapping、block sequence、flow sequenceが受理される。 | flow mapping `{ itemId: 1001 }`が受理される。 |
+| `YAML-SUBSET-007` | block mapping、block sequence、standard YAML syntaxに従うsingle-lineおよびmultiline flow sequenceが受理される。 | flow mapping `{ itemId: 1001 }`、またはflow sequence内のflow mapping・anchor・alias・explicit tag・unsupported scalar formが受理される。 |
 | `YAML-SUBSET-008` | full-line/inline commentを含む入力のdomain/binary resultがcommentなしと一致する。 | commentがdomain valueやbinary semanticsを変更する。 |
 | `YAML-SUBSET-009` | `true`/`false`だけがbooleanになり、`yes`/`no`/`on`/`off`はbooleanにならない。 | YAML libraryの広いboolean resolutionが採用される。 |
 | `YAML-SUBSET-010` | `null`だけがnullになり、`~`がrejectされ、quoted `"null"`がstringになる。 | `~`がnull shorthandとして受理される。 |
 | `YAML-SUBSET-011` | `0`、`123`、`-123`がinteger scalarになる。 | hex、octal、binary、separator、leading `+`、leading zero formが受理される。 |
 | `YAML-SUBSET-012` | fraction/exponent formがfloating scalarになり、finite-only ruleが適用される。 | `.5`、`1.`、`+1.5`、`NaN`、`Infinity`、`+Infinity`、`-Infinity`が受理される。 |
 | `YAML-SUBSET-013` | integer `1`とfloating `1.0`が互いのtarget fieldをcoercionなしに満たさない。 | numeric conversionでcategory mismatchが隠される。 |
-| `YAML-SUBSET-014` | single/double quoteとplain stringが定義どおりにstringになり、quote styleでdomain resultが変わらない。 | quote styleがbinary semanticsを変更する、`yes`等がbooleanになる、またはunsupportedなnumeric-looking/null tokenがstringへfallbackする。 |
-| `YAML-SUBSET-015` | `|` block scalarがliteral newlineを保持する。 | `>`が受理される、またはcustom foldingが適用される。 |
+| `YAML-SUBSET-014` | single/double quoteとplain stringが定義どおりにdecoded stringとなり、`''`、backslash、standard double-quoted escape、Unicode value、quote styleのnon-semantic性が確認できる。 | quote styleがbinary semanticsを変更する、single-quoted backslashがescapeになる、standard escape semanticsから外れる、Unicode normalizationが自動適用される、`yes`等がbooleanになる、またはunsupportedなnumeric-looking/null tokenがstringへfallbackする。 |
+| `YAML-SUBSET-015` | bare `|` block scalarが通常のYAML literal-block clip behaviorでdecodedされる。 | `|-`、`|+`、`|2`、`|2-`、`|2+`などのmodifier付きliteral block、または`>`が受理される、もしくはcustom chomping/foldingが適用される。 |
+| `YAML-SUBSET-016` | plainまたはquoted string mapping keyが受理され、`name`、`"name"`、`'name'`が同じdecoded key identityとして扱われる。 | numeric、boolean、null、complex keyが受理される、またはmapping keyがstringへimplicit coerceされる。 |
+| `YAML-SUBSET-017` | `name: null`、`name: ""`、`items: []`が明示された別々のvalueとして扱われる。 | `name:`がimplicit nullとして受理される、または省略member、explicit null、empty string、empty collectionが同一視される。 |
 
 ## 例
 
@@ -179,10 +215,24 @@ records:
   - itemId: 1001
     enabled: true
     label: 'Potion'
+    note: 'It''s a potion'
+    localized: 'ポーション'
+    escaped: "Line 1\nLine 2"
     description: |
       Line 1
       Line 2
+    values: [1, 2, 3]
     $tags: [debug, development]
+```
+
+standard YAML flow-sequence syntaxとしてvalidなmultiline flow sequenceも受理される。
+
+```yaml
+values: [
+  1,
+  2,
+  3
+]
 ```
 
 次はunsupportedまたはinvalidなconstructの例である。最後のtimestamp-looking plain scalarはOpen Questionの例であり、ここでは
@@ -206,11 +256,19 @@ records:
     timestamp: 2026-08-30
 ```
 
+次もunsupportedまたはinvalidである。
+
+```yaml
+description: |-
+  clipped
+values: [{ x: 1 }]
+1: Potion
+name:
+```
+
 ## 未解決事項（Open Questions）
 
 - `2026-08-30`、`2026-08-30T12:34:56Z`のようなunquoted timestamp-looking plain scalarをreject、string、将来のDate/DateTime scalar、または別の明示的ruleとして扱うか。YAML libraryのimplicit timestamp typeをblindly採用してはならない。quotedな`"2026-08-30"`はunambiguously stringである。このquestionはDate/DateTime type designまで延期する。
-- literal block scalarのindentation、chomping indicator、empty lineなど、`|` のexampleを超えるdecoded newlineの詳細をどう定義するか。
-- single/double-quoted scalarのescape、Unicode文字列、flow sequenceの細かなpunctuationなど、明示的に定義していないparser dialectの境界をどうするか。
 - source span、diagnostic code、duplicate/unsupported constructのerror severityをどう割り当てるか。
 - GUI saveでcomment、formatting、quote、orderingを保持する必要があるか。
 - YAML parser/libraryの採用、migration、maintenance policyをRFC 0002の比較からどう決定するか。

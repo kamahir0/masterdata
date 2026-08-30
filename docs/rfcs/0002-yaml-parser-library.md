@@ -10,6 +10,10 @@ diagnostic、将来のGUI editing、source fileの解釈に影響する。parser
 round-trip editingに適するとは限らない。本RFCは調査結果を記録するものであり、dependency migrationを
 許可するものではない。
 
+Masterdataのnormative YAML syntax reference baselineはYAML 1.2.2である。ただし、実際に受理するsource languageと
+unsupported constructは[Masterdata YAML subset仕様](../specs/yaml-subset.md)が定める。このRFCはYAML 1.2.2の全機能を採用するものでも、
+parser libraryを選択またはmigrationするものでもない。
+
 ## 課題（Problem）
 
 current parserはSerde mappingには便利だが、upstream repositoryがarchivedであり、`0.9.34` releaseには
@@ -111,7 +115,6 @@ outputを変える可能性がある。migrationにはfixtureとgolden-outputの
 
 ## Open Questions（未解決事項）
 
-- product contractはどのYAML version/dialectか。
 - anchor、alias、merge key、複数document、custom tagを許可するか。
 - duplicate mapping keyはerror、first-value rule、last-value rule、または後続diagnosticのために保持するものか。
 - どのnumericとtimestamp formをtyped valueにするか。
@@ -122,8 +125,12 @@ outputを変える可能性がある。migrationにはfixtureとgolden-outputの
 
 ## 決定（Decision）
 
-明示的なhuman approval待ち。current recommendationはmigrationを延期し、dependencyを `serde_yaml 0.9` にpinした
-まま、review済みcompatibility corpusを通じてYAML subsetとeditor requirementを解決することである。
+YAMLのnormative syntax reference baselineはYAML 1.2.2とする。このdecisionは、YAML 1.2.2が許可するすべてのconstructを
+Masterdataが受理すること、または特定のparser libraryを選択することを意味しない。実際のaccepted source languageとsubset restrictionは
+[Masterdata YAML subset仕様](../specs/yaml-subset.md)が所有する。
+
+RFC自体は引き続き明示的なhuman approval待ちであり、current recommendationはmigrationを延期し、dependencyを `serde_yaml 0.9` にpinした
+まま、review済みcompatibility corpusを通じてparser stackとeditor requirementを解決することである。
 
 ## 参照（References）
 

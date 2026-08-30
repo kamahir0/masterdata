@@ -9,6 +9,10 @@ Domain: Schema Language
 本proposalは、Masterdataが受理するYAMLの構造・collection・scalar subsetを、特定のYAML parser/libraryの挙動から独立して定義する。
 parser libraryはこのproduct contractを暗黙に決定してはならず（MUST NOT）、implementationはsubset boundaryで明示的に検証する。
 
+Masterdataのnormative syntax reference baselineはYAML 1.2.2である。YAML 1.2.2は、Masterdata YAML subsetが明示的に委譲するsyntax
+semanticsのreferenceとして使用する。ただし、actual accepted source languageはMasterdata YAML subsetであり、YAML 1.2.2が許可する
+constructであっても、このsubsetが禁止するものは受理してはならない（MUST NOT）。
+
 このdocumentは、source documentの単位、mapping/collection、comment、scalar classification、およびunsupported YAML constructの
 canonical ownerである。document envelopeとschema declarationは[Schema言語仕様](schema-language.md)が、Primitive Typeのtarget
 value domainは[Primitive Types仕様](type-system/primitives.md)が所有する。parser libraryの選択は
@@ -18,15 +22,21 @@ value domainは[Primitive Types仕様](type-system/primitives.md)が所有する
 
 `Masterdata YAML subset` は、Masterdata productが受理するYAML syntaxとscalar classificationの範囲である。`source file` は、
 ちょうど1つのMasterdata YAML documentを含むfileである。`mapping key` はYAML mappingのmember name、`scalar category` はboolean、
-null、integer、floating-point、またはstringとしてsubsetが分類するleaf valueを指す。
+null、integer、floating-point、またはstringとしてsubsetが分類するleaf valueを指す。`YAML 1.2.2 syntax reference baseline` は、
+Masterdata subsetがsyntax detailを委譲する場合に参照するYAML versionである。
 
 ## 規範要件
 
 ### YAML-SUBSET-001
 
+Masterdataのnormative YAML syntax reference baselineはYAML 1.2.2でなければならない（MUST）。このdocumentで単に`standard YAML`と
+記載する場合、それはYAML 1.2.2を意味する。ただし、actual accepted source languageはこのdocumentが定めるMasterdata YAML subsetで
+あり、YAML 1.2.2が許可するconstructでも、このsubsetがunsupportedと定めるものを受理してはならない（MUST NOT）。
+
 MasterdataのYAML subset semanticsは、選択されたYAML parser/libraryのimplicit typing、default construct support、またはerror
 behaviorだけから決めてはならない（MUST NOT）。parser implementationは、このdocumentが定めるproduct subsetへ入力を適合させ、
-unsupported constructを受理してはならない（MUST NOT）。
+unsupported constructを受理してはならない（MUST NOT）。YAML 1.2.2のbaselineだけから、Masterdata subsetがすべてのYAML 1.2.2
+featureをサポートすると推測してはならない（MUST NOT）。
 
 ### YAML-SUBSET-002
 
@@ -55,14 +65,14 @@ anchor `&name`、alias `*name`、およびmerge key `<<` はサポートして�
 
 ### YAML-SUBSET-006
 
-explicit YAML tagはすべてサポートしてはならない（MUST NOT）。`!!str`、`!!int`、`!!timestamp`、`!ItemId`などのstandardまたは
+explicit YAML tagはすべてサポートしてはならない（MUST NOT）。`!!str`、`!!int`、`!!timestamp`、`!ItemId`などのYAML 1.2.2または
 custom tagを含む。
 
 ### YAML-SUBSET-007
 
 block mappingはサポートしなければならない（MUST）。flow mappingはサポートしてはならない（MUST NOT）。block sequenceとflow
 sequenceはサポートしなければならない（MUST）。flow sequenceのpunctuation、separator、whitespace、および改行は、custom
-Masterdata grammarではなく、standard YAML flow-sequence syntaxに従わなければならない（MUST）。したがって、standard YAML syntaxとして
+Masterdata grammarではなく、YAML 1.2.2のflow-sequence syntaxに従わなければならない（MUST）。したがって、YAML 1.2.2のsyntaxとして
 validなmultiline flow sequenceも受理しなければならない（MUST）。flow sequence内のnested valueまたはconstructにも、このsubsetの
 unsupported ruleを適用しなければならない（MUST）。flow mapping、anchor、alias、explicit tag、およびunsupported scalar formは、
 flow sequence内であることを理由に許可してはならない（MUST NOT）。
@@ -125,10 +135,10 @@ string scalarである。不正なnumeric-looking formやunsupportedなnull/nume
 fallbackさせてはならない（MUST NOT）。これらは`YAML-SUBSET-010`、`YAML-SUBSET-011`、`YAML-SUBSET-012`に従いinvalidまたは
 unsupportedとする。
 
-single-quoted scalarはstandard YAML single-quoted scalar semanticsに従わなければならない（MUST）。single quoteを表す`''`はdecoded
+single-quoted scalarはYAML 1.2.2のsingle-quoted scalar semanticsに従わなければならない（MUST）。single quoteを表す`''`はdecoded
 valueの1つの`'`でなければならず（MUST）、backslashはsingle-quoted scalar内のescape sequenceを開始してはならない（MUST NOT）。
-double-quoted scalarはstandard YAML double-quoted scalar escape semanticsに従ってdecodedしなければならない（MUST）。例えば、
-standardで定義される範囲の`\n`、`\t`、`\"`、`\\`、`\uXXXX`などは、そのstandard semanticsでdecodedしなければならない（MUST）。
+double-quoted scalarはYAML 1.2.2のdouble-quoted scalar escape semanticsに従ってdecodedしなければならない（MUST）。例えば、
+YAML 1.2.2で定義される範囲の`\n`、`\t`、`\"`、`\\`、`\uXXXX`などは、そのYAML 1.2.2 semanticsでdecodedしなければならない（MUST）。
 Masterdata固有の別のescape languageを定義してはならない（MUST NOT）。decoded string valueがsemantic valueであり、quote styleそのものを
 semantic inputとして扱ってはならない（MUST NOT）。
 
@@ -141,7 +151,7 @@ unquoted timestamp-looking plain scalarの意味は`Open Questions`で扱う。
 
 literal block scalarのindicatorとしてbare `|`だけをサポートしなければならない（MUST）。chomping indicatorまたはexplicit indentation
 indicatorを付加した形式（`|-`、`|+`、`|2`、`|2-`、`|2+`など）はサポートしてはならない（MUST NOT）。bare `|`のdecoded stringにおける
-trailing newline semanticsは、通常のYAML literal-block clip behaviorに従わなければならず（MUST）、Masterdata固有のchompingまたは
+trailing newline semanticsは、YAML 1.2.2のliteral-block clip behaviorに従わなければならず（MUST）、Masterdata固有のchompingまたは
 folding behaviorを追加してはならない（MUST NOT）。folded block scalar `>`およびその形式もサポートしてはならない（MUST NOT）。
 
 ### YAML-SUBSET-016
@@ -186,21 +196,21 @@ parser libraryの変更はこのsubset contractを変更せず、選択された
 
 | Requirement | Success observation | Failure observation |
 | --- | --- | --- |
-| `YAML-SUBSET-001` | 異なるparser candidateでもproduct subsetのclassificationとreject ruleが同じである。 | parserのdefault implicit typingだけでproduct behaviorが決まる。 |
+| `YAML-SUBSET-001` | syntax detailを委譲する箇所がYAML 1.2.2をreferenceし、YAML 1.2.2が許可していてもsubsetがunsupportedと定めたconstructはrejectされる。異なるparser candidateでもproduct subsetのclassificationとreject ruleが同じである。 | YAML 1.2.2の全featureが自動的にMasterdataで受理される、またはparserのdefault implicit typingだけでproduct behaviorが決まる。 |
 | `YAML-SUBSET-002` | 1 file 1 documentが受理される。 | `---`、`...`、directive、複数documentが受理される。 |
 | `YAML-SUBSET-003` | unique key mappingが受理され、decoded mapping-key identityに基づいてduplicateが判定される。 | duplicate keyがfirst-wins/last-winsで受理される、またはplain/quotedの同じdecoded keyが別keyとして扱われる。 |
 | `YAML-SUBSET-004` | unknown semantic memberがerrorになる。 | unknown memberがsilent ignoreされる、またはGUI preservationをsemantic acceptanceとみなす。 |
 | `YAML-SUBSET-005` | 通常のmapping/sequenceが受理される。 | anchor、alias、`<<` mergeが受理される。 |
 | `YAML-SUBSET-006` | explicit tagなしのscalarが受理される。 | `!!str`、`!!int`、`!!timestamp`、custom tagが受理される。 |
-| `YAML-SUBSET-007` | block mapping、block sequence、standard YAML syntaxに従うsingle-lineおよびmultiline flow sequenceが受理される。 | flow mapping `{ itemId: 1001 }`、またはflow sequence内のflow mapping・anchor・alias・explicit tag・unsupported scalar formが受理される。 |
+| `YAML-SUBSET-007` | block mapping、block sequence、YAML 1.2.2 syntaxに従うsingle-lineおよびmultiline flow sequenceが受理される。 | flow mapping `{ itemId: 1001 }`、またはflow sequence内のflow mapping・anchor・alias・explicit tag・unsupported scalar formが受理される。 |
 | `YAML-SUBSET-008` | full-line/inline commentを含む入力のdomain/binary resultがcommentなしと一致する。 | commentがdomain valueやbinary semanticsを変更する。 |
 | `YAML-SUBSET-009` | `true`/`false`だけがbooleanになり、`yes`/`no`/`on`/`off`はbooleanにならない。 | YAML libraryの広いboolean resolutionが採用される。 |
 | `YAML-SUBSET-010` | `null`だけがnullになり、`~`がrejectされ、quoted `"null"`がstringになる。 | `~`がnull shorthandとして受理される。 |
 | `YAML-SUBSET-011` | `0`、`123`、`-123`がinteger scalarになる。 | hex、octal、binary、separator、leading `+`、leading zero formが受理される。 |
 | `YAML-SUBSET-012` | fraction/exponent formがfloating scalarになり、finite-only ruleが適用される。 | `.5`、`1.`、`+1.5`、`NaN`、`Infinity`、`+Infinity`、`-Infinity`が受理される。 |
 | `YAML-SUBSET-013` | integer `1`とfloating `1.0`が互いのtarget fieldをcoercionなしに満たさない。 | numeric conversionでcategory mismatchが隠される。 |
-| `YAML-SUBSET-014` | single/double quoteとplain stringが定義どおりにdecoded stringとなり、`''`、backslash、standard double-quoted escape、Unicode value、quote styleのnon-semantic性が確認できる。 | quote styleがbinary semanticsを変更する、single-quoted backslashがescapeになる、standard escape semanticsから外れる、Unicode normalizationが自動適用される、`yes`等がbooleanになる、またはunsupportedなnumeric-looking/null tokenがstringへfallbackする。 |
-| `YAML-SUBSET-015` | bare `|` block scalarが通常のYAML literal-block clip behaviorでdecodedされる。 | `|-`、`|+`、`|2`、`|2-`、`|2+`などのmodifier付きliteral block、または`>`が受理される、もしくはcustom chomping/foldingが適用される。 |
+| `YAML-SUBSET-014` | single/double quoteとplain stringが定義どおりにdecoded stringとなり、`''`、backslash、YAML 1.2.2 double-quoted escape、Unicode value、quote styleのnon-semantic性が確認できる。 | quote styleがbinary semanticsを変更する、single-quoted backslashがescapeになる、YAML 1.2.2 escape semanticsから外れる、Unicode normalizationが自動適用される、`yes`等がbooleanになる、またはunsupportedなnumeric-looking/null tokenがstringへfallbackする。 |
+| `YAML-SUBSET-015` | bare `|` block scalarがYAML 1.2.2のliteral-block clip behaviorでdecodedされる。 | `|-`、`|+`、`|2`、`|2-`、`|2+`などのmodifier付きliteral block、または`>`が受理される、もしくはcustom chomping/foldingが適用される。 |
 | `YAML-SUBSET-016` | plainまたはquoted string mapping keyが受理され、`name`、`"name"`、`'name'`が同じdecoded key identityとして扱われる。 | numeric、boolean、null、complex keyが受理される、またはmapping keyがstringへimplicit coerceされる。 |
 | `YAML-SUBSET-017` | `name: null`、`name: ""`、`items: []`が明示された別々のvalueとして扱われる。 | `name:`がimplicit nullとして受理される、または省略member、explicit null、empty string、empty collectionが同一視される。 |
 
@@ -225,7 +235,7 @@ records:
     $tags: [debug, development]
 ```
 
-standard YAML flow-sequence syntaxとしてvalidなmultiline flow sequenceも受理される。
+YAML 1.2.2のflow-sequence syntaxとしてvalidなmultiline flow sequenceも受理される。
 
 ```yaml
 values: [
@@ -268,7 +278,7 @@ name:
 
 ## 未解決事項（Open Questions）
 
-- `2026-08-30`、`2026-08-30T12:34:56Z`のようなunquoted timestamp-looking plain scalarをreject、string、将来のDate/DateTime scalar、または別の明示的ruleとして扱うか。YAML libraryのimplicit timestamp typeをblindly採用してはならない。quotedな`"2026-08-30"`はunambiguously stringである。このquestionはDate/DateTime type designまで延期する。
+- `2026-08-30`、`2026-08-30T12:34:56Z`のようなunquoted timestamp-looking plain scalarをreject、string、将来のDate/DateTime scalar、または別の明示的ruleとして扱うか。YAML 1.2.2のbaselineまたはYAML libraryのimplicit timestamp typeからMasterdataのsemanticsをblindly導出してはならない。quotedな`"2026-08-30"`はunambiguously stringである。このquestionはDate/DateTime type designまで延期する。
 - source span、diagnostic code、duplicate/unsupported constructのerror severityをどう割り当てるか。
 - GUI saveでcomment、formatting、quote、orderingを保持する必要があるか。
 - YAML parser/libraryの採用、migration、maintenance policyをRFC 0002の比較からどう決定するか。

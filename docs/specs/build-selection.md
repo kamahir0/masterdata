@@ -1,6 +1,6 @@
 # Build Selection仕様（Record Tags / Build Profiles）
 
-Status: Proposed
+Status: Approved
 
 Domain: Build
 

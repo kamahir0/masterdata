@@ -1,6 +1,6 @@
 # Masterdata YAML subset仕様（Masterdata YAML subset）
 
-Status: Proposed
+Status: Approved
 
 Domain: Schema Language
 
@@ -189,8 +189,8 @@ compatibility corpusと明示的なchange reviewが必要である。quote style
 
 parser libraryの変更はこのsubset contractを変更せず、選択されたlibraryがsubsetを満たすようadapterまたはvalidation boundaryを
 提供しなければならない。`serde_yaml`から別libraryへのmigration、round-trip editorのexact preservation、released schema migrationは
-このproposalでは行わない。ApprovedのPrimitive Types仕様とのparser-boundaryの接続は、別途[仕様変更proposal 0002](../spec-changes/0002-yaml-subset.md)
-で追跡し、このproposal自体がApproved semanticsを直接変更することはない。
+このspecificationでは行わない。ApprovedのPrimitive Types仕様とのparser-boundaryの接続は、[仕様変更 0002](../spec-changes/0002-yaml-subset.md)
+によってatomicに適用済みであり、このspecificationはPrimitive Typesのtarget semanticsを変更しない。
 
 ## 受け入れ証拠
 

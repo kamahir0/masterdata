@@ -1,6 +1,6 @@
 # 仕様変更: Masterdata YAML subsetのprimitive scalar境界（Specification change）
 
-Status: Proposed
+Status: Applied
 
 <!-- Lifecycle: Draft -> Proposed -> Approved -> Applied、またはRejected。canonical
      specificationを変更する前にhuman approvalが必要である。 -->
@@ -62,16 +62,17 @@ Appliedになった後に、canonical merged specificationから開始する。
 
 ## 未解決事項（Open Questions）
 
-- このdeltaを適用する前提となる `docs/specs/yaml-subset.md` のhuman approvalをいつ行うか。
 - timestamp-looking plain scalar、diagnostic/source-span、およびparser/libraryの選択・migration・maintenance policyの扱い。
 
 ## レビュー（Review）
 
-このdeltaはApproved Primitive Types仕様を直接編集せず、Proposed YAML subsetが承認された後にのみ適用する境界を明示する。
-YAML subsetのtimestamp-looking scalar、diagnostic/source-span、およびparser/library policyは意図的に未解決であり、このartifactで先取りしない。
-YAML 1.2.2のsyntax reference baselineと、subsetが定義するliteral blockの制限を未解決事項として扱わない。Human approval前のcanonical merge
-およびimplementation authority化は行わない。
+このdeltaはApproved Primitive Types仕様を直接編集せず、YAML subsetのhuman approval後にのみ適用する境界を明示していた。Human approval後、
+deltaはcanonical Primitive Types仕様へatomicに適用済みである。YAML subsetのtimestamp-looking scalar、diagnostic/source-span、および
+parser/library policyは意図的に未解決であり、このartifactで先取りしない。YAML 1.2.2のsyntax reference baselineと、subsetが定義する
+literal blockの制限を未解決事項として扱わない。Human approval前のcanonical mergeおよびimplementation authority化は行わない。
 
 ## 承認記録（Approval Record）
 
-<!-- human maintainerが明示的にchangeを承認するまで空欄にする。 -->
+このtaskでhuman maintainerが、現行のMasterdata YAML subset semanticsと、このartifactが定めるPrimitive Typesとの接続deltaを明示的に
+承認した。deltaは `docs/specs/yaml-subset.md` のApproved化後、`docs/specs/type-system/primitives.md` へatomicに適用済みである。
+このartifactは承認済みdeltaのaudit recordとして保持し、`Status: Applied` とする。

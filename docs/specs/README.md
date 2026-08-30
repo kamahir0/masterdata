@@ -161,7 +161,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 
 - [Projectの構成と探索仕様](project-layout.md)
 - [Schema言語仕様](schema-language.md)
-- [Masterdata YAML subset仕様](yaml-subset.md) — `Status: Proposed`
+- [Masterdata YAML subset仕様](yaml-subset.md) — `Status: Approved`
 - [Type System仕様](type-system/README.md)
   - [Primitive Types仕様](type-system/primitives.md)
   - [Field Modifiers仕様](type-system/field-modifiers.md)
@@ -170,7 +170,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Enum / Flags仕様](type-system/enums.md)
   - [Custom Types仕様](type-system/custom-types.md)
 - [Index / reference仕様](index-and-reference.md)
-- [Build Selection仕様](build-selection.md) — `Status: Proposed`
+- [Build Selection仕様](build-selection.md) — `Status: Approved`
 - [Build pipeline仕様](build-pipeline.md)
 - [Compatibility仕様](compatibility/README.md)
   - [Table identity仕様](compatibility/table-identity.md)

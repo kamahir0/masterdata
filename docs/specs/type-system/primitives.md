@@ -49,8 +49,10 @@ implicit coerceしてはならない（MUST NOT）。特に、`int` に対する
 （MUST NOT）。`uint` に対するnegative valueも受け入れてはならず（MUST NOT）、宣言されたinteger
 range外のvalueも受け入れてはならない（MUST NOT）。
 
-YAML parserのscalar classificationとこのvalidation ruleの正確な境界はOpen Questionのままである。
-このruleは、type systemがparser classificationを黙って再解釈することを許可しない。
+source scalar classificationとのboundaryは、Approvedの[Masterdata YAML subset仕様](../yaml-subset.md)の
+`YAML-SUBSET-009` から `YAML-SUBSET-014` に従わなければならない（MUST）。source scalarのsubset classificationはYAML subset仕様が
+所有し、このruleはtarget primitiveのcategory、representable value、およびstrict validationを所有する。type systemはparser
+classificationを黙って再解釈してはならない（MUST NOT）。
 
 ### TYPE-PRIMITIVE-004
 
@@ -79,7 +81,9 @@ valueが空であることだけを理由にrejectしてはならない（MUST N
 `float` または `double` として宣言されたfieldのfinal valueはfiniteでなければならない（MUST）。
 `NaN`、positive infinity、negative infinityは、いずれのprimitiveのvalueとしても受け入れてはならない
 （MUST NOT）。これはtype-system ruleであり、parserがnon-finite valueを公開する場合にどのYAML scalar
-syntaxを使うかは選択しない。
+syntaxを使うかは選択しない。Approvedの[Masterdata YAML subset仕様](../yaml-subset.md)は、sourceにおける
+`NaN`、`Infinity`、`+Infinity`、`-Infinity`を `YAML-SUBSET-012` に従ってunsupportedとするが、このsource restrictionはfinal valueの
+finite-only ruleに代わるものではない。
 
 ### TYPE-PRIMITIVE-008
 
@@ -120,10 +124,10 @@ mappingは、このproposalでは割り当てない。
 
 ## 互換性
 
-このproposalはimplementationまたはreleased-schema migrationを追加しない。Primitive name、scalar representation、
-およびcomparison semanticsは、実装後にgenerated C#とserialized dataへ影響する可能性があるため、released-schema
-compatibilityはOpen Questionである。implementationがfull scalar compatibilityを主張する前に、正確なYAML numeric
-grammarとparser behaviorを決定しなければならない。
+このspecificationはimplementationまたはreleased-schema migrationを追加しない。Primitive name、scalar representation、および
+comparison semanticsは、実装後にgenerated C#とserialized dataへ影響する可能性があるため、released-schema compatibilityはOpen
+Questionである。implementationは、ApprovedのMasterdata YAML subsetが定めるsource scalar boundaryへ適合しなければならず（MUST）、
+parser libraryの選択・migrationは[RFC 0002](../../rfcs/0002-yaml-parser-library.md)で別途扱う。
 
 ## 例
 
@@ -140,9 +144,6 @@ name: ""
 
 ## Open Questions（未解決事項）
 
-- parser library間で意見が分かれる場合、どのYAML scalar classificationをauthorityとするか。
-- hexadecimal、octal、binary、exponent、およびその他のnon-decimal numeric formをintegerとfloating-point primitiveで受け入れるか。
-- 選択したYAML parserが `NaN` またはinfinity tokenを公開する場合、type-systemのfinite-value check前にそのparser-level scalarをどう表現するか。
 - timestamp-looking scalarを `string` またはnumeric primitiveとして宣言した場合、どのように扱うか。
 - `bool`、`float`、`double`、および将来追加されるPrimitive Typeにcomparison capabilityとordering semanticsを与えるか。
 - 将来、Primitive Type nameのcompatibility aliasを許可するか。

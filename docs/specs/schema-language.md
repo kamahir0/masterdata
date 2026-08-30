@@ -87,10 +87,10 @@ C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所�
 ## Masterdata YAML subsetとの関係
 
 Masterdataが受理するYAMLの構造・collection・scalar semanticsは、[Masterdata YAML subset仕様](yaml-subset.md)がcanonical ownerである。
-このspecificationは `Status: Proposed` であり、productが承認したYAML subsetはまだない。current parserのdefault behaviorからsubsetの
+このspecificationは `Status: Draft` であり、YAML subsetは `Status: Approved` である。current parserのdefault behaviorからsubsetの
 意味を導出してはならない（MUST NOT）。parser/libraryの選択は[`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md)で
 別途追跡する。
 
-timestamp-looking plain scalarの扱い、GUI saveでのcomment・formatting・quote保持、およびparser dialectの未決定事項は、YAML subset仕様の
+timestamp-looking plain scalarの扱い、GUI saveでのcomment・formatting・quote保持、およびparser/libraryの選択・migration・maintenanceの未決定事項は、YAML subset仕様の
 `Open Questions`に残る。Custom Type data mapping内のschema未定義memberは、このgeneric routingの対象外であり、`SCHEMA-CUSTOM-007`が
 所有するvalidation ruleに従ってvalidation errorとする。

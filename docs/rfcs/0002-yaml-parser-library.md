@@ -24,7 +24,7 @@ editingに適するとは限らない。
 ## 目標（Goals）
 
 - productの実際のYAML needに対して現実的なRust optionを比較する。
-- 未対応のYAML behaviorをproduct Open Questionとして明示する。
+- 未対応のYAML behaviorについて、candidate parserがMasterdata YAML subsetへ適合できるかを評価する。
 - human-approved decision前の大規模parser migrationを避ける。
 
 ## 非目標（Non-Goals）
@@ -77,14 +77,14 @@ reportingとcomment-aware wrapperが含まれるが、maturity、duplicate-key b
 | Maintenance status（保守状況） | upstreamはarchived/deprecated | 保守されたforkのcandidate | Pure-Rust family。yaml-rust2はstabilityを重視し、saphyrはより速く進化する | editorに特化したcandidate | Active candidate。local maturity checkが必要 |
 | Serde integration（Serde統合） | Native | 最小migrationを想定 | drop-in native mappingなし | current modelではなし | Native Serde path |
 | Error line/column（エラーの行/列） | Parser markは利用可能。local mappingが必要 | local compatibility testが必要 | event/parser spanにlocal mappingが必要 | position trackingをdocumented | error reportingをdocumented |
-| Duplicate mapping keys（重複mapping key） | local behavior testが必要 | local behavior testが必要 | local behavior testが必要 | syntaxは保持し、semantic policyはlocal | local behavior testが必要 |
-| Anchors / aliases（anchor / alias） | local behavior testが必要 | local behavior testが必要 | YAML document/eventをsupport。local semantic testが必要 | syntaxを保持でき、semantic policyはlocal | supportをdocumented。product policyはlocal |
-| Merge keys（merge key） | local behavior testが必要 | local behavior testが必要 | product policyはlocal | syntaxを保持でき、semantic policyはlocal | supportをdocumented。product policyはlocal |
+| Duplicate mapping keys（重複mapping key） | subset compatibility testが必要 | subset compatibility testが必要 | subset compatibility testが必要 | syntaxは保持し、subset compatibility testが必要 | subset compatibility testが必要 |
+| Anchors / aliases（anchor / alias） | subset rejection testが必要 | subset rejection testが必要 | YAML document/eventをsupport。subset rejection testが必要 | syntaxを保持でき、subset rejection testが必要 | supportをdocumented。subset rejection testが必要 |
+| Merge keys（merge key） | subset rejection testが必要 | subset rejection testが必要 | subset rejection testが必要 | syntaxを保持でき、subset rejection testが必要 | supportをdocumented。subset rejection testが必要 |
 | Multiple `---` documents（複数document） | API behaviorのtestが必要 | API behaviorのtestが必要 | document loadingをdocumented | document model behaviorのtestが必要 | API behaviorのtestが必要 |
-| Custom tags（custom tag） | local behavior testが必要 | local behavior testが必要 | event/document support。product policyはlocal | syntax preservationは可能。policyはlocal | support pathをdocumented。policyはlocal |
-| Numeric interpretation（numericの解釈） | compatibility corpusが必要 | compatibility corpusが必要 | YAML 1.2-oriented。corpusが必要 | syntaxは保持し、conversionはlocal | compatibility corpusが必要 |
-| Timestamp interpretation（timestampの解釈） | compatibility corpusが必要 | compatibility corpusが必要 | conversion policyはlocal | syntaxは保持し、conversionはlocal | compatibility corpusが必要 |
-| Unknown fields（未知のfield） | Serde attribute/local policy | Serde attribute/local policy | conversion layer policy | preserve可能 | Serde attribute/local policy |
+| Custom tags（custom tag） | subset rejection testが必要 | subset rejection testが必要 | event/document support。subset rejection testが必要 | syntax preservationは可能。subset rejection testが必要 | support pathをdocumented。subset rejection testが必要 |
+| Numeric interpretation（numericの解釈） | subset compatibility corpusが必要 | subset compatibility corpusが必要 | YAML 1.2-oriented。subset compatibility corpusが必要 | syntaxは保持し、subset compatibility corpusが必要 | subset compatibility corpusが必要 |
+| Timestamp interpretation（timestampの解釈） | subset compatibility corpusが必要 | subset compatibility corpusが必要 | parser resultのcompatibility評価が必要 | syntaxは保持し、subset compatibility corpusが必要 | subset compatibility corpusが必要 |
+| Unknown fields（未知のfield） | domain adapterがsubset/domain ruleを適用できるか評価が必要 | domain adapterがsubset/domain ruleを適用できるか評価が必要 | conversion layerでの適用可能性を評価 | preserve可能。domain adapterの評価が必要 | domain adapterがsubset/domain ruleを適用できるか評価が必要 |
 | Round-trip editing（round-trip編集） | current modelではlosslessでない | 未確立 | emitterであり、lossless editorではない | lossless editingがprimary goal | comment-aware valueだが、完全なformat guaranteeではない |
 | Comment preservation（comment保持） | current typed modelでは対象外 | 未確立 | current typed modelのguaranteeではない | 明示的にsupport | comment wrapperをdocumented |
 | Format/quote preservation（format/quote保持） | なし | 未確立 | emitterによるguaranteeなし | 明示的にsupport | 完全なformat preservationとしては未確立 |
@@ -115,13 +115,19 @@ outputを変える可能性がある。migrationにはfixtureとgolden-outputの
 
 ## Open Questions（未解決事項）
 
-- anchor、alias、merge key、複数document、custom tagを許可するか。
-- duplicate mapping keyはerror、first-value rule、last-value rule、または後続diagnosticのために保持するものか。
-- どのnumericとtimestamp formをtyped valueにするか。
-- unknown fieldをreject、ignore、またはpreserveするか。
+- candidate parserが、Masterdata YAML subsetで禁止されるanchor、alias、merge key、複数document、document marker、directive、custom tag、
+  flow mapping、unsupported block scalar formなどを確実に検出・rejectできるか。
+- candidate parserまたはadapterが、decoded mapping-key identityに基づくduplicate検出、string scalar key制約、explicit value必須制約を
+  subset contractどおりに適用できるか。
+- candidate parserまたはadapterが、YAML 1.2.2へ委譲されたquoted scalar、bare literal block、flow sequence syntaxと、Masterdataが定めた
+  boolean、null、numeric、string classificationを組み合わせて検証できるか。parserのunwanted implicit typingを継承せず、timestamp-looking
+  plain scalarを未決定のまま扱えるか。
+- candidate parserまたはadapterが、Masterdata subsetのunknown semantic member ruleを各canonical domain ownerへ渡し、silent ignoreを
+  発生させずに適用できるか。
 - GUI editでcomment、quote style、whitespace、orderingを保持しなければならないか。
 - semantic/lossless representationの2層構成は正当化できるか。
-- 選択するparser stackに対して、どのlicenseの組み合わせとmaintenance policyを受け入れるか。
+- candidate parser stackのsource span/error mapping、compatibility corpus、license、maintenance、performanceをどのように評価し、
+  どのstackを選択するか。
 
 ## 決定（Decision）
 

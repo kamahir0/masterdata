@@ -18,9 +18,9 @@ canonical specificationへ整理する作業である。YAML subsetの新しいd
 boolean、null、integer、floating-point、stringのsource classificationを提案する。
 
 既存のApproved Primitive Types仕様は、target typeのstrict scalar validation、fixed-width range、finite floating-point valueを
-すでに定義している。一方、parser scalar classificationとの正確な境界とnumeric formはOpen Questionとして残っている。
-このartifactはそのApproved documentを直接編集せず、YAML subsetが承認された場合にのみ、その境界をcanonical ownerへ接続するdeltaを
-記録する。YAML subsetが未承認の間は、既存Approved contractを変更しない。
+すでに定義している。Masterdata YAML subset proposalは、source側のscalar classificationとsyntax boundaryを定義し、YAML 1.2.2を
+normative syntax reference baselineとしている。このartifactはそのApproved documentを直接編集せず、YAML subsetが承認された場合にのみ、
+source boundaryをPrimitive Typesのcanonical ownerへ接続するdeltaを記録する。YAML subsetが未承認の間は、既存Approved contractを変更しない。
 
 ## 提案する差分（Proposed Delta）
 
@@ -63,13 +63,14 @@ Appliedになった後に、canonical merged specificationから開始する。
 ## 未解決事項（Open Questions）
 
 - このdeltaを適用する前提となる `docs/specs/yaml-subset.md` のhuman approvalをいつ行うか。
-- timestamp-looking plain scalar、literal blockの詳細、未定義parser dialect、diagnostic/source-span、およびparser/library policyの扱い。
+- timestamp-looking plain scalar、diagnostic/source-span、およびparser/libraryの選択・migration・maintenance policyの扱い。
 
 ## レビュー（Review）
 
 このdeltaはApproved Primitive Types仕様を直接編集せず、Proposed YAML subsetが承認された後にのみ適用する境界を明示する。
-YAML subsetのtimestamp-looking scalar、parser dialect、diagnostic/source-span、およびparser/library policyは意図的に未解決であり、
-このartifactで先取りしない。Human approval前のcanonical mergeおよびimplementation authority化は行わない。
+YAML subsetのtimestamp-looking scalar、diagnostic/source-span、およびparser/library policyは意図的に未解決であり、このartifactで先取りしない。
+YAML 1.2.2のsyntax reference baselineと、subsetが定義するliteral blockの制限を未解決事項として扱わない。Human approval前のcanonical merge
+およびimplementation authority化は行わない。
 
 ## 承認記録（Approval Record）
 

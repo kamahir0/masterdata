@@ -208,8 +208,7 @@ sequenceであるため、Flags EnumのArray fieldはその仕様に従うnested
 - `enum` と `flags` の同時指定、またはunified declaration envelopeの不備。
 - memberの欠落、member `name` またはnumeric `value` の欠落、implicit numbering。
 - declared underlyingのrange外、またはunsigned underlyingでのnegative value。
-- duplicate member name、normal Enumのduplicate numeric value。
-- normal Enumがzero memberを持たないことだけを理由にrejectすること。
+- duplicate member name、またはEnum/Flags Enumのduplicate numeric value。
 - Flagsの`None = 0`欠落、複数zero member、または`None`のrename/nonzero化。
 - Flagsのzero以外のmemberがexactly one set bitでないこと、named composite member。
 - invalid type/member identifier、reserved keyword、またはgenerated declaration collision。

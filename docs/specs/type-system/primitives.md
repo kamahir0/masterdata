@@ -7,8 +7,9 @@ Domain: Type System
 ## 概要
 
 本proposalは、初期Primitive Type vocabulary、直接のkey compatibility、strict scalar validation、
-finiteなfloating-point value、初期のstring ruleを定義する。YAML parser dialectやcapabilityを
-表現するimplementation data structureは定義しない。
+finiteなfloating-point value、初期のstring rule、および現行のValue Object underlyingであるprimitiveの
+comparison capabilityとordering semanticsを定義する。YAML parser dialectやcapabilityを表現する
+implementation data structureは定義しない。
 
 ## 用語
 
@@ -80,12 +81,29 @@ valueが空であることだけを理由にrejectしてはならない（MUST N
 （MUST NOT）。これはtype-system ruleであり、parserがnon-finite valueを公開する場合にどのYAML scalar
 syntaxを使うかは選択しない。
 
+### TYPE-PRIMITIVE-008
+
+現行のValue Object underlyingとして許可される `int`、`uint`、`long`、`ulong`、`string` は、すべて
+comparison-capableでなければならない（MUST）。`int`、`uint`、`long`、`ulong` のcomparisonは、通常の
+natural ascending numeric orderでなければならない（MUST）。同じnumeric valueは同じordering positionとし、
+例えば `1` は `2` より小さく、`-2` は `-1` より小さくなければならない（MUST）。
+
+`string` のcomparisonは、Ordinal、case-sensitive、culture-independentでなければならない（MUST）。
+runtime `CurrentCulture`、OS locale、その他のculture-sensitive behaviorによってcomparison resultが変化しては
+ならない（MUST NOT）。comparisonはUnicode normalizationを自動的に適用してはならず（MUST NOT）、ordinal sequenceが
+異なるstringを自動的に同一視してはならない（MUST NOT）。
+
+comparison capability、key compatibility、およびequality capabilityは別々のcapabilityである。`TYPE-PRIMITIVE-005`
+のkey-compatible分類だけを理由に、他のPrimitive Typeがcomparison-capableであると推測してはならない（MUST NOT）。
+このrequirementは `bool`、`float`、`double`、または将来追加されるPrimitive Typeのcomparison capabilityを定義しない。
+
 ## 検証ルール
 
-このproposalの観測可能なvalidation outcomeは、`TYPE-PRIMITIVE-001` から `TYPE-PRIMITIVE-007` に
+このproposalの観測可能なvalidation outcomeは、`TYPE-PRIMITIVE-001` から `TYPE-PRIMITIVE-008` に
 よって定義する。対象は、unsupported name、scalar-category mismatch、fixed-width integer range
-violation、finite floating-point value、invalid direct key capability、empty-string acceptanceである。
-Exact diagnostic codeとsource-location mappingは、このproposalでは割り当てない。
+violation、finite floating-point value、invalid direct key capability、empty-string acceptance、現行VO underlyingの
+comparison capability、numeric order、およびstringのOrdinal behaviorである。Exact diagnostic codeとsource-location
+mappingは、このproposalでは割り当てない。
 
 ## 受け入れ証拠
 
@@ -98,12 +116,13 @@ Exact diagnostic codeとsource-location mappingは、このproposalでは割り�
 | `TYPE-PRIMITIVE-005` | listedされた5つのkey-compatible primitiveがcompatibleに分類される。 | `bool`、`float`、`double` がincompatibleに分類される。 | Capability classification test。 |
 | `TYPE-PRIMITIVE-006` | `""` がstring valueとして受け入れられる。 | stringが空であることだけを理由にfailureが報告されない。 | Empty-string validation test。 |
 | `TYPE-PRIMITIVE-007` | scalar categoryとprecisionがvalidな代表的finite `float` / `double` valueが受け入れられる。 | `NaN`、positive infinity、negative infinityがいずれのfloating-point primitiveのfinal valueとしてもrejectされる。 | Finite/non-finite boundary validation tests。 |
+| `TYPE-PRIMITIVE-008` | `int`、`uint`、`long`、`ulong`、`string` がcomparison-capableであり、numeric valueがnatural ascending order、stringがOrdinal・case-sensitive・culture-independentに比較される。`1 < 2`、`-2 < -1`、`1` と `1` が同じordering position、`"A" < "B"`、`"A"` と `"a"` のcomparisonがnon-zeroとなる。 | `CurrentCulture`またはOS localeによってstring comparison resultが変化する、Unicode normalizationによって異なるordinal sequenceが同一視される、またはnumeric orderが逆転する。 | Primitive comparison capability tests、culture variation tests、およびfocused ordinal-string tests。 |
 
 ## 互換性
 
-このproposalはimplementationまたはreleased-schema migrationを追加しない。Primitive nameとscalar
-representationは、実装後にgenerated C#とserialized dataへ影響するため、released-schema compatibility
-はOpen Questionである。implementationがfull scalar compatibilityを主張する前に、正確なYAML numeric
+このproposalはimplementationまたはreleased-schema migrationを追加しない。Primitive name、scalar representation、
+およびcomparison semanticsは、実装後にgenerated C#とserialized dataへ影響する可能性があるため、released-schema
+compatibilityはOpen Questionである。implementationがfull scalar compatibilityを主張する前に、正確なYAML numeric
 grammarとparser behaviorを決定しなければならない。
 
 ## 例
@@ -125,6 +144,7 @@ name: ""
 - hexadecimal、octal、binary、exponent、およびその他のnon-decimal numeric formをintegerとfloating-point primitiveで受け入れるか。
 - 選択したYAML parserが `NaN` またはinfinity tokenを公開する場合、type-systemのfinite-value check前にそのparser-level scalarをどう表現するか。
 - timestamp-looking scalarを `string` またはnumeric primitiveとして宣言した場合、どのように扱うか。
+- `bool`、`float`、`double`、および将来追加されるPrimitive Typeにcomparison capabilityとordering semanticsを与えるか。
 - 将来、Primitive Type nameのcompatibility aliasを許可するか。
 - 各scalar validation failureにどのdiagnostic codeとsource spanを割り当てるか。
 

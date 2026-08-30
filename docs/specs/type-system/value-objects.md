@@ -110,9 +110,8 @@ Value Objectは、`SCHEMA-VO-002`で許可されたunderlying primitiveがkey-co
 key-compatibleでなければならない（MUST）。Value Object declarationごとにkey compatibilityをopt inまたはopt out
 してはならず（MUST NOT）、実際にindexへ使用されているかどうかはこのcapabilityを変更しない。
 
-orderingまたはcomparison capabilityは、approved type-system specificationがunderlying primitiveについて明示的に
-定義した場合に、そのcapabilityを継承しなければならない（MUST）。comparisonの具体的なinterface、operator、または
-floating-point orderingは、このrequirementでは定義しない。NullableとArrayのfield modifierは、
+現行profileのcomparison capability、generated API、およびordering semanticsは `SCHEMA-VO-013` が定義する。Nullableと
+Arrayのfield modifierは、
 `TYPE-FIELD-004` に従い、field shapeを引き続きkey-incompatibleにする。
 
 ### SCHEMA-VO-008
@@ -185,8 +184,8 @@ typed equalityを使用しなければならない（MUST）。`obj` が `null` 
 
 Equalityはkey compatibilityおよびordering/comparison capabilityから独立している。すべてのValue Objectは
 equality-capableであり、かつ常にkey-compatibleである。Equalityは `SCHEMA-VO-008` のimplicit conversion settingの
-4つの組み合わせすべてで同一でなければならない（MUST）。このrequirementは `IComparable<N>`、`CompareTo`、または
-ordering operatorを定義しない。それらは該当するprimitive comparison capability specificationが引き続き管理する。
+4つの組み合わせすべてで同一でなければならない（MUST）。comparison capability、`IComparable<N>`、`CompareTo`、および
+ordering operatorのcontractは `SCHEMA-VO-013` が所有し、Equalityの意味を変更してはならない。
 
 ### SCHEMA-VO-012
 
@@ -197,13 +196,58 @@ constructor pathは、許可されたunderlying primitiveの直接のvalidity co
 （MUST）。Value Objectにはnested Value Objectまたはnested Custom Typeがないため、constructorがnested typeのrecursive
 validityを再検証するcontractは定義しない。
 
+### SCHEMA-VO-013
+
+現行profileのvalidなValue Objectは、underlying primitiveからcomparison capabilityを継承し、comparison-capableでなければ
+ならない（MUST）。このprofileで許可されるunderlyingはすべて `TYPE-PRIMITIVE-008` によってcomparison-capableと定義されている。
+Value Objectのcomparison capability、key compatibility、およびequality capabilityは別々のcapabilityであり、comparison-capable
+であることを理由に他のcapabilityを変更または推測してはならない（MUST NOT）。
+
+generated Value Object typeを `N` とすると、generated typeは `IComparable<N>` を実装し、`public int CompareTo(N other)` を
+公開しなければならない（MUST）。generated typeはnon-generic `System.IComparable` を実装してはならず（MUST NOT）、
+`CompareTo(object obj)` をcomparison APIとして公開してはならない（MUST NOT）。generated typeは、次のordering operatorを
+すべて公開しなければならない（MUST）。
+
+- `public static bool operator <(N left, N right)`
+- `public static bool operator <=(N left, N right)`
+- `public static bool operator >(N left, N right)`
+- `public static bool operator >=(N left, N right)`
+
+`CompareTo(N)` のordering resultは、`TYPE-PRIMITIVE-008` が定義するunderlying primitiveのcomparison semanticsをそのまま
+継承しなければならない（MUST）。このrequirementは、Primitive Types仕様が所有するnumericおよびstring comparison semanticsを
+再定義せず、Value Objectのgenerated APIへの適用だけを定義する。
+
+validなValue Object instance `a`、`b` について、`a.CompareTo(b) == 0` と `a.Equals(b) == true` は同じlogical conditionでなければ
+ならない（MUST）。ordering operatorは `CompareTo` と完全に一致しなければならず（MUST）、それぞれ次を満たさなければならない（MUST）。
+
+- `a < b` は `a.CompareTo(b) < 0` と同値である。
+- `a <= b` は `a.CompareTo(b) <= 0` と同値である。
+- `a > b` は `a.CompareTo(b) > 0` と同値である。
+- `a >= b` は `a.CompareTo(b) >= 0` と同値である。
+
+Value Object typeが異なる型同士のdirect comparison APIを公開してはならない（MUST NOT）。同じunderlying primitiveを持つ別の
+Value Objectとのcomparison、またはValue Objectとunderlying primitiveとのcross-type ordering operatorは、このrequirementの
+comparison APIに含めてはならない（MUST NOT）。implicit conversionがC# language上で別のexpressionを成立させる場合でも、
+direct comparison contractは変化しない。
+
+Value Object declarationにper-typeのcomparison configurationを追加してはならない（MUST NOT）。descending、case-insensitive、
+custom comparer、culture指定などはこのproposalのValue Object comparison contractに含めない。conversion configurationがcomparison
+capability、comparison semantics、ordering APIを変更しないことは `SCHEMA-VO-009` が所有する。このrequirementは、`default(N)`
+またはその他のinvalid stateに対する追加のruntime comparison behaviorを定義しない。comparison contractはvalidなValue Object
+instanceにだけ適用する。
+
+comparison capabilityまたはそのgenerated APIの追加によって、MessagePack wire identity、serialization representation、underlying
+primitive identity、またはdata YAML representationを変更してはならない（MUST NOT）。これらのserialization detailは別のowner
+specificationが定義する。
+
 ## 検証ルール
 
-このproposalの観測可能なvalidation outcomeは、`SCHEMA-VO-001` から `SCHEMA-VO-012` によって定義する。対象は、
+このproposalの観測可能なvalidation outcomeは、`SCHEMA-VO-001` から `SCHEMA-VO-013` によって定義する。対象は、
 key-compatible underlying restriction、wrapper restriction、one-document/one-declaration structure、scalar
 representation、readonly-struct category、minimum public API、equality APIとsemantics、inherited capability、
 directional conversion configuration、conversion isolation、supported-underlying valueの `ToString()` behavior、default/constructor
-boundaryである。exact diagnostic codeとfinal MessagePack attribute shapeは未割り当てである。
+boundary、comparison capability、generated comparison API、ordering semantics、およびequality consistencyである。exact diagnostic
+codeとfinal MessagePack attribute shapeは未割り当てである。
 
 ## 受け入れ証拠
 
@@ -215,19 +259,22 @@ boundaryである。exact diagnostic codeとfinal MessagePack attribute shapeは
 | `SCHEMA-VO-004` | `kind: type`、top-level `name`、top-level `valueObject.underlying` を持つ1つのtype documentが、pathに依存せずnamed Value Object declarationを生成する。 | 複数declaration、canonical memberの欠落、またはpath-derived identityがrejectされる。 | Type document structure tests。 |
 | `SCHEMA-VO-005` | Value Object fieldがunderlying primitiveと同じscalar representationを使用する。 | `value` propertyを含むwrapper objectが、定義されたrepresentationとして要求または受け入れられる。 | Data representation tests。 |
 | `SCHEMA-VO-006` | generated outputが、C#命名仕様に従うtype identifierを持ち、public `Value` get-only propertyとpublic underlying-value constructorを持つpublic readonly structである。 | private type、setterを持つ `Value` property、public constructorの欠落、argumentを保存しないconstructor、class/record representation、または未定義のidentifier repair。 | C# generation golden/compile/API-surface and naming test。 |
-| `SCHEMA-VO-007` | すべてのvalid Value Objectがkey-compatibleとして報告され、実際のindex使用なしでもそのcapabilityを持つ。approvedなunderlying comparison capabilityがあれば同じoutcomeが継承される。 | Value Objectごとのoverride、実際のkey使用を要する判定、またはunderlyingと異なるcomparison capability。 | Capability inheritance tests。 |
+| `SCHEMA-VO-007` | すべてのvalid Value Objectがkey-compatibleとして報告され、実際のindex使用なしでもそのcapabilityを持つ。 | Value Objectごとのoverride、または実際のkey使用を要する判定。 | Key-capability inheritance tests。 |
 | `SCHEMA-VO-008` | canonical conversion syntaxが `false/false`、`true/false`、`false/true`、`true/true` を独立して表現し、省略されたmapping/optionがdisableとなり、enableされた方向だけimplicit C# operatorを持つ。 | 欠落した方向がenableになる、一方のsettingが他方を変える、またはdisableされた方向のoperatorが生成される。 | Conversion syntax, default, and generated-operator tests。 |
-| `SCHEMA-VO-009` | conversion settingの変更がgenerated C# conversion surfaceだけを変更する。 | key compatibility、comparison、equality、wire identity、underlying identity、field modifier behaviorがconversion settingで変化する。 | Conversion-isolation tests。 |
+| `SCHEMA-VO-009` | conversion settingの変更がgenerated C# conversion surfaceだけを変更し、4つのconversion configurationすべてで同じValue Object間のcomparison、equality、key capability、wire identity、underlying identity、field modifier behaviorを保つ。 | key compatibility、comparison、equality、wire identity、underlying identity、field modifier behaviorがconversion settingで変化する。 | Conversion-isolation testsと、4 configurationを横断するcomparison/equality tests。 |
 | `SCHEMA-VO-010` | 現行valid underlyingの `ToString()` がunderlying textual valueを返し、numeric outputは `CurrentCulture` に依存せず、underlying stringは変更されない。 | resultが `CurrentCulture` で変化する、underlying stringを変更する、または `ItemId(1001)` のようなtype-name wrapperを追加する。 | Generated API behavior tests under multiple cultures and supported primitive categories。 |
 | `SCHEMA-VO-011` | generated typeが `IEquatable<N>` を実装し、typed/object equality、`GetHashCode()`、`==`、`!=` を公開する。`N(a).Equals(N(a))` と `N(a) == N(a)` はtrue、`N(a) != N(a)` はfalse、異なるunderlying valueはunderlying equalityに従い、equal objectはequal hashを持ち、`Equals(object)` はnullまたは異なるtypeに対してfalseとなる。 | required API memberの欠落、typed/object equalityとunderlying equalityの不一致、equal valueで異なるhash、または `!=` が `==` のnegationでない。 | API-surface compile/reflection test plus typed equality, object equality, hash-consistency, and operator tests。 |
 | `SCHEMA-VO-012` | validなunderlying valueを渡すpublic constructor pathがvalid stateを生成し、`default(N)` がinvalidになり得ることを許容する。 | `string` underlyingのconstructorがnullをvalid valueとして受理する、またはlanguage-level defaultを必ずschema-validと主張する。 | Constructor-boundary and default-state tests。 |
+| `SCHEMA-VO-013` | generated typeが `IComparable<N>`、`CompareTo(N)`、`<`、`<=`、`>`、`>=` を公開し、non-generic `System.IComparable` と `CompareTo(object)` を公開しない。numeric underlyingはnatural ascending order、string underlyingはOrdinal・case-sensitive・culture-independent orderとなる。valid instanceでは `CompareTo == 0` と `Equals == true` が同値であり、ordering operatorが `CompareTo` と一致する。異なるValue Object typeまたはunderlying primitiveとのdirect ordering APIは生成されない。 | required comparison APIの欠落、non-generic APIの実装、numeric/string semanticsの不一致、CurrentCulture依存、自動Unicode normalization、equalityとの不整合、またはcross-type ordering APIの公開。 | Generated API-surface compile/reflection tests、numeric/string ordering tests、culture variation tests、equality-consistency tests、conversion-isolation tests、およびcross-type API absence tests。 |
 
 ## 互換性
 
 Value Objectのunderlying vocabularyをkey-compatible primitiveへ狭めること、scalar data representation、generated
-C# API、implicit conversion surfaceは将来のschema/dataとgenerated artifactに影響し得る。このproposalは既存の
-released schemaに対するimplicit migration、generated API changeのcompatibility classification、field-ID behaviorを
-定義しない。これらのchoiceはOpen Questionであり、このproposalがApprovedになるまでimplementation authorityではない。
+C# API、implicit conversion surface、およびcomparison APIは将来のschema/dataとgenerated artifactに影響し得る。この
+proposalは既存のreleased schemaに対するimplicit migration、generated API changeのcompatibility classification、field-ID
+behaviorを定義しない。これらのchoiceはOpen Questionであり、このproposalがApprovedになるまでimplementation authorityでは
+ない。`IComparable<N>`、`CompareTo(N)`、およびordering operatorはpublic generated API surfaceであるため、将来の削除または
+意味変更にはcompatibility considerationが必要になる。
 `float`、`double`、`bool` をValue Object underlyingへ許可することは、別のsemantic changeでなければならない。
 
 ## 例
@@ -258,6 +305,11 @@ valueObject:
     fromUnderlyingImplicit: true
     toUnderlyingImplicit: false
 ```
+
+現行profileのcomparisonはunderlying semanticsを使用する。例えば、`ItemId(1).CompareTo(ItemId(2))` は0未満となり、
+`ItemId(1) < ItemId(2)` はtrueとなる。`string` underlyingのcomparisonはOrdinalかつcase-sensitiveであり、結果は
+runtime cultureに依存しない。これらはgenerated APIの意図を示すnon-normativeな例であり、具体的なsource formattingを
+定義しない。
 
 次のdeclarationは、underlying typeが現行のkey-compatible primitiveではないためinvalidである。
 
@@ -293,7 +345,7 @@ valueObject:
 
 - explicit conversion operatorまたはhelper APIも生成するか。また、それらにどのcompatibility guaranteeを与えるか。
 - MasterMemoryとUnity-compatible C# projectに必要なMessagePack attributeとgenerated shapeは何か。
-- 各primitive、特に `bool`、`float`、`double` にどのordering/comparison capabilityがあるか。finite floating-point valueのordering contractも含む。primitive specificationはnon-finite valueをrejectする。
+- `bool`、`float`、`double`、および将来追加されるPrimitive Typeにordering/comparison capabilityを与えるか。`float` / `double` のfinite-only ruleは、これらのordering semanticsを決定しない。
 - primitive wrapper contractを変更せずに、どのcustom validation constraintを追加できるか。
 - Value Objectの追加、underlying typeの変更、renameをreleased schemaに対してどうclassificationするか。
 - YAML parser dialectが各canonical scalarをどのように分類し、type validationへどのscalar valueを渡すか。

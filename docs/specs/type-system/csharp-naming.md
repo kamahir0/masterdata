@@ -90,8 +90,8 @@ generator-owned public memberが同じidentifierになる場合、validation err
 その他の自動disambiguationで解決してはならない（MUST NOT）。
 
 現在のValue Objectでreservedとなるgenerator-owned public member nameは `Value`、`Equals`、`GetHashCode`、
-`ToString` である。現在のCustom Typeでreservedとなるvalue-type public member nameは `Equals`、`GetHashCode`、
-`ToString` である。したがって、Custom Type field `equals`、`getHashCode`、`toString` は、それぞれ `Equals`、
+`ToString`、`CompareTo` である。現在のCustom Typeでreservedとなるvalue-type public member nameは `Equals`、
+`GetHashCode`、`ToString` である。したがって、Custom Type field `equals`、`getHashCode`、`toString` は、それぞれ `Equals`、
 `GetHashCode`、`ToString` とcollisionするためinvalidである。`Value` はValue Objectの固定propertyとのcollisionとして
 扱い、Custom Typeに同名のgenerator-owned memberがない限り、この仕様だけでCustom Type fieldを禁止するものではない。
 
@@ -122,7 +122,7 @@ emissionされる範囲を指す。namespaceの導出方法自体はこの仕様
 | `TYPE-NAMING-004` | `id -> Id`、`itemId -> ItemId`、`fooBar -> FooBar` が生成される。 | `fooBar -> Foobar`、separator除去、全体re-case、または自動suffixが行われる。 | Property-name mapping test。 |
 | `TYPE-NAMING-005` | source field `itemId` のconstructor parameterが `itemId` となり、field ID順とは独立してexact nameが保持される。 | parameter nameがproperty nameへ変換される、またはgeneratorごとに変動する。 | Constructor reflection/named-argument API test。 |
 | `TYPE-NAMING-006` | valid source identifierがそのまま受け入れられる。 | `class`、`struct`、`event`、`namespace`、`public` などのreserved keyword、invalid lexical name、または `@class` がrejectされる。 | Invalid-name and reserved-keyword validation tests。 |
-| `TYPE-NAMING-007` | collisionのないgenerated APIが出力される。 | `equals -> Equals`、`getHashCode -> GetHashCode`、`toString -> ToString`、または同じscopeのduplicate identifierがrejectされる。 | Generated member collision tests。 |
+| `TYPE-NAMING-007` | collisionのないgenerated APIが出力される。 | `equals -> Equals`、`getHashCode -> GetHashCode`、`toString -> ToString`、または同じscopeのduplicate identifierがrejectされる。Value Objectのgenerator-owned `CompareTo` もreserved memberとして扱われる。 | Generated member collision tests。 |
 | `TYPE-NAMING-008` | Value Object / Custom Typeのnaming ruleが適用され、Tableの `table` / `csharpName` の責務が変更されない。 | Type declaration ruleを根拠にTable identityまたはEnum member namingが暗黙に変更される。 | Cross-spec ownership review。 |
 
 ## 互換性

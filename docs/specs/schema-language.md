@@ -57,8 +57,9 @@ rename migration、released-schema compatibility、legacy `tableId` migration、
 ## Planned type declaration（予定するtype declaration）
 
 Type Systemは、Value Object、Enum、Flags Enum、Custom Typeを同じunified type-declaration boundaryで扱う方向である。
-Value Objectのcanonical surfaceは[Value Objects仕様](type-system/value-objects.md)、Custom Typeのcanonical surfaceは
-[Custom Type仕様](type-system/custom-types.md)が所有する。
+Value Objectのcanonical surfaceは[Value Objects仕様](type-system/value-objects.md)、Enum/Flagsのcanonical surfaceは
+[EnumとFlags Enum仕様](type-system/enums.md)、Custom Typeのcanonical surfaceは[Custom Type仕様](type-system/custom-types.md)が
+それぞれ所有する。
 
 ```yaml
 kind: type
@@ -77,9 +78,9 @@ custom:
       type: ItemId
 ```
 
-これらのtype declarationのcanonical surfaceは、ApprovedとなったValue Objects仕様およびCustom Types仕様で定義されるが、current
-parserは `kind: type`、`valueObject`、または `custom` をまだ受け付けない。これらのspecificationがImplementedになるまで、
-current parserのimplementation contractではない。type documentのpathまたはfilenameはtype identityを決めない。1つのYAML documentに複数のtype declarationを入れる
+これらのtype declarationのcanonical surfaceは、それぞれのowner specificationで定義されるが、current parserは `kind: type`、
+`valueObject`、`enum`、`flags`、または `custom` をまだ受け付けない。これらのspecificationがImplementedになるまで、current
+parserのimplementation contractではない。type documentのpathまたはfilenameはtype identityを決めない。1つのYAML documentに複数のtype declarationを入れる
 形式は使用しない。Value ObjectとCustom Typeのtype name、およびCustom Type field nameのASCII lexical ruleとgenerated
 C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
 `csharpName` presentation nameへ適用されない。

@@ -33,8 +33,8 @@ Status: Draft
 - **C# naming contract**: Value Object / Custom TypeのASCII source-name grammar、generated identifier mapping、reserved keyword、collision ruleを定義するcontract。Tableの`table` identityおよび`csharpName` presentation nameとは別である。
 - **Field ID**: container内でfieldを識別するpersistentなnumeric identity。active field IDとreserved field IDは同じcontainerのused-ID namespaceを共有し、一度usedになったIDは再利用してはならない（MUST NOT）。将来のMessagePack integer-key identityの基礎となるが、MasterMemoryのindex numberおよびwire formatとは別物である。
 - **Value Object**: key-compatibleなprimitive scalarにnominal identityを与えるimmutableなdomain type。現行のunderlying vocabularyは `int`、`uint`、`long`、`ulong`、`string` であり、Value Object自身は常にkey-compatibleである。scalar data representationとgenerated representationはValue Objects specificationが管理し、generated C# identifierはC#命名仕様が管理する。
-- **Enum**: named type。その宣言memberは、type-systemとcompatibility specificationが要求する場合にstableなnumeric valueを持つ。
-- **Flags Enum**: bitwise combinationを表すことを意図したenum。fieldまたはkeyとして許可するかはtype-system specificationが定義する。
+- **Enum**: named type。current schema内で各memberが明示的なnumeric valueを持つ。normal Enumのdataはsymbolic member nameで表し、numeric valueのMasterdata cross-version identityと外部long-lived contractはEnum/Flags specificationの境界に従う。
+- **Flags Enum**: `None = 0` とatomic bit memberのbitwise combinationを表すenum。current type-system contractではkey-incompatibleで、dataはsymbolic member nameのsequenceで表す。
 - **Custom Type**: 1つ以上のnamed fieldから構成されるstructural value type。field数ではValue Objectと区別せず、1-field Custom TypeもCustom Typeとして扱う。data representationは常にmappingで、Custom Type自身はkey-incompatibleである。field source nameとgenerated C# property / constructor parameterのmappingはC#命名仕様が管理する。
 - **Index**: tableに対して宣言されるlookup structure。key shapeとgenerated behaviorはindex specificationに属する。
 - **Primary Key**: tableのrecordを識別するindex。cardinality ruleはowner specificationに従う。

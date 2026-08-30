@@ -2,15 +2,21 @@
 
 Status: Draft
 
-この文書は、まだ承認されていないenum compatibility ruleを切り出して管理する。
+この文書は、Enum/Flagsのcurrent schema semanticsではなく、Masterdata外のlong-lived external contractに関する将来の
+compatibility ruleを切り出して管理する。current schemaにおけるEnum/Flagsのnumeric value、key/comparison capability、data
+representationは、[EnumとFlags Enum仕様](../type-system/enums.md)がcanonical ownerである。特に、`SCHEMA-ENUM-001` はnumeric
+valueをMasterdata binaryをまたぐpersistent identityとして扱わないことを定め、このDraft文書がそれに反するruleを上書きしては
+ならない。
 
-### COMPAT-ENUM-001
+## Retired requirement history
 
-Enumのnumeric valueはstableなwire identityであり、削除したvalueは通常再利用してはならない（MUST NOT）。
+`COMPAT-ENUM-001` は、以前この文書で提案されていた「Enumのnumeric valueをstableなwire identityとし、削除valueを再利用しない」
+というDraft requirementのidentifierである。その意味は `SCHEMA-ENUM-001` によって明示的に置き換えられた。identifierはhistoryのために
+保持し、再利用してはならない（MUST NOT）。
 
 ## Open Questions（未解決事項）
 
-- どのunderlying integer typeをサポートするか。
-- numeric valueの再利用を絶対に禁止するのか、それともcompatibility window内だけ禁止するのか。
-- renameされたenum memberをcompatibility reportでどう表現するか。
-- Flags enumのvalueをcompatibility analysisでどのように扱うか。
+- generated Enum/Flags numeric valueを外部のsave data、network protocol、external database、public APIが永続化した場合に、どの
+  external compatibility ruleを適用するか。
+- 外部契約でmember rename、member deletion、numeric value変更、deleted value再利用をどのようにreportするか。
+- external compatibility analysisでFlagsのbit valueをどのように扱うか。

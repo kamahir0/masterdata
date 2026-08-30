@@ -48,6 +48,8 @@
 - `implement-spec` は明示的にApprovedとなった仕様からのみ使用する。実装が
   specification gapを示した場合は報告し、黙ってbehaviorを発明せずrefinementへ
   戻す。
+- 実装変更が完了したら、rationale-sensitiveな変更については`review-code`を実行し、
+  `check-rationale`または同等の構造参照checkと`cargo xtask check-all`を通す。
 - architectural decisionはADRに残し、各normative ruleにはcanonical ownerを
   1つだけ置く。意味を重複させず、ownerへlinkする。
 - GUI behaviorも仕様化の対象である。GUI要件はadapter boundaryに置き、共有する
@@ -77,7 +79,8 @@
 3. `cargo fmt --all -- --check` が通るか
 4. `cargo clippy` と `cargo test` が通るか
 5. frontend checkとintegration smoke testが通るか
-6. `cargo xtask check-all` の結果と未実装事項を報告したか
+6. rationale-sensitiveな変更では、影響するrationaleとevidenceを再検証したか
+7. `cargo xtask check-all` の結果と未実装事項を報告したか
 
 ## 仕様ワークフローのガードレール
 
@@ -115,3 +118,18 @@
   `Specification Gap`として`refine-spec`へ戻す。
 - refactorでcodeの場所が移動する場合、rationaleはprotected invariantとともに移動しなければ
   ならない（MUST）。詳細は[実装理由ガイド](docs/contributing/implementation-rationale.md)を参照する。
+
+## 実装変更時のRationale Freshness
+
+- nearby implementation rationaleがあるcodeを変更した場合、そのrationaleを同じ変更内で再検証しなければ
+  ならない（MUST）。結果は、正確なので保持、invariantまたは理由が変わったので更新、または理由が不要に
+  なったので削除のいずれかにする。
+- testが成功してもrationale commentが正確である証拠にはならない。逆に、正しいcommentだけでは必要な
+  regression evidenceの代わりにならない。`Test`はbehavior、`Comment`はimplementation shapeの理由を
+  別々に検証する。
+- stale commentを、参照先のtestがまだ通るという理由だけで残してはならない（MUST NOT）。
+- 実装diffの最終確認では`review-code`を使用する。`review-spec`はspecificationの正しさを、
+  `review-code`は実装diff・rationale freshness・evidence integrity・architecture boundaryを担当する。
+- `cargo xtask check-rationale`は、commentから明示されたRequirement ID、ADR/RFC、`Regression:` test name、
+  repository-relative documentation pathの存在を、確認可能な範囲で検証する。commentの意味や鮮度を
+  機械的に判定したことにしてはならない。

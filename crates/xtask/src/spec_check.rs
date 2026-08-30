@@ -240,6 +240,25 @@ fn is_canonical_document(path: &Path) -> bool {
     )
 }
 
+pub(crate) fn canonical_requirement_ids(root: &Path) -> Result<std::collections::BTreeSet<String>> {
+    let spec_files = markdown_files(&root.join("docs/specs"))?;
+    let gui_files = markdown_files(&root.join("docs/gui"))?;
+    let mut ids = std::collections::BTreeSet::new();
+    for path in spec_files
+        .iter()
+        .chain(gui_files.iter())
+        .filter(|path| is_canonical_document(path))
+    {
+        let contents = read_text(path)?;
+        ids.extend(
+            requirement_definitions(&contents)
+                .into_iter()
+                .map(|definition| definition.id),
+        );
+    }
+    Ok(ids)
+}
+
 fn check_spec_header(root: &Path, path: &Path, contents: &str, issues: &mut Vec<String>) {
     check_document_header(root, path, contents, SPEC_STATUSES, "specification", issues);
 }
@@ -383,7 +402,7 @@ fn is_ascii_identifier_segment(segment: &str) -> bool {
     !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
-fn is_requirement_id(token: &str) -> bool {
+pub(crate) fn is_requirement_id(token: &str) -> bool {
     if token.starts_with("E-") {
         return false;
     }

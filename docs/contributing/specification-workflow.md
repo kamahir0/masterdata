@@ -205,10 +205,48 @@ regression test、ADR、issue/reference、benchmark、platform/library/toolchain
 しなければならない（MUST）。refactorで実装位置が移動する場合、rationaleもprotected invariantと
 ともに移動する。acceptance matrixは作業用mappingに留め、恒久的な巨大traceability表は作成しない。
 
+## Rationale Freshnessと実装diffのreview
+
+実装が変更されたとき、テストが通ることだけをcompletion evidenceとしては扱わない。nearby rationale、
+protected invariant、関連test、Requirement ID、ADR/RFC、benchmark、またはexternal constraintに影響する
+変更なら、同じ変更内でrationaleを再検証する。基本経路は次の通りである。
+
+```text
+change implementation
+        -> detect affected rationale
+        -> revalidate rationale
+        -> keep / update / remove
+        -> verify evidence references
+        -> review-code
+```
+
+対象は、rationale commentの近接code変更、rationaleが守るfunction/moduleのrefactor、protected invariantの
+変更、参照testの変更・削除、Requirement IDやADR/RFCの変更、依存関係・toolchain・platform assumptionの
+変更、optimizationまたはworkaroundの変更、simplify・deduplicate・replace、およびordering・timing・
+filesystem・concurrencyの変更である。whitespaceやmechanical renameなど意味的に無関係な変更を過剰に
+blockしてはならない（MUST NOT）。
+
+再検証の結果は次のいずれかである。
+
+- `Still accurate`: current implementation、failure mode、evidenceに一致するため保持する。
+- `Invariant/reason changed`: 保護対象または理由を更新し、参照evidenceも再確認する。
+- `Reason no longer applies`: invariantが消えた、または別のevidenceで十分に保護されていることを確認して
+  obsolete rationaleを削除する。
+
+`review-code`は実装diffのspec conformance、regression safety、rationale freshness、reverse traceability、
+evidence integrity、architecture boundaryを担当する。`review-spec`の代替ではなく、specificationの
+semanticを変更したりOpen Questionを解決したりしない。明示されたreferenceの存在は、可能な範囲で
+`cargo xtask check-rationale`が検証するが、WHYがcurrent implementationに正しいか、failure modeがまだ
+存在するか、workaroundがまだ必要かはAI/code reviewが判断する。
+
+reviewでは、少なくとも`Blocking`、`Non-blocking`、`Rationale Gap`、`Stale Rationale`、`Evidence Gap`、
+`Specification Gap`を区別する。Approved spec違反はspecを後付けで変更せずbug fixとして扱い、Approved specから
+behaviorを選べない場合だけ`Specification Gap`として`refine-spec`へ戻す。
+
 ## Workflowを健全に保つ
 
-3つのskillは `skills/` 配下のrepository artifactであり、codeと同様にreview・version control
-する。agentが `MAY` を `SHOULD` に変更するなど、incidentによって反復するfailure modeが
+`skills/` 配下のrepository skillsはcodeと同様にreview・version controlする。agentが `MAY` を `SHOULD` に
+変更するなど、incidentによって反復するfailure modeが
 判明した場合は、該当skillと、必要に応じてこの文書へfocusedなruleまたはregression exampleを
 追加する。skillの改善でもrole boundaryと人間によるapproval gateを保たなければならない。
 

@@ -88,7 +88,10 @@ cargo xtask mastermemory-spike
 # specification / RFC / change metadata, IDs, and relative links
 cargo xtask check-specs
 
-# commit前のformat / clippy / Rust test / frontend check / GUI compile / integration
+# implementation rationaleの明示referenceを検証
+cargo xtask check-rationale
+
+# commit前のspec / rationale / format / clippy / Rust test / frontend check / GUI compile / integration
 cargo xtask check-all
 
 # development projectをfixtureから再生成

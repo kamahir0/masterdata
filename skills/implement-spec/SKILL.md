@@ -101,6 +101,23 @@ observable behaviorが変更される場合だけ、既存のApproved specと照
 へ戻す。Approved specが既にbehaviorを定義していて実装だけが違反する場合は、specを変更せず
 bug fixとregression evidenceを行う。
 
+### Rationale Freshnessのcompletion gate
+
+実装変更後、次を同じchangeのcompletion flowとして実行する。
+
+1. 関連testを実行する。
+2. touched implementationの近くにあるrationaleを再検索する。
+3. 影響する各rationaleについて、current implementation、protected invariant、failure mode、evidenceが
+   まだ一致するかを確認する。
+4. 正確なら保持し、invariantまたは理由が変わったら更新し、理由が不要になったら削除する。
+5. `Requirement ID`、ADR/RFC、`Regression:` test name、repository-relative documentation pathなど、
+   commentに明示された構造参照を`cargo xtask check-rationale`で検証する。
+6. `review-code`をfinal implementation reviewとして実行し、必要な修正後に`cargo xtask check-all`を実行する。
+
+code compiles、tests passだけではrationale-sensitiveな変更の完了とはみなさない。referenceが存在しても、
+staleな理由を残してはならない。逆に、semantic freshnessを機械checkが証明したと主張してはならない。
+理由が不明な場合は新しいreasonを発明せず、`Rationale Gap`または`Specification Gap`として報告する。
+
 ### 5. Specificationとimplementationを照合する
 
 statusを変更する前に、すべてのRequirement IDをimplementationとtest evidenceに照合する。specificationを更新できるのは

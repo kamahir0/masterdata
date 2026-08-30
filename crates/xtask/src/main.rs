@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use masterdata_app::ApplicationService;
 use masterdata_core::{ErrorKind, MasterdataError, Project, Result};
 
+mod rationale_check;
 mod spec_check;
 
 #[derive(Debug, Parser)]
@@ -32,6 +33,8 @@ enum CommandKind {
     TestIntegration,
     /// Check specification, RFC, proposal, ADR, and relative-link integrity.
     CheckSpecs,
+    /// Check high-confidence references from implementation rationale comments.
+    CheckRationale,
     /// Run the isolated real MasterMemory v3 .NET technical spike.
     MastermemorySpike,
     /// Run the repository's main checks.
@@ -55,6 +58,7 @@ fn run() -> Result<()> {
         CommandKind::Gui => gui(),
         CommandKind::TestIntegration => test_integration(),
         CommandKind::CheckSpecs => check_specs(),
+        CommandKind::CheckRationale => check_rationale(),
         CommandKind::MastermemorySpike => mastermemory_spike(),
         CommandKind::CheckAll => check_all(),
         CommandKind::DevReset => {
@@ -294,9 +298,19 @@ fn check_specs() -> Result<()> {
     Ok(())
 }
 
+fn check_rationale() -> Result<()> {
+    let summary = rationale_check::check_repository(&repository_root())?;
+    println!(
+        "rationale checks passed: {} source file(s), {} reference-bearing comment block(s), {} reference(s)",
+        summary.source_files, summary.rationale_blocks, summary.references
+    );
+    Ok(())
+}
+
 fn check_all() -> Result<()> {
     let root = repository_root();
     check_specs()?;
+    check_rationale()?;
     run_program(
         cargo_command(),
         [

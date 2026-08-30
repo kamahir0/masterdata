@@ -44,6 +44,10 @@ specification-change artifactでは、`Approved` が明示的なhuman decision�
 duplicate ID、terminology variant、conflicting phraseは `rg` で検索する。reviewはsemanticに集中し、typoまたはpurely
 internal refactorのためのspecificationを要求しない。
 
+implementation diffのrationale freshness、local evidence、stale comment、orphaned rationaleの詳細なreviewは
+`review-code`の責務である。implementation diffを含むreview-specでは、specificationのsemantic reviewとcode
+reviewを混同せず、必要なら`review-code`へ明示的に引き渡す。
+
 ## Review checklist
 
 findingを作る場合は、file、Requirement ID、evidence、impact、具体的なresolutionを記録する。

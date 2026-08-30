@@ -24,6 +24,41 @@ straightforwardな実装から意図的に外れたnon-obvious codeは、将来�
 compatibility、ordering、timing/concurrency、意図的なstate duplicationまたはcopy、
 unusual error/filesystem handling、および一見削除・簡略化できる構造である。
 
+## Rationale Freshness
+
+rationaleは一度書いたら終わりのdocumentationではない。rationale commentは、それが説明するcodeの
+maintainability contractの一部であり、古くなったrationaleは、将来のdeveloperまたはAIに誤ったbehaviorを
+保持・削除させるため、commentがない場合より危険である。
+
+- rationaleの近くにあるimplementation、protected invariant、関連test、Requirement ID、ADR/RFC、または
+  external constraintを変更した場合、同じ変更内でrationaleを再検証しなければならない（MUST）。
+- 再検証結果が正確なら保持し、invariantまたはfailure modeが変わったなら更新し、理由が不要になったなら
+  protected invariantが別のevidenceで保護されていることを確認したうえで削除する。
+- test成功だけではrationaleの鮮度を証明しない。testはbehaviorを証明し、commentはimplementation shapeが
+  なぜ必要かを説明するため、両方を別々に確認する。
+- referenceの存在確認は構造的なcheckであり、commentの意味がcurrent implementationに一致するかという
+  semantic freshnessは`review-code`で判断する。`cargo xtask check-rationale`は、明示的なreferenceを確認
+  できる範囲だけを対象にし、comment parser DSLや自然言語の意味判定を導入しない。
+
+`check-rationale`が機械的に確認するのは、source codeのcommentに明示されたcanonical Requirement ID、
+`ADR-NNNN` / `RFC-NNNN`、`Regression: test_identifier`、および`docs/...` pathの存在である。このcheckは
+`check-specs`の代替ではなく、referenceが存在していても、そのWHYが現行実装に正しいことまでは証明しない。
+
+実装diffの基本経路は次の通りである。
+
+```text
+change implementation
+        -> detect affected rationale
+        -> revalidate WHY / failure mode / evidence
+        -> keep, update, or remove
+        -> verify structural references
+        -> review-code
+```
+
+whitespace変更やmechanical renameなど、意味的に無関係な変更まで自動的にblockしてはならない（MUST NOT）。
+ただし、ordering、timing、filesystem、concurrency、optimization、workaround、simplificationなどの
+rationale-sensitiveな変更では、影響範囲を確認する。
+
 ## 理由を置く場所
 
 | 理由の種類 | durable evidenceのowner |

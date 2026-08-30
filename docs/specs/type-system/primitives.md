@@ -6,7 +6,7 @@ Domain: Type System
 
 ## 概要
 
-本proposalは、初期Primitive Type vocabulary、直接のkey compatibility、strict scalar validation、
+本仕様は、初期Primitive Type vocabulary、直接のkey compatibility、strict scalar validation、
 finiteなfloating-point value、初期のstring rule、および現行のValue Object underlyingであるprimitiveの
 comparison capabilityとordering semanticsを定義する。YAML parser dialectやcapabilityを表現する
 implementation data structureは定義しない。
@@ -103,11 +103,11 @@ comparison capability、key compatibility、およびequality capabilityは別�
 
 ## 検証ルール
 
-このproposalの観測可能なvalidation outcomeは、`TYPE-PRIMITIVE-001` から `TYPE-PRIMITIVE-008` に
+この仕様の観測可能なvalidation outcomeは、`TYPE-PRIMITIVE-001` から `TYPE-PRIMITIVE-008` に
 よって定義する。対象は、unsupported name、scalar-category mismatch、fixed-width integer range
 violation、finite floating-point value、invalid direct key capability、empty-string acceptance、現行VO underlyingの
 comparison capability、numeric order、およびstringのOrdinal behaviorである。Exact diagnostic codeとsource-location
-mappingは、このproposalでは割り当てない。
+mappingは、この仕様では割り当てない。
 
 ## 受け入れ証拠
 
@@ -151,5 +151,5 @@ name: ""
 
 ## 非目標
 
-このproposalは、Rust type registry、scalar parser、nullable/array validator、enum、flags enum、
+この仕様は、Rust type registry、scalar parser、nullable/array validator、enum、flags enum、
 custom type、index、reference、MessagePack generator、production binary builderを実装しない。

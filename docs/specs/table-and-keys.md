@@ -1,30 +1,29 @@
 # Table / Primary Key / Secondary Key仕様
 
-Status: Proposed
+Status: Approved
 
 Domain: Table / Index
 
 ## 概要
 
-本proposalは、project-localなlogical Table、Table schemaとdata documentの関係、persisted fieldのMessagePack key、
+本仕様は、project-localなlogical Table、Table schemaとdata documentの関係、persisted fieldのMessagePack key、
 Primary Key、およびSecondary Keyのobservable contractを定義する。Tableのidentity boundaryは
-[Table identity仕様](compatibility/table-identity.md)が所有し、本proposalはそのboundaryを変更せず、Table schemaの
+[Table identity仕様](compatibility/table-identity.md)が所有し、本仕様はそのboundaryを変更せず、Table schemaの
 詳細とkey/index semanticsを追加する。
 
-本proposalは、既存のApproved [Field identity仕様](compatibility/field-identity.md)を直接変更しない。persisted fieldの
-独立したField IDをMessagePack専用の`key`へ置き換える提案は、[specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)に
-記録する。changeがApprovedかつAppliedになるまで、既存Approved contractはcurrent authorityであり、本proposalは
-implementation contractではない。
+persisted fieldのMessagePack専用`key`モデルは、[Applied specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)によって
+canonical specificationへ適用済みである。旧Field ID contractは[Field identity仕様](compatibility/field-identity.md)にretired historyとして
+保持し、現在のpersisted field modelのimplementation authorityにはしない。
 
-Primary KeyとSecondary Keyの検索semanticsは、ApprovedのPrimitive Types、Field Modifiers、Value Objectsと、後続のEnum / Flags
-仕様が定義するcapabilityを参照する。Referenceの宣言syntaxとtarget resolutionは、本proposalのownerではない。
+Primary KeyとSecondary Keyの検索semanticsは、ApprovedのPrimitive Types、Field Modifiers、Value Objects、Enum / Flags
+仕様が定義するcapabilityを参照する。Referenceの宣言syntaxとtarget resolutionは、本仕様のownerではない。
 
 ## 用語
 
 - **Table**: `table` でproject-localに識別されるlogical record collection。
 - **Schema document**: `kind: schema` と`table`を持ち、1つのTableのfieldとconstraintを宣言するdocument。
 - **Data document**: `kind: data` と`table`を持ち、Tableへrecordを供給するdocument。
-- **MessagePack field key**: persisted fieldからgenerated C#のMessagePack `[Key(n)]`へ直接lowerされるnon-negative integer。このproposalでの`key`は、Field IDとは異なり、MessagePack serialization layoutだけを表す。
+- **MessagePack field key**: persisted fieldからgenerated C#のMessagePack `[Key(n)]`へ直接lowerされるnon-negative integer。本仕様での`key`は、Field IDとは異なり、MessagePack serialization layoutだけを表す。
 - **Primary Key**: Tableのrecordを一意に解決する、1つのordered field sequence。
 - **Secondary Key**: Tableへ追加する、0個以上のordered field sequence。`nonUnique`により重複許可を選ぶ。
 - **selected logical dataset**: Approved [Build Selection仕様](build-selection.md)を適用した後、Tableごとに構成されるrecord集合。
@@ -33,7 +32,7 @@ Primary KeyとSecondary Keyの検索semanticsは、ApprovedのPrimitive Types、
 
 ### SCHEMA-KEY-001
 
-このproposalのpersisted field modelを採用するTableおよびCustom Typeの各persisted fieldは、MessagePack field `key`を宣言しなければ
+本仕様のpersisted field modelを採用するTableおよびCustom Typeの各persisted fieldは、MessagePack field `key`を宣言しなければ
 ならない（MUST）。`key`はnon-negative integerで、同じfield container内でuniqueでなければならない（MUST）。YAML field declarationの
 `key: n`は、generated C# memberの`[Key(n)]`へexactly一致する形でlowerされなければならず（MUST）、YAMLのfield declaration orderから
 独立していなければならない（MUST）。
@@ -41,7 +40,7 @@ Primary KeyとSecondary Keyの検索semanticsは、ApprovedのPrimitive Types、
 `key`はMessagePack serialization layoutだけを表す。`key`からlogical field identity、field rename、field deletion、field addition、
 secondary-key identity、reference identity、またはschema migration identityを推測してはならない（MUST NOT）。`key`を変更することは
 MessagePack serialization layoutの変更を表すが、他のidentity changeを暗黙に表してはならない。MessagePack `KeyAttribute`または対象backendが
-必要とする表現可能範囲を超える追加のupper boundは、このproposalで導入しない。
+必要とする表現可能範囲を超える追加のupper boundは、この仕様で導入しない。
 
 ### SCHEMA-KEY-002
 
@@ -77,7 +76,7 @@ Tableの`csharpName`は、Value Object / Custom Typeのtype declaration naming c
 
 ### SCHEMA-TABLE-003
 
-このproposalのTable field declarationは、次のcanonical surfaceを使用しなければならない（MUST）。各persisted fieldは
+本仕様のTable field declarationは、次のcanonical surfaceを使用しなければならない（MUST）。各persisted fieldは
 `SCHEMA-KEY-001`に従う`key`、source name、およびbase `type`を持つ。
 
 ```yaml
@@ -203,7 +202,7 @@ primaryKey:
 
 ### INDEX-PRIMARY-003
 
-Primary Key componentはRequired scalarで、key-compatibleかつcomparison-capableでなければならない（MUST）。このproposalのcurrent supported componentは
+Primary Key componentはRequired scalarで、key-compatibleかつcomparison-capableでなければならない（MUST）。この仕様のcurrent supported componentは
 `int`、`uint`、`long`、`ulong`、`string`、Value Object、およびnormal Enumである。`bool`、`float`、`double`、Flags Enum、Custom Type、Nullable、Arrayは
 Primary Key componentとして使用してはならない（MUST NOT）。Primitive capabilityは[Primitive Types仕様](type-system/primitives.md)、modifier effectは
 [Field Modifiers仕様](type-system/field-modifiers.md)、Value Object capabilityは[Value Objects仕様](type-system/value-objects.md)、Enum capabilityは
@@ -271,7 +270,7 @@ sequenceは、backend上でdistinctなAPIを生成できる限り禁止しては
 
 ## 検証ルール
 
-このproposalのschema-time validationは、logical Tableごとのschema document数、Table identityとgenerated C# name、field key/name、field declaration order、
+本仕様のschema-time validationは、logical Tableごとのschema document数、Table identityとgenerated C# name、field key/name、field declaration order、
 Primary Keyの存在・resolution・component order・capability、Secondary Keyのshape・identity・uniqueness・indexNo lowering、およびgenerated query API
 collisionを対象とする。data-time validationは、record mapping、schema-unknown member、Field Modifierのpresence、Build Selection後のPrimary Key / unique
 Secondary Key制約を対象とする。
@@ -280,8 +279,8 @@ Primary Key / Secondary Key componentのcapabilityをこのdocumentで再計算�
 Build Selection後のconstraint適用順は`BUILD-SELECT-010`および`BUILD-SELECT-011`が所有し、Reference validationは`BUILD-SELECT-012`が所有する。
 
 `SCHEMA-KEY-001`の`key`は、YAML source上のMessagePack integer keyとgenerated `[Key(n)]`の対応を検証する。active/deleted fieldのlogical identity、tombstone、
-key reuse policyはこのproposalで定義せず、[specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)のapproval/applicationまで
-既存Approved Field Identity仕様をcurrent authorityとする。
+key reuse policyは本仕様のMessagePack key contractに含まれず、[specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)のApplied
+deltaはそれらを導入しない。
 
 ## 受け入れ証拠
 
@@ -358,9 +357,9 @@ secondaryKeys:
 
 ## 互換性
 
-本proposalは、current Approved Field IdentityとApproved Custom Typeのpersisted field semanticsを変更するため、単独ではimplementation authorityではない。
-`key` modelへの移行は[specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)のhuman approvalとatomic applicationを必要とする。
-適用後は、generated C# member、MessagePack serialization layout、Custom Type constructor order、deleted-field representationへ影響する。
+本仕様は、[specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)のApplied deltaによって定義されたpersisted field modelのcurrent
+canonical ownerである。`key` modelの適用により、generated C# member、MessagePack serialization layout、Custom Type constructor orderへ影響するが、
+logical field identityやdeleted-field representationは定義しない。
 
 v1は、schema revision Aで生成したC#とbinary Bを組み合わせるcross-schema-version compatibilityを保証しない。coherent artifact setは
 `schema A -> generated C# A -> binary A`である。明示的なMessagePack keyはbackward compatibility、forward compatibility、またはmulti-client-version
@@ -426,7 +425,7 @@ primaryKey:
 ### Generated C# lowering
 
 MasterMemory v3の現行公式例は、Table rowへ`[MemoryTable]`、propertyへ`[PrimaryKey]`、`[SecondaryKey(indexNo, keyOrder)]`、`[NonUnique]`を付与する。
-MessagePack-CSharpの現行公式例は、`[MessagePackObject]`と整数`[Key(n)]`を使用する。本proposalの明示key profileでは、概念的に次のようにlowerする。
+MessagePack-CSharpの現行公式例は、`[MessagePackObject]`と整数`[Key(n)]`を使用する。本仕様の明示key profileでは、概念的に次のようにlowerする。
 
 ```csharp
 [MemoryTable("item-category"), MessagePackObject]
@@ -455,11 +454,10 @@ public sealed partial class ItemCategoryMaster
 - Referenceのexact declaration syntax、Secondary Keyをtargetとして指定する方式、およびmissing-reference severityをどう定義するか。
 - generated C#のnamespace、MessagePack resolver registration、serialization constructor、exact formatterのshapeをどう定義するか。
 - released schema間でMessagePack binaryを互換にする必要が生じた場合、どの独立したbinary compatibility仕様とmigration policyを採用するか。
-- Enum / Flags Enumの詳細仕様が利用可能になった後、normal Enum capabilityの依存関係と実装順序をどう管理するか。
 
 ## 非目標
 
-このproposalは、Approved Field IdentityまたはApproved Custom Typeを直接変更・適用しない。Field IDからMessagePack keyへの移行はspecification change 0003に委譲する。
+Field IDからMessagePack keyへの移行履歴とApproved canonical specificationへの適用は、specification change 0003に記録する。
 また、Referenceのexact YAML syntax、missing-reference severity、generated helper naming、cross-schema MasterMemory binary compatibility、released-schema migration、
 schema version negotiation、exact diagnostic wording、GUIの詳細UX、parser、Rust AST/IR、validator、C# code generator、.NET builder、MasterMemory内部、MessagePack
 formatter/resolver、cache、compression、artifact layout、Enum / Flags Enumの詳細仕様、またはIndex以外のMasterReferenceを実装・確定しない。

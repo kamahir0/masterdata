@@ -24,19 +24,19 @@ Status: Draft
 - **Data document**: `kind: data` を持ち、宣言したtableへrecordsを提供するYAML file。
 - **Table**: source fileのpathに依存せず、宣言されたproject-localな `table` identityによって識別されるrecordの論理的なcollection。
 - **Record**: tableに属する1つのinstanceまたはrow。
-- **Field**: recordまたはCustom Typeのnamed・typed member。schemaが要求する場合は、field nameとは独立したstable field identityを持つ。
+- **Field**: recordまたはCustom Typeのnamed・typed member。persisted fieldはsource `name`、value `type`、およびMessagePack serialization metadataである`key`を持つ。`key`はfield nameとは別のlogical identityを表さない。
 - **Schema AST**: schema declarationを表すtyped Rust structure。
 - **Data AST**: data documentのshapeを表すtyped data structure。type resolutionまで、field leafのYAML valueを保持する。
 - **Table identity**: `table` fieldが持つproject-localなstable identity。generated C# type nameおよびsource fileのpathとは別物である。現在のscaffoldは2つ目の `tableId` identityを定義しない。global identity、rename migration、released compatibility、legacy migration、cross-project identityはtable-identity RFCで未解決のままである。
 - **Generated C# type name**: Tableのpresentation/code-generation name。`csharpName` があればそれを使用し、なければgeneratorが導出する。compatibility specificationが許す場合に限り、独立して変更してもよい（MAY）。Value Object / Custom Typeのtype declaration nameから生成するidentifierは、別途C#命名仕様が管理する。
 - **Generated C# identifier**: type declarationまたはCustom Type fieldから生成されるpublic C# type、property、constructor parameterのidentifier。Value Object / Custom Typeのmapping ruleはC#命名仕様が所有し、automatic repairを行ってはならない（MUST NOT）。
 - **C# naming contract**: Value Object / Custom TypeのASCII source-name grammar、generated identifier mapping、reserved keyword、collision ruleを定義するcontract。Tableの`table` identityおよび`csharpName` presentation nameとは別である。
-- **Field ID**: current Approved Field Identity仕様が定義する、container内でfieldを識別するpersistentなnumeric identity。active field IDとreserved field IDは同じcontainerのused-ID namespaceを共有し、一度usedになったIDは再利用してはならない（MUST NOT）。MessagePack専用`key`へ置き換えるproposalは [specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md) に記録され、適用されるまでcurrent Approved contractを変更しない。
-- **MessagePack field key**: Table / Primary Key / Secondary Key proposalが定義する、generated C# memberのMessagePack `[Key(n)]`へ対応するnon-negative integer。Field IDとは別conceptであり、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、またはschema migration identityを持たない。現時点ではこのmodelはProposedである。
+- **Field ID**: 旧Field Identity仕様が定義していた、container内でfieldを追跡するpersistentなnumeric identity。active/reserved namespace、tombstone、reuse prohibition、rename trackingを含む旧modelはretiredであり、現在のField Identity authorityではない。旧Requirement IDと履歴は[Field identity仕様](../specs/compatibility/field-identity.md)に保持し、現行modelは`SCHEMA-KEY-001`へrouteする。
+- **MessagePack field key**: Approved Table / Primary Key / Secondary Key仕様が定義する、generated C# memberのMessagePack `[Key(n)]`へ対応するnon-negative integer。Field IDとは別conceptであり、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、またはschema migration identityを持たない。`key`の現行contractは`SCHEMA-KEY-001`が所有する。
 - **Value Object**: key-compatibleなprimitive scalarにnominal identityを与えるimmutableなdomain type。現行のunderlying vocabularyは `int`、`uint`、`long`、`ulong`、`string` であり、Value Object自身は常にkey-compatibleである。scalar data representationとgenerated representationはValue Objects specificationが管理し、generated C# identifierはC#命名仕様が管理する。
 - **Enum**: named type。current schema内で各memberが明示的なnumeric valueを持つ。normal Enumのdataはsymbolic member nameで表し、numeric valueのMasterdata cross-version identityと外部long-lived contractはEnum/Flags specificationの境界に従う。
 - **Flags Enum**: `None = 0` とatomic bit memberのbitwise combinationを表すenum。current type-system contractではkey-incompatibleで、dataはsymbolic member nameのsequenceで表す。
-- **Custom Type**: 1つ以上のnamed fieldから構成されるstructural value type。field数ではValue Objectと区別せず、1-field Custom TypeもCustom Typeとして扱う。data representationは常にmappingで、Custom Type自身はkey-incompatibleである。field source nameとgenerated C# property / constructor parameterのmappingはC#命名仕様が管理する。
+- **Custom Type**: 1つ以上のnamed fieldから構成されるstructural value type。field数ではValue Objectと区別せず、1-field Custom TypeもCustom Typeとして扱う。data representationは常にmappingで、Custom Type自身はkey-incompatibleである。persisted fieldのMessagePack `key`はTable / Keys仕様が所有し、旧`reservedFields`は現行contractに含まれない。field source nameとgenerated C# property / constructor parameterのmappingはC#命名仕様が管理する。
 - **Index**: tableに対して宣言されるlookup structure。key shapeとgenerated behaviorはindex specificationに属する。
 - **Primary Key**: tableのrecordを識別するindex。cardinality ruleはowner specificationに従う。
 - **Secondary Key**: tableに追加されるlookup key。

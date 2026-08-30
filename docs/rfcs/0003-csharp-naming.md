@@ -63,8 +63,8 @@ identifierは先頭ASCII characterだけをuppercaseへ変換し、残りをそ�
 ### 3. Field nameからconstructor parameter identifierへのmapping
 
 **Decision**: Custom Typeのgenerated constructor parameter identifierは、対応するYAML field `name`をそのまま使用する。named
-argumentから観測されるnameもstable public API surfaceである。parameter orderは `SCHEMA-CUSTOM-012` のfield ID ascending ruleに
-従う。詳細は `TYPE-NAMING-005` が所有する。
+argumentから観測されるnameもstable public API surfaceである。parameter orderは `SCHEMA-CUSTOM-017` のYAML
+`custom.fields` declaration order ruleに従う。詳細は `TYPE-NAMING-005` が所有する。
 
 - **Option A**: property mappingから決定的に導出し、parameter mapping ruleもstable public APIとして扱う。
 - **Option B**: parameter identifierをstable contractに含めず、compile可能でcollisionのないidentifierであることだけを要求する。

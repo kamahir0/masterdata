@@ -2,11 +2,11 @@
 
 Status: Draft
 
-Table、Primary Key、Secondary Keyのcurrent proposalは、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)がcanonical ownerである。
-このdocumentは、Table/Key proposalとReferenceのmaturityを混在させないため、Primary Key、Secondary Key、UniquenessのRequirement definitionを
+Table、Primary Key、Secondary Keyのcurrent Approved specificationは、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)がcanonical ownerである。
+このdocumentは、Approved Table/Key semanticsとReferenceのmaturityを混在させないため、Primary Key、Secondary Key、UniquenessのRequirement definitionを
 所有しない。`INDEX-PRIMARY-001`、`INDEX-SECONDARY-001`、`INDEX-UNIQUE-001`は、既存IDを維持したままTable/Key仕様へ移動した。
 
-Table/Key proposalは、explicitなMessagePack field `key`とgenerated `[Key(n)]`、Primary Key / Secondary Keyのfield-name sequence、
+Table/Key specificationは、explicitなMessagePack field `key`とgenerated `[Key(n)]`、Primary Key / Secondary Keyのfield-name sequence、
 `nonUnique`、selection後のconstraint適用を扱う。ReferenceからPrimary/Secondary Keyへ向けるexact syntaxやtarget identityは、まだこのDraft
 documentの未解決事項である。
 

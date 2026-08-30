@@ -6,7 +6,7 @@ Domain: Type System
 
 ## 概要
 
-本proposalは、supported base typeに対するRequired、Nullable、Array valueのfield-levelな表現と、dataでの
+本仕様は、supported base typeに対するRequired、Nullable、Array valueのfield-levelな表現と、dataでの
 presence、generated C# representation、およびArrayのsequence semanticsを定義する。modifierをtype-name stringへ
 埋め込まず、fieldのpresenceをfieldに格納されたvalueから独立して扱う。ここで定義するArray semanticsは、table
 fieldとCustom Type fieldを含むすべてのArray fieldに適用する。
@@ -28,7 +28,7 @@ Flags Enumなど、supported field value typeの1つを表す。**base type** �
 - `T?` — Nullable
 - `T[]` — Array
 
-`T?[]` と `T[]?` の組み合わせはサポートしてはならない（MUST NOT）。このproposalではNullableとArrayは相互排他的な
+`T?[]` と `T[]?` の組み合わせはサポートしてはならない（MUST NOT）。この仕様ではNullableとArrayは相互排他的な
 modifierである。どちらのmodifierもactiveでない場合、fieldのshapeはRequiredの `T` となる。Custom Typeのfieldにも
 このrequirementを適用する。
 
@@ -39,11 +39,11 @@ Field modifierはtype-name stringへ埋め込まず、field-level optionとし�
 
 ```yaml
 fields:
-  - id: 0
+  - key: 0
     name: rewardItem
     type: ItemId
     nullable: true
-  - id: 1
+  - key: 1
     name: rewards
     type: ItemId
     array: true
@@ -120,7 +120,7 @@ equalのすべてを満たす場合にのみequalとしなければならない�
 
 ## 検証ルール
 
-このproposalの観測可能なvalidation outcomeは、`TYPE-FIELD-001` から `TYPE-FIELD-009` によって定義する。対象は、
+この仕様の観測可能なvalidation outcomeは、`TYPE-FIELD-001` から `TYPE-FIELD-009` によって定義する。対象は、
 mutually exclusiveなshape、field-level syntax、presence/null/empty-array behavior、key capability、explicit-false
 normalization、nullable C# mapping、ordered immutable Array representation、default state、deep immutability、sequence
 equalityおよびhash consistencyである。exact diagnostic code、source path、parser-specific YAML node classificationは、
@@ -143,10 +143,10 @@ equalityおよびhash consistencyである。exact diagnostic code、source path
 ## 互換性
 
 Field modifierとArray representationはaccepted data shape、generated C# API、将来のserialized representationへ影響する。
-特に、`ImmutableArray<T>`、field presence、null、Array order、default stateはpublic behaviorとして扱う。既存のfield identity
-ruleは[field identity仕様（field identity specification）](../compatibility/field-identity.md)が所有し、field IDとindex numberの
-分離もそこに含まれる。modifierまたはArray representationの変更に対するreleased-schema compatibilityとmigration
-classificationは、引き続きOpen Questionである。
+特に、`ImmutableArray<T>`、field presence、null、Array order、default stateはpublic behaviorとして扱う。persisted fieldの
+MessagePack `key` ruleは[Table / Primary Key / Secondary Key仕様](../table-and-keys.md)の`SCHEMA-KEY-001`が所有し、`key`は
+serialization metadataであってlogical field identityではない。modifierまたはArray representationの変更に対するreleased-schema
+compatibilityとmigration classificationは、引き続きOpen Questionである。
 
 ## 例
 
@@ -179,11 +179,11 @@ Custom Type fieldでは、同じmodifier semanticsを使用する。
 ```yaml
 custom:
   fields:
-    - id: 0
+    - key: 0
       name: note
       type: string
       nullable: true
-    - id: 1
+    - key: 1
       name: tags
       type: string
       array: true
@@ -199,5 +199,5 @@ custom:
 
 ## 非目標
 
-このproposalは、schema parsing、nullableまたはArray validation、Value Object resolution、Custom Type resolution、index
+この仕様は、schema parsing、nullableまたはArray validation、Value Object resolution、Custom Type resolution、index
 generation、MessagePack attributes、C# generation、MasterMemory binary generationを実装しない。

@@ -167,21 +167,21 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Field Modifiers仕様](type-system/field-modifiers.md)
   - [Value Objects仕様](type-system/value-objects.md)
   - [C#命名仕様](type-system/csharp-naming.md)
-  - [Enum / Flags仕様](type-system/enums.md)
+  - [Enum / Flags仕様](type-system/enums.md) — `Status: Approved`
   - [Custom Types仕様](type-system/custom-types.md)
-- [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Proposed`
-- [Index / reference仕様](index-and-reference.md) — `Status: Draft`（Reference中心。Table/Keyのproposalは別document）
+- [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Approved`
+- [Index / reference仕様](index-and-reference.md) — `Status: Draft`（Reference中心。Table/Keyのsemantic ownerは別document）
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
 - [Build pipeline仕様](build-pipeline.md)
 - [Compatibility仕様](compatibility/README.md)
   - [Table identity仕様](compatibility/table-identity.md)
-  - [Field identity仕様](compatibility/field-identity.md)
+  - [Field identity仕様](compatibility/field-identity.md) — `Status: Deprecated`（旧Field ID modelのhistory）
   - [Enum identity仕様](compatibility/enum-identity.md)
   - [Index identity仕様](compatibility/index-identity.md)
 
-現在のRust implementationは、project contract、YAML document envelope、current Approved Field IDによるbasic field identity check、
-source-content hash、明確に命名されたschema source-content hashを含むbuild-plan formationを扱う。
+現在のRust implementationは、project contract、YAML document envelope、旧scaffoldのfield shape、source-content hash、明確に命名された
+schema source-content hashを含むbuild-plan formationを扱うが、Applied後のMessagePack `key` modelを実装していない。
 `id` という名前のfieldにはimplicit primary-key meaningがない。今回Approvedとなったtype-system contractはimplementation
-authorityだが、current parser、validator、generatorはそれをまだ実装していない。Table / Primary Key / Secondary Key proposalはまだ
-Proposedであり、Field IDからMessagePack keyへの置換はspecification changeとして未適用である。Type resolution、indexes、references、
-MasterMemory binary generation、full GUIは意図的に未完了である。
+authorityだが、current parser、validator、generatorはそれをまだ実装していない。Enum/FlagsとTable / Primary Key / Secondary Keyは
+Approvedであり、specification change 0003もAppliedだが、type resolution、indexes、references、MasterMemory binary generation、full GUIは
+意図的に未完了である。

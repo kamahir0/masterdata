@@ -22,33 +22,29 @@ table: item
 documentからdataを受け取ってもよい（MAY）。Data fileはfilenameやdirectoryではなく、
 宣言されたtable identityによってmergeする。
 
-## Current scaffold shape（current scaffoldのshape）
+## Current scaffoldとcanonical persisted field shape
 
 ```yaml
 kind: schema
 table: item
 csharpName: ItemMaster
 fields:
-  - id: 0
+  - key: 0
     name: id
     type: ItemId
-reservedFields:
-  - id: 1
-    formerName: oldName
-    formerType: string
 ```
 
 Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`、`ReservedField`）に
 保つ。将来のtype/index/reference featureがunstructured mapへ崩れることを防ぐためである。
 
-上記の`id`および`reservedFields`は、current scaffoldと現在ApprovedのField Identity contractを示す実装・仕様evidenceであり、
-新しいTable/Key proposalのimplementation contractではない。Approved Field Identityの置換deltaは、
-[Field IDからMessagePack keyへのspecification change](../spec-changes/0003-field-identity-to-messagepack-key.md)が承認・適用されるまで
-current authorityとして残る。
+上記の`key`は、specification change 0003のApplied deltaを反映した、現在のpersisted fieldのcanonical surfaceである。`key`の
+serialization-only semanticsは[Table / Primary Key / Secondary Key仕様](table-and-keys.md)の`SCHEMA-KEY-001`が所有する。
+current scaffoldの実装・ASTが旧`id`や`reservedFields`を保持している場合、それはimplementation gapを示すevidenceであり、
+現行canonical contractの代替ではない。
 
-## Proposed Table / Key shape（提案するTable / Keyのshape）
+## Approved Table / Key shape（Approved Table / Keyのshape）
 
-Table schemaの新しいdirectionは、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)が所有する。新しいpersisted fieldでは、
+Table schemaのpersisted field surfaceは、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)が所有する。persisted fieldでは、
 Field IDではなくMessagePack専用の`key`を使用する。
 
 ```yaml
@@ -66,10 +62,10 @@ secondaryKeys:
     nonUnique: true
 ```
 
-このshapeはProposed Table/Key specificationとField Identity change proposalの内容を示すものであり、current parserのimplementation contractではない。
+このshapeはApproved Table/Key specificationとApplied Field Identity changeの内容を示すcanonical contractであり、current parserの
+implementation contractが未実装であることとは区別する。
 `key`はMessagePack `[Key(n)]`へ対応するが、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、または
-schema migration identityを表さない。Custom Typeの`id` / `reservedFields`から`key`への移行は、Approved Custom Type specificationへ直接書き込まず、
-上記specification changeのlifecycleに従う。
+schema migration identityを表さない。Custom Typeのpersisted fieldも同じ`key` modelを使用する。
 
 現在のscaffoldが認識するdocumentは `schema` と `data` だけである。Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
@@ -103,7 +99,7 @@ kind: type
 name: Reward
 custom:
   fields:
-    - id: 0
+    - key: 0
       name: itemId
       type: ItemId
 ```
@@ -115,9 +111,9 @@ parserのimplementation contractではない。type documentのpathまたはfile
 C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
 `csharpName` presentation nameへ適用されない。
 
-上記Custom Type例の`id`は、現在ApprovedのCustom Type / Field Identity contractを表す。`key`を使う新しいCustom Type surfaceは、
-[Field IDからMessagePack keyへのspecification change](../spec-changes/0003-field-identity-to-messagepack-key.md)がApprovedかつAppliedになるまで、
-current implementation authorityではない。
+上記Custom Type例の`key`は、Applied specification change 0003とApproved Custom Type / Table / Key specificationが所有する現在の
+canonical surfaceである。current parserはこのshapeをまだ受け付けないが、実装状態を理由に旧Field ID modelをcurrent authorityとして
+扱ってはならない。
 
 ## Masterdata YAML subsetとの関係
 

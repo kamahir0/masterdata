@@ -123,7 +123,7 @@ records:
     name: Potion
 ```
 
-identity/compatibilityの仕様は[互換性仕様のindex（compatibility specification index）](docs/specs/compatibility/README.md)を参照してください。table identityは現在`Implemented`ですが、field/enum/index identityの詳細はそれぞれ独立した`Draft`として管理しています。
+identity/compatibilityの仕様は[互換性仕様のindex（compatibility specification index）](docs/specs/compatibility/README.md)を参照してください。table identityは現在`Implemented`、Field Identityは旧modelのretired historyとMessagePack `key` ownerへのroutingを含む`Deprecated`、Enum/Flags type semanticsとTable/Key semanticsも`Approved`です。Index identityは`Draft`として管理しており、実装未完了の領域を含みます。
 
 ## リポジトリガイド
 

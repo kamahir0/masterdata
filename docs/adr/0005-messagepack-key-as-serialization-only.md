@@ -4,13 +4,13 @@ Status: Proposed
 
 ## 背景（Context）
 
-現在のApproved Field Identity仕様は、TableとCustom Typeのpersisted fieldに、renameと削除後のreserved identityを追跡する
-numeric Field IDを与えている。今回のTable/Key設計では、persisted fieldへ必要なnumeric valueをMessagePack serialization layoutのためだけに
+0003適用前のApproved Field Identity仕様は、TableとCustom Typeのpersisted fieldに、renameと削除後のreserved identityを追跡する
+numeric Field IDを与えていた。specification change 0003のApplied後のTable/Key設計では、persisted fieldへ必要なnumeric valueをMessagePack serialization layoutのためだけに
 明示し、logical field identityやschema migration identityとは分離する。
 
-これはApproved specificationへの変更であるため、採用理由とdeltaは
-[Field IDからMessagePack keyへのspecification change](../spec-changes/0003-field-identity-to-messagepack-key.md)に記録し、human approvalと
-atomic applicationが完了するまでcurrent Approved contractを変更しない。
+これはApproved specificationへの変更であったため、採用理由とdeltaは
+[Field IDからMessagePack keyへのspecification change](../spec-changes/0003-field-identity-to-messagepack-key.md)に記録され、human approvalと
+atomic applicationが完了した。現在のcontractは更新済みcanonical specificationが所有する。
 
 ## 決定（Decision）
 
@@ -25,7 +25,8 @@ MessagePack keyの変更はserialization layoutの変更になり得るが、fie
 意味しない。Field ID tombstoneとreuse prohibitionをv1のpersisted field modelに残さないため、cross-schema binary compatibilityは別途設計する
 必要がある。schema revision、generated C#、binaryはcoherent artifact setとして扱う。
 
-Table / Primary Key / Secondary Key proposalがApprovedになり、specification changeがAppliedになるまでは、これはimplementation authorityではない。
+Table / Primary Key / Secondary Key仕様はApprovedであり、specification change 0003はAppliedである。このADRはarchitecture rationaleを
+所有するが、implementation authorityまたはnormative requirementのcanonical ownerではない。
 
 ## 代替案（Alternatives）
 

@@ -6,7 +6,7 @@ Domain: Type System
 
 ## 概要
 
-本proposalは、Value Objectをkey-compatibleなprimitive scalarへnominal type identityを与える型として定義する。
+本仕様は、Value Objectをkey-compatibleなprimitive scalarへnominal type identityを与える型として定義する。
 unified type-declaration boundary、scalar data representation、generated C# category、equality、capability、
 directional implicit-conversion configuration、underlying-value `ToString()` behavior、およびValue Objectと
 Custom Typeのsemantic boundaryを定める。Custom Typeのstructural value semanticsは[Custom Type仕様](custom-types.md)
@@ -17,7 +17,9 @@ Custom Typeのsemantic boundaryを定める。Custom Typeのstructural value sem
 Value Object、Primitive Type、Type Declaration、Generated C# Type Nameというtermは
 [product terminology（用語）](../../product/terminology.md)に従う。primitive capability tableは[Primitive Types仕様](primitives.md)が
 所有し、field-levelのNullable/Array behaviorは[Field Modifiers](field-modifiers.md)が所有する。Custom Typeの
-structural value、mapping representation、field IDは[Custom Type仕様](custom-types.md)が所有する。
+structural valueとmapping representationは[Custom Type仕様](custom-types.md)が所有する。Custom Typeのpersisted field keyは
+[Table / Primary Key / Secondary Key仕様](../table-and-keys.md)の`SCHEMA-KEY-001`が所有し、Value Object自身のscalar representationや
+key capabilityとは別conceptである。
 
 `SCHEMA-VO-001` は以前のDraft type-system overviewから引き継ぎ、ここでcanonical Value Object requirementとして
 refineする。approvalとimplementationでは、参照するprimitiveおよびfield-modifier contractへのdependencyを
@@ -28,7 +30,7 @@ refineする。approvalとimplementationでは、参照するprimitiveおよびf
 ### SCHEMA-VO-001
 
 Value Objectはimmutable、equality-capable、かつrepositoryの将来のMessagePack integrationを通じて
-serializableでなければならない（MUST）。このproposalにおけるgenerated representationとserialization
+serializableでなければならない（MUST）。この仕様におけるgenerated representationとserialization
 detailは、generated artifactをeditのSource of Truthにせず、これらのobservable propertyを保たなければ
 ならない（MUST）。
 
@@ -231,7 +233,7 @@ comparison APIに含めてはならない（MUST NOT）。implicit conversionが
 direct comparison contractは変化しない。
 
 Value Object declarationにper-typeのcomparison configurationを追加してはならない（MUST NOT）。descending、case-insensitive、
-custom comparer、culture指定などはこのproposalのValue Object comparison contractに含めない。conversion configurationがcomparison
+custom comparer、culture指定などはこの仕様のValue Object comparison contractに含めない。conversion configurationがcomparison
 capability、comparison semantics、ordering APIを変更しないことは `SCHEMA-VO-009` が所有する。このrequirementは、`default(N)`
 またはその他のinvalid stateに対する追加のruntime comparison behaviorを定義しない。comparison contractはvalidなValue Object
 instanceにだけ適用する。
@@ -242,7 +244,7 @@ specificationが定義する。
 
 ## 検証ルール
 
-このproposalの観測可能なvalidation outcomeは、`SCHEMA-VO-001` から `SCHEMA-VO-013` によって定義する。対象は、
+この仕様の観測可能なvalidation outcomeは、`SCHEMA-VO-001` から `SCHEMA-VO-013` によって定義する。対象は、
 key-compatible underlying restriction、wrapper restriction、one-document/one-declaration structure、scalar
 representation、readonly-struct category、minimum public API、equality APIとsemantics、inherited capability、
 directional conversion configuration、conversion isolation、supported-underlying valueの `ToString()` behavior、default/constructor
@@ -352,6 +354,6 @@ valueObject:
 
 ## 非目標
 
-このproposalは、type registry、AST/IR resolver、Value Object parser、nullable/array validator、readonly-struct generator、
+この仕様は、type registry、AST/IR resolver、Value Object parser、nullable/array validator、readonly-struct generator、
 MessagePack generator、key generator、Enum、Flags Enum、Custom Type、Index、MasterReference、production binary
 builderを実装しない。

@@ -1,6 +1,6 @@
 # 仕様変更: Field IDをMessagePack keyへ置き換える（Specification change）
 
-Status: Proposed
+Status: Applied
 
 <!-- Lifecycle: Draft -> Proposed -> Approved -> Applied、またはRejected。Approved canonical
      specificationを変更する前にhuman approvalが必要である。 -->
@@ -11,7 +11,7 @@ Status: Proposed
   `COMPAT-FIELD-004`。
 - [`docs/specs/type-system/custom-types.md`](../specs/type-system/custom-types.md)、Approvedの`SCHEMA-CUSTOM-003`、
   `SCHEMA-CUSTOM-010`、`SCHEMA-CUSTOM-012`、`SCHEMA-CUSTOM-016`。
-- [`docs/specs/table-and-keys.md`](../specs/table-and-keys.md)、提案された`SCHEMA-KEY-001`および
+- [`docs/specs/table-and-keys.md`](../specs/table-and-keys.md)、Approvedの`SCHEMA-KEY-001`および
   `SCHEMA-CUSTOM-017`が参照する新しいpersisted field model。
 
 ## 根拠と分類（Source Evidence and Classification）
@@ -22,11 +22,12 @@ Human Decisionは、`key`をlogical field identity、rename、deletion、additio
 schema migration identityとして扱わないことも明示した（Constraint）。
 
 同じDecisionは、Table schemaにおける1 schema documentと0..N data documents、Primary Key / Secondary Keyのsource field-name
-参照、generated C# property order、およびMessagePack keyとTable constraintの分離を、別のProposed
+参照、generated C# property order、およびMessagePack keyとTable constraintの分離を、別のApproved
 [Table / Primary Key / Secondary Key仕様](../specs/table-and-keys.md)へ記録する根拠となる。
 
 これは、既存Approved Field IdentityおよびCustom Typeの意味をcurrent implementationへ合わせて変更する推測ではない。
-既存Approved contractに対するsemantic deltaであり、このartifactがAppliedになるまで既存canonical documentがauthorityである。
+既存Approved contractに対する、human approval済みのsemantic deltaである。canonical applicationは完了しており、以後は更新済み
+canonical specificationがauthorityである。
 
 ## 提案する差分（Proposed Delta）
 
@@ -42,8 +43,8 @@ schema migration identityとして扱わないことも明示した（Constraint
 
 これらのidentifierはhistoryのために保持できるが、retire後のactive normative requirementとして再利用してはならない（MUST NOT）。
 `docs/specs/compatibility/field-identity.md`は、atomic application時に旧requirementのretired historyと、置換先の
-`SCHEMA-KEY-001`およびTable/Key specificationへのroutingを記録する。現行documentの`Status: Approved`は、このdeltaのhuman approvalと
-canonical applicationが完了するまで変更しない。
+`SCHEMA-KEY-001`およびTable/Key specificationへのroutingを記録する。旧Requirementをretired historyとして記録し、このdocumentを
+repository lifecycleに従って`Status: Deprecated`へ遷移する。
 
 ### 2. MessagePack専用の`key`
 
@@ -92,22 +93,21 @@ retireする。Custom Typeのfield name renameは、Field IDで追跡する新�
 
 ### 4. Table / Key仕様との適用関係
 
-このdeltaは、Table/Primary/Secondary Keyの新しいProposed specificationをApprovedにするものではない。両方のhuman approvalと、
-このdeltaに対するcanonical applicationが完了するまで、`SCHEMA-KEY-001`および新しいTable/Key semanticsをimplementation authorityとして
-扱ってはならない（MUST NOT）。
+このdeltaは、Table/Primary/Secondary Key仕様の承認記録を代替するものではない。Table/Key仕様は別途human approval済みであり、
+`SCHEMA-KEY-001`および新しいTable/Key semanticsは、このdeltaのatomic application完了後のcanonical implementation authorityである。
 
 ### 5. Atomic application
 
-human maintainerがこのartifactをApprovedへ移した後、repository lifecycleが定めるcanonical mergeとして次をatomicに実施する。
+human maintainerの明示的な承認後、repository lifecycleが定めるcanonical mergeとして次をatomicに実施した。
 
 1. `docs/specs/compatibility/field-identity.md`の`COMPAT-FIELD-001`から`COMPAT-FIELD-004`をretired historyとして保持し、
    current Field ID contractのownerではないことを明示する。
 2. `docs/specs/type-system/custom-types.md`のCustom Type declaration、field identity、constructor order、reserved field requirementを、
    上記の新surfaceへ更新する。既存のstructural/equality/modifier semanticsは変更しない。
 3. `docs/specs/schema-language.md`、compatibility index、directory indexを新しいcanonical ownerへroutingする。
-4. artifactのstatusを、canonical merge完了後にだけ`Applied`へ移す。
+4. canonical merge完了後にartifactのstatusを`Applied`へ移す。
 
-このartifactをApprovedまたはAppliedへ移すまで、上記のcanonical documentを直接変更してはならない（MUST NOT）。
+上記のcanonical applicationとartifactの`Applied`遷移は、一つの変更として完了している。
 
 ## 互換性（Compatibility）
 
@@ -136,7 +136,6 @@ external database、public APIなどがgenerated numeric keyを長期保存す�
 
 ## 未解決事項（Open Questions）
 
-- human approval後のatomic mergeで、`docs/specs/compatibility/field-identity.md`を`Deprecated`へ移す時点と、retired historyの最終的な文面をどうするか。
 - MessagePack/C# backendのexact formatter、resolver、serialization constructor、generated file layoutをどの別specificationで所有するか。
 - released-schema間のbinary compatibility、persistent serialization key reservation、type/modifier change migrationを将来どの独立specificationで定義するか。
 - Table/Secondary KeyをtargetにするReferenceのexact syntaxと、field rename/deletionを外部long-lived contractでどう扱うか。
@@ -145,9 +144,11 @@ external database、public APIなどがgenerated numeric keyを長期保存す�
 
 ## レビュー（Review）
 
-このartifactは、Approved Field IdentityおよびApproved Custom Typeへのsemantic deltaを記録するProposed changeである。
-`docs/specs/table-and-keys.md`のTable/Key proposalとともに`review-spec`を実行し、human maintainerの明示的な承認を得た後にだけatomic applyする。
+このartifactは、Approved Field IdentityおよびApproved Custom Typeへ適用されたsemantic deltaのaudit recordである。
+`docs/specs/table-and-keys.md`のTable/Key specificationとともに`review-spec`を実行し、human maintainerの明示的な承認を得たうえで
+atomic applicationを完了した。
 
 ## 承認記録（Approval Record）
 
-<!-- Human maintainerの明示的な承認とcanonical mergeが完了するまで空欄にする。 -->
+このtaskでhuman maintainerが、Enum / FlagsおよびTable / KeysのApproved化とあわせて、本artifactのdeltaを明示的に承認した。
+deltaはField Identity、Custom Type、schema-language、compatibility routingへatomicに適用済みであり、本artifactを`Status: Applied`とする。

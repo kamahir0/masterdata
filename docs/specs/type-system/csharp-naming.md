@@ -72,7 +72,7 @@ propertyではない。
 
 Custom Typeのgenerated public constructor parameter identifierは、対応するYAML field `name`をそのまま使用
 しなければならない（MUST）。named argumentから観測されるparameter nameもこのexact source nameに従う。parameter
-のorderは[Custom Type仕様](custom-types.md)のfield ID ascending ruleが所有し、この仕様はorderを変更しない。
+のorderは[Custom Type仕様](custom-types.md)のYAML `custom.fields` declaration order ruleが所有し、この仕様はorderを変更しない。
 
 ### TYPE-NAMING-006
 
@@ -120,7 +120,7 @@ emissionされる範囲を指す。namespaceの導出方法自体はこの仕様
 | `TYPE-NAMING-002` | `A`、`AB`、`ID`、`URL`、`HTTP`、`REWARD`、`ItemId`、`HTTPServer`、`XML2Data`、`A1`、`Item2` がvalidとして扱われる。 | `itemId`、`reward`、`_reward`、`reward_condition`、`reward-condition`、`1Reward`、非ASCII nameがrejectされる。 | Type-name lexical validation tests。 |
 | `TYPE-NAMING-003` | `x`、`item2`、`httpServer`、`xml2Data` がCustom Type field nameとして受け入れられる。 | `ItemId`、`ITEM_ID`、`item-id`、非ASCII field nameがrejectされる。 | lowerCamelCase lexical validation tests。 |
 | `TYPE-NAMING-004` | `id -> Id`、`itemId -> ItemId`、`fooBar -> FooBar` が生成される。 | `fooBar -> Foobar`、separator除去、全体re-case、または自動suffixが行われる。 | Property-name mapping test。 |
-| `TYPE-NAMING-005` | source field `itemId` のconstructor parameterが `itemId` となり、field ID順とは独立してexact nameが保持される。 | parameter nameがproperty nameへ変換される、またはgeneratorごとに変動する。 | Constructor reflection/named-argument API test。 |
+| `TYPE-NAMING-005` | source field `itemId` のconstructor parameterが `itemId` となり、constructor parameterのorderがYAML `custom.fields` declaration orderに従う。 | parameter nameがproperty nameへ変換される、orderがMessagePack `key`順へ変換される、またはgeneratorごとに変動する。 | Constructor reflection/named-argument API test。 |
 | `TYPE-NAMING-006` | valid source identifierがそのまま受け入れられる。 | `class`、`struct`、`event`、`namespace`、`public` などのreserved keyword、invalid lexical name、または `@class` がrejectされる。 | Invalid-name and reserved-keyword validation tests。 |
 | `TYPE-NAMING-007` | collisionのないgenerated APIが出力される。 | `equals -> Equals`、`getHashCode -> GetHashCode`、`toString -> ToString`、または同じscopeのduplicate identifierがrejectされる。Value Objectのgenerator-owned `CompareTo` もreserved memberとして扱われる。 | Generated member collision tests。 |
 | `TYPE-NAMING-008` | Value Object / Custom Typeのnaming ruleが適用され、Tableの `table` / `csharpName` の責務が変更されない。 | Type declaration ruleを根拠にTable identityまたはEnum member namingが暗黙に変更される。 | Cross-spec ownership review。 |
@@ -144,20 +144,20 @@ kind: type
 name: RewardCondition
 custom:
   fields:
-    - id: 5
+    - key: 5
       name: note
       type: string
-    - id: 1
+    - key: 1
       name: itemId
       type: ItemId
-    - id: 3
+    - key: 3
       name: amount
       type: int
 ```
 
 生成されるidentifierは、typeが `RewardCondition`、propertyが `Note`、`ItemId`、`Amount`、constructor parameterが
-`note`、`itemId`、`amount` である。constructor parameterのorderはCustom Type仕様に従い、field ID ascendingで
-`itemId`、`amount`、`note` となる。
+`note`、`itemId`、`amount` である。constructor parameterのorderはCustom Type仕様に従い、YAML `custom.fields`
+declaration orderで `note`、`itemId`、`amount` となる。MessagePack `key`の数値順には並べ替えない。
 
 ### Collision
 
@@ -166,7 +166,7 @@ kind: type
 name: Reward
 custom:
   fields:
-    - id: 0
+    - key: 0
       name: equals
       type: string
 ```

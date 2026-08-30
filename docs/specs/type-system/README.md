@@ -34,7 +34,7 @@ parameterのmappingは[C#命名仕様](csharp-naming.md)が所有する。Table�
 - [Field Modifiers仕様](field-modifiers.md) — `Status: Approved`
 - [Value Objects仕様](value-objects.md) — `Status: Approved`
 - [C#命名仕様](csharp-naming.md) — `Status: Approved`
-- [Enums and Flags仕様](enums.md) — `Status: Proposed`
+- [Enums and Flags仕様](enums.md) — `Status: Approved`
 - [Custom Types仕様](custom-types.md) — `Status: Approved`
 
 これらのfileでは既存のRequirement IDを保持する。documentを分割してもIDをrenameまたは

@@ -1,6 +1,6 @@
 # EnumとFlags Enum
 
-Status: Proposed
+Status: Approved
 
 Domain: Type System
 

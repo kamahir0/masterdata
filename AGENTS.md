@@ -2,6 +2,16 @@
 
 このrepositoryで作業するAI agentと開発者向けのルールです。
 
+## ドキュメント言語
+
+- repository内の人間向けドキュメントは、特別な理由がない限り日本語で記述する（SHOULD）。対象には `README.md`、`docs/` 配下のspecification、ADR、RFC、contributing guide、設計メモ、およびAI agentが生成・更新する説明文を含む。
+- 新規ドキュメントは原則として日本語で作成する。既存ドキュメントを実質的に編集する場合も、変更する説明部分は可能な範囲で日本語へ揃える。
+- identifier、Requirement ID、Diagnostic Code、API/type/function名、CLI flag、file path、code、configuration key、language keyword、protocol/library/productの正式名称など、英語のままの方が正確なtechnical tokenは翻訳しなくてよい。
+- MUST / SHOULD / MAY、Draft / Proposed / Approved / Implemented、Specification Gapなど、repositoryで意味を固定しているworkflow用語は既存表記を維持してよい。
+- 外部仕様やerror messageを引用する場合は原文を保持してよいが、必要な説明は日本語で付ける。
+- 日本語化のためだけにtechnical meaning、検索性、既存のstable identifier、またはcanonical terminologyを変更してはならない（MUST NOT）。
+- user-facing product textのlanguage policyは、このドキュメント記述ルールとは別に仕様で定義する。
+
 ## コードを変更する前に
 
 - 実装前に関連する `docs/specs` と `docs/adr` を読む。
@@ -131,7 +141,7 @@ review/reportだけでrepository差分がないtaskではempty commitを作ら�
   comment、Requirement ID、regression test、ADR、issue/reference、benchmark、
   platform/library/toolchain constraintを検索しなければならない（MUST）。
 - 理由を確認せず `looks unnecessary -> delete` と進めてはならない（MUST NOT）。
-- non-obvious codeを追加する場合は、必要に応じて`WHY`、削除・簡略化時のfailure mode、
+- non-obvious codeを追加する場合は、必要に応じて`WHY`、削除・簡略化した場合のfailure mode、
   `EVIDENCE / REFERENCE`、`REMOVAL CONDITION`をprotected invariantの近くへ残す。reference
   だけで理由を置き換えてはならない（MUST NOT）。
 - `Spec`はobservable behavior、`ADR`はarchitecture、`Test`はregression evidence、

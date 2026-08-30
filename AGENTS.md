@@ -72,6 +72,28 @@
 - shell scriptへ主要ロジックを分散させず、repository workflowは `cargo xtask` に集約する。
 - 作業完了前に `cargo xtask check-all` を実行し、実行できない場合は理由を報告する。
 
+## Git完了ポリシー
+
+repositoryを変更するtaskでは、人間が明示的に `commitしない`、`pushしない`、または同等の指示をした場合を除き、
+成功したtaskの通常の完了条件にcommitとpushを含める。`refine-spec`、`implement-spec`など個別skillはこのpolicyを継承する。
+review/reportだけでrepository差分がないtaskではempty commitを作らない。
+
+- task固有のrequired reviewとlocal checkを完了し、必要なcheckが成功した後にcommitする。
+- commit前にworking treeとdiffを確認し、task scopeの変更だけをcommitする。unrelatedな既存変更を混ぜてはならない。
+- unrelatedなdirty changeを安全に分離できない場合、check failure、merge conflict、またはtaskを安全に完了できない
+  Specification Gapがある場合は、自動commit/pushを行わず理由を報告する。
+- Draft/Proposed specificationがOpen Questionを正しく保持したまま`refine-spec`として完了する場合は、それ自体を
+  failureとみなさない。Open Questionを黙って解決せず、review可能なspec差分としてcommit/pushしてよい。
+- commit messageは変更scopeを要約する簡潔な内容にする。
+- push先は現在のworking branchだけとし、通常のfast-forward pushを使う。自動でbranchを切り替えたり、
+  force-push、history rewrite、rebaseによる公開historyの書き換えを行ってはならない（MUST NOT）。
+- pushがbranch protection、permission、non-fast-forwardなどで拒否された場合は迂回せず報告する。
+- push後のremote CIは原則として非同期のverificationとして扱う。人間がCI完了確認を明示的に要求した場合、または
+  workflow上remote greenが状態遷移のgateとして明示されている場合を除き、CI完了をpollして待たず、commit SHAと
+  push結果、CIがpending/runningである旨を報告してtaskを完了する。
+- commit/pushはHuman Approvalを意味しない。Draft/Proposedをpushしても、Approvedへのstatus transitionは従来どおり
+  明示的な人間の承認を必要とする。
+
 ## 完了チェックリスト
 
 1. 関連spec / ADRを更新したか
@@ -81,6 +103,8 @@
 5. frontend checkとintegration smoke testが通るか
 6. rationale-sensitiveな変更では、影響するrationaleとevidenceを再検証したか
 7. `cargo xtask check-all` の結果と未実装事項を報告したか
+8. repository差分があるtaskでは、scope内の変更だけをcommitしたか
+9. 自動pushが許可されるtaskではcurrent working branchへpushし、commit SHAとpush結果を報告したか
 
 ## 仕様ワークフローのガードレール
 

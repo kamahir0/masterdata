@@ -105,8 +105,10 @@ include matchingはOR、exclude matchingもORでなければならず（MUST）�
 
 named Build Profileの指定はoptionalでなければならない（MUST）。名前なしの `masterdata build` は、保存されたprofileを暗黙に
 選ぶのではなく、includeとexcludeがともに空のunfiltered buildとして扱わなければならない（MUST）。`--profile production` の
-ようなnamed profile指定は、指定されたproject profileを使わなければならない（MUST）。includeとexcludeがともに空のnamed
-profileはvalidであり、unfiltered buildとselection-equivalentでなければならない（MUST）。`--include-tag` や
+ようなnamed profile指定は、指定されたproject profileを使わなければならない（MUST）。明示的に指定されたprofile nameがproject
+内に存在しない場合、operationはfailureにならなければならず（MUST）、unfiltered build、別のprofile、またはempty profileへ
+fallbackしてはならない（MUST NOT）。includeとexcludeがともに空のnamed profileはvalidであり、unfiltered buildとselection-equivalent
+でなければならない（MUST）。`--include-tag` や
 `--exclude-tag` のようなprofile外のad-hoc selectorをcanonical build behaviorとして追加してはならない（MUST NOT）。
 
 ### BUILD-SELECT-010
@@ -213,7 +215,7 @@ proposalのscope外である。
 | `BUILD-SELECT-006` | include/excludeのset semantics、collection omissionのempty-set解決、overlap error、unused tagのvalidityが観測できる。 | duplicate、overlap、unknown profile key、未使用tagだけを理由とするfailure、またはv1外のprofile propertyへselection semanticsが付与される。 |
 | `BUILD-SELECT-007` | CLIとGUIの同じprofile選択が同じresolved selectionになる。 | GUIが独自selectionを持つ、またはCLI subprocessへdomain selectionを委譲する。 |
 | `BUILD-SELECT-008` | includeのOR、excludeのOR、exclude優先、untagged recordの条件がformulaどおりになる。 | formulaと異なるrecordがselectedになる。 |
-| `BUILD-SELECT-009` | unfiltered build、empty named profile、named profileがそれぞれ定義どおりに解決される。 | unnamed buildが保存profileを暗黙に選ぶ、またはad-hoc tag selectorがcanonicalになる。 |
+| `BUILD-SELECT-009` | unfiltered build、empty named profile、existing named profileが定義どおりに解決される。 | unnamed buildが保存profileを暗黙に選ぶ、missing profileがunfiltered/別profile/empty profileへfallbackする、またはad-hoc tag selectorがcanonicalになる。 |
 | `BUILD-SELECT-010` | source/profile validation、selection、selected table、PK/Unique、Reference、ordering、binaryの順序が確認できる。 | selection前にdataset uniquenessまたはReference validationが実行される。 |
 | `BUILD-SELECT-011` | selectionで分離された同一future keyのrecordが各profileで個別にvalidになり、同時selected時だけduplicateになる。 | source全体だけを対象にduplicateをrejectする、またはselected duplicateを許可する。 |
 | `BUILD-SELECT-012` | selected sourceからmasked targetへのReferenceがmissing errorになり、masked sourceは検証対象外になる。 | non-selected rowがReference validationへ混入する。 |
@@ -287,7 +289,7 @@ KnownTags =
 
 ## 未解決事項（Open Questions）
 
-- 指定されたprofile nameが存在しない場合のfailure、fallback、diagnostic codeとseverityは何か。
+- missing profileによるfailureについて、Diagnostic Code、exit code、message text、presentation channelをどう定義するか。
 - unused tagへのwarningを表示する場合、そのchannel、severity、source locationをどうするか。
 - CLIの `--profile` とGUIのprofile selectionをBuildRequestへ表現する正確なAPI/DTOは何か。
 - tag/profile validation failureおよびselection後のconstraint failureへ、どのDiagnostic Codeとlocationを割り当てるか。

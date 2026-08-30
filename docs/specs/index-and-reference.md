@@ -1,24 +1,14 @@
-# Indexとreferenceのmodel（Index and reference model）
+# IndexとReferenceのmodel（Index and Reference model）
 
 Status: Draft
 
-Tableは、MasterMemoryが実用的にサポートできる範囲で、primary key、composite primary key、
-複数のsecondary index、unique/non-unique secondary index、composite secondary indexをサポート
-する予定である。Field identityとindex numberは別のconceptである。
+Table、Primary Key、Secondary Keyのcurrent proposalは、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)がcanonical ownerである。
+このdocumentは、Table/Key proposalとReferenceのmaturityを混在させないため、Primary Key、Secondary Key、UniquenessのRequirement definitionを
+所有しない。`INDEX-PRIMARY-001`、`INDEX-SECONDARY-001`、`INDEX-UNIQUE-001`は、既存IDを維持したままTable/Key仕様へ移動した。
 
-予定しているRequirement ID:
-
-### INDEX-PRIMARY-001
-
-Tableは、composite keyを含む1つのprimary keyを宣言してもよい（MAY）。
-
-### INDEX-SECONDARY-001
-
-Tableは複数のsecondary indexを宣言してもよい（MAY）。
-
-### INDEX-UNIQUE-001
-
-Uniquenessは明示的なpropertyであり、field nameからの推論ではない。
+Table/Key proposalは、explicitなMessagePack field `key`とgenerated `[Key(n)]`、Primary Key / Secondary Keyのfield-name sequence、
+`nonUnique`、selection後のconstraint適用を扱う。ReferenceからPrimary/Secondary Keyへ向けるexact syntaxやtarget identityは、まだこのDraft
+documentの未解決事項である。
 
 ### REF-001
 
@@ -33,5 +23,7 @@ unique targetは1件にresolveし、non-unique targetは複数件にresolveす�
 Referenceはbuild中にvalidateしなければならず（MUST）、generated helperはmaster recordに
 `MemoryDatabase`を保持せず、callerから受け取らなければならない（MUST）。
 
-Open Questions: exact YAML syntax、nullability、missing-reference severity、generated helperの
-naming policy。
+Referenceのexact YAML syntax、nullability、missing-reference severity、generated helperのnaming policyは未解決である。
+
+Primary Key / Secondary KeyをReference targetとして指定する場合のfield-name sequence、logical identity、およびvalidation behaviorは、Table/Key仕様で
+先取りせず、Referenceのrefinementで定義する。

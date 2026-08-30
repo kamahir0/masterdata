@@ -22,7 +22,7 @@ table: item
 documentからdataを受け取ってもよい（MAY）。Data fileはfilenameやdirectoryではなく、
 宣言されたtable identityによってmergeする。
 
-## Planned schema shape（予定するschemaの形）
+## Current scaffold shape（current scaffoldのshape）
 
 ```yaml
 kind: schema
@@ -41,6 +41,36 @@ reservedFields:
 Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`、`ReservedField`）に
 保つ。将来のtype/index/reference featureがunstructured mapへ崩れることを防ぐためである。
 
+上記の`id`および`reservedFields`は、current scaffoldと現在ApprovedのField Identity contractを示す実装・仕様evidenceであり、
+新しいTable/Key proposalのimplementation contractではない。Approved Field Identityの置換deltaは、
+[Field IDからMessagePack keyへのspecification change](../spec-changes/0003-field-identity-to-messagepack-key.md)が承認・適用されるまで
+current authorityとして残る。
+
+## Proposed Table / Key shape（提案するTable / Keyのshape）
+
+Table schemaの新しいdirectionは、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)が所有する。新しいpersisted fieldでは、
+Field IDではなくMessagePack専用の`key`を使用する。
+
+```yaml
+kind: schema
+table: item-category
+csharpName: ItemCategoryMaster
+fields:
+  - key: 0
+    name: id
+    type: ItemId
+primaryKey:
+  fields: [id]
+secondaryKeys:
+  - fields: [category]
+    nonUnique: true
+```
+
+このshapeはProposed Table/Key specificationとField Identity change proposalの内容を示すものであり、current parserのimplementation contractではない。
+`key`はMessagePack `[Key(n)]`へ対応するが、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、または
+schema migration identityを表さない。Custom Typeの`id` / `reservedFields`から`key`への移行は、Approved Custom Type specificationへ直接書き込まず、
+上記specification changeのlifecycleに従う。
+
 現在のscaffoldが認識するdocumentは `schema` と `data` だけである。Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
 unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはcurrent parserではまだ受け付けず、
@@ -54,7 +84,7 @@ current scaffoldは `table` をproject-localなlogical table identityとして�
 rename migration、released-schema compatibility、legacy `tableId` migration、cross-project identityは
 引き続きOpen Questionである。
 
-## Planned type declaration（予定するtype declaration）
+## Type declaration（type declaration）
 
 Type Systemは、Value Object、Enum、Flags Enum、Custom Typeを同じunified type-declaration boundaryで扱う方向である。
 Value Objectのcanonical surfaceは[Value Objects仕様](type-system/value-objects.md)、Enum/Flagsのcanonical surfaceは
@@ -84,6 +114,10 @@ parserのimplementation contractではない。type documentのpathまたはfile
 形式は使用しない。Value ObjectとCustom Typeのtype name、およびCustom Type field nameのASCII lexical ruleとgenerated
 C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
 `csharpName` presentation nameへ適用されない。
+
+上記Custom Type例の`id`は、現在ApprovedのCustom Type / Field Identity contractを表す。`key`を使う新しいCustom Type surfaceは、
+[Field IDからMessagePack keyへのspecification change](../spec-changes/0003-field-identity-to-messagepack-key.md)がApprovedかつAppliedになるまで、
+current implementation authorityではない。
 
 ## Masterdata YAML subsetとの関係
 

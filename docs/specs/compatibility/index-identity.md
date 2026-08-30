@@ -2,16 +2,19 @@
 
 Status: Draft
 
-この文書は、schema field identityとgenerated MasterMemory index metadataに関するcompatibility ruleを
-切り出して管理する。
+このdocumentは、logical Secondary Key identityとgenerated MasterMemory index metadataのcompatibility boundaryを追跡する。
+Table / Primary Key / Secondary Keyのcurrent proposalは、[Table / Primary Key / Secondary Key仕様](../table-and-keys.md)がcanonical ownerである。
 
 ### COMPAT-INDEX-001
 
-Field IDとMasterMemory index numberはmodel内で別物として保持しなければならない（MUST）。
+このDraft requirementは、以前提案されていた「Field IDとMasterMemory index numberをmodel内で別物として保持する」というruleのhistoryである。
+Field IDをMessagePack `key`へ置き換える新しいdirectionでは、旧meaningをcurrent normative requirementとして使用しない。このidentifierは履歴のために
+保持し、再利用してはならない（MUST NOT）。
+
+現在のproposalでは、MessagePack field `key`のsemanticsは`SCHEMA-KEY-001`、Secondary Key declaration orderからgenerated `indexNo`へのloweringは
+`INDEX-SECONDARY-004`が所有する。`indexNo`はbackend / codegen detailであり、logical Secondary Key identityまたはcompatibility identityではない。
 
 ## Open Questions（未解決事項）
 
-- source schemaにおいて、secondary indexが持つstable logical identityは何か。
-- generated MasterMemory `indexNo` をdeterministicに割り当てる方法は何か。
 - どのindex changeがwire-compatible、generated-API-compatible、またはbreakingか。
 - generated numeric index numberに依存せず、referenceがindexを指定するにはどうするか。

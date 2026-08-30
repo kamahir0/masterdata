@@ -65,15 +65,19 @@ kebab-case grammarに従わなければならない（MUST）。
 
 ### BUILD-SELECT-006
 
-v1のBuild Profileが持つselection semanticsは `include_tags` と `exclude_tags` に限らなければならない（MUST）。profileは
+v1のBuild Profileが持つcanonicalなsemantic memberは `include_tags` と `exclude_tags` だけでなければならない（MUST）。profileは
 output、compression、platform、per-table selector、inheritance、`extends`、またはprofile compositionの意味を定義してはならない
-（MUST NOT）。v1で定義されていないprofile keyを受理、無視、またはerrorとする具体的な扱いは、このrequirementでは決定しない。
+（MUST NOT）。`[build.profiles.<name>]` 内のunknown keyはconfiguration errorとしてrejectしなければならない（MUST）。
 
 `include_tags` と `exclude_tags` はそれぞれsemantic setであり、entryの順序は意味を持ってはならない（MUST NOT）。同じ
 collection内のduplicate entry、および同じprofile内でincludeとexcludeの両方に現れるtagはconfiguration errorでなければ
 ならない（MUST）。各entryは`BUILD-SELECT-002`のRecord Tag grammarに従わなければならない（MUST）。現在どのsource recordにも
 現れないtagをprofileが参照してもvalidでなければならない（MUST）。実装はその
 状態をwarningとして通知してもよい（MAY）が、unusedであることだけを理由にfailしてはならない（MUST NOT）。
+
+`include_tags` と `exclude_tags` はそれぞれ省略してもよい（MAY）。省略されたcollectionはempty setへresolveしなければならない
+（MUST）。両方を省略したnamed profileはvalidであり、`include_tags = []` および `exclude_tags = []` とselection-equivalentで
+なければならない（MUST）。
 
 ### BUILD-SELECT-007
 
@@ -206,7 +210,7 @@ proposalのscope外である。
 | `BUILD-SELECT-003` | block/flow sequenceが受理され、省略がempty setになる。 | scalar、null、またはsequence以外のshorthandが受理される。 |
 | `BUILD-SELECT-004` | tag orderを変更してもselectionが変わらず、registryなしの新tagが受理される。 | duplicate tag、path/table由来tag、inheritanceが有効になる。 |
 | `BUILD-SELECT-005` | `production` と `debug` を同一project内で定義でき、profile nameのcaseとgrammarが検証される。 | 同名profile、invalid name、case-insensitiveな同一視が受理される。 |
-| `BUILD-SELECT-006` | include/excludeのset semantics、overlap error、unused tagのvalidityが観測できる。 | duplicate、overlap、未使用tagだけを理由とするfailure、またはv1外のprofile propertyへselection semanticsが付与される。 |
+| `BUILD-SELECT-006` | include/excludeのset semantics、collection omissionのempty-set解決、overlap error、unused tagのvalidityが観測できる。 | duplicate、overlap、unknown profile key、未使用tagだけを理由とするfailure、またはv1外のprofile propertyへselection semanticsが付与される。 |
 | `BUILD-SELECT-007` | CLIとGUIの同じprofile選択が同じresolved selectionになる。 | GUIが独自selectionを持つ、またはCLI subprocessへdomain selectionを委譲する。 |
 | `BUILD-SELECT-008` | includeのOR、excludeのOR、exclude優先、untagged recordの条件がformulaどおりになる。 | formulaと異なるrecordがselectedになる。 |
 | `BUILD-SELECT-009` | unfiltered build、empty named profile、named profileがそれぞれ定義どおりに解決される。 | unnamed buildが保存profileを暗黙に選ぶ、またはad-hoc tag selectorがcanonicalになる。 |
@@ -236,6 +240,23 @@ records:
 [build.profiles.production]
 include_tags = []
 exclude_tags = ["debug", "development"]
+
+[build.profiles.debug]
+include_tags = ["debug"]
+
+[build.profiles.all]
+```
+
+`production` のように一方だけを指定したprofileでは、指定しないcollectionをempty setとして解決する。`all` は両方のcollectionを
+省略しているため、両方をempty arrayとして指定したnamed profileおよびunfiltered buildとselection-equivalentであるが、named
+profileとして存在する。
+
+次はunknown profile keyを含むためinvalidである。
+
+```toml
+[build.profiles.production]
+exclude_tags = ["debug"]
+foo = "bar"
 ```
 
 同じfuture Primary Keyを持つrecordをselectionで分離する例:
@@ -267,8 +288,6 @@ KnownTags =
 ## 未解決事項（Open Questions）
 
 - 指定されたprofile nameが存在しない場合のfailure、fallback、diagnostic codeとseverityは何か。
-- v1で定義されていないprofile keyをunknown configurationとしてreject、ignore、または別の扱いにするか。
-- named profileで `include_tags` または `exclude_tags` の一方を省略した場合に、欠けたcollectionをempty setとして解決するか。
 - unused tagへのwarningを表示する場合、そのchannel、severity、source locationをどうするか。
 - CLIの `--profile` とGUIのprofile selectionをBuildRequestへ表現する正確なAPI/DTOは何か。
 - tag/profile validation failureおよびselection後のconstraint failureへ、どのDiagnostic Codeとlocationを割り当てるか。

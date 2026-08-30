@@ -34,7 +34,11 @@ misleadingなfinal generated directoryを残すことはない。production buil
 場合、generated C#、binary output、cacheへのwriteはstagingを使い、必要なすべてのstageが成功した
 後にのみpublishしなければならない（MUST）。
 
-Value Object / Custom Typeのgenerated identifier validationのobservable contractは、Proposedの[C#命名仕様](type-system/csharp-naming.md)が所有する。
+Record Tags、Build Profiles、Build Selectionのselection semanticsは、[Build Selection仕様](build-selection.md)が所有する。このdocumentの
+high-level pipelineにおけるsemantic validationは、selection前のprofile-independent validationと、selection後のdataset-level
+constraint validationへ分けて解釈する。Primary Key、Unique、Referenceの具体的なsyntaxは、それぞれのowner specificationが所有する。
+
+Value Object / Custom Typeのgenerated identifier validationのobservable contractは、Approvedの[C#命名仕様](type-system/csharp-naming.md)が所有する。
 採用理由と比較したalternativeは[C# naming RFC](../rfcs/0003-csharp-naming.md)に残す。build pipelineはこの命名ruleを別の
 normalizationやrepairへ置き換えてはならない（MUST NOT）。
 

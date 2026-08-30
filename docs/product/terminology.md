@@ -16,6 +16,11 @@ Status: Draft
 - **Type Capability**: direct key compatibilityなど、typeが公開し得る観測可能なpermissionまたはbehavior。type-system specificationsは、特定のimplementation data structureを要求せずにcapabilityを定義する。
 - **Schema document**: `kind: schema` を持ち、tableのstable identityとfieldsを宣言するYAML file。
 - **Data**: tableへ供給するvalueとrecord。dataがschemaの意味を再定義することはない。
+- **Record Tag**: source recordに付与するproject-localなbuild-time label。`$tags` に保持し、generated C#やMasterMemory binaryのdomain dataには含めない。tagのsyntaxとselectionへの影響はBuild Selection specificationが管理する。
+- **Build Profile**: `masterdata.toml` に保存される名前付きのinclude/exclude selection。profileのsyntaxとselection semanticsはBuild Selection specificationが管理する。
+- **Build Selection**: Build Profileまたはunfiltered buildから解決されたselectorをsource recordへ適用し、selected logical datasetを構成する処理。
+- **Selected logical dataset**: Build Selection後にtableごとに構成され、dataset-level constraintとbinary buildの入力になるrecord集合。
+- **Masterdata YAML subset**: Masterdataが受理するYAMLの構造・collection・scalar syntaxの範囲。特定parser/libraryのdefault behaviorからは導出せず、独立したYAML subset specificationが管理する。
 - **Data document**: `kind: data` を持ち、宣言したtableへrecordsを提供するYAML file。
 - **Table**: source fileのpathに依存せず、宣言されたproject-localな `table` identityによって識別されるrecordの論理的なcollection。
 - **Record**: tableに属する1つのinstanceまたはrow。

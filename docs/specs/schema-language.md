@@ -41,10 +41,10 @@ reservedFields:
 Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`、`ReservedField`）に
 保つ。将来のtype/index/reference featureがunstructured mapへ崩れることを防ぐためである。
 
-現在のscaffoldが認識するdocumentは `schema` と `data` だけである。Proposedの
-[Value Objects仕様（Value Objects specification）](type-system/value-objects.md)は、将来のunified type-declaration
-documentの方向として `kind: type` を定義する。このproposed kindはcurrent parserでは受け付けず、
-specificationがApprovedかつImplementedになるまでimplementation contractではない。
+現在のscaffoldが認識するdocumentは `schema` と `data` だけである。Approvedの
+[Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
+unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはcurrent parserではまだ受け付けず、
+specificationがImplementedになるまでcurrent parserのimplementation contractではない。
 
 current scaffoldは `table` をproject-localなlogical table identityとして使用する。存在する場合の
 `csharpName` はgenerated C# type-name overrideであり、2つ目のtable identityではない。以前に示した
@@ -84,23 +84,13 @@ current parserのimplementation contractではない。type documentのpathま�
 C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
 `csharpName` presentation nameへ適用されない。
 
-## YAML subsetのOpen Questions
+## Masterdata YAML subsetとの関係
 
-productが承認したYAML subsetはまだない。refinementでは、current parserからこれらの選択を導出せず、
-見える状態に残さなければならない（MUST）。
+Masterdataが受理するYAMLの構造・collection・scalar semanticsは、[Masterdata YAML subset仕様](yaml-subset.md)がcanonical ownerである。
+このspecificationは `Status: Proposed` であり、productが承認したYAML subsetはまだない。current parserのdefault behaviorからsubsetの
+意味を導出してはならない（MUST NOT）。parser/libraryの選択は[`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md)で
+別途追跡する。
 
-- anchorとaliasを許可するか。
-- merge keyを許可するか。
-- 1つのfileで `---` によって区切られた複数documentを許可するか。
-- custom tagを許可するか。
-- duplicate mapping keyをどのようにdiagnoseするか。
-- numericおよびtimestamp-looking scalarをどのように解釈するか。
-- schema/document-levelでcanonical specificationが所有していないunknown YAML memberをreject、ignore、またはround-trip editingのためにpreserveするか。
-
-Open Questionsには、GUIがYAMLを書き戻す際にcomment、formatting、quoteを保持する必要があるかも含まれる。
-parser/library selectionは、[`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md)
-で別途追跡する。
-
-このOpen Questionはschema/document envelopeなどのgenericなmemberの扱いだけを対象とする。Custom Type data mapping内の
-schema未定義memberは、この一般的なquestionの対象外であり、`SCHEMA-CUSTOM-007` が所有するvalidation ruleに従って
-validation errorとする。
+timestamp-looking plain scalarの扱い、GUI saveでのcomment・formatting・quote保持、およびparser dialectの未決定事項は、YAML subset仕様の
+`Open Questions`に残る。Custom Type data mapping内のschema未定義memberは、このgeneric routingの対象外であり、`SCHEMA-CUSTOM-007`が
+所有するvalidation ruleに従ってvalidation errorとする。

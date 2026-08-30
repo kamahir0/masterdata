@@ -106,6 +106,16 @@ source field nameからgenerated public property identifierへのmappingは、�
 またはcollision disambiguationを自動で行ってはならない（MUST NOT）。invalid C# identifier、reserved keyword、generated identifier collisionは
 validation errorとしてrejectしなければならない（MUST）。このTable-specific ruleは、Approved C# Naming仕様へ新しいTable ruleを追加するものではない。
 
+Table fieldのbase typeは、Primitive Type、Value Object、Custom Type、Enum、またはFlags Enumのいずれかでなければならない（MUST）。
+Table、Index、Primary Key、Secondary Key、Reference、その他のrelationshipまたはschema constructをfieldのbase typeとして使用してはならない
+（MUST NOT）。fieldのshapeには、base typeに対して`T`、`T?`、または`T[]`を適用しなければならず（MUST）、modifierのsemanticsは
+[Field Modifiers仕様](type-system/field-modifiers.md)に従わなければならない（MUST）。unknownまたはunsupportedなtype categoryはvalidation errorとして
+rejectしなければならない（MUST）。
+
+Table fieldとして使用可能であることは、Primary KeyまたはSecondary Key componentとして使用可能であることを意味しない（MUST NOT）。
+Custom TypeおよびFlags Enumは通常のTable fieldのbase typeとして使用できるが、それぞれのowner specificationが定めるとおり、どちらもkey-incompatible
+である。Primitive、Value Object、Custom Type、Enum、Flags Enumのsemanticsとcapabilityは、それぞれのowner specificationに従わなければならない（MUST）。
+
 ### SCHEMA-TABLE-004
 
 YAML `fields` sequenceのdeclaration orderは、human-facing presentation semanticsとして保持しなければならない（MUST）。このorderはGUIのcolumn orderと
@@ -202,7 +212,17 @@ Primary Key componentとして使用してはならない（MUST NOT）。Primit
 ### INDEX-SECONDARY-001
 
 Tableは0個以上のSecondary Keyを宣言してもよい（MAY）。canonical propertyは`indexes`ではなく`secondaryKeys`であり、各entryはorderedな
-`fields` sequenceを持たなければならない（MUST）。Secondary Key entryにlogical `name`を指定してはならない（MUST NOT）。
+`fields` sequenceを持たなければならない（MUST）。`fields` memberは必須であり、1個以上のcurrent Table field nameを含まなければならない（MUST）。
+したがって、`fields: []`はinvalidであり、0-component Secondary Keyにspecial semanticsを与えてはならない（MUST NOT）。各componentはcurrent Table fieldへ
+resolveしなければならず（MUST）、unknown fieldまたは同じentry内のduplicate componentはvalidation errorとしてrejectしなければならない（MUST）。
+Secondary Key entryにlogical `name`を指定してはならない（MUST NOT）。
+
+Primary KeyとSecondary Keyのcomponent cardinalityは、いずれも1個以上である。
+
+```text
+primaryKey.fields       = 1..N
+secondaryKeys[*].fields = 1..N
+```
 
 ```yaml
 secondaryKeys:
@@ -271,7 +291,7 @@ key reuse policyはこのproposalで定義せず、[specification change 0003](.
 | `SCHEMA-KEY-002` | GUIの新field default候補がactive keyの最大値+1となる。authorがkeyを変更してもよい。 | GUI候補が必ずserialization identityを固定する、またはkey再採番からlogical field lifecycleを推測する。 |
 | `SCHEMA-TABLE-001` | 同じ`table`にschema 1件とdata 0件以上を結合でき、0-record source/selected Tableもvalidなままschema/APIを持つ。 | schemaが2件、schema fragment merge、またはempty Tableが必ずrejectされる。 |
 | `SCHEMA-TABLE-002` | validな`item-category`がproject-local identityとなり、未指定時に`ItemCategory`、override時に`HTTPServer`などdeterministicなtype nameになる。 | path/filenameがidentityを変える、invalid `table` grammarが受理される、generated type collisionがsuffix/escapeで修復される。 |
-| `SCHEMA-TABLE-003` | Table field `itemId`から`ItemId`が生成され、`fooBar`は`FooBar`として残り、`key`/`name`/`type`がcanonical surfaceへresolveする。 | `id`をPrimary Keyと暗黙解釈する、snake/kebab/re-case/keyword escapeが行われる、invalid field name/keyword/collisionが受理される。 |
+| `SCHEMA-TABLE-003` | Primitive、Value Object、Custom Type、Enum、Flags EnumをTable fieldのbase typeとして使用でき、例えば`Reward`または`Feature`へresolveする。`T`、`T?`、`T[]`はField Modifiers仕様どおりに解決される。 | Table、Index、Primary Key、Secondary Key、Reference等のschema construct、unknown type category、unsupported type referenceがfield base typeとして受理される。Custom Type/Flags Enumをfieldとして許可したことだけを理由にkey componentとして許可する。 |
 | `SCHEMA-TABLE-004` | YAML field orderがGUI columnとgenerated property declaration orderへ反映され、`[Key(n)]`は明示keyを保持する。 | propertyがkeyやalphabetical順へsortされ、field reorderがrecord/key semanticsを変更する。 |
 | `SCHEMA-TABLE-005` | rowが`public sealed partial class`、`get; init;` property、`[MemoryTable]`、`[MessagePackObject]`、`[Key(n)]`を持つ。 | record、mutable setter、`required`、row structural equality、またはMessagePack/Primary/Secondary attributesの誤ったmappingが生成される。 |
 | `SCHEMA-TABLE-006` | 複数data documentのrecordsが同じTableへmergeされ、schema-unknown memberはrejectされる。Required/Nullable/Arrayと`$tags`がowner仕様どおりに扱われる。 | source file orderがdomain semanticsを変える、unknown fieldをignoreする、`$tags`がrow/binary fieldになる。 |
@@ -279,13 +299,62 @@ key reuse policyはこのproposalで定義せず、[specification change 0003](.
 | `SCHEMA-TABLE-008` | selected rowsがPrimary Keyのdeclared orderでcanonical sortされ、source order/file splitで同じdatasetのbinary semanticsが変わらない。 | record/file discovery orderがbinary semanticsを変える、またはcomposite component orderを無視する。 |
 | `INDEX-PRIMARY-001` | `primaryKey.fields`が存在し、non-emptyでcurrent field symbolsへresolveし、Tableごとにexactly 1つのPrimary Keyとなる。 | missing Primary Key、empty fields、unknown field、duplicate component、`id` magic inference、`nonUnique`が受理される。 |
 | `INDEX-PRIMARY-002` | `[region, id]`がその順のcomposite keyとして解決され、comparison/lookupがlexicographic orderを使う。 | componentが自動sortされ、declaration/key numeric orderがPrimary Key orderを上書きする。 |
-| `INDEX-PRIMARY-003` | int/uint/long/ulong/string、Value Object、normal EnumのRequired scalarがcomponentになる。 | bool/float/double、Flags、Custom、Nullable、Array、またはnon-key/non-comparison typeがPrimary Keyになる。 |
-| `INDEX-SECONDARY-001` | `secondaryKeys`を0件以上宣言でき、各entryがordered `fields`を持ち、`indexes`またはsecondary `name`を要求しない。 | canonical propertyが`indexes`へ戻る、name overrideがidentityとして追加される、またはこのrequirementに反するshapeが黙って受理される。 |
+| `INDEX-PRIMARY-003` | int/uint/long/ulong/string、Value Object、normal EnumのRequired scalarがcomponentになる。 | bool/float/double、Flags、Custom、Nullable、Array、またはnon-key/non-comparison typeがPrimary Keyになる。Custom Type/Flags Enumを通常のTable fieldとして許可したことだけを理由にcomponentへ昇格させる。 |
+| `INDEX-SECONDARY-001` | `secondaryKeys`を0件以上宣言でき、各entryが1個以上のcurrent field nameからなるordered `fields`を持ち、`indexes`またはsecondary `name`を要求しない。`[category]`、`[category, rarity]`が受理される。 | `fields`欠落、`fields: []`、unknown field、同一entry内のduplicate component、canonical propertyが`indexes`へ戻る、またはname overrideがidentityとして追加される。 |
 | `INDEX-SECONDARY-002` | 同じordered shapeやPrimary Keyと同じshapeがduplicateとしてrejectされ、MessagePack key/Field IDをidentityに使わない。 | key変更やField IDからsecondary identityが導出される、duplicate shapeが共存する。 |
 | `INDEX-SECONDARY-003` | Primary Keyと同じRequired scalar capability ruleが適用され、Nullable/Arrayがrejectされる。 | modifierまたはbase capabilityによって禁止されたcomponentが受理される。 |
 | `INDEX-UNIQUE-001` | omission/`false`がunique、`true`がnon-uniqueとなり、`true`が`[NonUnique]`へlowerされる。 | uniquenessがfield nameやdeclaration presenceから推論される、Primary Keyへ`nonUnique`が付く、またはunique duplicateが許可される。 |
 | `INDEX-SECONDARY-004` | declaration順がindexNo 0, 1, 2へlowerされ、component順がkeyOrderへlowerされる。reorderでindexNoが変わってもlogical identityとは扱われない。 | indexNoがpersistent identity/compatibility identityになる、またはcomponent orderが失われる。 |
 | `INDEX-SECONDARY-005` | generated query API name/signature collisionがschema validation errorになる。prefix shapeはbackend上distinctなら受理される。 | collisionがsuffix/prefixで隠される、またはSecondary Key `name`で回避する。 |
+
+`SCHEMA-TABLE-003` のbase-type boundaryは、次のfield fragmentで観測できる。`Reward`はvalidなCustom Type、`Feature`はvalidなFlags Enumとして、
+通常のTable fieldに使用できる。
+
+```yaml
+fields:
+  - key: 0
+    name: reward
+    type: Reward
+  - key: 1
+    name: features
+    type: Feature
+```
+
+次のtype referenceは、Table fieldのbase typeとしてはrejectされなければならない。
+
+```yaml
+fields:
+  - key: 0
+    name: nestedTable
+    type: Table
+  - key: 1
+    name: unknownValue
+    type: UnknownTypeCategory
+```
+
+このfield-type acceptanceと、`Reward`または`Feature`をPrimary Key / Secondary Key componentとしてrejectするoutcomeは別の観測である。
+後者は`INDEX-PRIMARY-003`および`INDEX-SECONDARY-003`のcapability validationが所有する。
+
+`INDEX-SECONDARY-001` のshapeは、次のsuccess/failure evidenceで観測できる。
+
+```yaml
+# success
+secondaryKeys:
+  - fields: [category]
+  - fields: [category, rarity]
+
+# failure: zero components
+secondaryKeys:
+  - fields: []
+
+# failure: duplicate component
+secondaryKeys:
+  - fields: [category, category]
+
+# failure: unknown field
+secondaryKeys:
+  - fields: [unknownField]
+```
 
 ## 互換性
 
@@ -387,8 +456,6 @@ public sealed partial class ItemCategoryMaster
 - generated C#のnamespace、MessagePack resolver registration、serialization constructor、exact formatterのshapeをどう定義するか。
 - released schema間でMessagePack binaryを互換にする必要が生じた場合、どの独立したbinary compatibility仕様とmigration policyを採用するか。
 - Enum / Flags Enumの詳細仕様が利用可能になった後、normal Enum capabilityの依存関係と実装順序をどう管理するか。
-- Secondary Keyの`fields` sequenceがemptyの場合のvalidityとvalidation behaviorをどう定義するか。
-- Table fieldの`type`が参照できるbase type categoryの完全な許可集合を、どのowner specificationで定義するか。
 
 ## 非目標
 

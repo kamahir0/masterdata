@@ -6,7 +6,13 @@ use serde_yaml::Value;
 
 use crate::{Diagnostic, ErrorKind, MasterdataError, Result};
 
+/// A table schema document. `key` is deliberately a MessagePack key, not a
+/// logical field identity; the latter was retired by specification change
+/// 0003. Type modifiers are represented as fields rather than being encoded
+/// in `type_name` so the resolver can share one semantic path for tables and
+/// Custom Types.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SchemaDocument {
     pub kind: String,
     pub table: String,
@@ -14,28 +20,139 @@ pub struct SchemaDocument {
     pub csharp_name: Option<String>,
     #[serde(default)]
     pub fields: Vec<FieldDefinition>,
-    #[serde(rename = "reservedFields", default)]
-    pub reserved_fields: Vec<ReservedField>,
+    #[serde(rename = "primaryKey", default)]
+    pub primary_key: Option<PrimaryKeyDefinition>,
+    #[serde(rename = "secondaryKeys", default)]
+    pub secondary_keys: Vec<SecondaryKeyDefinition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct FieldDefinition {
-    pub id: u32,
+    pub key: u32,
     pub name: String,
     #[serde(rename = "type")]
     pub type_name: String,
+    #[serde(default)]
+    pub nullable: bool,
+    #[serde(default)]
+    pub array: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ReservedField {
-    pub id: u32,
-    #[serde(rename = "formerName", default)]
-    pub former_name: Option<String>,
-    #[serde(rename = "formerType", default)]
-    pub former_type: Option<String>,
+#[serde(deny_unknown_fields)]
+pub struct PrimaryKeyDefinition {
+    pub fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SecondaryKeyDefinition {
+    pub fields: Vec<String>,
+    #[serde(rename = "nonUnique", default)]
+    pub non_unique: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TypeDocument {
+    pub kind: String,
+    pub name: String,
+    #[serde(rename = "valueObject", default)]
+    pub value_object: Option<ValueObjectDefinition>,
+    #[serde(default)]
+    pub custom: Option<CustomTypeDefinition>,
+    #[serde(rename = "enum", default)]
+    pub enum_definition: Option<EnumDefinition>,
+    #[serde(default)]
+    pub flags: Option<FlagsDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ValueObjectDefinition {
+    pub underlying: String,
+    #[serde(default)]
+    pub conversions: ConversionDefinition,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ConversionDefinition {
+    #[serde(rename = "fromUnderlyingImplicit", default)]
+    pub from_underlying_implicit: bool,
+    #[serde(rename = "toUnderlyingImplicit", default)]
+    pub to_underlying_implicit: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CustomTypeDefinition {
+    pub fields: Vec<TypeFieldDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TypeFieldDefinition {
+    pub key: u32,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_name: String,
+    #[serde(default)]
+    pub nullable: bool,
+    #[serde(default)]
+    pub array: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EnumDefinition {
+    pub underlying: String,
+    pub members: Vec<EnumMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FlagsDefinition {
+    pub underlying: String,
+    pub members: Vec<EnumMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EnumMember {
+    pub name: String,
+    pub value: IntegerLiteral,
+}
+
+/// Enum values are kept as a signed wide integer after YAML deserialization.
+/// The declared underlying type later applies the fixed-width range check;
+/// retaining the YAML number as a typed integer avoids silently accepting
+/// floating-point or string values as enum numbers.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IntegerLiteral(pub i128);
+
+impl<'de> Deserialize<'de> for IntegerLiteral {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        let integer = match value {
+            Value::Number(number) => number
+                .as_i64()
+                .map(i128::from)
+                .or_else(|| number.as_u64().map(i128::from)),
+            _ => None,
+        };
+        integer
+            .map(Self)
+            .ok_or_else(|| serde::de::Error::custom("enum member value must be an integer scalar"))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct DataDocument {
     pub kind: String,
     pub table: String,
@@ -47,6 +164,7 @@ pub struct DataDocument {
 pub enum SourceDocument {
     Schema(SchemaDocument),
     Data(DataDocument),
+    Type(TypeDocument),
 }
 
 impl SourceDocument {
@@ -54,13 +172,22 @@ impl SourceDocument {
         match self {
             Self::Schema(_) => "schema",
             Self::Data(_) => "data",
+            Self::Type(_) => "type",
         }
     }
 
-    pub fn table(&self) -> &str {
+    pub fn table_identity(&self) -> Option<&str> {
         match self {
-            Self::Schema(document) => &document.table,
-            Self::Data(document) => &document.table,
+            Self::Schema(document) => Some(&document.table),
+            Self::Data(document) => Some(&document.table),
+            Self::Type(_) => None,
+        }
+    }
+
+    pub fn type_name(&self) -> Option<&str> {
+        match self {
+            Self::Type(document) => Some(&document.name),
+            Self::Schema(_) | Self::Data(_) => None,
         }
     }
 }
@@ -82,7 +209,7 @@ impl ProjectDocuments {
             .iter()
             .filter_map(|loaded| match &loaded.document {
                 SourceDocument::Schema(document) => Some((&loaded.path, document)),
-                SourceDocument::Data(_) => None,
+                SourceDocument::Data(_) | SourceDocument::Type(_) => None,
             })
     }
 
@@ -90,8 +217,17 @@ impl ProjectDocuments {
         self.files
             .iter()
             .filter_map(|loaded| match &loaded.document {
-                SourceDocument::Schema(_) => None,
                 SourceDocument::Data(document) => Some((&loaded.path, document)),
+                SourceDocument::Schema(_) | SourceDocument::Type(_) => None,
+            })
+    }
+
+    pub fn types(&self) -> impl Iterator<Item = (&PathBuf, &TypeDocument)> {
+        self.files
+            .iter()
+            .filter_map(|loaded| match &loaded.document {
+                SourceDocument::Type(document) => Some((&loaded.path, document)),
+                SourceDocument::Schema(_) | SourceDocument::Data(_) => None,
             })
     }
 }
@@ -120,9 +256,13 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
             .with_source(path.clone())
         })?;
 
+    // Dispatching through a typed struct is intentional: type declarations
+    // must not remain a stringly-typed map whose category or modifier meaning
+    // is invented later by code generation.
     let document = match kind.as_str() {
         "schema" => serde_yaml::from_value::<SchemaDocument>(value).map(SourceDocument::Schema),
         "data" => serde_yaml::from_value::<DataDocument>(value).map(SourceDocument::Data),
+        "type" => serde_yaml::from_value::<TypeDocument>(value).map(SourceDocument::Type),
         other => {
             return Err(MasterdataError::new(
                 "E-YAML-UNKNOWN-KIND",

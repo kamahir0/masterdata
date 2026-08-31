@@ -131,7 +131,7 @@ mod tests {
         .expect("config");
         fs::write(
             directory.path().join("sources/item.yaml"),
-            "kind: schema\ntable: item\nfields: []\nreservedFields: []\n",
+            "kind: schema\ntable: item\nfields: []\n",
         )
         .expect("schema");
 

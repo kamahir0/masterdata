@@ -1,0 +1,9 @@
+kind: type
+name: Rarity
+enum:
+  underlying: int
+  members:
+    - name: Common
+      value: 1
+    - name: Rare
+      value: 2

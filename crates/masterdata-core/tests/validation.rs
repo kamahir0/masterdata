@@ -18,7 +18,7 @@ fn declared_kind_loads_schema_and_data_documents() {
     let directory = tempdir().expect("temp directory");
     write_project(
         directory.path(),
-        "kind: schema\ntable: item\ncsharpName: ItemMaster\nfields:\n  - id: 0\n    name: id\n    type: int\n",
+        "kind: schema\ntable: item\ncsharpName: ItemMaster\nfields:\n  - key: 0\n    name: id\n    type: int\n",
     );
     fs::write(
         directory.path().join("sources").join("records.yaml"),

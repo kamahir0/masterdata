@@ -1,8 +1,9 @@
 //! C# generation boundary.
 //!
-//! The renderer deliberately produces a small immutable C# scaffold today. It
-//! does not emit MasterMemory attributes or binary-format code; those belong to
-//! the .NET builder boundary described in `masterdata-dotnet`.
+//! The renderer produces the approved Type System declarations and the current
+//! immutable Table row scaffold. It does not emit MasterMemory index/source
+//! generator or binary-format code; those belong to the .NET builder boundary
+//! described in `masterdata-dotnet`.
 
 mod model;
 mod render;

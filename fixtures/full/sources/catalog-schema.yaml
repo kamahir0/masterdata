@@ -2,19 +2,15 @@ kind: schema
 table: item
 csharpName: ItemMaster
 fields:
-  - id: 0
+  - key: 0
     name: id
     type: int
-  - id: 1
+  - key: 1
     name: code
     type: ItemCode
-  - id: 2
+  - key: 2
     name: rarity
     type: Rarity
-  - id: 3
+  - key: 3
     name: tags
     type: ItemTags
-reservedFields:
-  - id: 4
-    formerName: legacyName
-    formerType: string

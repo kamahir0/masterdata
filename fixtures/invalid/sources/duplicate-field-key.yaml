@@ -1,0 +1,9 @@
+kind: schema
+table: invalid-fields
+fields:
+  - key: 1
+    name: active
+    type: int
+  - key: 1
+    name: duplicateKey
+    type: int

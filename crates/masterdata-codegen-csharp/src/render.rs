@@ -2,7 +2,11 @@ use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::path::Path;
 
-use masterdata_core::{BuildPlan, ErrorKind, MasterdataError, Result, SchemaDocument};
+use masterdata_core::{
+    BuildPlan, ErrorKind, FieldDefinition, FieldModifier, MasterdataError, PrimitiveType,
+    ResolvedField, ResolvedType, Result, SchemaDocument, TypeReference, TypeSystem,
+    is_csharp_reserved_keyword,
+};
 
 use crate::model::{CSharpGenerationPlan, GeneratedFile, GenerationNote};
 
@@ -27,43 +31,51 @@ impl CSharpGenerator {
     pub fn plan(&self, build_plan: &BuildPlan) -> Result<CSharpGenerationPlan> {
         validate_namespace(&self.namespace)?;
         let schemas: Vec<_> = build_plan.documents.schemas().collect();
-        if schemas.is_empty() {
+        let has_types = !build_plan.type_system.types.is_empty();
+        if schemas.is_empty() && !has_types {
             return Err(MasterdataError::new(
-                "E-CODEGEN-NO-SCHEMA",
+                "E-CODEGEN-NO-DECLARATIONS",
                 ErrorKind::NotImplemented,
-                "C# generation requires at least one schema document",
+                "C# generation requires at least one schema or type declaration",
             ));
         }
 
-        let mut files = Vec::with_capacity(schemas.len());
+        let mut files = Vec::with_capacity(schemas.len() + build_plan.type_system.types.len());
         let mut generated_type_names = BTreeSet::new();
         let mut generated_file_names = BTreeSet::new();
+
+        for resolved in build_plan.type_system.types.values() {
+            let type_name = resolved.name().to_owned();
+            insert_generated_name(
+                &mut generated_type_names,
+                &mut generated_file_names,
+                &type_name,
+            )?;
+            files.push(render_type(
+                &self.namespace,
+                resolved,
+                &build_plan.type_system,
+            )?);
+        }
+
         for (_, schema) in schemas {
-            let type_name = generated_type_name(schema);
-            if !generated_type_names.insert(type_name.clone()) {
-                return Err(MasterdataError::new(
-                    "E-CODEGEN-TYPE-NAME-COLLISION",
-                    ErrorKind::Validation,
-                    format!("multiple schemas generate the C# type/file name `{type_name}`"),
-                ));
-            }
-            let filename_key = type_name.to_ascii_lowercase();
-            if !generated_file_names.insert(filename_key) {
-                return Err(MasterdataError::new(
-                    "E-CODEGEN-FILENAME-COLLISION",
-                    ErrorKind::Validation,
-                    format!(
-                        "multiple schemas generate filenames that collide case-insensitively with `{type_name}.g.cs`"
-                    ),
-                ));
-            }
-            files.push(render_schema(&self.namespace, schema)?);
+            let type_name = generated_table_type_name(schema);
+            insert_generated_name(
+                &mut generated_type_names,
+                &mut generated_file_names,
+                &type_name,
+            )?;
+            files.push(render_schema(
+                &self.namespace,
+                schema,
+                &build_plan.type_system,
+            )?);
         }
         Ok(CSharpGenerationPlan {
             namespace: self.namespace.clone(),
             files,
             notes: vec![GenerationNote {
-                message: "MasterMemory attributes, Source Generator integration, and binary output are not implemented in this scaffold.".to_owned(),
+                message: "MasterMemory table/index attributes beyond MessagePack field keys, Source Generator integration, and binary output are not implemented in this slice.".to_owned(),
                 placeholder: true,
             }],
         })
@@ -109,186 +121,438 @@ impl CSharpGenerator {
     }
 }
 
-fn render_schema(namespace: &str, schema: &SchemaDocument) -> Result<GeneratedFile> {
-    let type_name = generated_type_name(schema);
-    if !is_csharp_identifier(&type_name) || is_csharp_keyword(&type_name) {
+fn insert_generated_name(
+    generated_type_names: &mut BTreeSet<String>,
+    generated_file_names: &mut BTreeSet<String>,
+    type_name: &str,
+) -> Result<()> {
+    if !is_csharp_identifier(type_name) || is_csharp_reserved_keyword(type_name) {
         return Err(MasterdataError::new(
             "E-CODEGEN-INVALID-TYPE-NAME",
             ErrorKind::Validation,
             format!("`{type_name}` is not a valid C# type identifier"),
         ));
     }
+    if !generated_type_names.insert(type_name.to_owned()) {
+        return Err(MasterdataError::new(
+            "E-CODEGEN-TYPE-NAME-COLLISION",
+            ErrorKind::Validation,
+            format!("multiple declarations generate the C# type `{type_name}`"),
+        ));
+    }
+    let filename_key = type_name.to_ascii_lowercase();
+    if !generated_file_names.insert(filename_key) {
+        return Err(MasterdataError::new(
+            "E-CODEGEN-FILENAME-COLLISION",
+            ErrorKind::Validation,
+            format!("generated filenames collide case-insensitively with `{type_name}.g.cs`"),
+        ));
+    }
+    Ok(())
+}
 
+fn render_type(
+    namespace: &str,
+    resolved: &ResolvedType,
+    type_system: &TypeSystem,
+) -> Result<GeneratedFile> {
     let mut document = CSharpDocument::new();
-    document.line("// <auto-generated />");
-    document
-        .line("// Scaffold only: MasterMemory source generation is intentionally not emitted yet.");
-    document.line(format!("// Source table identity: {}", schema.table));
-    document.line(format!("// Generated C# type name: {type_name}"));
-    document.line("#nullable enable");
+    document.header(namespace);
+    match resolved {
+        ResolvedType::ValueObject {
+            name,
+            underlying,
+            conversions,
+        } => {
+            render_value_object(&mut document, name, *underlying, *conversions);
+        }
+        ResolvedType::Custom { name, fields } => {
+            render_custom(&mut document, name, fields, type_system)?
+        }
+        ResolvedType::Enum {
+            name,
+            underlying,
+            members,
+        } => {
+            render_enum(&mut document, name, *underlying, members, false);
+        }
+        ResolvedType::Flags {
+            name,
+            underlying,
+            members,
+        } => {
+            render_enum(&mut document, name, *underlying, members, true);
+        }
+    }
+    Ok(GeneratedFile {
+        relative_path: std::path::PathBuf::from(format!("{}.g.cs", resolved.name())),
+        contents: document.finish(),
+    })
+}
+
+fn render_value_object(
+    document: &mut CSharpDocument,
+    name: &str,
+    underlying: PrimitiveType,
+    conversions: masterdata_core::ResolvedConversions,
+) {
+    let csharp_underlying = underlying.csharp_name();
+    document.line(format!(
+        "public readonly struct {name} : System.IEquatable<{name}>, System.IComparable<{name}>"
+    ));
+    document.line("{");
+    document.line(format!("    public {csharp_underlying} Value {{ get; }}"));
     document.line("");
-    document.line(format!("namespace {namespace};"));
+    document.line(format!("    public {name}({csharp_underlying} value)"));
+    document.line("    {");
+    if underlying == PrimitiveType::String {
+        document.line("        if (value is null)");
+        document.line("        {");
+        document.line("            throw new System.ArgumentNullException(nameof(value));");
+        document.line("        }");
+    }
+    document.line("        Value = value;");
+    document.line("    }");
+    document.line("");
+    document.line(format!(
+        "    public bool Equals({name} other) => {};",
+        equality_expression(underlying, "Value", "other.Value")
+    ));
+    document.line(format!(
+        "    public override bool Equals(object? obj) => obj is {name} other && Equals(other);"
+    ));
+    document.line("    public override int GetHashCode() => Value.GetHashCode();");
+    document.line(format!(
+        "    public static bool operator ==({name} left, {name} right) => left.Equals(right);"
+    ));
+    document.line(format!(
+        "    public static bool operator !=({name} left, {name} right) => !left.Equals(right);"
+    ));
+    document.line("");
+    // A string Value Object must not inherit culture-sensitive comparison
+    // behavior from the runtime; the approved primitive contract is ordinal
+    // and culture-independent (TYPE-PRIMITIVE-008, SCHEMA-VO-013).
+    let compare = comparison_expression(underlying, "Value", "other.Value");
+    document.line(format!(
+        "    public int CompareTo({name} other) => {compare};"
+    ));
+    document.line(format!(
+        "    public static bool operator <({name} left, {name} right) => left.CompareTo(right) < 0;"
+    ));
+    document.line(format!(
+        "    public static bool operator <=({name} left, {name} right) => left.CompareTo(right) <= 0;"
+    ));
+    document.line(format!(
+        "    public static bool operator >({name} left, {name} right) => left.CompareTo(right) > 0;"
+    ));
+    document.line(format!(
+        "    public static bool operator >=({name} left, {name} right) => left.CompareTo(right) >= 0;"
+    ));
+    document.line("");
+    let tostring = if underlying == PrimitiveType::String {
+        "Value".to_owned()
+    } else {
+        "Value.ToString(System.Globalization.CultureInfo.InvariantCulture)".to_owned()
+    };
+    document.line(format!(
+        "    public override string ToString() => {tostring};"
+    ));
+    if conversions.from_underlying_implicit {
+        document.line("");
+        document.line(format!(
+            "    public static implicit operator {name}({csharp_underlying} value) => new {name}(value);"
+        ));
+    }
+    if conversions.to_underlying_implicit {
+        document.line("");
+        document.line(format!(
+            "    public static implicit operator {csharp_underlying}({name} value) => value.Value;"
+        ));
+    }
+    document.line("}");
+}
+
+fn render_custom(
+    document: &mut CSharpDocument,
+    name: &str,
+    fields: &[ResolvedField],
+    type_system: &TypeSystem,
+) -> Result<()> {
+    document.line(format!(
+        "public readonly struct {name} : System.IEquatable<{name}>"
+    ));
+    document.line("{");
+    for field in fields {
+        // `key` is serialization metadata only and remains independent from
+        // declaration order (SCHEMA-KEY-001).
+        document.line(format!("    [MessagePack.Key({})]", field.key));
+        document.line(format!(
+            "    public {} {} {{ get; }}",
+            csharp_field_type(type_system, &field.base_type, field.modifier)?,
+            property_name(&field.name)
+        ));
+    }
+    document.line("");
+    let parameters = fields
+        .iter()
+        .map(|field| {
+            Ok(format!(
+                "{} {}",
+                csharp_field_type(type_system, &field.base_type, field.modifier)?,
+                field.name
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?
+        .join(", ");
+    document.line(format!("    public {name}({parameters})"));
+    document.line("    {");
+    for field in fields {
+        let parameter = &field.name;
+        match field.modifier {
+            FieldModifier::Array => {
+                // The constructor checks only the direct Array state. Nested
+                // type validity belongs to build validation (SCHEMA-CUSTOM-015).
+                document.line(format!("        if ({parameter}.IsDefault)"));
+                document.line("        {");
+                document.line(format!(
+                    "            throw new System.ArgumentException(\"Array value must not be default.\", nameof({parameter}));"
+                ));
+                document.line("        }");
+            }
+            FieldModifier::Required
+                if matches!(
+                    field.base_type,
+                    TypeReference::Primitive(PrimitiveType::String)
+                ) =>
+            {
+                document.line(format!("        if ({parameter} is null)"));
+                document.line("        {");
+                document.line(format!(
+                    "            throw new System.ArgumentNullException(nameof({parameter}));"
+                ));
+                document.line("        }");
+            }
+            FieldModifier::Required | FieldModifier::Nullable => {}
+        }
+        document.line(format!(
+            "        {} = {parameter};",
+            property_name(&field.name)
+        ));
+    }
+    document.line("    }");
+    document.line("");
+    document.line(format!("    public bool Equals({name} other)"));
+    document.line("    {");
+    document.line("        return ");
+    for (index, field) in fields.iter().enumerate() {
+        // Array equality is intentionally sequence-based rather than based on
+        // ImmutableArray storage identity (TYPE-FIELD-009, SCHEMA-CUSTOM-014).
+        let expression = equality_expression_for_field(field);
+        let conjunction = if index + 1 == fields.len() {
+            ";"
+        } else {
+            " &&"
+        };
+        document.line(format!("            {expression}{conjunction}"));
+    }
+    document.line("    }");
+    document.line(format!(
+        "    public override bool Equals(object? obj) => obj is {name} other && Equals(other);"
+    ));
+    document.line("    public override int GetHashCode()");
+    document.line("    {");
+    // Keep the generated hash implementation dependency-light. The approved
+    // contract requires structural consistency, not a particular algorithm;
+    // avoiding System.HashCode keeps this generated surface independent of a
+    // runtime-specific hash helper; the approved contract fixes consistency,
+    // not a particular hash algorithm.
+    document.line("        var hash = 17;");
+    for field in fields {
+        let property = property_name(&field.name);
+        if field.modifier == FieldModifier::Array {
+            // Hash each element in order so equal Array sequences produce the
+            // same structural hash (TYPE-FIELD-009, SCHEMA-CUSTOM-014).
+            document.line(format!("        foreach (var item in {property})"));
+            document.line("        {");
+            document.line(
+                "            hash = unchecked(hash * 31 + (item is null ? 0 : item.GetHashCode()));",
+            );
+            document.line("        }");
+        } else if field.modifier == FieldModifier::Nullable {
+            document.line(format!(
+                "        hash = unchecked(hash * 31 + ({property}?.GetHashCode() ?? 0));"
+            ));
+        } else {
+            document.line(format!(
+                "        hash = unchecked(hash * 31 + {property}.GetHashCode());"
+            ));
+        }
+    }
+    document.line("        return hash;");
+    document.line("    }");
+    document.line("");
+    document.line(format!(
+        "    public static bool operator ==({name} left, {name} right) => left.Equals(right);"
+    ));
+    document.line(format!(
+        "    public static bool operator !=({name} left, {name} right) => !left.Equals(right);"
+    ));
+    document.line("}");
+    Ok(())
+}
+
+fn render_enum(
+    document: &mut CSharpDocument,
+    name: &str,
+    underlying: PrimitiveType,
+    members: &[masterdata_core::ResolvedEnumMember],
+    flags: bool,
+) {
+    if flags {
+        document.line("[System.Flags]");
+    }
+    document.line(format!("public enum {name} : {}", underlying.csharp_name()));
+    document.line("{");
+    for member in members {
+        document.line(format!(
+            "    {} = {},",
+            member.name,
+            csharp_enum_value(member.value.0, underlying)
+        ));
+    }
+    document.line("}");
+}
+
+fn csharp_enum_value(value: i128, underlying: PrimitiveType) -> String {
+    match (underlying, value) {
+        (PrimitiveType::Int, value) if value == i32::MIN as i128 => "int.MinValue".to_owned(),
+        (PrimitiveType::Long, value) if value == i64::MIN as i128 => "long.MinValue".to_owned(),
+        _ => value.to_string(),
+    }
+}
+
+fn render_schema(
+    namespace: &str,
+    schema: &SchemaDocument,
+    type_system: &TypeSystem,
+) -> Result<GeneratedFile> {
+    let type_name = generated_table_type_name(schema);
+    let mut document = CSharpDocument::new();
+    document.header(namespace);
+    document.line(
+        "// Table row scaffold: Primary/Secondary Key lowering is implemented in a later slice.",
+    );
+    document.line(format!("// Source table identity: {}", schema.table));
     document.line("");
     document.line(format!("public sealed partial class {type_name}"));
     document.line("{");
     let mut property_names = BTreeSet::new();
-    let mut property_name_keys = BTreeSet::new();
-    let mut parameter_names = BTreeSet::new();
-    let mut parameter_name_keys = BTreeSet::new();
     for field in &schema.fields {
-        let field_name = pascal_case(&field.name);
-        if !is_csharp_identifier(&field_name) || is_csharp_keyword(&field_name) {
-            return Err(MasterdataError::new(
-                "E-CODEGEN-INVALID-PROPERTY-NAME",
-                ErrorKind::Validation,
-                format!("`{}` is not a valid C# field identifier", field.name),
-            ));
-        }
-        if !property_names.insert(field_name.clone()) {
+        let property = property_name(&field.name);
+        if !property_names.insert(property.clone()) {
             return Err(MasterdataError::new(
                 "E-CODEGEN-PROPERTY-NAME-COLLISION",
                 ErrorKind::Validation,
-                format!(
-                    "fields in `{}` normalize to the same C# property `{field_name}`",
-                    schema.table
-                ),
+                format!("Table fields generate the same property `{property}`"),
             ));
         }
-        if !property_name_keys.insert(field_name.to_ascii_lowercase()) {
-            return Err(MasterdataError::new(
-                "E-CODEGEN-PROPERTY-NAME-COLLISION",
-                ErrorKind::Validation,
-                format!(
-                    "fields in `{}` normalize to case-insensitively colliding C# properties",
-                    schema.table
-                ),
-            ));
-        }
-        let parameter_name = camel_case(&field.name);
-        if !is_csharp_identifier(&parameter_name) || is_csharp_keyword(&parameter_name) {
-            return Err(MasterdataError::new(
-                "E-CODEGEN-INVALID-CONSTRUCTOR-PARAMETER",
-                ErrorKind::Validation,
-                format!(
-                    "`{}` does not produce a valid C# constructor parameter",
-                    field.name
-                ),
-            ));
-        }
-        if !parameter_names.insert(parameter_name.clone()) {
-            return Err(MasterdataError::new(
-                "E-CODEGEN-CONSTRUCTOR-PARAMETER-COLLISION",
-                ErrorKind::Validation,
-                format!(
-                    "fields in `{}` normalize to the same C# constructor parameter",
-                    schema.table
-                ),
-            ));
-        }
-        if !parameter_name_keys.insert(parameter_name.to_ascii_lowercase()) {
-            return Err(MasterdataError::new(
-                "E-CODEGEN-CONSTRUCTOR-PARAMETER-COLLISION",
-                ErrorKind::Validation,
-                format!(
-                    "fields in `{}` normalize to case-insensitively colliding C# constructor parameters",
-                    schema.table
-                ),
-            ));
-        }
+        validate_generated_member_name(&property, "E-CODEGEN-INVALID-PROPERTY-NAME")?;
+        // `key` is serialization metadata only; it is not used to reorder
+        // properties or derive logical field identity (SCHEMA-KEY-001).
+        document.line(format!("    [MessagePack.Key({})]", field.key));
         document.line(format!(
-            "    public {} {field_name} {{ get; }}",
-            csharp_type(&field.type_name)?
+            "    public {} {property} {{ get; init; }}",
+            csharp_field_type(
+                type_system,
+                &type_system
+                    .resolve_reference(&field.type_name)
+                    .ok_or_else(|| {
+                        MasterdataError::new(
+                            "E-CODEGEN-UNKNOWN-FIELD-TYPE",
+                            ErrorKind::Validation,
+                            format!("unknown Table field type `{}`", field.type_name),
+                        )
+                    })?,
+                table_modifier(field),
+            )?
         ));
     }
-    if !schema.fields.is_empty() {
-        document.line("");
-        document.line(format!("    public {type_name}("));
-        for (index, field) in schema.fields.iter().enumerate() {
-            let separator = if index + 1 == schema.fields.len() {
-                ""
-            } else {
-                ","
-            };
-            document.line(format!(
-                "        {} {}{}",
-                csharp_type(&field.type_name)?,
-                camel_case(&field.name),
-                separator
-            ));
-        }
-        document.line("    )");
-        document.line("    {");
-        for field in &schema.fields {
-            let field_name = pascal_case(&field.name);
-            document.line(format!(
-                "        {field_name} = {};",
-                camel_case(&field.name)
-            ));
-        }
-        document.line("    }");
-    }
     document.line("}");
-
     Ok(GeneratedFile {
         relative_path: std::path::PathBuf::from(format!("{}.g.cs", type_name)),
         contents: document.finish(),
     })
 }
 
-struct CSharpDocument {
-    lines: Vec<String>,
-}
-
-impl CSharpDocument {
-    fn new() -> Self {
-        Self { lines: Vec::new() }
-    }
-
-    fn line(&mut self, line: impl Into<String>) {
-        self.lines.push(line.into());
-    }
-
-    fn finish(self) -> String {
-        let mut output = self.lines.join("\n");
-        output.push('\n');
-        output
+fn table_modifier(field: &FieldDefinition) -> FieldModifier {
+    if field.nullable {
+        FieldModifier::Nullable
+    } else if field.array {
+        FieldModifier::Array
+    } else {
+        FieldModifier::Required
     }
 }
 
-fn csharp_type(type_name: &str) -> Result<&'static str> {
-    match type_name {
-        "bool" => Ok("bool"),
-        "byte" | "uint8" => Ok("byte"),
-        "short" | "int16" => Ok("short"),
-        "int" | "int32" => Ok("int"),
-        "long" | "int64" => Ok("long"),
-        "sbyte" => Ok("sbyte"),
-        "ushort" | "uint16" => Ok("ushort"),
-        "uint" | "uint32" => Ok("uint"),
-        "ulong" | "uint64" => Ok("ulong"),
-        "float" => Ok("float"),
-        "double" => Ok("double"),
-        "string" => Ok("string"),
-        "" => Err(MasterdataError::new(
-            "E-CODEGEN-EMPTY-FIELD-TYPE",
-            ErrorKind::Validation,
-            "schema field type must not be empty",
-        )),
-        other => Err(MasterdataError::new(
-            "E-CODEGEN-UNSUPPORTED-FIELD-TYPE",
-            ErrorKind::NotImplemented,
-            format!("custom C# type `{other}` is reserved for a future schema/type generator"),
-        )),
+fn csharp_field_type(
+    _type_system: &TypeSystem,
+    reference: &TypeReference,
+    modifier: FieldModifier,
+) -> Result<String> {
+    let base = match reference {
+        TypeReference::Primitive(primitive) => primitive.csharp_name().to_owned(),
+        TypeReference::Named(name) => name.clone(),
+    };
+    Ok(match modifier {
+        FieldModifier::Required => base,
+        FieldModifier::Nullable => format!("{base}?"),
+        FieldModifier::Array => format!("System.Collections.Immutable.ImmutableArray<{base}>"),
+    })
+}
+
+fn equality_expression_for_field(field: &ResolvedField) -> String {
+    let property = property_name(&field.name);
+    if field.modifier == FieldModifier::Array {
+        format!("System.Linq.Enumerable.SequenceEqual({property}, other.{property})")
+    } else {
+        equality_expression_for_type(&field.base_type, &property, &format!("other.{property}"))
+    }
+}
+
+fn equality_expression(primitive: PrimitiveType, left: &str, right: &str) -> String {
+    equality_expression_for_type(&TypeReference::Primitive(primitive), left, right)
+}
+
+fn equality_expression_for_type(reference: &TypeReference, left: &str, right: &str) -> String {
+    match reference {
+        TypeReference::Primitive(PrimitiveType::Float | PrimitiveType::Double) => {
+            format!("{left} == {right}")
+        }
+        TypeReference::Primitive(_) | TypeReference::Named(_) => {
+            format!("{left} == {right}")
+        }
+    }
+}
+
+fn comparison_expression(primitive: PrimitiveType, left: &str, right: &str) -> String {
+    if primitive == PrimitiveType::String {
+        format!("string.CompareOrdinal({left}, {right})")
+    } else {
+        format!("{left}.CompareTo({right})")
+    }
+}
+
+fn property_name(value: &str) -> String {
+    let mut chars = value.chars();
+    match chars.next() {
+        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
     }
 }
 
 // Keep this deterministic separator-to-Pascal mapping for the current Table
-// scaffold; removing it changes generated Table presentation names and their
-// collision checks. Do not reuse it for Value Object or Custom Type names:
-// their approved source-name contract rejects implicit repair. The Table-only
-// scaffold and type-declaration naming remain separate contracts:
-// docs/specs/type-system/csharp-naming.md (TYPE-NAMING-008) and the generation
-// collision tests.
+// scaffold. It is intentionally not used for type declarations, whose
+// approved naming contract rejects implicit repair (TYPE-NAMING-001/002).
 fn pascal_case(value: &str) -> String {
     value
         .split(['-', '_', ' ', '.'])
@@ -303,13 +567,22 @@ fn pascal_case(value: &str) -> String {
         .collect()
 }
 
-fn camel_case(value: &str) -> String {
-    let pascal = pascal_case(value);
-    let mut chars = pascal.chars();
-    match chars.next() {
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
+fn generated_table_type_name(schema: &SchemaDocument) -> String {
+    schema
+        .csharp_name
+        .clone()
+        .unwrap_or_else(|| pascal_case(&schema.table))
+}
+
+fn validate_generated_member_name(name: &str, code: &str) -> Result<()> {
+    if !is_csharp_identifier(name) || is_csharp_reserved_keyword(name) {
+        return Err(MasterdataError::new(
+            code,
+            ErrorKind::Validation,
+            format!("`{name}` is not a valid C# member identifier"),
+        ));
     }
+    Ok(())
 }
 
 fn is_csharp_identifier(value: &str) -> bool {
@@ -321,18 +594,11 @@ fn is_csharp_identifier(value: &str) -> bool {
     chars.all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
-fn generated_type_name(schema: &SchemaDocument) -> String {
-    schema
-        .csharp_name
-        .clone()
-        .unwrap_or_else(|| pascal_case(&schema.table))
-}
-
 fn validate_namespace(namespace: &str) -> Result<()> {
     if namespace.is_empty()
         || namespace
             .split('.')
-            .any(|segment| !is_csharp_identifier(segment) || is_csharp_keyword(segment))
+            .any(|segment| !is_csharp_identifier(segment) || is_csharp_reserved_keyword(segment))
     {
         return Err(MasterdataError::new(
             "E-CODEGEN-INVALID-NAMESPACE",
@@ -343,128 +609,32 @@ fn validate_namespace(namespace: &str) -> Result<()> {
     Ok(())
 }
 
-fn is_csharp_keyword(value: &str) -> bool {
-    matches!(
-        value,
-        "abstract"
-            | "as"
-            | "base"
-            | "bool"
-            | "break"
-            | "byte"
-            | "case"
-            | "catch"
-            | "char"
-            | "checked"
-            | "class"
-            | "const"
-            | "continue"
-            | "decimal"
-            | "default"
-            | "delegate"
-            | "do"
-            | "double"
-            | "else"
-            | "enum"
-            | "event"
-            | "explicit"
-            | "extern"
-            | "false"
-            | "finally"
-            | "fixed"
-            | "float"
-            | "for"
-            | "foreach"
-            | "goto"
-            | "if"
-            | "implicit"
-            | "in"
-            | "int"
-            | "interface"
-            | "internal"
-            | "is"
-            | "lock"
-            | "long"
-            | "namespace"
-            | "new"
-            | "null"
-            | "object"
-            | "operator"
-            | "out"
-            | "override"
-            | "params"
-            | "private"
-            | "protected"
-            | "public"
-            | "readonly"
-            | "ref"
-            | "return"
-            | "sbyte"
-            | "sealed"
-            | "short"
-            | "sizeof"
-            | "stackalloc"
-            | "static"
-            | "string"
-            | "struct"
-            | "switch"
-            | "this"
-            | "throw"
-            | "true"
-            | "try"
-            | "typeof"
-            | "uint"
-            | "ulong"
-            | "unchecked"
-            | "unsafe"
-            | "ushort"
-            | "using"
-            | "virtual"
-            | "void"
-            | "volatile"
-            | "while"
-            | "add"
-            | "alias"
-            | "and"
-            | "ascending"
-            | "async"
-            | "await"
-            | "by"
-            | "descending"
-            | "dynamic"
-            | "equals"
-            | "file"
-            | "from"
-            | "get"
-            | "global"
-            | "group"
-            | "init"
-            | "into"
-            | "join"
-            | "let"
-            | "managed"
-            | "nameof"
-            | "nint"
-            | "not"
-            | "notnull"
-            | "on"
-            | "or"
-            | "orderby"
-            | "partial"
-            | "record"
-            | "remove"
-            | "required"
-            | "scoped"
-            | "select"
-            | "set"
-            | "unmanaged"
-            | "value"
-            | "var"
-            | "when"
-            | "where"
-            | "with"
-            | "yield"
-    )
+struct CSharpDocument {
+    lines: Vec<String>,
+}
+
+impl CSharpDocument {
+    fn new() -> Self {
+        Self { lines: Vec::new() }
+    }
+
+    fn header(&mut self, namespace: &str) {
+        self.line("// <auto-generated />");
+        self.line("#nullable enable");
+        self.line("");
+        self.line(format!("namespace {namespace};"));
+        self.line("");
+    }
+
+    fn line(&mut self, line: impl Into<String>) {
+        self.lines.push(line.into());
+    }
+
+    fn finish(self) -> String {
+        let mut output = self.lines.join("\n");
+        output.push('\n');
+        output
+    }
 }
 
 #[allow(dead_code)]

@@ -1,0 +1,11 @@
+kind: type
+name: ItemTags
+flags:
+  underlying: uint
+  members:
+    - name: None
+      value: 0
+    - name: Fire
+      value: 1
+    - name: Ice
+      value: 2

@@ -179,9 +179,8 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Enum identity仕様](compatibility/enum-identity.md)
   - [Index identity仕様](compatibility/index-identity.md)
 
-現在のRust implementationは、project contract、YAML document envelope、旧scaffoldのfield shape、source-content hash、明確に命名された
-schema source-content hashを含むbuild-plan formationを扱うが、Applied後のMessagePack `key` modelを実装していない。
-`id` という名前のfieldにはimplicit primary-key meaningがない。今回Approvedとなったtype-system contractはimplementation
-authorityだが、current parser、validator、generatorはそれをまだ実装していない。Enum/FlagsとTable / Primary Key / Secondary Keyは
-Approvedであり、specification change 0003もAppliedだが、type resolution、indexes、references、MasterMemory binary generation、full GUIは
-意図的に未完了である。
+現在のRust implementationは、project contract、typed YAML document envelope、Type Systemのsymbol resolution/validation、
+MessagePack `key`を含むTable row scaffold、source-content hashをbuild-planへ渡す。`id`という名前のfieldにはimplicit primary-key
+meaningがない。Approved Type System contractの初回vertical sliceとして、Primitive、Field Modifier、Value Object、Custom Type、
+Enum、Flags Enum、C# namingの解決と生成を実装している。Table/Primary Key/Secondary Keyの完全なvalidation・lowering、Reference、
+MasterMemory binary generation、full GUIは意図的に次sliceへ残している。YAML subsetの全strict enforcementも、別途実装gapとして扱う。

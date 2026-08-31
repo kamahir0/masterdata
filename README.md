@@ -2,7 +2,7 @@
 
 `masterdata` は Unity + MasterMemory を対象にした、YAML-firstのローカルファーストなマスターデータ開発システムです。CLIとTauri GUIは、同じRust application serviceとcoreを直接利用します。
 
-このリポジトリはproduct Type Systemの実装前段階です。project discovery、設定読込、YAML文書の分類、基本検証、C#生成の足場、CLI、Tauriアプリシェル、.NET bridge smoke test、実際のMasterMemory v3を使う独立technical spikeまでは動作します。schema-drivenのproduction binary buildは、仕様が承認されるまで意図的に未実装です。
+このリポジトリはschema-drivenなproduction binary buildの実装前段階です。project discovery、設定読込、typed YAML AST、Type Systemの解決・検証、Value Object / Custom Type / Enum / Flags EnumのC#生成、Table row scaffold、CLI、Tauriアプリシェル、.NET bridge smoke test、実際のMasterMemory v3を使う独立technical spikeが動作します。Table/Keyの完全なlowering、Reference、schema-drivenなproduction binary buildは、次の実装sliceとして意図的に未完了です。
 
 ## アーキテクチャ
 
@@ -18,8 +18,8 @@
 
 主要な責務は次の通りです。
 
-- `masterdata-core`: project解決、`masterdata.toml`、YAML document/data model、validation、build plan
-- `masterdata-codegen-csharp`: schema ASTからC# scaffoldを生成する独立境界
+- `masterdata-core`: project解決、`masterdata.toml`、typed YAML document model、Type Systemのsymbol resolution/validation、build plan
+- `masterdata-codegen-csharp`: resolved Type System modelとTable row scaffoldからC#を生成する独立境界
 - `masterdata-dotnet`: .NET SDKと将来のMasterMemory builderを呼び出す唯一のRust adapter
 - `masterdata-app`: CLIとTauriが共有するproject/validate/build orchestration。domain semanticsは持たない
 - `masterdata-cli`: application serviceを使うCLI。GUIやCLIにdomain logicを重複させない
@@ -32,9 +32,9 @@
 resolve project
   -> load config
   -> discover YAML
-  -> parse schema/data
-  -> semantic validation
-  -> resolve types/indexes/references
+  -> parse schema/data/type
+  -> semantic validation and resolve types
+  -> resolve indexes/references
   -> generate C#
   -> schema hash
   -> compile/reuse .NET builder

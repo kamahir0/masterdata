@@ -147,10 +147,11 @@ fn run() -> Result<()> {
                 );
             } else {
                 println!(
-                    "validation: {} ({} file(s), {} schema(s), {} data document(s))",
+                    "validation: {} ({} file(s), {} schema(s), {} type(s), {} data document(s))",
                     if report.valid { "ok" } else { "failed" },
                     report.files_scanned,
                     report.schema_documents,
+                    report.type_documents,
                     report.data_documents
                 );
                 for diagnostic in &report.diagnostics {

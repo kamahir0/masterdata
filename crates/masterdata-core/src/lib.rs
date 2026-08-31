@@ -11,15 +11,23 @@ mod document;
 mod error;
 mod pipeline;
 mod project;
+mod type_system;
 mod validation;
 
 pub use application::ProjectService;
 pub use config::{BuildConfig, ProjectConfig, ProjectMetadata, SourceConfig};
 pub use document::{
-    DataDocument, FieldDefinition, LoadedDocument, ProjectDocuments, ReservedField, SchemaDocument,
-    SourceDocument,
+    ConversionDefinition, CustomTypeDefinition, DataDocument, EnumDefinition, EnumMember,
+    FieldDefinition, FlagsDefinition, IntegerLiteral, LoadedDocument, PrimaryKeyDefinition,
+    ProjectDocuments, SchemaDocument, SecondaryKeyDefinition, SourceDocument, TypeDocument,
+    TypeFieldDefinition, ValueObjectDefinition, parse_yaml_document,
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use pipeline::{BuildPlan, BuildStatus, compute_schema_source_content_hash};
 pub use project::{InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, initialize_project};
+pub use type_system::{
+    FieldModifier, PrimitiveType, ResolvedConversions, ResolvedEnumMember, ResolvedField,
+    ResolvedType, TypeCategory, TypeReference, TypeSystem, TypeSystemBuild, build_type_system,
+    is_csharp_reserved_keyword, resolve_type_system,
+};
 pub use validation::{ValidationReport, validate_documents};

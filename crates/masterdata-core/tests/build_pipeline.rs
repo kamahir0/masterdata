@@ -41,6 +41,39 @@ fn schema_source_hash_tracks_raw_schema_bytes() {
 }
 
 #[test]
+fn type_source_hash_tracks_raw_type_bytes() {
+    let directory = tempdir().expect("temp directory");
+    write_project(
+        directory.path(),
+        "kind: schema\ntable: item\nfields: []\n",
+        "",
+    );
+    fs::write(
+        directory.path().join("sources").join("item-id.yaml"),
+        "kind: type\nname: ItemId\nvalueObject:\n  underlying: int\n",
+    )
+    .expect("type");
+
+    let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
+    let first = ProjectService::new()
+        .prepare_build(Some(project.root()), project.root())
+        .expect("first build plan")
+        .schema_source_content_hash;
+
+    fs::write(
+        directory.path().join("sources").join("item-id.yaml"),
+        "# formatting-only source change\nkind: type\nname: ItemId\nvalueObject:\n  underlying: int\n",
+    )
+    .expect("updated type");
+    let second = ProjectService::new()
+        .prepare_build(Some(project.root()), project.root())
+        .expect("second build plan")
+        .schema_source_content_hash;
+
+    assert_ne!(first, second);
+}
+
+#[test]
 fn build_plan_keeps_generated_binary_and_cache_outputs_distinct() {
     let directory = tempdir().expect("temp directory");
     write_project(

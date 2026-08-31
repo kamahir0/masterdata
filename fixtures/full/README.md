@@ -9,5 +9,5 @@
 - unique、non-unique、composite secondary index
 - one-to-oneとone-to-manyの `MasterReference`
 
-current fileは、coreがschema ASTに保持できるdeclarationを使用している。Type resolution、index materialization、
-reference helper、MasterMemory generationは引き続き未解決のimplementation workである。
+current fileは、coreがtyped ASTへ保持し、Type System resolverとC# generatorが扱うdeclarationを使用している。index materialization、
+reference helper、MasterMemory generation、data recordのTable-level validationは引き続き次のimplementation workである。

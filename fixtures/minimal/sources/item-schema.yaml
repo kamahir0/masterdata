@@ -2,10 +2,9 @@ kind: schema
 table: item
 csharpName: ItemMaster
 fields:
-  - id: 0
+  - key: 0
     name: id
     type: int
-  - id: 1
+  - key: 1
     name: name
     type: string
-reservedFields: []

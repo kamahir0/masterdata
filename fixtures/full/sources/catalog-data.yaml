@@ -3,6 +3,5 @@ table: item
 records:
   - id: 1001
     code: potion
-    rarity: 1
-    tags: 3
-
+    rarity: Common
+    tags: [Fire, Ice]

@@ -34,8 +34,9 @@ fields:
     type: ItemId
 ```
 
-Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`、`ReservedField`）に
-保つ。将来のtype/index/reference featureがunstructured mapへ崩れることを防ぐためである。
+Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`）に保つ。Type declarationも
+`TypeDocument`として同じdocument boundaryでtypedに扱い、将来のindex/reference featureがunstructured mapへ
+崩れることを防ぐ。
 
 上記の`key`は、specification change 0003のApplied deltaを反映した、現在のpersisted fieldのcanonical surfaceである。`key`の
 serialization-only semanticsは[Table / Primary Key / Secondary Key仕様](table-and-keys.md)の`SCHEMA-KEY-001`が所有する。
@@ -62,15 +63,16 @@ secondaryKeys:
     nonUnique: true
 ```
 
-このshapeはApproved Table/Key specificationとApplied Field Identity changeの内容を示すcanonical contractであり、current parserの
-implementation contractが未実装であることとは区別する。
+このshapeはApproved Table/Key specificationとApplied Field Identity changeの内容を示すcanonical contractである。current
+implementationはMessagePack keyをASTとTable row scaffoldへ保持するが、Primary/Secondary Keyの完全なvalidationとloweringは次sliceのscopeである。
 `key`はMessagePack `[Key(n)]`へ対応するが、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、または
 schema migration identityを表さない。Custom Typeのpersisted fieldも同じ`key` modelを使用する。
 
-現在のscaffoldが認識するdocumentは `schema` と `data` だけである。Approvedの
+現在のscaffoldが認識するdocumentは `schema`、`data`、`type` である。Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
-unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはcurrent parserではまだ受け付けず、
-specificationがImplementedになるまでcurrent parserのimplementation contractではない。
+unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはcurrent parserがtyped documentとして
+受け付け、Type System validationとC# generationのimplementation contractを構成する。type documentのpathまたはfilenameはtype identityを
+決めず、1つのYAML documentに複数のtype declarationを入れる形式は使用しない。
 
 current scaffoldは `table` をproject-localなlogical table identityとして使用する。存在する場合の
 `csharpName` はgenerated C# type-name overrideであり、2つ目のtable identityではない。以前に示した
@@ -82,10 +84,10 @@ rename migration、released-schema compatibility、legacy `tableId` migration、
 
 ## Type declaration（type declaration）
 
-Type Systemは、Value Object、Enum、Flags Enum、Custom Typeを同じunified type-declaration boundaryで扱う方向である。
+Type Systemは、Value Object、Enum、Flags Enum、Custom Typeを同じunified type-declaration boundaryで扱う。
 Value Objectのcanonical surfaceは[Value Objects仕様](type-system/value-objects.md)、Enum/Flagsのcanonical surfaceは
 [EnumとFlags Enum仕様](type-system/enums.md)、Custom Typeのcanonical surfaceは[Custom Type仕様](type-system/custom-types.md)が
-それぞれ所有する。
+それぞれ所有する。Type Systemの初回implementation sliceでは、これらのdeclarationをtyped AST、symbol table、resolved modelへ変換する。
 
 ```yaml
 kind: type
@@ -104,16 +106,14 @@ custom:
       type: ItemId
 ```
 
-これらのtype declarationのcanonical surfaceは、それぞれのowner specificationで定義されるが、current parserは `kind: type`、
-`valueObject`、`enum`、`flags`、または `custom` をまだ受け付けない。これらのspecificationがImplementedになるまで、current
-parserのimplementation contractではない。type documentのpathまたはfilenameはtype identityを決めない。1つのYAML documentに複数のtype declarationを入れる
-形式は使用しない。Value ObjectとCustom Typeのtype name、およびCustom Type field nameのASCII lexical ruleとgenerated
-C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
+これらのtype declarationのcanonical surfaceは、それぞれのowner specificationで定義される。type documentのpathまたはfilenameはtype identityを
+決めず、1つのYAML documentに複数のtype declarationを入れる形式は使用しない。Value ObjectとCustom Typeのtype name、およびCustom Type field nameの
+ASCII lexical ruleとgenerated C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
 `csharpName` presentation nameへ適用されない。
 
 上記Custom Type例の`key`は、Applied specification change 0003とApproved Custom Type / Table / Key specificationが所有する現在の
-canonical surfaceである。current parserはこのshapeをまだ受け付けないが、実装状態を理由に旧Field ID modelをcurrent authorityとして
-扱ってはならない。
+canonical surfaceである。current Type System resolverはこのshapeを受け付けるが、`key`はMessagePack serialization metadataとしてのみ扱い、
+constructor orderやlogical field identityへ流用しない。実装状態を理由に旧Field ID modelをcurrent authorityとして扱ってはならない。
 
 ## Masterdata YAML subsetとの関係
 

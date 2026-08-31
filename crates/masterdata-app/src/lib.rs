@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use masterdata_codegen_csharp::{CSharpGenerationPlan, CSharpGenerator};
 use masterdata_core::{
-    BuildPlan, InitOptions, ProjectInfo, ProjectService, Result, ValidationReport,
+    BuildPlan, BuildSelection, InitOptions, ProjectInfo, ProjectService, Result, ValidationReport,
 };
 use masterdata_dotnet::{BridgeSmokeReport, DotnetBridge, MasterMemorySpikeReport};
 
@@ -63,6 +63,16 @@ impl ApplicationService {
         self.project.prepare_build(explicit_project, current_dir)
     }
 
+    pub fn prepare_build_with_selection(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        selection: &BuildSelection,
+    ) -> Result<BuildPlan> {
+        self.project
+            .prepare_build_with_selection(explicit_project, current_dir, selection)
+    }
+
     pub fn plan_csharp(&self, plan: &BuildPlan) -> Result<CSharpGenerationPlan> {
         self.generator.plan(plan)
     }
@@ -75,7 +85,22 @@ impl ApplicationService {
         current_dir: &Path,
         dry_run: bool,
     ) -> Result<BuildExecution> {
-        let plan = self.prepare_build(explicit_project, current_dir)?;
+        self.build_with_selection(
+            explicit_project,
+            current_dir,
+            &BuildSelection::unfiltered(),
+            dry_run,
+        )
+    }
+
+    pub fn build_with_selection(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        selection: &BuildSelection,
+        dry_run: bool,
+    ) -> Result<BuildExecution> {
+        let plan = self.prepare_build_with_selection(explicit_project, current_dir, selection)?;
         let generation = self.generator.plan(&plan)?;
         let written_files = if dry_run {
             Vec::new()
@@ -131,7 +156,7 @@ mod tests {
         .expect("config");
         fs::write(
             directory.path().join("sources/item.yaml"),
-            "kind: schema\ntable: item\nfields: []\n",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
         )
         .expect("schema");
 

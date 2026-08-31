@@ -15,7 +15,7 @@ fn renders_an_immutable_scaffold_from_a_schema() {
     .expect("config");
     fs::write(
         directory.path().join("sources").join("schema.yaml"),
-        "kind: schema\ntable: item\ncsharpName: ItemMaster\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: name\n    type: string\n",
+        "kind: schema\ntable: item\ncsharpName: ItemMaster\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: name\n    type: string\nprimaryKey:\n  fields: [id]\n",
     )
     .expect("schema");
     fs::write(
@@ -82,10 +82,15 @@ fn rejects_type_name_collisions_across_tables() {
         "[project]\nid = \"codegen.collision\"\nname = \"Codegen Collision\"\nversion = \"0.1.0\"\n",
     )
     .expect("config");
-    for (name, table) in [("first.yaml", "foo-bar"), ("second.yaml", "foo_bar")] {
+    for (name, (table, csharp_name)) in [
+        ("first.yaml", ("foo-bar", "Item")),
+        ("second.yaml", ("foo-baz", "Item")),
+    ] {
         fs::write(
             directory.path().join("sources").join(name),
-            format!("kind: schema\ntable: {table}\nfields: []\n"),
+            format!(
+                "kind: schema\ntable: {table}\ncsharpName: {csharp_name}\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n"
+            ),
         )
         .expect("schema");
     }
@@ -106,10 +111,15 @@ fn rejects_case_insensitive_generated_filename_collisions() {
         "[project]\nid = \"codegen.filename\"\nname = \"Codegen Filename\"\nversion = \"0.1.0\"\n",
     )
     .expect("config");
-    for (name, csharp_name) in [("first.yaml", "Item"), ("second.yaml", "item")] {
+    for (name, (table, csharp_name)) in [
+        ("first.yaml", ("first", "Item")),
+        ("second.yaml", ("second", "item")),
+    ] {
         fs::write(
             directory.path().join("sources").join(name),
-            format!("kind: schema\ntable: {name}\ncsharpName: {csharp_name}\nfields: []\n"),
+            format!(
+                "kind: schema\ntable: {table}\ncsharpName: {csharp_name}\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n"
+            ),
         )
         .expect("schema");
     }
@@ -149,7 +159,7 @@ fn renders_type_system_api_in_declaration_order() {
         ),
         (
             "item-schema.yaml",
-            "kind: schema\ntable: item\ncsharpName: ItemRow\nfields:\n  - key: 1\n    name: rarity\n    type: ItemRarity\n  - key: 0\n    name: itemId\n    type: ItemId\n  - key: 2\n    name: tags\n    type: Feature\n    array: true\n",
+            "kind: schema\ntable: item\ncsharpName: ItemRow\nfields:\n  - key: 1\n    name: rarity\n    type: ItemRarity\n  - key: 0\n    name: itemId\n    type: ItemId\n  - key: 2\n    name: tags\n    type: Feature\n    array: true\nprimaryKey:\n  fields: [itemId]\nsecondaryKeys:\n  - fields: [rarity]\n    nonUnique: true\n",
         ),
     ];
     for (file, source) in sources {
@@ -204,17 +214,21 @@ fn renders_type_system_api_in_declaration_order() {
     let rarity = contents("ItemRarity");
     assert!(rarity.contains("public enum ItemRarity : long"));
     assert!(
-        rarity.find("Legendary = 100").expect("Legendary")
-            < rarity.find("Common = 1").expect("Common")
+        rarity.find("Legendary = 100L").expect("Legendary")
+            < rarity.find("Common = 1L").expect("Common")
     );
 
     let feature = contents("Feature");
     assert!(feature.contains("[System.Flags]"));
     assert!(feature.contains("public enum Feature : uint"));
-    assert!(feature.contains("None = 0,"));
+    assert!(feature.contains("None = 0u,"));
 
     let table = contents("ItemRow");
     assert!(table.contains("[MessagePack.Key(1)]"));
+    assert!(table.contains("[MasterMemory.MemoryTable(\"item\")"));
+    assert!(table.contains("MessagePack.MessagePackObject"));
+    assert!(table.contains("[MasterMemory.PrimaryKey(keyOrder: 0)]"));
+    assert!(table.contains("[MasterMemory.SecondaryKey(0, keyOrder: 0), MasterMemory.NonUnique]"));
     assert!(table.contains("public ItemRarity Rarity { get; init; }"));
     assert!(table.contains("public ItemId ItemId { get; init; }"));
     assert!(table.contains(
@@ -243,7 +257,7 @@ fn generated_type_system_csharp_compiles() {
     for (file, source) in [
         (
             "item-id.yaml",
-            "kind: type\nname: ItemId\nvalueObject:\n  underlying: int\n",
+            "kind: type\nname: ItemId\nvalueObject:\n  underlying: int\n  conversions:\n    fromUnderlyingImplicit: true\n",
         ),
         (
             "user-code.yaml",
@@ -255,19 +269,43 @@ fn generated_type_system_csharp_compiles() {
         ),
         (
             "rarity.yaml",
-            "kind: type\nname: ItemRarity\nenum:\n  underlying: int\n  members:\n    - name: Common\n      value: 1\n",
+            "kind: type\nname: ItemRarity\nenum:\n  underlying: int\n  members:\n    - name: Common\n      value: 1\n    - name: Rare\n      value: 2\n",
         ),
         (
             "feature.yaml",
             "kind: type\nname: Feature\nflags:\n  underlying: uint\n  members:\n    - name: None\n      value: 0\n    - name: Fire\n      value: 1\n",
         ),
         (
+            "integer-ranges.yaml",
+            "kind: type\nname: IntegerRanges\nenum:\n  underlying: int\n  members:\n    - name: Minimum\n      value: -2147483648\n    - name: Maximum\n      value: 2147483647\n",
+        ),
+        (
+            "unsigned-integer-range.yaml",
+            "kind: type\nname: UnsignedIntegerRange\nenum:\n  underlying: uint\n  members:\n    - name: Maximum\n      value: 4294967295\n",
+        ),
+        (
+            "long-integer-ranges.yaml",
+            "kind: type\nname: LongIntegerRanges\nenum:\n  underlying: long\n  members:\n    - name: Minimum\n      value: -9223372036854775808\n    - name: Maximum\n      value: 9223372036854775807\n",
+        ),
+        (
+            "ulong-integer-range.yaml",
+            "kind: type\nname: ULongIntegerRange\nenum:\n  underlying: ulong\n  members:\n    - name: Maximum\n      value: 18446744073709551615\n",
+        ),
+        (
             "long-feature.yaml",
             "kind: type\nname: LongFeature\nflags:\n  underlying: long\n  members:\n    - name: None\n      value: 0\n    - name: Highest\n      value: -9223372036854775808\n",
         ),
         (
+            "uint-high-feature.yaml",
+            "kind: type\nname: UIntHighFeature\nflags:\n  underlying: uint\n  members:\n    - name: None\n      value: 0\n    - name: Highest\n      value: 2147483648\n",
+        ),
+        (
+            "ulong-high-feature.yaml",
+            "kind: type\nname: ULongHighFeature\nflags:\n  underlying: ulong\n  members:\n    - name: None\n      value: 0\n    - name: Highest\n      value: 9223372036854775808\n",
+        ),
+        (
             "item-schema.yaml",
-            "kind: schema\ntable: item\ncsharpName: ItemRow\nfields:\n  - key: 0\n    name: itemId\n    type: ItemId\n  - key: 1\n    name: rarity\n    type: ItemRarity\n  - key: 2\n    name: featureValues\n    type: Feature\n    array: true\n",
+            "kind: schema\ntable: item\ncsharpName: ItemRow\nfields:\n  - key: 0\n    name: itemId\n    type: ItemId\n  - key: 1\n    name: rarity\n    type: ItemRarity\n  - key: 2\n    name: featureValues\n    type: Feature\n    array: true\n  - key: 3\n    name: category\n    type: string\n  - key: 4\n    name: reward\n    type: Reward\nprimaryKey:\n  fields: [category, itemId]\nsecondaryKeys:\n  - fields: [category]\n    nonUnique: true\n  - fields: [category, rarity]\n  - fields: [itemId]\n",
         ),
     ] {
         fs::write(directory.path().join("sources").join(file), source).expect("source");
@@ -284,18 +322,13 @@ fn generated_type_system_csharp_compiles() {
         fs::write(generated_dir.join(&file.relative_path), &file.contents).expect("generated C#");
     }
     fs::write(
-        directory.path().join("MessagePackStub.cs"),
-        "using System;\nnamespace MessagePack;\n[AttributeUsage(AttributeTargets.Property)]\npublic sealed class KeyAttribute : Attribute\n{\n    public KeyAttribute(int key) { }\n}\n",
-    )
-    .expect("MessagePack stub");
-    fs::write(
         directory.path().join("compile.csproj"),
-        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>\n  </PropertyGroup>\n  <ItemGroup>\n    <Compile Include=\"Generated/*.g.cs\" />\n    <Compile Include=\"MessagePackStub.cs\" />\n    <Compile Include=\"Program.cs\" />\n  </ItemGroup>\n</Project>\n",
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"MasterMemory\" Version=\"3.0.4\" />\n    <PackageReference Include=\"MessagePack\" Version=\"3.1.3\" />\n    <Compile Include=\"Generated/*.g.cs\" />\n    <Compile Include=\"Program.cs\" />\n  </ItemGroup>\n</Project>\n",
     )
     .expect("project");
     fs::write(
         directory.path().join("Program.cs"),
-        "using System.Collections.Immutable;\nusing System.Globalization;\nusing Masterdata.Generated;\n\nif (new ItemId(1).CompareTo(new ItemId(2)) >= 0) return 1;\nif (!(new ItemId(1) < new ItemId(2))) return 2;\nif (!new ItemId(1).Equals(new ItemId(1))) return 3;\nif (new UserCode(\"A\").CompareTo(new UserCode(\"a\")) == 0) return 4;\nCultureInfo.CurrentCulture = new CultureInfo(\"tr-TR\");\nif (new UserCode(\"A\").CompareTo(new UserCode(\"B\")) >= 0) return 5;\nvar first = new Reward(new ItemId(1), \"note\", ImmutableArray.Create(\"a\", \"b\"));\nvar second = new Reward(new ItemId(1), \"note\", ImmutableArray.Create(\"a\", \"b\"));\nif (!first.Equals(second) || first.GetHashCode() != second.GetHashCode()) return 6;\nif (Feature.Fire != (Feature)1) return 7;\nreturn 0;\n",
+        "using System.Collections.Immutable;\nusing System.Globalization;\nusing Masterdata.Generated;\nusing MasterMemory;\n\n[assembly: MasterMemoryGeneratorOptions(Namespace = \"Masterdata.Generated\")]\n\nif (new ItemId(1).CompareTo(new ItemId(2)) >= 0) return 1;\nif (!(new ItemId(1) < new ItemId(2))) return 2;\nif (!new ItemId(1).Equals(new ItemId(1))) return 3;\nif (new UserCode(\"A\").CompareTo(new UserCode(\"a\")) == 0) return 4;\nCultureInfo.CurrentCulture = new CultureInfo(\"tr-TR\");\nif (new UserCode(\"A\").CompareTo(new UserCode(\"B\")) >= 0) return 5;\nvar first = new Reward(new ItemId(1), \"note\", ImmutableArray.Create(\"a\", \"b\"));\nvar second = new Reward(new ItemId(1), \"note\", ImmutableArray.Create(\"a\", \"b\"));\nif (!first.Equals(second) || first.GetHashCode() != second.GetHashCode()) return 6;\nif (Feature.Fire != (Feature)1) return 7;\nvar rows = new[]\n{\n    new ItemRow { ItemId = 2, Rarity = ItemRarity.Common, FeatureValues = ImmutableArray<Feature>.Empty, Category = \"weapon\", Reward = first },\n    new ItemRow { ItemId = 1, Rarity = ItemRarity.Rare, FeatureValues = ImmutableArray<Feature>.Empty, Category = \"weapon\", Reward = second },\n};\nvar builder = new DatabaseBuilder();\nbuilder.Append(rows);\nvar binary = builder.Build();\nvar database = new MemoryDatabase(binary);\nvar row = database.ItemRowTable.FindByCategoryAndItemId((\"weapon\", 1));\nif (row is null || row.Category != \"weapon\") return 8;\nvar categoryCount = 0;\nforeach (var categoryRow in database.ItemRowTable.FindByCategory(\"weapon\"))\n{\n    categoryCount++;\n}\nif (categoryCount != 2) return 9;\nvar composite = database.ItemRowTable.FindByCategoryAndRarity((\"weapon\", ItemRarity.Rare));\nif (composite is null || composite.ItemId != 1) return 10;\nreturn 0;\n",
     )
     .expect("program");
 
@@ -344,6 +377,14 @@ fn fixture_project(schema: &str) -> tempfile::TempDir {
         "[project]\nid = \"codegen.test\"\nname = \"Codegen\"\nversion = \"0.1.0\"\n",
     )
     .expect("config");
+    let schema = if schema.contains("fields: []") && !schema.contains("primaryKey:") {
+        schema.replace(
+            "fields: []",
+            "fields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]",
+        )
+    } else {
+        schema.to_owned()
+    };
     fs::write(directory.path().join("sources").join("schema.yaml"), schema).expect("schema");
     directory
 }

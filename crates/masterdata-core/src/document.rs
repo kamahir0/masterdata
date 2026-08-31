@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
-use crate::{Diagnostic, ErrorKind, MasterdataError, Result};
+use crate::{ErrorKind, MasterdataError, Result};
 
 /// A table schema document. `key` is deliberately a MessagePack key, not a
 /// logical field identity; the latter was retired by specification change
@@ -605,8 +605,4 @@ fn is_masterdata_integer_lexeme(value: &str) -> bool {
         && digits.as_bytes()[0].is_ascii_digit()
         && digits.as_bytes()[0] != b'0'
         && digits.bytes().all(|byte| byte.is_ascii_digit())
-}
-
-pub fn schema_diagnostic(code: &str, message: impl Into<String>, path: &Path) -> Diagnostic {
-    Diagnostic::new(code, ErrorKind::Validation, message).with_source(path.to_path_buf())
 }

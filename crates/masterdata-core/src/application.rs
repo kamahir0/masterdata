@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use crate::Result;
-use crate::pipeline::{BuildPlan, prepare_build};
+use crate::pipeline::{BuildPlan, prepare_build, prepare_build_with_selection};
 use crate::project::{InitOptions, Project, ProjectInfo, initialize_project};
+use crate::table::BuildSelection;
 use crate::validation::ValidationReport;
 
 /// Application service shared by CLI and Tauri.
@@ -37,6 +38,16 @@ impl ProjectService {
     ) -> Result<BuildPlan> {
         let project = Project::discover(explicit_project, current_dir)?;
         prepare_build(&project)
+    }
+
+    pub fn prepare_build_with_selection(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        selection: &BuildSelection,
+    ) -> Result<BuildPlan> {
+        let project = Project::discover(explicit_project, current_dir)?;
+        prepare_build_with_selection(&project, selection)
     }
 
     pub fn init(&self, root: &Path, options: &InitOptions) -> Result<ProjectInfo> {

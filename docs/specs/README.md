@@ -180,7 +180,9 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Index identity仕様](compatibility/index-identity.md)
 
 現在のRust implementationは、project contract、typed YAML document envelope、Type Systemのsymbol resolution/validation、
-MessagePack `key`を含むTable row scaffold、source-content hashをbuild-planへ渡す。`id`という名前のfieldにはimplicit primary-key
+MessagePack `key`を含むresolved Table model、source-content hashをbuild-planへ渡す。`id`という名前のfieldにはimplicit primary-key
 meaningがない。Approved Type System contractの初回vertical sliceとして、Primitive、Field Modifier、Value Object、Custom Type、
-Enum、Flags Enum、C# namingの解決と生成を実装している。Table/Primary Key/Secondary Keyの完全なvalidation・lowering、Reference、
-MasterMemory binary generation、full GUIは意図的に次sliceへ残している。YAML subsetの全strict enforcementも、別途実装gapとして扱う。
+Enum、Flags Enum、C# namingの解決と生成を実装している。続くTable/Primary Key/Secondary Key vertical sliceでは、selection後のrecord
+validation、key constraint、uniqueness、Primary Key順のcanonical ordering、およびMasterMemory/MessagePack C# loweringまで実装している。
+Reference、production MasterMemory binary orchestration、full GUIは意図的に次sliceへ残している。YAML subsetの全strict enforcementも、
+別途実装gapとして扱う。

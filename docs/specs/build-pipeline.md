@@ -25,8 +25,9 @@ Rust coreは最初のstageを担当し、validated documentとdeterministicなsc
 .NET builderとの唯一のprocess boundaryは `masterdata-dotnet` である。MasterMemory binary
 formatとSource Generatorのbehaviorは、.NET dependencyに残さなければならない（MUST）。
 
-current behaviorは意図的に小さい。`prepare_build` はvalidationとschema source-content hashの
-計算を行い、C# crateはprimitive immutable scaffoldをplanし、.NET crateはbridge smoke testと
+current behaviorは意図的に段階的である。`prepare_build` はselection後のTable/Key validation、
+canonical ordering、validation済みTable model、およびschema source-content hashの計算を行い、C# crateは
+MessagePack/MasterMemory v3 attributesを含むTableとType SystemのC# loweringをplanする。.NET crateはbridge smoke testと
 独立したMasterMemory v3 technical spikeの双方を実行できる。production schema-driven binary
 generationは、明示的なnot-implemented boundaryとして残る。non-dry-run application buildは
 generated C#をpublishする前にそのboundaryを呼び出すため、現在のnot-implemented failureが

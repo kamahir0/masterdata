@@ -8,3 +8,5 @@ fields:
   - key: 1
     name: name
     type: string
+primaryKey:
+  fields: [id]

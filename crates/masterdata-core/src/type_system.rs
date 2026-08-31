@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -251,6 +252,64 @@ impl TypeSystem {
         modifier == FieldModifier::Required && self.is_comparison_capable(reference)
     }
 
+    /// Compare two already validated values using the comparison semantics of
+    /// their resolved type. Table key validation and canonical ordering use
+    /// this boundary instead of reimplementing primitive, Value Object, and
+    /// Enum ordering rules (SCHEMA-TABLE-008, TYPE-PRIMITIVE-008,
+    /// SCHEMA-VO-013).
+    pub fn compare_field_values(
+        &self,
+        field: &ResolvedField,
+        left: &Value,
+        right: &Value,
+    ) -> Result<Ordering> {
+        if field.modifier != FieldModifier::Required {
+            return Err(type_error(
+                "E-TYPE-NOT-COMPARABLE",
+                format!(
+                    "field `{}` is not a required comparison-capable value",
+                    field.name
+                ),
+            ));
+        }
+        self.compare_reference_values(&field.base_type, left, right)
+    }
+
+    pub fn compare_reference_values(
+        &self,
+        reference: &TypeReference,
+        left: &Value,
+        right: &Value,
+    ) -> Result<Ordering> {
+        match reference {
+            TypeReference::Primitive(primitive) => {
+                compare_primitive_values(*primitive, left, right)
+            }
+            TypeReference::Named(name) => match self.types.get(name) {
+                Some(ResolvedType::ValueObject { underlying, .. }) => {
+                    compare_primitive_values(*underlying, left, right)
+                }
+                Some(ResolvedType::Enum {
+                    underlying,
+                    members,
+                    ..
+                }) => {
+                    let left_value = enum_member_value(members, left)?;
+                    let right_value = enum_member_value(members, right)?;
+                    compare_integer_values(*underlying, left_value, right_value)
+                }
+                Some(ResolvedType::Custom { .. } | ResolvedType::Flags { .. }) => Err(type_error(
+                    "E-TYPE-NOT-COMPARABLE",
+                    format!("type `{name}` is not comparison-capable"),
+                )),
+                None => Err(type_error(
+                    "E-TYPE-UNKNOWN-REFERENCE",
+                    format!("unknown type `{name}`"),
+                )),
+            },
+        }
+    }
+
     pub fn resolve_flags_value(&self, type_name: &str, value: &Value) -> Result<u128> {
         let reference = self.resolve_reference(type_name).ok_or_else(|| {
             type_error(
@@ -277,9 +336,10 @@ impl TypeSystem {
         }
     }
 
-    /// Validate a value against a resolved type. Table record integration is
-    /// deliberately a later slice, but this reusable validator gives the
-    /// Type System its own strict scalar, Enum, Flags, and Custom semantics.
+    /// Validate a value against a resolved type. The Table resolver reuses
+    /// this boundary so strict scalar, Enum, Flags, and Custom semantics stay
+    /// owned by the Type System rather than being duplicated at the Table
+    /// layer.
     pub fn validate_value(&self, type_name: &str, value: &Value) -> Result<()> {
         let reference = self.resolve_reference(type_name).ok_or_else(|| {
             type_error(
@@ -1089,6 +1149,89 @@ fn is_single_set_bit(value: i128, underlying: PrimitiveType) -> bool {
         value as u128
     };
     bits.count_ones() == 1
+}
+
+fn compare_primitive_values(
+    primitive: PrimitiveType,
+    left: &Value,
+    right: &Value,
+) -> Result<Ordering> {
+    match primitive {
+        PrimitiveType::Int | PrimitiveType::Long => compare_integer_values(
+            primitive,
+            integer_value(left, false)?,
+            integer_value(right, false)?,
+        ),
+        PrimitiveType::UInt | PrimitiveType::ULong => compare_integer_values(
+            primitive,
+            integer_value(left, true)?,
+            integer_value(right, true)?,
+        ),
+        PrimitiveType::String => {
+            let left = left.as_str().ok_or_else(|| {
+                type_error("E-TYPE-NOT-COMPARABLE", "comparison requires string values")
+            })?;
+            let right = right.as_str().ok_or_else(|| {
+                type_error("E-TYPE-NOT-COMPARABLE", "comparison requires string values")
+            })?;
+            // .NET's approved Ordinal comparer orders UTF-16 code units. Use
+            // the same code-unit sequence here so Rust canonical ordering and
+            // MasterMemory's StringComparer.Ordinal agree for non-ASCII
+            // values as well (TYPE-PRIMITIVE-008, SCHEMA-TABLE-008).
+            Ok(left.encode_utf16().cmp(right.encode_utf16()))
+        }
+        PrimitiveType::Bool | PrimitiveType::Float | PrimitiveType::Double => Err(type_error(
+            "E-TYPE-NOT-COMPARABLE",
+            format!("primitive `{}` is not comparison-capable", primitive.name()),
+        )),
+    }
+}
+
+fn compare_integer_values(primitive: PrimitiveType, left: i128, right: i128) -> Result<Ordering> {
+    if primitive.is_signed_integer() || (left >= 0 && right >= 0) {
+        Ok(left.cmp(&right))
+    } else {
+        Err(type_error(
+            "E-TYPE-NOT-COMPARABLE",
+            format!("invalid unsigned `{}` value", primitive.name()),
+        ))
+    }
+}
+
+fn integer_value(value: &Value, unsigned: bool) -> Result<i128> {
+    let number = value
+        .as_i64()
+        .map(i128::from)
+        .or_else(|| value.as_u64().filter(|_| unsigned).map(i128::from));
+    number.ok_or_else(|| {
+        type_error(
+            "E-TYPE-NOT-COMPARABLE",
+            if unsigned {
+                "comparison requires an unsigned integer value"
+            } else {
+                "comparison requires a signed integer value"
+            },
+        )
+    })
+}
+
+fn enum_member_value(members: &[ResolvedEnumMember], value: &Value) -> Result<i128> {
+    let name = value.as_str().ok_or_else(|| {
+        type_error(
+            "E-TYPE-NOT-COMPARABLE",
+            "Enum comparison requires symbolic member names",
+        )
+    })?;
+    members
+        .iter()
+        .find(|member| member.name == name)
+        .map(|member| member.value.0)
+        .ok_or_else(|| {
+            type_error(
+                "E-TYPE-NOT-COMPARABLE",
+                format!("unknown Enum member `{name}`"),
+            )
+        })
 }
 
 fn validate_primitive_value(primitive: PrimitiveType, value: &Value) -> Result<()> {

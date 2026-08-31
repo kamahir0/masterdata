@@ -3,9 +3,8 @@ use std::fmt::Write;
 use std::path::Path;
 
 use masterdata_core::{
-    BuildPlan, ErrorKind, FieldDefinition, FieldModifier, MasterdataError, PrimitiveType,
-    ResolvedField, ResolvedType, Result, SchemaDocument, TypeReference, TypeSystem,
-    is_csharp_reserved_keyword,
+    BuildPlan, ErrorKind, FieldModifier, MasterdataError, PrimitiveType, ResolvedField,
+    ResolvedTable, ResolvedType, Result, TypeReference, TypeSystem, is_csharp_reserved_keyword,
 };
 
 use crate::model::{CSharpGenerationPlan, GeneratedFile, GenerationNote};
@@ -30,9 +29,8 @@ impl CSharpGenerator {
 
     pub fn plan(&self, build_plan: &BuildPlan) -> Result<CSharpGenerationPlan> {
         validate_namespace(&self.namespace)?;
-        let schemas: Vec<_> = build_plan.documents.schemas().collect();
         let has_types = !build_plan.type_system.types.is_empty();
-        if schemas.is_empty() && !has_types {
+        if build_plan.tables.is_empty() && !has_types {
             return Err(MasterdataError::new(
                 "E-CODEGEN-NO-DECLARATIONS",
                 ErrorKind::NotImplemented,
@@ -40,7 +38,8 @@ impl CSharpGenerator {
             ));
         }
 
-        let mut files = Vec::with_capacity(schemas.len() + build_plan.type_system.types.len());
+        let mut files =
+            Vec::with_capacity(build_plan.tables.len() + build_plan.type_system.types.len());
         let mut generated_type_names = BTreeSet::new();
         let mut generated_file_names = BTreeSet::new();
 
@@ -58,8 +57,8 @@ impl CSharpGenerator {
             )?);
         }
 
-        for (_, schema) in schemas {
-            let type_name = generated_table_type_name(schema);
+        for table in &build_plan.tables {
+            let type_name = table.csharp_name.clone();
             insert_generated_name(
                 &mut generated_type_names,
                 &mut generated_file_names,
@@ -67,7 +66,7 @@ impl CSharpGenerator {
             )?;
             files.push(render_schema(
                 &self.namespace,
-                schema,
+                table,
                 &build_plan.type_system,
             )?);
         }
@@ -75,7 +74,7 @@ impl CSharpGenerator {
             namespace: self.namespace.clone(),
             files,
             notes: vec![GenerationNote {
-                message: "MasterMemory table/index attributes beyond MessagePack field keys, Source Generator integration, and binary output are not implemented in this slice.".to_owned(),
+                message: "production binary output, cache, and final artifact orchestration remain outside this slice.".to_owned(),
                 placeholder: true,
             }],
         })
@@ -164,6 +163,7 @@ fn render_type(
             underlying,
             conversions,
         } => {
+            document.line("[MessagePack.MessagePackObject]");
             render_value_object(&mut document, name, *underlying, *conversions);
         }
         ResolvedType::Custom { name, fields } => {
@@ -201,6 +201,7 @@ fn render_value_object(
         "public readonly struct {name} : System.IEquatable<{name}>, System.IComparable<{name}>"
     ));
     document.line("{");
+    document.line("    [MessagePack.Key(0)]");
     document.line(format!("    public {csharp_underlying} Value {{ get; }}"));
     document.line("");
     document.line(format!("    public {name}({csharp_underlying} value)"));
@@ -278,6 +279,7 @@ fn render_custom(
     fields: &[ResolvedField],
     type_system: &TypeSystem,
 ) -> Result<()> {
+    document.line("[MessagePack.MessagePackObject]");
     document.line(format!(
         "public readonly struct {name} : System.IEquatable<{name}>"
     ));
@@ -427,27 +429,31 @@ fn csharp_enum_value(value: i128, underlying: PrimitiveType) -> String {
     match (underlying, value) {
         (PrimitiveType::Int, value) if value == i32::MIN as i128 => "int.MinValue".to_owned(),
         (PrimitiveType::Long, value) if value == i64::MIN as i128 => "long.MinValue".to_owned(),
-        _ => value.to_string(),
+        (PrimitiveType::UInt, value) => format!("{value}u"),
+        (PrimitiveType::ULong, value) => format!("{value}UL"),
+        (PrimitiveType::Long, value) => format!("{value}L"),
+        (_, value) => value.to_string(),
     }
 }
 
 fn render_schema(
     namespace: &str,
-    schema: &SchemaDocument,
+    table: &ResolvedTable,
     type_system: &TypeSystem,
 ) -> Result<GeneratedFile> {
-    let type_name = generated_table_type_name(schema);
+    let type_name = &table.csharp_name;
     let mut document = CSharpDocument::new();
     document.header(namespace);
-    document.line(
-        "// Table row scaffold: Primary/Secondary Key lowering is implemented in a later slice.",
-    );
-    document.line(format!("// Source table identity: {}", schema.table));
+    document.line(format!("// Source table identity: {}", table.identity));
     document.line("");
+    document.line(format!(
+        "[MasterMemory.MemoryTable(\"{}\"), MessagePack.MessagePackObject]",
+        table.identity
+    ));
     document.line(format!("public sealed partial class {type_name}"));
     document.line("{");
     let mut property_names = BTreeSet::new();
-    for field in &schema.fields {
+    for field in &table.fields {
         let property = property_name(&field.name);
         if !property_names.insert(property.clone()) {
             return Err(MasterdataError::new(
@@ -460,21 +466,38 @@ fn render_schema(
         // `key` is serialization metadata only; it is not used to reorder
         // properties or derive logical field identity (SCHEMA-KEY-001).
         document.line(format!("    [MessagePack.Key({})]", field.key));
+        if let Some(key_order) = table
+            .primary_key
+            .fields
+            .iter()
+            .position(|name| name == &field.name)
+        {
+            document.line(format!(
+                "    [MasterMemory.PrimaryKey(keyOrder: {key_order})]"
+            ));
+        }
+        for secondary in &table.secondary_keys {
+            if let Some(key_order) = secondary.fields.iter().position(|name| name == &field.name) {
+                if secondary.non_unique {
+                    // MasterMemory associates NonUnique with the same
+                    // attribute list as its SecondaryKey declaration; keeping
+                    // them together is required for the source generator to
+                    // lower the query as a RangeView (INDEX-UNIQUE-001).
+                    document.line(format!(
+                        "    [MasterMemory.SecondaryKey({}, keyOrder: {key_order}), MasterMemory.NonUnique]",
+                        secondary.index_no
+                    ));
+                } else {
+                    document.line(format!(
+                        "    [MasterMemory.SecondaryKey({}, keyOrder: {key_order})]",
+                        secondary.index_no
+                    ));
+                }
+            }
+        }
         document.line(format!(
             "    public {} {property} {{ get; init; }}",
-            csharp_field_type(
-                type_system,
-                &type_system
-                    .resolve_reference(&field.type_name)
-                    .ok_or_else(|| {
-                        MasterdataError::new(
-                            "E-CODEGEN-UNKNOWN-FIELD-TYPE",
-                            ErrorKind::Validation,
-                            format!("unknown Table field type `{}`", field.type_name),
-                        )
-                    })?,
-                table_modifier(field),
-            )?
+            csharp_field_type(type_system, &field.base_type, field.modifier)?
         ));
     }
     document.line("}");
@@ -482,16 +505,6 @@ fn render_schema(
         relative_path: std::path::PathBuf::from(format!("{}.g.cs", type_name)),
         contents: document.finish(),
     })
-}
-
-fn table_modifier(field: &FieldDefinition) -> FieldModifier {
-    if field.nullable {
-        FieldModifier::Nullable
-    } else if field.array {
-        FieldModifier::Array
-    } else {
-        FieldModifier::Required
-    }
 }
 
 fn csharp_field_type(
@@ -548,30 +561,6 @@ fn property_name(value: &str) -> String {
         Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
         None => String::new(),
     }
-}
-
-// Keep this deterministic separator-to-Pascal mapping for the current Table
-// scaffold. It is intentionally not used for type declarations, whose
-// approved naming contract rejects implicit repair (TYPE-NAMING-001/002).
-fn pascal_case(value: &str) -> String {
-    value
-        .split(['-', '_', ' ', '.'])
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect()
-}
-
-fn generated_table_type_name(schema: &SchemaDocument) -> String {
-    schema
-        .csharp_name
-        .clone()
-        .unwrap_or_else(|| pascal_case(&schema.table))
 }
 
 fn validate_generated_member_name(name: &str, code: &str) -> Result<()> {

@@ -64,7 +64,8 @@ secondaryKeys:
 ```
 
 このshapeはApproved Table/Key specificationとApplied Field Identity changeの内容を示すcanonical contractである。current
-implementationはMessagePack keyをASTとTable row scaffoldへ保持するが、Primary/Secondary Keyの完全なvalidationとloweringは次sliceのscopeである。
+implementationはMessagePack keyをASTとresolved Table modelへ保持し、selection後のrecord validation、Primary/Secondary Keyのvalidation、
+uniqueness、canonical ordering、およびC# loweringまで行う。Referenceとproduction binary orchestrationは別sliceのscopeである。
 `key`はMessagePack `[Key(n)]`へ対応するが、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、または
 schema migration identityを表さない。Custom Typeのpersisted fieldも同じ`key` modelを使用する。
 

@@ -12,6 +12,14 @@ fn write_project(root: &std::path::Path, schema: &str, build: &str) {
         ),
     )
     .expect("config");
+    let schema = if schema.contains("fields: []") && !schema.contains("primaryKey:") {
+        schema.replace(
+            "fields: []",
+            "fields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]",
+        )
+    } else {
+        schema.to_owned()
+    };
     fs::write(root.join("sources").join("schema.yaml"), schema).expect("schema");
 }
 
@@ -29,7 +37,7 @@ fn schema_source_hash_tracks_raw_schema_bytes() {
 
     fs::write(
         directory.path().join("sources").join("schema.yaml"),
-        "# formatting-only source change\nkind: schema\ntable: item\nfields: []\n",
+        "# formatting-only source change\nkind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
     )
     .expect("updated schema");
     let second = ProjectService::new()

@@ -468,7 +468,7 @@ fn schema_validation_collects_types_and_migrated_messagepack_keys() {
         ),
         (
             "item-schema.yaml",
-            "kind: schema\ntable: item\nfields:\n  - key: 4\n    name: itemId\n    type: ItemId\n    nullable: true\n  - key: 1\n    name: tags\n    type: string\n    array: true\n",
+            "kind: schema\ntable: item\nfields:\n  - key: 4\n    name: itemId\n    type: ItemId\n  - key: 1\n    name: tags\n    type: string\n    array: true\nprimaryKey:\n  fields: [itemId]\n",
         ),
     ]);
     let report = validate_documents(&documents);

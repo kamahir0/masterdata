@@ -369,6 +369,97 @@ fn enum_and_flags_data_use_their_symbolic_shapes() {
 }
 
 #[test]
+fn enum_integer_lexemes_accept_canonical_decimal_boundaries() {
+    for (underlying, value) in [
+        ("int", "0"),
+        ("int", "-0"),
+        ("int", "1"),
+        ("int", "-1"),
+        ("int", "2147483647"),
+        ("long", "-9223372036854775808"),
+        ("ulong", "18446744073709551615"),
+    ] {
+        let source = format!(
+            "kind: type\nname: Boundary\nenum:\n  underlying: {underlying}\n  members:\n    - name: Value\n      value: {value}\n"
+        );
+        let loaded = parse_yaml_document(PathBuf::from("boundary.yaml"), &source)
+            .expect("canonical integer lexeme");
+        let build = build_type_system(&ProjectDocuments {
+            files: vec![loaded],
+        });
+        assert!(
+            build.diagnostics.is_empty(),
+            "{underlying} {value}: {:?}",
+            build.diagnostics
+        );
+    }
+}
+
+#[test]
+fn enum_integer_lexemes_reject_noncanonical_numeric_forms() {
+    for value in [
+        "+1", "01", "-01", "0x1", "0X1", "0o1", "0O1", "0b1", "0B1", "1_000", "1.0", "1e3",
+    ] {
+        let source = format!(
+            "kind: type\nname: Invalid\nenum:\n  underlying: int\n  members:\n    - name: Value\n      value: {value}\n"
+        );
+        let error = parse_yaml_document(PathBuf::from("invalid.yaml"), &source)
+            .expect_err("noncanonical integer lexeme");
+        assert_eq!(error.diagnostic().code, "E-YAML-INVALID-INTEGER", "{value}");
+        assert_eq!(
+            error.diagnostic().related_requirements,
+            ["YAML-SUBSET-011"],
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn integer_lexical_gate_applies_to_flags_and_ignores_non_integer_text() {
+    let enum_source = "kind: type\nname: Rarity\nenum:\n  underlying: int\n  members:\n    - name: Common\n      value: 1 # 0x1\n";
+    let enum_document = parse_yaml_document(PathBuf::from("enum.yaml"), enum_source)
+        .expect("comment after canonical integer");
+    let enum_build = build_type_system(&ProjectDocuments {
+        files: vec![enum_document],
+    });
+    assert!(
+        enum_build.diagnostics.is_empty(),
+        "{:?}",
+        enum_build.diagnostics
+    );
+
+    let flags_source = "kind: type\nname: Feature\nflags:\n  underlying: uint\n  members:\n    - name: None\n      value: 0\n    - name: Fire\n      value: +1\n";
+    let error = parse_yaml_document(PathBuf::from("flags.yaml"), flags_source)
+        .expect_err("flags must use canonical integer lexemes");
+    assert_eq!(error.diagnostic().code, "E-YAML-INVALID-INTEGER");
+    assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-011"]);
+
+    let bare_dash_source = "kind: type\nname: BareDash\nenum:\n  underlying: int\n  members:\n    -\n      name: Value\n      value: 0x1\n";
+    let error = parse_yaml_document(PathBuf::from("bare-dash.yaml"), bare_dash_source)
+        .expect_err("bare sequence item must still be checked");
+    assert_eq!(error.diagnostic().code, "E-YAML-INVALID-INTEGER");
+
+    let indentless_source = "kind: type\nname: Indentless\nenum:\n  underlying: int\n  members:\n  - name: Value\n    value: 0x1\n";
+    let error = parse_yaml_document(PathBuf::from("indentless.yaml"), indentless_source)
+        .expect_err("indentless sequence item must still be checked");
+    assert_eq!(error.diagnostic().code, "E-YAML-INVALID-INTEGER");
+
+    let quoted_string = parse_yaml_document(
+        PathBuf::from("quoted.yaml"),
+        "kind: data\ntable: item\nrecords:\n  - name: \"0x1\"\n",
+    )
+    .expect("quoted string");
+    assert_eq!(quoted_string.document.kind(), "data");
+
+    let block_scalar = parse_yaml_document(
+        PathBuf::from("block.yaml"),
+        "kind: data\ntable: item\nrecords:\n  - description: |\n      0x1\n      +1\n",
+    )
+    .expect("literal block scalar");
+    assert_eq!(block_scalar.document.kind(), "data");
+}
+
+#[test]
 fn schema_validation_collects_types_and_migrated_messagepack_keys() {
     let documents = documents(&[
         (

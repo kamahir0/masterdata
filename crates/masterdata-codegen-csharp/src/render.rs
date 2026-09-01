@@ -4,7 +4,8 @@ use std::path::Path;
 
 use masterdata_core::{
     BuildPlan, ErrorKind, FieldModifier, MasterdataError, PrimitiveType, ResolvedField,
-    ResolvedTable, ResolvedType, Result, TypeReference, TypeSystem, is_csharp_reserved_keyword,
+    ResolvedTable, ResolvedType, Result, TypeReference, TypeSystem, csharp_property_name,
+    is_csharp_reserved_keyword,
 };
 
 use crate::model::{CSharpGenerationPlan, GeneratedFile, GenerationNote};
@@ -74,7 +75,7 @@ impl CSharpGenerator {
             namespace: self.namespace.clone(),
             files,
             notes: vec![GenerationNote {
-                message: "production binary output, cache, and final artifact orchestration remain outside this slice.".to_owned(),
+                message: "Reference integrity, cache reuse, and released binary compatibility remain outside this slice.".to_owned(),
                 placeholder: true,
             }],
         })
@@ -95,7 +96,7 @@ impl CSharpGenerator {
         })?;
         let mut written = Vec::with_capacity(plan.files.len());
         for file in &plan.files {
-            let path = output_dir.join(&file.relative_path);
+            let path = safe_generated_path(output_dir, &file.relative_path)?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|error| {
                     MasterdataError::new(
@@ -118,6 +119,30 @@ impl CSharpGenerator {
         }
         Ok(written)
     }
+}
+
+fn safe_generated_path(output_dir: &Path, relative_path: &Path) -> Result<std::path::PathBuf> {
+    if relative_path.is_absolute()
+        || relative_path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::Prefix(_)
+                    | std::path::Component::RootDir
+                    | std::path::Component::ParentDir
+            )
+        })
+    {
+        return Err(MasterdataError::new(
+            "E-CODEGEN-OUTPUT-PATH-ESCAPE",
+            ErrorKind::Validation,
+            format!(
+                "generated relative path `{}` is not safely contained by the output directory",
+                relative_path.display()
+            ),
+        )
+        .with_source(output_dir.to_path_buf()));
+    }
+    Ok(output_dir.join(relative_path))
 }
 
 fn insert_generated_name(
@@ -291,7 +316,7 @@ fn render_custom(
         document.line(format!(
             "    public {} {} {{ get; }}",
             csharp_field_type(type_system, &field.base_type, field.modifier)?,
-            property_name(&field.name)
+            csharp_property_name(&field.name)
         ));
     }
     document.line("");
@@ -338,7 +363,7 @@ fn render_custom(
         }
         document.line(format!(
             "        {} = {parameter};",
-            property_name(&field.name)
+            csharp_property_name(&field.name)
         ));
     }
     document.line("    }");
@@ -370,15 +395,23 @@ fn render_custom(
     // not a particular hash algorithm.
     document.line("        var hash = 17;");
     for field in fields {
-        let property = property_name(&field.name);
+        let property = csharp_property_name(&field.name);
         if field.modifier == FieldModifier::Array {
             // Hash each element in order so equal Array sequences produce the
             // same structural hash (TYPE-FIELD-009, SCHEMA-CUSTOM-014).
             document.line(format!("        foreach (var item in {property})"));
             document.line("        {");
-            document.line(
-                "            hash = unchecked(hash * 31 + (item is null ? 0 : item.GetHashCode()));",
-            );
+            let item_hash = if matches!(
+                field.base_type,
+                TypeReference::Primitive(PrimitiveType::String)
+            ) {
+                "(item is null ? 0 : item.GetHashCode())"
+            } else {
+                "item.GetHashCode()"
+            };
+            document.line(format!(
+                "            hash = unchecked(hash * 31 + {item_hash});"
+            ));
             document.line("        }");
         } else if field.modifier == FieldModifier::Nullable {
             document.line(format!(
@@ -454,7 +487,7 @@ fn render_schema(
     document.line("{");
     let mut property_names = BTreeSet::new();
     for field in &table.fields {
-        let property = property_name(&field.name);
+        let property = csharp_property_name(&field.name);
         if !property_names.insert(property.clone()) {
             return Err(MasterdataError::new(
                 "E-CODEGEN-PROPERTY-NAME-COLLISION",
@@ -524,7 +557,7 @@ fn csharp_field_type(
 }
 
 fn equality_expression_for_field(field: &ResolvedField) -> String {
-    let property = property_name(&field.name);
+    let property = csharp_property_name(&field.name);
     if field.modifier == FieldModifier::Array {
         format!("System.Linq.Enumerable.SequenceEqual({property}, other.{property})")
     } else {
@@ -552,14 +585,6 @@ fn comparison_expression(primitive: PrimitiveType, left: &str, right: &str) -> S
         format!("string.CompareOrdinal({left}, {right})")
     } else {
         format!("{left}.CompareTo({right})")
-    }
-}
-
-fn property_name(value: &str) -> String {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
-        None => String::new(),
     }
 }
 

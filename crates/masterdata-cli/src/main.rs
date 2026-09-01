@@ -29,7 +29,7 @@ enum Command {
     ProjectInfo(OutputArgs),
     /// Parse and run basic semantic validation on project sources.
     Validate(OutputArgs),
-    /// Prepare the build boundary. The MasterMemory binary stage is explicit and currently unavailable.
+    /// Validate, build, and publish the configured MasterMemory binary.
     Build(BuildArgs),
 }
 
@@ -189,6 +189,13 @@ fn run() -> Result<()> {
                     execution.written_files.len(),
                     plan.generated_output.display()
                 );
+                if let Some(binary) = &execution.binary {
+                    println!(
+                        "published MasterMemory binary: {} ({} bytes)",
+                        binary.binary_path.display(),
+                        binary.binary_size
+                    );
+                }
             }
         }
     }

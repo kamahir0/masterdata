@@ -3,6 +3,8 @@ name: Rarity
 enum:
   underlying: int
   members:
+    - name: Minimum
+      value: -2147483648
     - name: Common
       value: 1
     - name: Rare

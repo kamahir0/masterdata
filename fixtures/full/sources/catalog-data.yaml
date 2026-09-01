@@ -1,7 +1,51 @@
 kind: data
 table: item
 records:
+  - id: 1002
+    code: sword
+    rarity: Rare
+    tags: [Fire, Highest]
+    enabled: true
+    intValue: -2147483648
+    uintValue: 4294967295
+    longValue: 9223372036854775807
+    ulongValue: 0
+    floatValue: 1.25
+    doubleValue: -0.5
+    name: Debug Sword
+    itemId: 2002
+    reward:
+      values: [2, 3]
+      itemId: 2002
+      note: null
+      amount: 4294967295
+    optionalCode: null
+    numbers: []
+    featureSets:
+      - [Fire]
+      - [None]
+    rarities: [Common, Rare]
+    $tags: [development]
   - id: 1001
-    code: potion
+    code: sword
     rarity: Common
-    tags: [Fire, Ice]
+    tags: [Ice]
+    enabled: false
+    intValue: 2147483647
+    uintValue: 0
+    longValue: -9223372036854775808
+    ulongValue: 18446744073709551615
+    floatValue: 2.5
+    doubleValue: 1.0
+    name: Sword
+    itemId: 2001
+    reward:
+      values: [1]
+      itemId: 2001
+      note: null
+      amount: 1
+    optionalCode: potion
+    numbers: [1, -2]
+    featureSets: []
+    rarities: [Common]
+    $tags: [production]

@@ -33,8 +33,8 @@ pub use table::{
     TableBuild, resolve_tables,
 };
 pub use type_system::{
-    FieldModifier, PrimitiveType, ResolvedConversions, ResolvedEnumMember, ResolvedField,
-    ResolvedType, TypeCategory, TypeReference, TypeSystem, TypeSystemBuild, build_type_system,
-    is_csharp_reserved_keyword, resolve_type_system,
+    FieldModifier, NormalizedValue, PrimitiveType, ResolvedConversions, ResolvedEnumMember,
+    ResolvedField, ResolvedType, TypeCategory, TypeReference, TypeSystem, TypeSystemBuild,
+    build_type_system, csharp_property_name, is_csharp_reserved_keyword, resolve_type_system,
 };
 pub use validation::{ValidationReport, validate_documents, validate_documents_with_selection};

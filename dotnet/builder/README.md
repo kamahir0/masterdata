@@ -1,10 +1,12 @@
 # .NET builder boundary（.NET builderの境界）
 
-このprojectは、`masterdata-dotnet` がreal bridge smoke testに使用する、意図的に小さなdependency-free .NET executable
-である。Rustがrepository-owned .NET projectを呼び出し、そのexit statusとoutputを読み取れることを検証する。
+このprojectは、`masterdata-dotnet` がbridge smoke testとproduction buildで利用するrepository-owned .NET builderである。
+production pathではRustが生成C#とvalidated/normalized valueを一時的なstaging workspaceへ配置し、staged projectとして
+このbuilderをcompile/runする。builderはMasterMemory v3 Source Generator、C# compilation、DatabaseBuilder、binary reload
+validationを所有する。
 
-MasterMemory binary generationは実装しない。将来のbuilderがMasterMemory v3 Source Generator、C# compilation、binary
-build、binary validationを所有する。Rustはadapterであり続け、これらのinternalを再実装してはならない。
+RustはMasterMemoryやMessagePackのinternalを再実装せず、YAMLを.NET側で再parseしない。Rust/.NET間のrequest/reportは
+repository同梱builderとのinternal protocolであり、released compatibility contractではない。
 
 repositoryにおける実際のdependency/API compatibility experimentは、独立した
 [MasterMemory v3 technical spike](../spike/masterdata-mastermemory-spike.csproj) であり、
@@ -15,3 +17,6 @@ repositoryにおける実際のdependency/API compatibility experimentは、独�
 ```bash
 dotnet run --project dotnet/builder/masterdata-builder.csproj -- --self-test
 ```
+
+production buildはapplication serviceから起動される。通常のbuildではfinal binaryへ直接書き込まず、builder reportと
+`MemoryDatabase` reload validationが成功した後にapplication serviceがfinal pathへpublishする。

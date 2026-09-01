@@ -2,7 +2,7 @@
 
 `masterdata` は Unity + MasterMemory を対象にした、YAML-firstのローカルファーストなマスターデータ開発システムです。CLIとTauri GUIは、同じRust application serviceとcoreを直接利用します。
 
-このリポジトリはschema-drivenなproduction binary buildの実装前段階です。project discovery、設定読込、typed YAML AST、Type Systemの解決・検証、Value Object / Custom Type / Enum / Flags EnumのC#生成、Table row scaffold、CLI、Tauriアプリシェル、.NET bridge smoke test、実際のMasterMemory v3を使う独立technical spikeが動作します。Table/Keyの完全なlowering、Reference、schema-drivenなproduction binary buildは、次の実装sliceとして意図的に未完了です。
+このリポジトリはschema-drivenなMasterMemory binary buildを行います。project discovery、設定読込、typed YAML AST、Type Systemの解決・検証、Value Object / Custom Type / Enum / Flags EnumのC#生成、Table/Key validation、Build Selection、stagedな実MasterMemory v3 builder、binary reload validation、CLI、Tauriアプリシェルが動作します。Reference、builder cache、released binary compatibility、Unityへの最終配置は引き続き別scopeです。
 
 ## アーキテクチャ
 
@@ -20,7 +20,7 @@
 
 - `masterdata-core`: project解決、`masterdata.toml`、typed YAML document model、Type Systemのsymbol resolution/validation、build plan
 - `masterdata-codegen-csharp`: resolved Type System modelとTable row scaffoldからC#を生成する独立境界
-- `masterdata-dotnet`: .NET SDKと将来のMasterMemory builderを呼び出す唯一のRust adapter
+- `masterdata-dotnet`: .NET SDKとstaged MasterMemory builderを呼び出す唯一のRust adapter
 - `masterdata-app`: CLIとTauriが共有するproject/validate/build orchestration。domain semanticsは持たない
 - `masterdata-cli`: application serviceを使うCLI。GUIやCLIにdomain logicを重複させない
 - `apps/gui`: TypeScript + React frontendとTauri v2 shell。backend commandはapplication serviceを呼ぶ
@@ -79,7 +79,7 @@ cargo xtask cli
 # fixtureをコピーしてTauri GUIを起動
 cargo xtask gui
 
-# fixture discovery -> validation -> C# plan -> .NET builder smoke test
+# fixture discovery -> validation -> production binary build -> .NET bridge smoke test
 cargo xtask test-integration
 
 # 実際のMasterMemory v3 Source Generator -> binary -> reload/lookup spike
@@ -107,7 +107,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は全stageが成功するまで最終generated outputへ書き込まず、schema-drivenのMasterMemory binary生成が未実装の現在は明示的なエラーで停止します。失敗したbuildがpartialな最終成果物を残すことはありません。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、明示的に設定された`build.binary_output`の同一filesystem上へ中間成果物をstageし、実MasterMemory builderとbinary reload validationが成功した後にbinaryをatomic publishし、最後にgenerated C#をpublishします。失敗したbuildは既存のbinary/generated outputを変更しません。binary output未設定のnon-dry-run buildは明示的な設定エラーで停止します。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## ProjectとYAMLの規約
 

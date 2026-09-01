@@ -9,6 +9,4 @@ description = "Shared application workflows for the masterdata CLI and GUI"
 masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
 masterdata-core = { path = "../masterdata-core" }
 masterdata-dotnet = { path = "../masterdata-dotnet" }
-
-[dev-dependencies]
 tempfile.workspace = true

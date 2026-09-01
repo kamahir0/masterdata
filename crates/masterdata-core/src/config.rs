@@ -28,7 +28,7 @@ pub struct SourceConfig {
 pub struct BuildConfig {
     #[serde(default = "default_output_directory")]
     pub output: String,
-    /// Optional future MasterMemory binary destination. It is deliberately
+    /// Optional explicit MasterMemory binary destination. It is deliberately
     /// separate from the generated C# output directory.
     #[serde(default)]
     pub binary_output: Option<String>,

@@ -1,13 +1,20 @@
 use std::ffi::OsString;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
-use masterdata_core::{BuildPlan, ErrorKind, MasterdataError, Result};
+use masterdata_core::{ErrorKind, MasterdataError, Result};
 use serde::{Deserialize, Serialize};
+
+use super::protocol::{
+    BUILD_PROTOCOL_VERSION, MASTERMEMORY_VERSION, MESSAGEPACK_VERSION, MasterMemoryBuildReport,
+    MasterMemoryBuildRequest,
+};
 
 #[derive(Debug, Clone)]
 pub struct DotnetBridge {
     executable: OsString,
+    repository_root: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -59,13 +66,22 @@ impl DotnetBridge {
     pub fn new() -> Self {
         let executable =
             std::env::var_os("MASTERDATA_DOTNET").unwrap_or_else(|| OsString::from("dotnet"));
-        Self { executable }
+        Self {
+            executable,
+            repository_root: repository_root_from_manifest(),
+        }
     }
 
     pub fn with_executable(executable: impl Into<OsString>) -> Self {
         Self {
             executable: executable.into(),
+            repository_root: repository_root_from_manifest(),
         }
+    }
+
+    pub fn with_repository_root(mut self, repository_root: impl Into<PathBuf>) -> Self {
+        self.repository_root = repository_root.into();
+        self
     }
 
     pub fn executable(&self) -> &OsString {
@@ -166,14 +182,194 @@ impl DotnetBridge {
         })
     }
 
-    /// The real MasterMemory build is intentionally an explicit boundary and
-    /// not a successful placeholder.
-    pub fn build_mastermemory(&self, _plan: &BuildPlan) -> Result<()> {
-        Err(MasterdataError::new(
-            "E-DOTNET-MASTERMEMORY-NOT-IMPLEMENTED",
-            ErrorKind::NotImplemented,
-            "MasterMemory v3 Source Generator and binary build are not implemented yet",
-        ))
+    /// Compile the staged schema-specific project and run the repository-owned
+    /// MasterMemory builder. The request contains only Rust-validated,
+    /// normalized values; the .NET process never reparses source YAML.
+    pub fn build_mastermemory(
+        &self,
+        request: &MasterMemoryBuildRequest,
+        generated_source_dir: &Path,
+        workspace: &Path,
+    ) -> Result<MasterMemoryBuildReport> {
+        let probe = self.probe();
+        if !probe.available {
+            return Err(MasterdataError::new(
+                "E-DOTNET-SDK-UNAVAILABLE",
+                ErrorKind::ExternalTool,
+                format!(
+                    ".NET SDK is unavailable through `{}`: {}",
+                    probe.executable, probe.detail
+                ),
+            ));
+        }
+        if !workspace.is_dir() || !generated_source_dir.is_dir() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-PREPARE",
+                ErrorKind::Io,
+                "builder staging workspace or generated source directory is missing",
+            )
+            .with_source(workspace.to_path_buf()));
+        }
+        if !request.output_path.is_absolute() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-PREPARE",
+                ErrorKind::Config,
+                "builder output path must be absolute",
+            )
+            .with_source(request.output_path.clone()));
+        }
+
+        let builder_project = Self::builder_project_path(&self.repository_root);
+        let Some(builder_directory) = builder_project.parent() else {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-MISSING",
+                ErrorKind::ExternalTool,
+                "builder project has no parent directory",
+            ));
+        };
+        let template_program = builder_directory.join("Program.cs");
+        if !builder_project.is_file() || !template_program.is_file() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-MISSING",
+                ErrorKind::ExternalTool,
+                "repository builder project or program is missing",
+            )
+            .with_source(builder_project));
+        }
+
+        let project_path = workspace.join("masterdata-builder.csproj");
+        let program_path = workspace.join("Program.cs");
+        let request_path = workspace.join("request.json");
+        let report_path = workspace.join("report.json");
+        let options_path = generated_source_dir.join("BuilderOptions.g.cs");
+
+        fs::copy(&template_program, &program_path).map_err(|error| {
+            MasterdataError::new(
+                "E-DOTNET-BUILDER-PREPARE",
+                ErrorKind::Io,
+                format!("could not stage the .NET builder program: {error}"),
+            )
+            .with_source(program_path.clone())
+        })?;
+        fs::write(&project_path, staged_project_file()).map_err(|error| {
+            MasterdataError::new(
+                "E-DOTNET-BUILDER-PREPARE",
+                ErrorKind::Io,
+                format!("could not write the staged .NET project: {error}"),
+            )
+            .with_source(project_path.clone())
+        })?;
+        fs::write(&options_path, generator_options_source(&request.namespace)).map_err(
+            |error| {
+                MasterdataError::new(
+                    "E-DOTNET-BUILDER-PREPARE",
+                    ErrorKind::Io,
+                    format!("could not write MasterMemory generator options: {error}"),
+                )
+                .with_source(options_path.clone())
+            },
+        )?;
+        let request_json = serde_json::to_vec_pretty(request).map_err(|error| {
+            MasterdataError::new(
+                "E-DOTNET-BUILDER-PREPARE",
+                ErrorKind::Validation,
+                format!("could not serialize the builder request: {error}"),
+            )
+            .with_source(request_path.clone())
+        })?;
+        fs::write(&request_path, request_json).map_err(|error| {
+            MasterdataError::new(
+                "E-DOTNET-BUILDER-PREPARE",
+                ErrorKind::Io,
+                format!("could not write the builder request: {error}"),
+            )
+            .with_source(request_path.clone())
+        })?;
+
+        let compile = Command::new(&self.executable)
+            .arg("build")
+            .arg(&project_path)
+            .arg("--nologo")
+            .arg("--configuration")
+            .arg("Release")
+            .current_dir(workspace)
+            .output()
+            .map_err(|error| {
+                MasterdataError::new(
+                    "E-DOTNET-BUILDER-COMPILE",
+                    ErrorKind::ExternalTool,
+                    format!("could not invoke the .NET builder compiler: {error}"),
+                )
+                .with_source(project_path.clone())
+            })?;
+        if !compile.status.success() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-COMPILE",
+                ErrorKind::ExternalTool,
+                format!(
+                    "schema-specific .NET builder compilation failed: {}",
+                    command_detail(&compile)
+                ),
+            )
+            .with_source(project_path));
+        }
+
+        let run = Command::new(&self.executable)
+            .arg("run")
+            .arg("--project")
+            .arg(&project_path)
+            .arg("--no-build")
+            .arg("--no-restore")
+            .arg("--configuration")
+            .arg("Release")
+            .arg("--")
+            .arg("--request")
+            .arg(&request_path)
+            .arg("--output")
+            .arg(&request.output_path)
+            .arg("--report")
+            .arg(&report_path)
+            .current_dir(workspace)
+            .output()
+            .map_err(|error| {
+                MasterdataError::new(
+                    "E-DOTNET-BUILDER-RUN",
+                    ErrorKind::ExternalTool,
+                    format!("could not invoke the schema-specific .NET builder: {error}"),
+                )
+                .with_source(project_path.clone())
+            })?;
+        if !run.status.success() {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-RUN",
+                ErrorKind::ExternalTool,
+                format!(
+                    "schema-specific .NET builder failed: {}",
+                    command_detail(&run)
+                ),
+            )
+            .with_source(report_path));
+        }
+
+        let report_content = fs::read_to_string(&report_path).map_err(|error| {
+            MasterdataError::new(
+                "E-DOTNET-BUILDER-REPORT",
+                ErrorKind::ExternalTool,
+                format!("could not read the .NET builder report: {error}"),
+            )
+            .with_source(report_path.clone())
+        })?;
+        let report: MasterMemoryBuildReport =
+            serde_json::from_str(&report_content).map_err(|error| {
+                MasterdataError::new(
+                    "E-DOTNET-BUILDER-REPORT",
+                    ErrorKind::ExternalTool,
+                    format!("could not parse the .NET builder report: {error}"),
+                )
+                .with_source(report_path.clone())
+            })?;
+        validate_build_report(&report, request)?;
+        Ok(report)
     }
 
     /// Run the isolated, hand-written MasterMemory v3 technical spike. This
@@ -267,5 +463,173 @@ impl DotnetBridge {
             .join("dotnet")
             .join("spike")
             .join("masterdata-mastermemory-spike.csproj")
+    }
+}
+
+fn repository_root_from_manifest() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("masterdata-dotnet must live two directories below the repository root")
+        .to_path_buf()
+}
+
+fn staged_project_file() -> &'static str {
+    r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>masterdata-generated-builder</AssemblyName>
+    <RootNamespace>Masterdata.Builder</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MasterMemory" Version="3.0.4" />
+    <PackageReference Include="MessagePack" Version="3.1.3" />
+    <Compile Include="Generated/**/*.g.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>
+"#
+}
+
+fn generator_options_source(namespace: &str) -> String {
+    format!(
+        "using MasterMemory;\n[assembly: MasterMemoryGeneratorOptions(Namespace = \"{}\")]\n",
+        escape_csharp_string(namespace)
+    )
+}
+
+fn escape_csharp_string(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+}
+
+fn command_detail(output: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    let detail = match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => format!("process exited with status {}", output.status),
+        (false, true) => format!("stdout: {stdout}"),
+        (true, false) => format!("stderr: {stderr}"),
+        (false, false) => format!("stdout: {stdout}\nstderr: {stderr}"),
+    };
+    const MAX_DETAIL_CHARS: usize = 8 * 1024;
+    if detail.chars().count() <= MAX_DETAIL_CHARS {
+        detail
+    } else {
+        let truncated: String = detail.chars().take(MAX_DETAIL_CHARS).collect();
+        format!("{truncated} [output truncated]")
+    }
+}
+
+fn validate_build_report(
+    report: &MasterMemoryBuildReport,
+    request: &MasterMemoryBuildRequest,
+) -> Result<()> {
+    if report.status != "ok" {
+        return Err(MasterdataError::new(
+            "E-DOTNET-BUILDER-REPORT",
+            ErrorKind::ExternalTool,
+            format!(".NET builder reported status `{}`", report.status),
+        ));
+    }
+    if report.protocol_version != BUILD_PROTOCOL_VERSION {
+        return Err(MasterdataError::new(
+            "E-DOTNET-BUILDER-REPORT",
+            ErrorKind::ExternalTool,
+            format!(
+                "unsupported builder protocol version {} (expected {})",
+                report.protocol_version, BUILD_PROTOCOL_VERSION
+            ),
+        ));
+    }
+    if report.master_memory_version != MASTERMEMORY_VERSION
+        || report.message_pack_version != MESSAGEPACK_VERSION
+    {
+        return Err(MasterdataError::new(
+            "E-DOTNET-BUILDER-REPORT",
+            ErrorKind::ExternalTool,
+            format!(
+                "builder package versions are MasterMemory {} / MessagePack {}, expected {} / {}",
+                report.master_memory_version,
+                report.message_pack_version,
+                MASTERMEMORY_VERSION,
+                MESSAGEPACK_VERSION
+            ),
+        ));
+    }
+    if !same_path(&report.binary_path, &request.output_path) {
+        return Err(MasterdataError::new(
+            "E-DOTNET-BUILDER-REPORT",
+            ErrorKind::ExternalTool,
+            format!(
+                "builder report path `{}` does not match requested output `{}`",
+                report.binary_path.display(),
+                request.output_path.display()
+            ),
+        ));
+    }
+    let metadata = fs::metadata(&request.output_path).map_err(|error| {
+        MasterdataError::new(
+            "E-DOTNET-BINARY-INVALID",
+            ErrorKind::ExternalTool,
+            format!("builder binary is missing or unreadable: {error}"),
+        )
+        .with_source(request.output_path.clone())
+    })?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() != report.binary_size {
+        return Err(MasterdataError::new(
+            "E-DOTNET-BINARY-INVALID",
+            ErrorKind::ExternalTool,
+            format!(
+                "builder binary size is invalid (report {}, filesystem {})",
+                report.binary_size,
+                metadata.len()
+            ),
+        )
+        .with_source(request.output_path.clone()));
+    }
+    let expected_records = request.record_count();
+    if report.table_count != request.tables.len()
+        || report.record_count != expected_records
+        || report.tables.len() != request.tables.len()
+    {
+        return Err(MasterdataError::new(
+            "E-DOTNET-BUILDER-REPORT",
+            ErrorKind::ExternalTool,
+            "builder report table or record counts do not match the request",
+        ));
+    }
+    for (expected, actual) in request.tables.iter().zip(&report.tables) {
+        if expected.identity != actual.identity || expected.records.len() != actual.record_count {
+            return Err(MasterdataError::new(
+                "E-DOTNET-BUILDER-REPORT",
+                ErrorKind::ExternalTool,
+                format!(
+                    "builder report count for table `{}` does not match the request",
+                    expected.identity
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    }
+    #[cfg(not(windows))]
+    {
+        left == right
     }
 }

@@ -1,0 +1,4 @@
+kind: type
+name: ItemId
+valueObject:
+  underlying: int

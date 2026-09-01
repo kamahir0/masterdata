@@ -1,0 +1,9 @@
+kind: type
+name: LongFeatures
+flags:
+  underlying: long
+  members:
+    - name: None
+      value: 0
+    - name: Highest
+      value: -9223372036854775808

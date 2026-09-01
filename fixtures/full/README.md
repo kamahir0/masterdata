@@ -1,7 +1,8 @@
 # 完全な参照fixture（Full reference fixture）
 
-このdirectoryは、completeなschema modelをdogfoodするためのplanned projectである。initial parserとbuilderがまだ
-拡張中のため、現時点では意図的に説明用としている。将来のfixtureでは次を検証する。
+このdirectoryは、Type System、Table/Key、およびproduction MasterMemory builderを一つのprojectで検証するfixtureである。
+`masterdata-app` のend-to-end testはこのfixtureをpathに空白を含むtemporary projectへコピーし、Rustのvalidated modelから
+実際の.NET builderへhandoffしてbinaryをreloadする。
 
 - value objectとimmutable custom type
 - 通常のenumとflags enum
@@ -10,5 +11,5 @@
 - one-to-oneとone-to-manyの `MasterReference`
 
 current fileは、coreがtyped ASTへ保持し、Type System resolver、Table resolver、C# generatorが扱うdeclarationを使用している。
-Table-level validationとMasterMemoryのC# loweringは実装済みである。Reference helper、production binary orchestration、cache、
-および最終artifact出力は引き続き次のimplementation workである。
+Table-level validation、MasterMemoryのC# lowering、staged production binary build、およびbinary reload validationを検証する。
+Reference helper、builder cache、released binary compatibility、Unityへの最終配置は別scopeである。

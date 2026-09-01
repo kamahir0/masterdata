@@ -9,5 +9,5 @@ roots = ["sources"]
 
 [build]
 output = ".masterdata/generated"
+binary_output = ".masterdata/output/masterdata.bytes"
 cache = ".masterdata/cache"
-

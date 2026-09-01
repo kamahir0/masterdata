@@ -27,13 +27,11 @@ formatとSource Generatorのbehaviorは、.NET dependencyに残さなければ�
 
 current behaviorは意図的に段階的である。`prepare_build` はselection後のTable/Key validation、
 canonical ordering、validation済みTable model、およびschema source-content hashの計算を行い、C# crateは
-MessagePack/MasterMemory v3 attributesを含むTableとType SystemのC# loweringをplanする。.NET crateはbridge smoke testと
-独立したMasterMemory v3 technical spikeの双方を実行できる。production schema-driven binary
-generationは、明示的なnot-implemented boundaryとして残る。non-dry-run application buildは
-generated C#をpublishする前にそのboundaryを呼び出すため、現在のnot-implemented failureが
-misleadingなfinal generated directoryを残すことはない。production builderが利用可能になった
-場合、generated C#、binary output、cacheへのwriteはstagingを使い、必要なすべてのstageが成功した
-後にのみpublishしなければならない（MUST）。
+MessagePack/MasterMemory v3 attributesを含むTableとType SystemのC# loweringをplanする。.NET crateはbridge smoke test、
+stagedなschema-specific builder、独立したMasterMemory v3 technical spikeの双方を実行できる。non-dry-run application
+buildは、validated modelからinternal requestを作成し、staging workspaceでC# compile、DatabaseBuilder、binary reload
+validationを実行する。全stage成功後にbinaryをatomic publishし、その後にgenerated C#をpublishする。Reference、cache reuse、
+released binary compatibilityは別scopeである。
 
 Record Tags、Build Profiles、Build Selectionのselection semanticsは、[Build Selection仕様](build-selection.md)が所有する。このdocumentの
 high-level pipelineにおけるsemantic validationは、selection前のprofile-independent validationと、selection後のdataset-level
@@ -46,7 +44,7 @@ normalizationやrepairへ置き換えてはならない（MUST NOT）。
 ## Outputとidentityの境界
 
 current configurationでは `build.output` をgenerated C# output directoryとして扱う。任意の
-`build.binary_output` は将来のMasterMemory binary destinationを指定でき、`build.cache` は独立した
+`build.binary_output` は明示的なMasterMemory binary destinationを指定でき、`build.cache` は独立した
 cache directoryを指定する。これらのpathはbuild plan内で分離して表現し、互いから推論してはならない。final
 configuration contract、atomic replacementの詳細、Unityへの配置policyは
 引き続きOpen Questionである。

@@ -14,5 +14,56 @@ fields:
   - key: 3
     name: tags
     type: ItemTags
+  - key: 4
+    name: enabled
+    type: bool
+  - key: 5
+    name: intValue
+    type: int
+  - key: 6
+    name: uintValue
+    type: uint
+  - key: 7
+    name: longValue
+    type: long
+  - key: 8
+    name: ulongValue
+    type: ulong
+  - key: 9
+    name: floatValue
+    type: float
+  - key: 10
+    name: doubleValue
+    type: double
+  - key: 11
+    name: name
+    type: string
+  - key: 12
+    name: itemId
+    type: ItemId
+  - key: 13
+    name: reward
+    type: Reward
+  - key: 14
+    name: optionalCode
+    type: ItemCode
+    nullable: true
+  - key: 15
+    name: numbers
+    type: int
+    array: true
+  - key: 16
+    name: featureSets
+    type: ItemTags
+    array: true
+  - key: 17
+    name: rarities
+    type: Rarity
+    array: true
 primaryKey:
   fields: [id]
+secondaryKeys:
+  - fields: [code]
+    nonUnique: true
+  - fields: [rarity]
+  - fields: [code, rarity]

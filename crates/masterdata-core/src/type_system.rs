@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use crate::document::{
@@ -168,6 +169,65 @@ pub enum ResolvedType {
     },
 }
 
+/// Rustで検証済みの値を、schema-specific .NET builderへ渡すための
+/// internalな正規化表現。source YAMLそのものやserde_yamlのValueを境界の
+/// 外へ渡さず、Enum/Flagsを含む意味付けはこのcrateで完了させる。
+///
+/// Numeric values are decimal strings on purpose. JSON numberとして一度
+/// IEEE 754へ変換される経路を避け、特に `ulong` の全域を保持する
+/// (TYPE-PRIMITIVE-003, SCHEMA-ENUM-003)。この形式はpublic/released
+/// compatibility protocolではなく、同梱Rust/.NET builder間だけで使う。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum NormalizedValue {
+    Null,
+    Bool {
+        value: bool,
+    },
+    Int {
+        value: String,
+    },
+    #[serde(rename = "uint")]
+    UInt {
+        value: String,
+    },
+    Long {
+        value: String,
+    },
+    #[serde(rename = "ulong")]
+    ULong {
+        value: String,
+    },
+    Float {
+        value: String,
+    },
+    Double {
+        value: String,
+    },
+    String {
+        value: String,
+    },
+    ValueObject {
+        type_name: String,
+        value: Box<NormalizedValue>,
+    },
+    Custom {
+        type_name: String,
+        fields: BTreeMap<String, NormalizedValue>,
+    },
+    Enum {
+        type_name: String,
+        value: String,
+    },
+    Flags {
+        type_name: String,
+        value: String,
+    },
+    Array {
+        elements: Vec<NormalizedValue>,
+    },
+}
+
 impl ResolvedType {
     pub fn name(&self) -> &str {
         match self {
@@ -250,6 +310,130 @@ impl TypeSystem {
         modifier: FieldModifier,
     ) -> bool {
         modifier == FieldModifier::Required && self.is_comparison_capable(reference)
+    }
+
+    /// Normalize an already validated field value for the internal .NET
+    /// builder protocol. Validation remains the primary semantic boundary;
+    /// this method only changes representation and recursively resolves named
+    /// types using the resolved Type System.
+    pub fn normalize_field_value(
+        &self,
+        field: &ResolvedField,
+        value: &Value,
+    ) -> Result<NormalizedValue> {
+        if value.is_null() {
+            return match field.modifier {
+                FieldModifier::Nullable => Ok(NormalizedValue::Null),
+                FieldModifier::Required | FieldModifier::Array => Err(type_error(
+                    "E-TYPE-NULL-NOT-ALLOWED",
+                    format!("field `{}` does not allow null", field.name),
+                )),
+            };
+        }
+
+        match field.modifier {
+            FieldModifier::Required | FieldModifier::Nullable => {
+                self.normalize_reference_value(&field.base_type, value)
+            }
+            FieldModifier::Array => {
+                let values = value.as_sequence().ok_or_else(|| {
+                    type_error(
+                        "E-TYPE-ARRAY-DATA-SHAPE",
+                        format!("array field `{}` must be a sequence", field.name),
+                    )
+                })?;
+                values
+                    .iter()
+                    .map(|value| self.normalize_reference_value(&field.base_type, value))
+                    .collect::<Result<Vec<_>>>()
+                    .map(|elements| NormalizedValue::Array { elements })
+            }
+        }
+    }
+
+    fn normalize_reference_value(
+        &self,
+        reference: &TypeReference,
+        value: &Value,
+    ) -> Result<NormalizedValue> {
+        match reference {
+            TypeReference::Primitive(primitive) => normalize_primitive_value(*primitive, value),
+            TypeReference::Named(name) => match self.types.get(name) {
+                Some(ResolvedType::ValueObject { underlying, .. }) => {
+                    Ok(NormalizedValue::ValueObject {
+                        type_name: name.clone(),
+                        value: Box::new(normalize_primitive_value(*underlying, value)?),
+                    })
+                }
+                Some(ResolvedType::Custom { fields, .. }) => {
+                    let mapping = value.as_mapping().ok_or_else(|| {
+                        type_error(
+                            "E-TYPE-CUSTOM-DATA-SHAPE",
+                            format!("Custom Type `{name}` data must be a mapping"),
+                        )
+                    })?;
+                    let mut normalized = BTreeMap::new();
+                    for field in fields {
+                        let field_value = mapping
+                            .get(Value::String(field.name.clone()))
+                            .ok_or_else(|| {
+                                type_error(
+                                    "E-TYPE-CUSTOM-MISSING-MEMBER",
+                                    format!("missing Custom Type member `{}`", field.name),
+                                )
+                            })?;
+                        normalized.insert(
+                            field.name.clone(),
+                            self.normalize_field_value(field, field_value)?,
+                        );
+                    }
+                    Ok(NormalizedValue::Custom {
+                        type_name: name.clone(),
+                        fields: normalized,
+                    })
+                }
+                Some(ResolvedType::Enum {
+                    underlying,
+                    members,
+                    ..
+                }) => {
+                    let member_name = value.as_str().ok_or_else(|| {
+                        type_error(
+                            "E-ENUM-DATA-NOT-SYMBOLIC",
+                            "normal Enum data must use a symbolic member name",
+                        )
+                    })?;
+                    let member = members
+                        .iter()
+                        .find(|member| member.name == member_name)
+                        .ok_or_else(|| {
+                            type_error(
+                                "E-ENUM-UNKNOWN-MEMBER",
+                                format!("unknown Enum member `{member_name}`"),
+                            )
+                        })?;
+                    Ok(NormalizedValue::Enum {
+                        type_name: name.clone(),
+                        value: integer_protocol_value(*underlying, member.value.0)?,
+                    })
+                }
+                Some(ResolvedType::Flags {
+                    underlying,
+                    members,
+                    ..
+                }) => Ok(NormalizedValue::Flags {
+                    type_name: name.clone(),
+                    // Flags values are sent as the fixed-width bit pattern so
+                    // a signed highest-bit member is not mistaken for a
+                    // negative decimal mask by the .NET reflection adapter.
+                    value: resolve_flags_value(*underlying, members, value)?.to_string(),
+                }),
+                None => Err(type_error(
+                    "E-TYPE-UNKNOWN-REFERENCE",
+                    format!("unknown type `{name}`"),
+                )),
+            },
+        }
     }
 
     /// Compare two already validated values using the comparison semantics of
@@ -1050,6 +1234,13 @@ fn uppercase_first_ascii(value: &str) -> String {
     }
 }
 
+/// Apply the approved first-ASCII-character-only property mapping. This is
+/// shared by Table resolution, C# generation, and the internal builder request
+/// so the process boundary never has to repair or infer identifiers.
+pub fn csharp_property_name(value: &str) -> String {
+    uppercase_first_ascii(value)
+}
+
 /// This is intentionally the C# reserved-keyword set, not the contextual
 /// keyword set. Contextual words may be legal source identifiers in this
 /// contract; generated-member collision validation remains independent.
@@ -1213,6 +1404,112 @@ fn integer_value(value: &Value, unsigned: bool) -> Result<i128> {
             },
         )
     })
+}
+
+fn normalize_primitive_value(primitive: PrimitiveType, value: &Value) -> Result<NormalizedValue> {
+    match primitive {
+        PrimitiveType::Bool => value
+            .as_bool()
+            .map(|value| NormalizedValue::Bool { value })
+            .ok_or_else(|| type_error("E-TYPE-INVALID-SCALAR", "`bool` requires a boolean scalar")),
+        PrimitiveType::String => value
+            .as_str()
+            .map(|value| NormalizedValue::String {
+                value: value.to_owned(),
+            })
+            .ok_or_else(|| {
+                type_error("E-TYPE-INVALID-SCALAR", "`string` requires a string scalar")
+            }),
+        PrimitiveType::Int => value
+            .as_i64()
+            .map(|value| NormalizedValue::Int {
+                value: value.to_string(),
+            })
+            .ok_or_else(|| {
+                type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    "`int` requires a signed integer scalar",
+                )
+            }),
+        PrimitiveType::UInt => value
+            .as_u64()
+            .filter(|value| *value <= u32::MAX as u64)
+            .map(|value| NormalizedValue::UInt {
+                value: value.to_string(),
+            })
+            .ok_or_else(|| {
+                type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    "`uint` requires an unsigned 32-bit integer scalar",
+                )
+            }),
+        PrimitiveType::Long => value
+            .as_i64()
+            .map(|value| NormalizedValue::Long {
+                value: value.to_string(),
+            })
+            .ok_or_else(|| {
+                type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    "`long` requires a signed integer scalar",
+                )
+            }),
+        PrimitiveType::ULong => value
+            .as_u64()
+            .map(|value| NormalizedValue::ULong {
+                value: value.to_string(),
+            })
+            .ok_or_else(|| {
+                type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    "`ulong` requires an unsigned integer scalar",
+                )
+            }),
+        PrimitiveType::Float => value
+            .as_f64()
+            .filter(|value| value.is_finite())
+            .map(|value| NormalizedValue::Float {
+                value: value.to_string(),
+            })
+            .ok_or_else(|| {
+                type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    "`float` requires a finite floating-point scalar",
+                )
+            }),
+        PrimitiveType::Double => value
+            .as_f64()
+            .filter(|value| value.is_finite())
+            .map(|value| NormalizedValue::Double {
+                value: value.to_string(),
+            })
+            .ok_or_else(|| {
+                type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    "`double` requires a finite floating-point scalar",
+                )
+            }),
+    }
+}
+
+fn integer_protocol_value(primitive: PrimitiveType, value: i128) -> Result<String> {
+    let Some((minimum, maximum)) = primitive.integer_range() else {
+        return Err(type_error(
+            "E-TYPE-INVALID-INTEGER",
+            format!("`{}` is not an integer type", primitive.name()),
+        ));
+    };
+    if !(minimum..=maximum).contains(&value) {
+        return Err(type_error(
+            "E-TYPE-INTEGER-OUT-OF-RANGE",
+            format!("value {value} is outside `{}` range", primitive.name()),
+        ));
+    }
+    if primitive.is_signed_integer() {
+        Ok(value.to_string())
+    } else {
+        Ok((value as u128).to_string())
+    }
 }
 
 fn enum_member_value(members: &[ResolvedEnumMember], value: &Value) -> Result<i128> {

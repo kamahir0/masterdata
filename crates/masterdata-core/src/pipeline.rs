@@ -14,7 +14,6 @@ use crate::validation::{ValidationReport, validate_documents_with_selection};
 #[serde(rename_all = "snake_case")]
 pub enum BuildStatus {
     ReadyForDotnet,
-    MasterMemoryBinaryNotImplemented,
 }
 
 #[derive(Debug, Clone)]

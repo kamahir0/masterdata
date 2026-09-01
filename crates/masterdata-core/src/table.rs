@@ -6,7 +6,9 @@ use serde_yaml::Value;
 
 use crate::document::{DataDocument, FieldDefinition, ProjectDocuments, SchemaDocument};
 use crate::error::{Diagnostic, ErrorKind, MasterdataError, Result};
-use crate::type_system::{FieldModifier, ResolvedField, TypeSystem, is_csharp_reserved_keyword};
+use crate::type_system::{
+    FieldModifier, ResolvedField, TypeSystem, csharp_property_name, is_csharp_reserved_keyword,
+};
 
 /// The resolved selector passed to the Table construction boundary.
 ///
@@ -269,7 +271,7 @@ pub fn resolve_tables(
             .clone()
             .unwrap_or_else(|| table_to_csharp_name(&schema.table));
         for field in &resolved_fields {
-            let property_name = uppercase_first_ascii(&field.name);
+            let property_name = csharp_property_name(&field.name);
             if property_name == csharp_name {
                 diagnostics.push(table_diagnostic(
                     "E-TABLE-GENERATED-MEMBER-COLLISION",
@@ -637,7 +639,7 @@ fn query_name(fields: &[ResolvedField]) -> String {
         if index != 0 {
             result.push_str("And");
         }
-        result.push_str(&uppercase_first_ascii(&field.name));
+        result.push_str(&csharp_property_name(&field.name));
     }
     result
 }
@@ -951,15 +953,7 @@ fn is_tag_name(value: &str) -> bool {
 }
 
 fn table_to_csharp_name(value: &str) -> String {
-    value.split('-').map(uppercase_first_ascii).collect()
-}
-
-fn uppercase_first_ascii(value: &str) -> String {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
-        None => String::new(),
-    }
+    value.split('-').map(csharp_property_name).collect()
 }
 
 struct RecordCandidate<'a> {

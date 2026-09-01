@@ -29,7 +29,7 @@ enum CommandKind {
     Cli,
     /// Copy minimal fixture and start the Tauri development application.
     Gui,
-    /// Run fixture discovery, validation, build-plan, and .NET bridge smoke test.
+    /// Run fixture discovery, validation, production binary build, and .NET bridge smoke test.
     TestIntegration,
     /// Check specification, RFC, proposal, ADR, and relative-link integrity.
     CheckSpecs,
@@ -261,6 +261,28 @@ fn test_integration() -> Result<()> {
         report.files_scanned, plan.schema_source_content_hash
     );
     println!("planned {} C# scaffold file(s)", generation.files.len());
+
+    let execution = service.build(Some(&destination), &repository_root(), false)?;
+    let binary = execution.binary.ok_or_else(|| {
+        MasterdataError::new(
+            "E-XTASK-INTEGRATION-BINARY",
+            ErrorKind::ExternalTool,
+            "production integration build did not return a binary report",
+        )
+    })?;
+    if !binary.binary_path.is_file() || binary.binary_size == 0 {
+        return Err(MasterdataError::new(
+            "E-XTASK-INTEGRATION-BINARY",
+            ErrorKind::ExternalTool,
+            "production integration build did not publish a valid binary",
+        ));
+    }
+    println!(
+        "production binary: {} ({} bytes, {} record(s))",
+        binary.binary_path.display(),
+        binary.binary_size,
+        binary.record_count
+    );
 
     let smoke = service.bridge_smoke_test(&repository_root())?;
     println!(

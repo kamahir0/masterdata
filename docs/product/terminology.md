@@ -50,4 +50,4 @@ Status: Draft
 - **Schema source-content hash**: current scaffoldにおけるschema source bytesのdeterministicなhash。semantic schema hashでもbuilder cache keyでもない。
 - **Semantic schema hash**: parsed/resolvedされたschema meaningのcanonical formから将来計算するhash。現在は実装されていない。
 - **Builder cache key**: 再利用可能なbuilder outputを識別する将来のcomposite identity。source-content hashともsemantic schema hashとも別物である。
-- **Builder**: .NET側のprocess。将来、generated C#のcompile、MasterMemory v3 Source Generatorの呼び出し、binaryの書き出しを行う。
+- **Builder**: .NET側のprocess。Rustからinternal requestで受け取ったvalidated valueをgenerated C#の型へ復元し、MasterMemory v3 Source Generator、binary build、binary reload validationを行う。YAML semanticsのprimary ownerではない。

@@ -268,6 +268,20 @@ pub fn resolve_tables(
             .csharp_name
             .clone()
             .unwrap_or_else(|| table_to_csharp_name(&schema.table));
+        for field in &resolved_fields {
+            let property_name = uppercase_first_ascii(&field.name);
+            if property_name == csharp_name {
+                diagnostics.push(table_diagnostic(
+                    "E-TABLE-GENERATED-MEMBER-COLLISION",
+                    format!(
+                        "Table field `{}` generates property `{property_name}`, which collides with generated type `{csharp_name}`",
+                        field.name
+                    ),
+                    schema_path,
+                    "SCHEMA-TABLE-003",
+                ));
+            }
+        }
         resolved_tables.push(ResolvedTable {
             identity: table_name,
             csharp_name,

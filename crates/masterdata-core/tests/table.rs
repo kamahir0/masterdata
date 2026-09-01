@@ -209,6 +209,100 @@ fn validates_record_shape_using_the_existing_type_system() {
 }
 
 #[test]
+fn table_data_accepts_canonical_integer_lexemes_and_rejects_invalid_forms() {
+    for value in [
+        "0",
+        "-0",
+        "1",
+        "-1",
+        "2147483647",
+        "-9223372036854775808",
+        "18446744073709551615",
+    ] {
+        let source = format!("kind: data\ntable: item\nrecords:\n  - id: {value}\n");
+        parse_yaml_document(PathBuf::from("valid-data.yaml"), &source)
+            .unwrap_or_else(|error| panic!("{value}: {error}"));
+    }
+
+    for value in [
+        "+1", "01", "-01", "0x1", "0X1", "0o1", "0O1", "0b1", "0B1", "1_000",
+    ] {
+        let source = format!("kind: data\ntable: item\nrecords:\n  - id: {value}\n");
+        let error = parse_yaml_document(PathBuf::from("invalid-data.yaml"), &source)
+            .expect_err("invalid integer spelling");
+        assert_eq!(error.diagnostic().code, "E-YAML-INVALID-INTEGER", "{value}");
+        assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-011"]);
+    }
+}
+
+#[test]
+fn table_data_rejects_invalid_float_lexemes_before_normalization() {
+    for value in [
+        ".5",
+        "1.",
+        "+1.5",
+        "1_000.0",
+        "NaN",
+        "Infinity",
+        "+Infinity",
+        "-Infinity",
+    ] {
+        let source = format!("kind: data\ntable: item\nrecords:\n  - value: {value}\n");
+        let error = parse_yaml_document(PathBuf::from("invalid-float.yaml"), &source)
+            .expect_err("invalid float spelling");
+        assert_eq!(error.diagnostic().code, "E-YAML-INVALID-FLOAT", "{value}");
+        assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-012"]);
+    }
+}
+
+#[test]
+fn table_data_preserves_string_and_block_scalar_false_positive_cases() {
+    let schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: enabled\n    type: bool\n  - key: 2\n    name: name\n    type: string\n  - key: 3\n    name: label\n    type: string\n  - key: 4\n    name: note\n    type: string\n    nullable: true\n  - key: 5\n    name: text\n    type: string\nprimaryKey:\n  fields: [id]\n";
+    let valid_data = "kind: data\ntable: item\nrecords:\n  - id: 1 # 0x1\n    enabled: true\n    name: \"0x1 # True: ~\"\n    label: 'It''s 0x1 # True: ~'\n    note: null\n    text: |\n      0x1\n      True\n      ~\n";
+    let valid = table_build(
+        &[("schema.yaml", schema), ("data.yaml", valid_data)],
+        &BuildSelection::unfiltered(),
+    );
+    assert!(valid.diagnostics.is_empty(), "{valid:#?}");
+
+    for value in ["True", "TRUE", "False", "FALSE"] {
+        let data = valid_data.replace("enabled: true", &format!("enabled: {value}"));
+        let build = table_build(
+            &[("schema.yaml", schema), ("data.yaml", &data)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            diagnostic_codes(&build).contains(&"E-TABLE-INVALID-RECORD-VALUE"),
+            "{value}: {build:#?}"
+        );
+    }
+
+    for value in ["yes", "no", "on", "off"] {
+        let data = valid_data.replace("name: \"0x1 # True: ~\"", &format!("name: {value}"));
+        let build = table_build(
+            &[("schema.yaml", schema), ("data.yaml", &data)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(build.diagnostics.is_empty(), "{value}: {build:#?}");
+    }
+}
+
+#[test]
+fn table_data_rejects_yaml_null_shorthand_and_empty_mapping_values() {
+    let null_shorthand = "kind: data\ntable: item\nrecords:\n  - note: ~\n";
+    let error = parse_yaml_document(PathBuf::from("null-shorthand.yaml"), null_shorthand)
+        .expect_err("YAML null shorthand");
+    assert_eq!(error.diagnostic().code, "E-YAML-INVALID-NULL");
+    assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-010"]);
+
+    let missing_value = "kind: data\ntable: item\nrecords:\n  - note:\n";
+    let error = parse_yaml_document(PathBuf::from("missing-value.yaml"), missing_value)
+        .expect_err("implicit empty mapping value");
+    assert_eq!(error.diagnostic().code, "E-YAML-MISSING-VALUE");
+    assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-017"]);
+}
+
+#[test]
 fn rejects_invalid_primary_and_secondary_key_shapes() {
     let missing_primary =
         "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n";
@@ -260,6 +354,25 @@ fn rejects_generated_secondary_query_name_collisions() {
     let schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: fooAndBar\n    type: int\n  - key: 2\n    name: foo\n    type: int\n  - key: 3\n    name: bar\n    type: int\nprimaryKey:\n  fields: [id]\nsecondaryKeys:\n  - fields: [fooAndBar]\n  - fields: [foo, bar]\n";
     let build = table_build(&[("schema.yaml", schema)], &BuildSelection::unfiltered());
     assert!(diagnostic_codes(&build).contains(&"E-TABLE-QUERY-NAME-COLLISION"));
+}
+
+#[test]
+fn rejects_table_property_name_collisions_with_generated_type() {
+    let implicit_name = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: item\n    type: int\nprimaryKey:\n  fields: [item]\n";
+    let implicit = table_build(
+        &[("schema.yaml", implicit_name)],
+        &BuildSelection::unfiltered(),
+    );
+    assert!(diagnostic_codes(&implicit).contains(&"E-TABLE-GENERATED-MEMBER-COLLISION"));
+    assert!(implicit.model.is_none());
+
+    let explicit_name = "kind: schema\ntable: item\ncsharpName: ItemData\nfields:\n  - key: 0\n    name: itemData\n    type: int\nprimaryKey:\n  fields: [itemData]\n";
+    let explicit = table_build(
+        &[("schema.yaml", explicit_name)],
+        &BuildSelection::unfiltered(),
+    );
+    assert!(diagnostic_codes(&explicit).contains(&"E-TABLE-GENERATED-MEMBER-COLLISION"));
+    assert!(explicit.model.is_none());
 }
 
 #[test]

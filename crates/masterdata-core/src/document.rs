@@ -233,11 +233,13 @@ impl ProjectDocuments {
 }
 
 pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocument> {
-    if source_declares_type(content) {
-        validate_type_integer_scalar_lexemes(&path, content)?;
-    }
+    // serde_yaml normalizes numeric-looking and legacy YAML scalar spellings
+    // before typed deserialization. Keep the subset lexical gate before that
+    // boundary so forbidden spellings cannot become indistinguishable from
+    // canonical values (YAML-SUBSET-011, YAML-SUBSET-012, TYPE-PRIMITIVE-003).
+    let content = validate_masterdata_yaml_lexemes(&path, content)?;
 
-    let value: Value = serde_yaml::from_str(content).map_err(|error| {
+    let value: Value = serde_yaml::from_str(&content).map_err(|error| {
         MasterdataError::new(
             "E-YAML-PARSE",
             ErrorKind::Parse,
@@ -294,7 +296,38 @@ struct TypeIntegerLexicalState {
     members_indent: Option<usize>,
     member_indent: Option<usize>,
     member_fields_indent: Option<usize>,
+}
+
+struct SourceLine<'a> {
+    offset: usize,
+    text: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ParsedMappingEntry<'a> {
+    is_sequence_item: bool,
+    key: &'a str,
+    raw_value: &'a str,
+    value_start: usize,
+}
+
+#[derive(Default)]
+struct FlowLexicalState {
+    sequence_depth: usize,
+    quote: Option<u8>,
+}
+
+#[derive(Default)]
+struct MasterdataLexicalState {
+    type_integer: TypeIntegerLexicalState,
     block_scalar_parent_indent: Option<usize>,
+    flow: FlowLexicalState,
+}
+
+struct LexicalReplacement {
+    start: usize,
+    end: usize,
+    replacement: String,
 }
 
 fn source_declares_type(content: &str) -> bool {
@@ -304,11 +337,11 @@ fn source_declares_type(content: &str) -> bool {
             continue;
         }
         let code = strip_yaml_comment(line);
-        let Some((is_sequence_item, key, raw_value)) = parse_mapping_entry(code) else {
+        let Some(entry) = parse_mapping_entry(code) else {
             continue;
         };
-        if !is_sequence_item && yaml_key_is(key, "kind") {
-            let raw_value = raw_value.trim();
+        if !entry.is_sequence_item && yaml_key_is(entry.key, "kind") {
+            let raw_value = entry.raw_value.trim();
             return raw_value == "type"
                 || matches!(
                     serde_yaml::from_str::<Value>(raw_value),
@@ -319,156 +352,155 @@ fn source_declares_type(content: &str) -> bool {
     false
 }
 
-/// Validate the source spelling of Enum/Flags member integer values before
-/// serde_yaml turns YAML numeric-looking scalars into `Value::Number`.
-///
-/// This is intentionally a narrow lexical gate for the one Type System path
-/// where the source spelling is part of the approved contract. It recognizes
-/// the surrounding block structure needed to reach `enum/flags.members` but
-/// does not attempt to parse YAML generally. Quoted values, comments, and
-/// block scalar contents are therefore left to the normal YAML parser and
-/// typed shape validation.
-fn validate_type_integer_scalar_lexemes(path: &Path, content: &str) -> Result<()> {
-    let mut state = TypeIntegerLexicalState::default();
+fn validate_masterdata_yaml_lexemes(path: &Path, content: &str) -> Result<String> {
+    let type_document = source_declares_type(content);
+    let lines = source_lines(content);
+    let mut state = MasterdataLexicalState::default();
+    let mut replacements = Vec::new();
 
-    for line in content.lines() {
-        let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-
+    for (line_index, line) in lines.iter().enumerate() {
+        let indent = yaml_indent(line.text);
         if let Some(parent_indent) = state.block_scalar_parent_indent {
-            if line.trim().is_empty() || indent > parent_indent {
+            if line.text.trim().is_empty() || indent > parent_indent {
                 continue;
             }
             state.block_scalar_parent_indent = None;
         }
 
-        let code = strip_yaml_comment(line);
-        let trimmed = code.trim();
-        if trimmed.is_empty() {
+        let code = if state.flow.quote.is_some() {
+            line.text
+        } else {
+            strip_yaml_comment(line.text)
+        };
+        if code.trim().is_empty() {
             continue;
         }
 
         let parsed_entry = parse_mapping_entry(code);
-        if let Some(members_indent) = state.members_indent {
-            let is_members_item = parsed_entry
-                .as_ref()
-                .is_some_and(|(is_sequence_item, _, _)| *is_sequence_item);
-            if indent < members_indent || (indent == members_indent && !is_members_item) {
-                state.members_indent = None;
-                state.member_indent = None;
-                state.member_fields_indent = None;
+        let type_integer = type_document
+            && update_type_integer_state(&mut state.type_integer, indent, parsed_entry.as_ref());
+
+        if let Some(entry) = parsed_entry {
+            if entry.is_sequence_item && entry.key.is_empty() {
+                continue;
             }
-        }
-        if let Some(member_indent) = state.member_indent
-            && indent < member_indent
-        {
-            state.member_indent = None;
-            state.member_fields_indent = None;
-        }
 
-        let Some((is_sequence_item, key, raw_value)) = parsed_entry else {
-            continue;
-        };
-
-        if is_block_scalar_indicator(raw_value) {
-            state.block_scalar_parent_indent = Some(indent);
-        }
-
-        if yaml_key_is(key, "enum") || yaml_key_is(key, "flags") {
-            state.category_indent = Some(indent);
-            state.members_indent = None;
-            state.member_indent = None;
-            state.member_fields_indent = None;
-            continue;
-        }
-
-        if yaml_key_is(key, "members")
-            && state
-                .category_indent
-                .is_some_and(|category_indent| indent > category_indent)
-        {
-            state.members_indent = Some(indent);
-            state.member_indent = None;
-            state.member_fields_indent = None;
-            continue;
-        }
-
-        let Some(members_indent) = state.members_indent else {
-            continue;
-        };
-
-        if indent < members_indent || (indent == members_indent && !is_sequence_item) {
-            continue;
-        }
-
-        if is_sequence_item_marker(trimmed) {
-            state.member_indent = Some(indent);
-            state.member_fields_indent = None;
-            continue;
-        }
-
-        if is_sequence_item {
-            state.member_indent = Some(indent);
-            state.member_fields_indent = None;
-        } else if state
-            .member_indent
-            .is_none_or(|member_indent| indent < member_indent)
-        {
-            continue;
-        }
-
-        if !is_sequence_item {
-            match state.member_fields_indent {
-                Some(member_fields_indent) if indent != member_fields_indent => continue,
-                Some(_) => {}
-                None => state.member_fields_indent = Some(indent),
+            if is_block_scalar_indicator(entry.raw_value) {
+                state.block_scalar_parent_indent = Some(indent);
+                continue;
             }
-        }
 
-        if !yaml_key_is(key, "value") {
-            continue;
-        }
+            if entry.raw_value.is_empty() {
+                if !has_nested_block_value(&lines, line_index, indent, !entry.is_sequence_item) {
+                    return Err(yaml_lexical_error(
+                        path,
+                        "E-YAML-MISSING-VALUE",
+                        format!("mapping entry `{}` has no explicit value", entry.key),
+                        "YAML-SUBSET-017",
+                    ));
+                }
+                continue;
+            }
 
-        if is_block_scalar_indicator(raw_value) || is_quoted_scalar(raw_value) {
-            continue;
-        }
-
-        let raw_value = strip_yaml_comment(raw_value).trim();
-        if looks_like_numeric_scalar(raw_value) && !is_masterdata_integer_lexeme(raw_value) {
-            return Err(MasterdataError::new(
-                "E-YAML-INVALID-INTEGER",
-                ErrorKind::Parse,
-                format!(
-                    "Enum/Flags member integer `{raw_value}` does not match the Masterdata YAML integer grammar"
-                ),
-            )
-            .with_source(path.to_path_buf())
-            .with_related_requirement("YAML-SUBSET-011"));
+            let value_start = line.offset + entry.value_start;
+            if entry.raw_value.trim_start().starts_with('[') {
+                scan_flow_fragment(
+                    path,
+                    entry.raw_value,
+                    value_start,
+                    &mut state.flow,
+                    type_integer,
+                    &mut replacements,
+                )?;
+            } else {
+                let token = entry.raw_value.trim();
+                let token_start = value_start + entry.raw_value.find(token).unwrap_or(0);
+                validate_plain_scalar(path, token, token_start, type_integer, &mut replacements)?;
+            }
+        } else if state.flow.sequence_depth > 0 {
+            scan_flow_fragment(
+                path,
+                code,
+                line.offset,
+                &mut state.flow,
+                false,
+                &mut replacements,
+            )?;
+        } else if let Some((value_start, value)) = parse_block_sequence_scalar(code) {
+            let token = value.trim();
+            let token_start = line.offset + value_start + value.find(token).unwrap_or(0);
+            if token.starts_with('[') {
+                scan_flow_fragment(
+                    path,
+                    token,
+                    token_start,
+                    &mut state.flow,
+                    false,
+                    &mut replacements,
+                )?;
+            } else {
+                validate_plain_scalar(path, token, token_start, false, &mut replacements)?;
+            }
         }
     }
 
-    Ok(())
+    Ok(apply_lexical_replacements(content, &mut replacements))
 }
 
-fn parse_mapping_entry(line: &str) -> Option<(bool, &str, &str)> {
+fn source_lines(content: &str) -> Vec<SourceLine<'_>> {
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    for segment in content.split_inclusive('\n') {
+        let without_newline = segment.strip_suffix('\n').unwrap_or(segment);
+        let text = without_newline
+            .strip_suffix('\r')
+            .unwrap_or(without_newline);
+        lines.push(SourceLine { offset, text });
+        offset += segment.len();
+    }
+    if content.is_empty() {
+        lines.push(SourceLine {
+            offset: 0,
+            text: "",
+        });
+    }
+    lines
+}
+
+fn yaml_indent(line: &str) -> usize {
+    line.bytes().take_while(|byte| *byte == b' ').count()
+}
+
+fn parse_mapping_entry(line: &str) -> Option<ParsedMappingEntry<'_>> {
     let trimmed = line.trim_start();
-    let (is_sequence_item, mapping) = if trimmed == "-" {
-        (true, "")
+    let leading = line.len() - trimmed.len();
+    let (is_sequence_item, mapping, mapping_start) = if trimmed == "-" {
+        (true, "", line.len())
     } else if let Some(sequence_rest) = trimmed.strip_prefix('-') {
         if sequence_rest
             .as_bytes()
             .first()
             .is_some_and(|byte| byte.is_ascii_whitespace())
         {
-            (true, sequence_rest.trim_start())
+            (
+                true,
+                sequence_rest.trim_start(),
+                leading + 1 + sequence_rest.len() - sequence_rest.trim_start().len(),
+            )
         } else {
-            (false, trimmed)
+            (false, trimmed, leading)
         }
     } else {
-        (false, trimmed)
+        (false, trimmed, leading)
     };
 
     if mapping.is_empty() {
-        return is_sequence_item.then_some((true, "", ""));
+        return is_sequence_item.then_some(ParsedMappingEntry {
+            is_sequence_item: true,
+            key: "",
+            raw_value: "",
+            value_start: line.len(),
+        });
     }
 
     let colon = find_mapping_colon(mapping)?;
@@ -476,7 +508,387 @@ fn parse_mapping_entry(line: &str) -> Option<(bool, &str, &str)> {
     if key.is_empty() {
         return None;
     }
-    Some((is_sequence_item, key, mapping[colon + 1..].trim_start()))
+    let value = &mapping[colon + 1..];
+    let raw_value = value.trim_start();
+    Some(ParsedMappingEntry {
+        is_sequence_item,
+        key,
+        raw_value,
+        value_start: mapping_start + colon + 1 + value.len() - raw_value.len(),
+    })
+}
+
+fn update_type_integer_state(
+    state: &mut TypeIntegerLexicalState,
+    indent: usize,
+    entry: Option<&ParsedMappingEntry<'_>>,
+) -> bool {
+    if let Some(members_indent) = state.members_indent {
+        let is_members_item = entry.is_some_and(|entry| entry.is_sequence_item);
+        if indent < members_indent || (indent == members_indent && !is_members_item) {
+            state.members_indent = None;
+            state.member_indent = None;
+            state.member_fields_indent = None;
+        }
+    }
+    if let Some(member_indent) = state.member_indent
+        && indent < member_indent
+    {
+        state.member_indent = None;
+        state.member_fields_indent = None;
+    }
+
+    let Some(entry) = entry else {
+        return false;
+    };
+
+    if yaml_key_is(entry.key, "enum") || yaml_key_is(entry.key, "flags") {
+        state.category_indent = Some(indent);
+        state.members_indent = None;
+        state.member_indent = None;
+        state.member_fields_indent = None;
+        return false;
+    }
+
+    if yaml_key_is(entry.key, "members")
+        && state
+            .category_indent
+            .is_some_and(|category_indent| indent > category_indent)
+    {
+        state.members_indent = Some(indent);
+        state.member_indent = None;
+        state.member_fields_indent = None;
+        return false;
+    }
+
+    let Some(members_indent) = state.members_indent else {
+        return false;
+    };
+    if indent < members_indent || (indent == members_indent && !entry.is_sequence_item) {
+        return false;
+    }
+
+    if entry.is_sequence_item && entry.key.is_empty() {
+        state.member_indent = Some(indent);
+        state.member_fields_indent = None;
+        return false;
+    }
+
+    if entry.is_sequence_item {
+        state.member_indent = Some(indent);
+        state.member_fields_indent = None;
+    } else if state
+        .member_indent
+        .is_none_or(|member_indent| indent < member_indent)
+    {
+        return false;
+    }
+
+    if !entry.is_sequence_item {
+        match state.member_fields_indent {
+            Some(member_fields_indent) if indent != member_fields_indent => return false,
+            Some(_) => {}
+            None => state.member_fields_indent = Some(indent),
+        }
+    }
+
+    yaml_key_is(entry.key, "value")
+}
+
+fn has_nested_block_value(
+    lines: &[SourceLine<'_>],
+    line_index: usize,
+    parent_indent: usize,
+    allow_indentless_sequence: bool,
+) -> bool {
+    for line in lines.iter().skip(line_index + 1) {
+        let code = strip_yaml_comment(line.text);
+        if code.trim().is_empty() {
+            continue;
+        }
+        let child_indent = yaml_indent(line.text);
+        return child_indent > parent_indent
+            || (allow_indentless_sequence
+                && child_indent == parent_indent
+                && is_block_sequence_marker(code));
+    }
+    false
+}
+
+fn is_block_sequence_marker(value: &str) -> bool {
+    let value = value.trim_start();
+    value == "-"
+        || value
+            .strip_prefix('-')
+            .is_some_and(|rest| rest.as_bytes().first().is_some_and(u8::is_ascii_whitespace))
+}
+
+fn parse_block_sequence_scalar(line: &str) -> Option<(usize, &str)> {
+    let trimmed = line.trim_start();
+    let leading = line.len() - trimmed.len();
+    let rest = trimmed.strip_prefix('-')?;
+    if !rest.is_empty()
+        && !rest
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        return None;
+    }
+    let value = rest.trim_start();
+    if value.is_empty() || find_mapping_colon(value).is_some() {
+        return None;
+    }
+    Some((leading + 1 + rest.len() - value.len(), value))
+}
+
+fn scan_flow_fragment(
+    path: &Path,
+    fragment: &str,
+    absolute_start: usize,
+    state: &mut FlowLexicalState,
+    type_integer: bool,
+    replacements: &mut Vec<LexicalReplacement>,
+) -> Result<()> {
+    let mut token_start = None;
+    let bytes = fragment.as_bytes();
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if let Some(quote) = state.quote {
+            if quote == b'\'' {
+                if bytes[index] == b'\'' && bytes.get(index + 1) == Some(&b'\'') {
+                    index += 2;
+                } else if bytes[index] == b'\'' {
+                    state.quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            } else if bytes[index] == b'\\' {
+                index += 2;
+            } else if bytes[index] == b'"' {
+                state.quote = None;
+                index += 1;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+
+        match bytes[index] {
+            b'\'' | b'"' => {
+                token_start = None;
+                state.quote = Some(bytes[index]);
+                index += 1;
+            }
+            b'[' => {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    replacements,
+                )?;
+                state.sequence_depth += 1;
+                index += 1;
+            }
+            b']' => {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    replacements,
+                )?;
+                state.sequence_depth = state.sequence_depth.saturating_sub(1);
+                index += 1;
+            }
+            b',' | b'{' | b'}' => {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    replacements,
+                )?;
+                index += 1;
+            }
+            b':' if bytes
+                .get(index + 1)
+                .is_none_or(|next| next.is_ascii_whitespace() || *next == b']') =>
+            {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    replacements,
+                )?;
+                index += 1;
+            }
+            b'#' if index == 0 || bytes[index - 1].is_ascii_whitespace() => {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    replacements,
+                )?;
+                break;
+            }
+            byte if !byte.is_ascii_whitespace() && token_start.is_none() => {
+                token_start = Some(index);
+                index += 1;
+            }
+            _ => index += 1,
+        }
+    }
+
+    finish_flow_token(
+        path,
+        fragment,
+        absolute_start,
+        &mut token_start,
+        bytes.len(),
+        type_integer,
+        replacements,
+    )
+}
+
+fn finish_flow_token(
+    path: &Path,
+    fragment: &str,
+    absolute_start: usize,
+    token_start: &mut Option<usize>,
+    end: usize,
+    type_integer: bool,
+    replacements: &mut Vec<LexicalReplacement>,
+) -> Result<()> {
+    let Some(start) = token_start.take() else {
+        return Ok(());
+    };
+    let raw = &fragment[start..end];
+    let token = raw.trim();
+    if token.is_empty() {
+        return Ok(());
+    }
+    let token_start = absolute_start + start + raw.find(token).unwrap_or(0);
+    validate_plain_scalar(path, token, token_start, type_integer, replacements)
+}
+
+fn validate_plain_scalar(
+    path: &Path,
+    token: &str,
+    token_start: usize,
+    type_integer: bool,
+    replacements: &mut Vec<LexicalReplacement>,
+) -> Result<()> {
+    if token.is_empty() || is_quoted_scalar(token) {
+        return Ok(());
+    }
+
+    if type_integer && (looks_like_numeric_scalar(token) || is_nonfinite_float(token)) {
+        if !is_masterdata_integer_lexeme(token) {
+            return Err(yaml_lexical_error(
+                path,
+                "E-YAML-INVALID-INTEGER",
+                format!(
+                    "Enum/Flags member integer `{token}` does not match the Masterdata YAML integer grammar"
+                ),
+                "YAML-SUBSET-011",
+            ));
+        }
+        return Ok(());
+    }
+
+    if token == "~" {
+        return Err(yaml_lexical_error(
+            path,
+            "E-YAML-INVALID-NULL",
+            "`~` is not supported as a Masterdata null literal",
+            "YAML-SUBSET-010",
+        ));
+    }
+
+    if let Some(replacement) = noncanonical_plain_string(token) {
+        replacements.push(LexicalReplacement {
+            start: token_start,
+            end: token_start + token.len(),
+            replacement,
+        });
+        return Ok(());
+    }
+
+    if token == "true" || token == "false" || token == "null" {
+        return Ok(());
+    }
+
+    if is_nonfinite_float(token) || looks_like_numeric_scalar(token) {
+        if is_masterdata_integer_lexeme(token) || is_masterdata_float_lexeme(token) {
+            return Ok(());
+        }
+        let (code, requirement, category) = if is_float_like_scalar(token) {
+            ("E-YAML-INVALID-FLOAT", "YAML-SUBSET-012", "floating-point")
+        } else {
+            ("E-YAML-INVALID-INTEGER", "YAML-SUBSET-011", "integer")
+        };
+        return Err(yaml_lexical_error(
+            path,
+            code,
+            format!("{category} scalar `{token}` is not supported by the Masterdata YAML subset"),
+            requirement,
+        ));
+    }
+
+    Ok(())
+}
+
+fn noncanonical_plain_string(token: &str) -> Option<String> {
+    let lower = token.to_ascii_lowercase();
+    if !matches!(
+        lower.as_str(),
+        "true" | "false" | "null" | "yes" | "no" | "on" | "off"
+    ) {
+        return None;
+    }
+    if matches!(token, "true" | "false" | "null") {
+        return None;
+    }
+    Some(format!("'{token}'"))
+}
+
+fn yaml_lexical_error(
+    path: &Path,
+    code: &str,
+    message: impl Into<String>,
+    requirement: &str,
+) -> MasterdataError {
+    MasterdataError::new(code, ErrorKind::Parse, message)
+        .with_source(path.to_path_buf())
+        .with_related_requirement(requirement)
+}
+
+fn apply_lexical_replacements(content: &str, replacements: &mut Vec<LexicalReplacement>) -> String {
+    if replacements.is_empty() {
+        return content.to_owned();
+    }
+    replacements.sort_unstable_by_key(|replacement| replacement.start);
+    let mut normalized = content.to_owned();
+    for replacement in replacements.drain(..).rev() {
+        normalized.replace_range(replacement.start..replacement.end, &replacement.replacement);
+    }
+    normalized
 }
 
 fn find_mapping_colon(value: &str) -> Option<usize> {
@@ -522,10 +934,6 @@ fn find_mapping_colon(value: &str) -> Option<usize> {
         }
     }
     None
-}
-
-fn is_sequence_item_marker(value: &str) -> bool {
-    value == "-"
 }
 
 fn strip_yaml_comment(value: &str) -> &str {
@@ -589,9 +997,112 @@ fn is_quoted_scalar(value: &str) -> bool {
 }
 
 fn looks_like_numeric_scalar(value: &str) -> bool {
+    let unsigned = value
+        .strip_prefix('+')
+        .or_else(|| value.strip_prefix('-'))
+        .unwrap_or(value);
+    if unsigned.is_empty() {
+        return false;
+    }
+    if is_nonfinite_float(value) {
+        return true;
+    }
+    match unsigned.as_bytes().first() {
+        Some(b'.') => unsigned.as_bytes().get(1).is_some_and(u8::is_ascii_digit),
+        Some(byte) if byte.is_ascii_digit() => {
+            if unsigned.bytes().all(|byte| byte.is_ascii_digit()) {
+                return true;
+            }
+            if unsigned.len() > 1
+                && unsigned.starts_with('0')
+                && matches!(
+                    unsigned.as_bytes()[1],
+                    b'x' | b'X' | b'o' | b'O' | b'b' | b'B'
+                )
+            {
+                return true;
+            }
+            if let Some(index) = unsigned.find(['e', 'E']) {
+                let mantissa = &unsigned[..index];
+                let exponent = &unsigned[index + 1..];
+                let exponent = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+                return !mantissa.is_empty()
+                    && mantissa
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b'_'))
+                    && mantissa.bytes().any(|byte| byte.is_ascii_digit())
+                    && !exponent.is_empty()
+                    && exponent.bytes().all(|byte| byte.is_ascii_digit());
+            }
+            unsigned
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b'_'))
+        }
+        _ => false,
+    }
+}
+
+fn is_masterdata_float_lexeme(value: &str) -> bool {
+    let value = value.strip_prefix('-').unwrap_or(value);
+    if value.is_empty() || value.starts_with('+') {
+        return false;
+    }
+
+    let (mantissa, exponent) = match value.find(['e', 'E']) {
+        Some(index) if value[index + 1..].find(['e', 'E']).is_none() => {
+            (&value[..index], Some(&value[index + 1..]))
+        }
+        Some(_) => return false,
+        None => (value, None),
+    };
+
+    if let Some(exponent) = exponent {
+        let exponent = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+        if exponent.is_empty() || !exponent.bytes().all(|byte| byte.is_ascii_digit()) {
+            return false;
+        }
+    }
+
+    match mantissa.split_once('.') {
+        Some((whole, fraction)) => {
+            !whole.is_empty()
+                && !fraction.is_empty()
+                && whole.bytes().all(|byte| byte.is_ascii_digit())
+                && fraction.bytes().all(|byte| byte.is_ascii_digit())
+        }
+        None => exponent.is_some() && mantissa.bytes().all(|byte| byte.is_ascii_digit()),
+    }
+}
+
+fn is_float_like_scalar(value: &str) -> bool {
+    if is_nonfinite_float(value) || value.contains('.') {
+        return true;
+    }
+    let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
+    let Some(index) = unsigned.find(['e', 'E']) else {
+        return false;
+    };
+    unsigned[..index].bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn is_nonfinite_float(value: &str) -> bool {
     matches!(
-        value.as_bytes().first(),
-        Some(b'+' | b'-' | b'.' | b'0'..=b'9')
+        value.to_ascii_lowercase().as_str(),
+        "nan"
+            | "+nan"
+            | "-nan"
+            | "infinity"
+            | "+infinity"
+            | "-infinity"
+            | ".nan"
+            | "+.nan"
+            | "-.nan"
+            | ".inf"
+            | "+.inf"
+            | "-.inf"
+            | "inf"
+            | "+inf"
+            | "-inf"
     )
 }
 

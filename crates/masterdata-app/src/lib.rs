@@ -6,6 +6,7 @@
 //! `masterdata-dotnet`.
 
 use std::collections::BTreeSet;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -138,6 +139,7 @@ impl ApplicationService {
             })?;
             let binary_parent = final_binary.parent().unwrap_or_else(|| Path::new("."));
             validate_generated_output_location(&plan)?;
+            validate_artifact_layout(&generation, &plan.generated_output, &final_binary)?;
             fs::create_dir_all(binary_parent).map_err(|error| {
                 MasterdataError::new(
                     "E-BUILD-BINARY-PARENT-CREATE",
@@ -299,25 +301,181 @@ fn validate_generated_output_location(plan: &BuildPlan) -> Result<()> {
     Ok(())
 }
 
-fn is_path_ancestor_or_equal(candidate: &Path, target: &Path) -> bool {
-    normalize_path(candidate) == normalize_path(target)
-        || normalize_path(target).starts_with(normalize_path(candidate))
+fn is_path_ancestor_or_equal(candidate_path: &Path, target_path: &Path) -> bool {
+    let candidate = normalized_path(candidate_path);
+    let target = normalized_path(target_path);
+    if normalized_path_is_ancestor_or_equal(&candidate, &target) {
+        return true;
+    }
+
+    // A Windows 8.3 alias can differ from the long spelling before the
+    // target file exists. Resolve the longest existing prefix and append the
+    // missing tail so future artifact paths still use filesystem-aware
+    // equivalence rather than an ad-hoc whole-string normalization.
+    #[cfg(windows)]
+    {
+        let Some(candidate) = canonicalize_with_missing_tail(candidate_path) else {
+            return false;
+        };
+        let Some(target) = canonicalize_with_missing_tail(target_path) else {
+            return false;
+        };
+        return normalized_path_is_ancestor_or_equal(
+            &normalized_path(&candidate),
+            &normalized_path(&target),
+        );
+    }
+
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
+fn normalized_path_is_ancestor_or_equal(
+    candidate: &NormalizedPath,
+    target: &NormalizedPath,
+) -> bool {
+    if candidate.rooted != target.rooted
+        || !optional_path_component_equal(candidate.prefix.as_deref(), target.prefix.as_deref())
+        || candidate.components.len() > target.components.len()
+    {
+        return false;
+    }
+    candidate
+        .components
+        .iter()
+        .zip(&target.components)
+        .all(|(candidate, target)| path_component_equal(candidate, target))
+}
+
+#[cfg(windows)]
+fn canonicalize_with_missing_tail(path: &Path) -> Option<PathBuf> {
+    let mut current = path.to_path_buf();
+    let mut missing = Vec::new();
+    loop {
+        match fs::canonicalize(&current) {
+            Ok(mut resolved) => {
+                for component in missing.iter().rev() {
+                    resolved.push(component);
+                }
+                return Some(resolved);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let name = current.file_name()?.to_os_string();
+                missing.push(name);
+                current = current.parent()?.to_path_buf();
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedPath {
+    prefix: Option<OsString>,
+    rooted: bool,
+    components: Vec<OsString>,
+}
+
+fn normalized_path(path: &Path) -> NormalizedPath {
+    let mut normalized = NormalizedPath {
+        prefix: None,
+        rooted: false,
+        components: Vec::new(),
+    };
     for component in path.components() {
         match component {
-            std::path::Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-            std::path::Component::RootDir => normalized.push(component.as_os_str()),
+            std::path::Component::Prefix(prefix) => {
+                normalized.prefix = Some(prefix.as_os_str().to_os_string())
+            }
+            std::path::Component::RootDir => normalized.rooted = true,
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                normalized.pop();
+                if let Some(last) = normalized.components.last() {
+                    if last != OsStr::new("..") {
+                        normalized.components.pop();
+                    } else if !normalized.rooted {
+                        normalized.components.push(OsString::from(".."));
+                    }
+                } else if !normalized.rooted {
+                    normalized.components.push(OsString::from(".."));
+                }
             }
-            std::path::Component::Normal(part) => normalized.push(part),
+            std::path::Component::Normal(part) => normalized.components.push(part.to_os_string()),
         }
     }
     normalized
+}
+
+fn optional_path_component_equal(left: Option<&OsStr>, right: Option<&OsStr>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => path_component_equal(left, right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+#[cfg(not(windows))]
+fn path_component_equal(left: &OsStr, right: &OsStr) -> bool {
+    left == right
+}
+
+#[cfg(windows)]
+fn path_component_equal(left: &OsStr, right: &OsStr) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+
+    const CSTR_EQUAL: i32 = 2;
+    let left: Vec<u16> = left.encode_wide().collect();
+    let right: Vec<u16> = right.encode_wide().collect();
+
+    unsafe extern "system" {
+        fn CompareStringOrdinal(
+            left: *const u16,
+            left_length: i32,
+            right: *const u16,
+            right_length: i32,
+            ignore_case: i32,
+        ) -> i32;
+    }
+
+    unsafe {
+        CompareStringOrdinal(
+            left.as_ptr(),
+            left.len() as i32,
+            right.as_ptr(),
+            right.len() as i32,
+            1,
+        ) == CSTR_EQUAL
+    }
+}
+
+fn relative_path_is_ancestor_or_equal(candidate: &Path, target: &Path) -> bool {
+    let candidate = normalized_path(candidate);
+    let target = normalized_path(target);
+    if candidate.rooted
+        || target.rooted
+        || candidate.prefix.is_some()
+        || target.prefix.is_some()
+        || candidate.components.len() > target.components.len()
+    {
+        return false;
+    }
+    candidate
+        .components
+        .iter()
+        .zip(&target.components)
+        .all(|(candidate, target)| path_component_equal(candidate, target))
+}
+
+fn relative_paths_equal(left: &Path, right: &Path) -> bool {
+    relative_path_is_ancestor_or_equal(left, right)
+        && relative_path_is_ancestor_or_equal(right, left)
+}
+
+fn relative_paths_overlap(left: &Path, right: &Path) -> bool {
+    relative_path_is_ancestor_or_equal(left, right)
+        || relative_path_is_ancestor_or_equal(right, left)
 }
 
 fn generated_publish_error(path: &Path, message: impl Into<String>) -> MasterdataError {
@@ -364,6 +522,284 @@ fn generated_path_key(path: &Path) -> Result<String> {
         ));
     }
     Ok(components.join("/"))
+}
+
+fn generated_ownership_collision(
+    generated_output: &Path,
+    generated_path: &Path,
+    existing_path: &Path,
+) -> MasterdataError {
+    MasterdataError::new(
+        "E-BUILD-GENERATED-OWNERSHIP-COLLISION",
+        ErrorKind::Validation,
+        format!(
+            "new generated path `{}` conflicts with unmanaged existing output entry `{}`; user-owned content will not be overwritten",
+            generated_path.display(),
+            existing_path.display(),
+        ),
+    )
+    .with_source(generated_output.to_path_buf())
+}
+
+fn artifact_path_collision(path: &Path, message: impl Into<String>) -> MasterdataError {
+    MasterdataError::new(
+        "E-BUILD-ARTIFACT-PATH-COLLISION",
+        ErrorKind::Config,
+        message,
+    )
+    .with_source(path.to_path_buf())
+}
+
+fn validate_generated_plan_paths(plan: &CSharpGenerationPlan) -> Result<Vec<PathBuf>> {
+    let manifest_path = Path::new(GENERATED_MANIFEST_FILENAME);
+    let mut paths: Vec<PathBuf> = Vec::with_capacity(plan.files.len());
+    for file in &plan.files {
+        generated_path_key(&file.relative_path)?;
+        if relative_paths_overlap(&file.relative_path, manifest_path) {
+            return Err(artifact_path_collision(
+                &file.relative_path,
+                format!(
+                    "generated path `{}` overlaps reserved generated output manifest `{GENERATED_MANIFEST_FILENAME}`",
+                    file.relative_path.display()
+                ),
+            ));
+        }
+        if let Some(existing) = paths
+            .iter()
+            .find(|existing| relative_paths_equal(existing, &file.relative_path))
+        {
+            return Err(artifact_path_collision(
+                &file.relative_path,
+                format!(
+                    "generated C# plan contains duplicate relative path `{}` (also `{}`)",
+                    file.relative_path.display(),
+                    existing.display()
+                ),
+            ));
+        }
+        paths.push(file.relative_path.clone());
+    }
+
+    for (index, path) in paths.iter().enumerate() {
+        for other in paths.iter().skip(index + 1) {
+            if relative_paths_overlap(path, other) {
+                return Err(artifact_path_collision(
+                    path,
+                    format!(
+                        "generated C# plan contains overlapping file paths `{}` and `{}`",
+                        path.display(),
+                        other.display()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(paths)
+}
+
+fn validate_binary_output_layout(
+    generated_output: &Path,
+    binary_output: &Path,
+    generated_paths: &[PathBuf],
+) -> Result<()> {
+    // WHY: A nested binary destination is allowed, but it must never occupy a
+    // generated file, the reserved manifest, or a path needed as their parent.
+    // IF REMOVED: binary publication could overwrite generated C# or metadata
+    // after a successful generated-directory switch.
+    // EVIDENCE: docs/specs/build-pipeline.md; Regression: binary_output_overlapping_generated_file_is_rejected_before_publication.
+    // A binary nested below the generated directory is valid when it occupies
+    // its own path. The generated directory itself, or any ancestor needed to
+    // materialize it, cannot also be a binary file.
+    if is_path_ancestor_or_equal(binary_output, generated_output) {
+        return Err(artifact_path_collision(
+            binary_output,
+            format!(
+                "binary output `{}` overlaps generated output directory `{}`",
+                binary_output.display(),
+                generated_output.display()
+            ),
+        ));
+    }
+
+    let manifest_path = generated_output.join(GENERATED_MANIFEST_FILENAME);
+    if is_path_ancestor_or_equal(binary_output, &manifest_path)
+        || is_path_ancestor_or_equal(&manifest_path, binary_output)
+    {
+        return Err(artifact_path_collision(
+            binary_output,
+            format!(
+                "binary output `{}` overlaps reserved generated output manifest `{}`",
+                binary_output.display(),
+                manifest_path.display()
+            ),
+        ));
+    }
+
+    for generated_path in generated_paths {
+        let final_generated_path = generated_output.join(generated_path);
+        if is_path_ancestor_or_equal(binary_output, &final_generated_path)
+            || is_path_ancestor_or_equal(&final_generated_path, binary_output)
+        {
+            return Err(artifact_path_collision(
+                binary_output,
+                format!(
+                    "binary output `{}` overlaps generated path `{}`",
+                    binary_output.display(),
+                    final_generated_path.display()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_unmanaged_generated_collisions(
+    output_dir: &Path,
+    managed: &BTreeSet<String>,
+    generated_paths: &[PathBuf],
+) -> Result<()> {
+    // WHY: Unmanaged output entries are outside the publisher's ownership
+    // boundary and must be rejected before generator output is materialized.
+    // IF REMOVED: adding a type whose generated path matches a user file could
+    // silently overwrite that file during an otherwise successful build.
+    // EVIDENCE: docs/specs/build-pipeline.md; Regression: unmanaged_generated_file_collision_is_rejected_without_overwrite.
+    let mut entries = Vec::new();
+    if fs::symlink_metadata(output_dir).is_ok() {
+        collect_existing_output_entries(output_dir, Path::new(""), &mut entries)?;
+    }
+    entries.sort_by(|left, right| {
+        left.relative
+            .to_string_lossy()
+            .cmp(&right.relative.to_string_lossy())
+    });
+
+    for generated_path in generated_paths {
+        for entry in &entries {
+            let managed_entry = managed_path_matches(&entry.relative, managed);
+            if relative_paths_equal(generated_path, &entry.relative) {
+                if managed_entry && entry.kind == ExistingOutputEntryKind::File {
+                    continue;
+                }
+                return Err(generated_ownership_collision(
+                    output_dir,
+                    generated_path,
+                    &entry.relative,
+                ));
+            }
+
+            if relative_path_is_ancestor_or_equal(&entry.relative, generated_path)
+                && entry.kind == ExistingOutputEntryKind::File
+                && !managed_entry
+            {
+                return Err(generated_ownership_collision(
+                    output_dir,
+                    generated_path,
+                    &entry.relative,
+                ));
+            }
+
+            // A generated file cannot replace an existing directory subtree.
+            // This also catches the reverse file/directory shape when all
+            // descendants happen to be managed entries.
+            if relative_path_is_ancestor_or_equal(generated_path, &entry.relative)
+                && !relative_paths_equal(generated_path, &entry.relative)
+            {
+                return Err(generated_ownership_collision(
+                    output_dir,
+                    generated_path,
+                    &entry.relative,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingOutputEntryKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug)]
+struct ExistingOutputEntry {
+    relative: PathBuf,
+    kind: ExistingOutputEntryKind,
+}
+
+fn collect_existing_output_entries(
+    directory: &Path,
+    relative_directory: &Path,
+    entries: &mut Vec<ExistingOutputEntry>,
+) -> Result<()> {
+    for entry in fs::read_dir(directory).map_err(|error| {
+        generated_publish_error(
+            directory,
+            format!("could not inspect existing generated output: {error}"),
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            generated_publish_error(
+                directory,
+                format!("could not inspect existing generated output entry: {error}"),
+            )
+        })?;
+        let name = entry.file_name();
+        let relative = relative_directory.join(&name);
+        if relative_directory.as_os_str().is_empty() && name == GENERATED_MANIFEST_FILENAME {
+            continue;
+        }
+        let source = entry.path();
+        let file_type = fs::symlink_metadata(&source)
+            .map_err(|error| {
+                generated_publish_error(
+                    &source,
+                    format!("could not inspect generated output entry: {error}"),
+                )
+            })?
+            .file_type();
+        if file_type.is_symlink() {
+            return Err(generated_publish_error(
+                &source,
+                "symlink entries in generated output cannot be safely published",
+            ));
+        }
+        if file_type.is_dir() {
+            entries.push(ExistingOutputEntry {
+                relative: relative.clone(),
+                kind: ExistingOutputEntryKind::Directory,
+            });
+            collect_existing_output_entries(&source, &relative, entries)?;
+        } else if file_type.is_file() {
+            entries.push(ExistingOutputEntry {
+                relative,
+                kind: ExistingOutputEntryKind::File,
+            });
+        } else {
+            return Err(generated_publish_error(
+                &source,
+                "generated output contains an unsupported filesystem entry",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn managed_path_matches(path: &Path, managed: &BTreeSet<String>) -> bool {
+    managed
+        .iter()
+        .any(|managed| relative_paths_equal(path, Path::new(managed)))
+}
+
+fn validate_artifact_layout(
+    plan: &CSharpGenerationPlan,
+    generated_output: &Path,
+    binary_output: &Path,
+) -> Result<()> {
+    let generated_paths = validate_generated_plan_paths(plan)?;
+    validate_binary_output_layout(generated_output, binary_output, &generated_paths)?;
+    let managed = read_managed_generated_paths(generated_output)?;
+    validate_unmanaged_generated_collisions(generated_output, &managed, &generated_paths)
 }
 
 fn read_managed_generated_paths(output_dir: &Path) -> Result<BTreeSet<String>> {
@@ -429,12 +865,13 @@ fn read_managed_generated_paths(output_dir: &Path) -> Result<BTreeSet<String>> {
     let mut managed = BTreeSet::new();
     for path in manifest.files {
         let key = generated_path_key(Path::new(&path))?;
-        if !managed.insert(key) {
+        if managed_path_matches(Path::new(&path), &managed) {
             return Err(generated_publish_error(
                 &manifest_path,
                 "generated output manifest contains duplicate paths",
             ));
         }
+        managed.insert(key);
         let managed_path = output_dir.join(&path);
         match fs::symlink_metadata(&managed_path) {
             Ok(metadata)
@@ -531,7 +968,9 @@ fn materialize_generated_output(
     // IF REMOVED: stale generated files would survive, or directory replacement
     // could destroy files that this tool does not own.
     // EVIDENCE: docs/specs/build-pipeline.md; Regression: materialized_generated_set_removes_stale_legacy_files_and_preserves_user_files.
+    let generated_paths = validate_generated_plan_paths(plan)?;
     let managed = read_managed_generated_paths(final_output)?;
+    validate_unmanaged_generated_collisions(final_output, &managed, &generated_paths)?;
     fs::create_dir_all(staged_output).map_err(|error| {
         generated_publish_error(
             staged_output,
@@ -543,16 +982,10 @@ fn materialize_generated_output(
     }
     generator.write_to(plan, staged_output)?;
 
-    let mut files = BTreeSet::new();
-    for file in &plan.files {
-        files.insert(generated_path_key(&file.relative_path)?);
-    }
-    if files.len() != plan.files.len() {
-        return Err(generated_publish_error(
-            staged_output,
-            "generated C# plan contains duplicate relative paths",
-        ));
-    }
+    let files = generated_paths
+        .iter()
+        .map(|path| generated_path_key(path))
+        .collect::<Result<BTreeSet<_>>>()?;
     let manifest = GeneratedManifest {
         version: GENERATED_MANIFEST_VERSION,
         files: files.into_iter().collect(),
@@ -611,8 +1044,8 @@ fn copy_unmanaged_entry(
     relative: &Path,
     managed: &BTreeSet<String>,
 ) -> Result<()> {
-    let key = generated_path_key(relative)?;
-    if managed.contains(&key) {
+    generated_path_key(relative)?;
+    if managed_path_matches(relative, managed) {
         return Ok(());
     }
     let file_type = fs::symlink_metadata(source)
@@ -941,6 +1374,7 @@ mod tests {
         ApplicationService, CSharpGenerationPlan, CSharpGenerator, GENERATED_MANIFEST_FILENAME,
         GENERATED_MANIFEST_VERSION, GeneratedManifest, atomic_replace,
         materialize_generated_output, publish_artifacts, publish_generated_directory,
+        validate_artifact_layout,
     };
     use masterdata_core::PROJECT_CONFIG_FILENAME;
     use masterdata_dotnet::DotnetBridge;
@@ -1187,6 +1621,236 @@ mod tests {
             fs::read(generated.join("NewName.g.cs")).expect("new generated"),
             b"// <auto-generated />\nNEW"
         );
+    }
+
+    #[test]
+    fn unmanaged_generated_file_collision_is_rejected_without_overwrite() {
+        let directory = tempdir().expect("temporary directory");
+        let generated = directory.path().join("Generated");
+        let staged = directory.path().join("staged-generated");
+        fs::create_dir_all(&generated).expect("generated");
+        fs::write(generated.join("Item.g.cs"), b"USER-OWNED").expect("user file");
+
+        let plan = generation_plan(&[("Item.g.cs", "NEW-GENERATED")]);
+        let error =
+            materialize_generated_output(&CSharpGenerator::default(), &plan, &generated, &staged)
+                .expect_err("unmanaged generated collision");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-BUILD-GENERATED-OWNERSHIP-COLLISION"
+        );
+        assert_eq!(
+            fs::read(generated.join("Item.g.cs")).expect("user file"),
+            b"USER-OWNED"
+        );
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn unmanaged_generated_collision_stops_before_dotnet_and_preserves_binary() {
+        let directory = test_project("binary_output = \".masterdata/output/masterdata.bytes\"\n");
+        let generated = directory.path().join(".masterdata/generated");
+        let binary = directory.path().join(".masterdata/output/masterdata.bytes");
+        fs::create_dir_all(&generated).expect("generated");
+        fs::create_dir_all(binary.parent().expect("binary parent")).expect("binary parent");
+        fs::write(generated.join("Item.g.cs"), b"USER-OWNED").expect("user file");
+        fs::write(&binary, b"OLD-BINARY").expect("old binary");
+
+        let error = ApplicationService::with_dotnet(DotnetBridge::with_executable(
+            "/definitely/missing/masterdata-dotnet",
+        ))
+        .build(Some(directory.path()), directory.path(), false)
+        .expect_err("unmanaged generated collision");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-BUILD-GENERATED-OWNERSHIP-COLLISION"
+        );
+        assert_eq!(
+            fs::read(generated.join("Item.g.cs")).expect("user file"),
+            b"USER-OWNED"
+        );
+        assert_eq!(fs::read(&binary).expect("old binary"), b"OLD-BINARY");
+    }
+
+    #[test]
+    fn nested_unmanaged_generated_file_collision_is_rejected() {
+        let directory = tempdir().expect("temporary directory");
+        let generated = directory.path().join("Generated");
+        let staged = directory.path().join("staged-generated");
+        fs::create_dir_all(generated.join("Sub")).expect("generated subdirectory");
+        fs::write(generated.join("Sub/Item.g.cs"), b"USER-OWNED").expect("user file");
+
+        let plan = generation_plan(&[("Sub/Item.g.cs", "NEW-GENERATED")]);
+        let error =
+            materialize_generated_output(&CSharpGenerator::default(), &plan, &generated, &staged)
+                .expect_err("nested unmanaged generated collision");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-BUILD-GENERATED-OWNERSHIP-COLLISION"
+        );
+        assert_eq!(
+            fs::read(generated.join("Sub/Item.g.cs")).expect("user file"),
+            b"USER-OWNED"
+        );
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn unmanaged_file_directory_prefix_collision_is_rejected() {
+        let directory = tempdir().expect("temporary directory");
+        let generated = directory.path().join("Generated");
+        let staged = directory.path().join("staged-generated");
+        fs::create_dir_all(&generated).expect("generated");
+        fs::write(generated.join("Models"), b"USER-OWNED").expect("blocking file");
+
+        let plan = generation_plan(&[("Models/Item.g.cs", "NEW-GENERATED")]);
+        let error =
+            materialize_generated_output(&CSharpGenerator::default(), &plan, &generated, &staged)
+                .expect_err("file/directory prefix collision");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-BUILD-GENERATED-OWNERSHIP-COLLISION"
+        );
+        assert_eq!(
+            fs::read(generated.join("Models")).expect("blocking file"),
+            b"USER-OWNED"
+        );
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn unmanaged_directory_file_prefix_collision_is_rejected() {
+        let directory = tempdir().expect("temporary directory");
+        let generated = directory.path().join("Generated");
+        let staged = directory.path().join("staged-generated");
+        fs::create_dir_all(generated.join("Item.g.cs")).expect("blocking directory");
+        fs::write(generated.join("Item.g.cs/notes.txt"), b"USER-OWNED").expect("user file");
+
+        let plan = generation_plan(&[("Item.g.cs", "NEW-GENERATED")]);
+        let error =
+            materialize_generated_output(&CSharpGenerator::default(), &plan, &generated, &staged)
+                .expect_err("directory/file prefix collision");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-BUILD-GENERATED-OWNERSHIP-COLLISION"
+        );
+        assert_eq!(
+            fs::read(generated.join("Item.g.cs/notes.txt")).expect("user file"),
+            b"USER-OWNED"
+        );
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn noncolliding_unmanaged_file_is_preserved_with_new_generated_file() {
+        let directory = tempdir().expect("temporary directory");
+        let generated = directory.path().join("Generated");
+        let staged = directory.path().join("staged-generated");
+        fs::create_dir_all(&generated).expect("generated");
+        fs::write(generated.join("UserNotes.txt"), b"KEEP-ME").expect("user file");
+
+        let plan = generation_plan(&[("Item.g.cs", "NEW-GENERATED")]);
+        materialize_generated_output(&CSharpGenerator::default(), &plan, &generated, &staged)
+            .expect("non-colliding generated file");
+        let publication = publish_generated_directory(&staged, &generated).expect("publish");
+        publication.commit();
+
+        assert_eq!(
+            fs::read(generated.join("UserNotes.txt")).expect("user file"),
+            b"KEEP-ME"
+        );
+        assert_eq!(
+            fs::read(generated.join("Item.g.cs")).expect("generated file"),
+            b"NEW-GENERATED"
+        );
+    }
+
+    #[test]
+    fn binary_output_overlapping_generated_file_is_rejected_before_publication() {
+        let directory = test_project("binary_output = \".masterdata/generated/Item.g.cs\"\n");
+        let generated = directory.path().join(".masterdata/generated");
+        fs::create_dir_all(&generated).expect("generated");
+        fs::write(generated.join("Item.g.cs"), b"OLD-GENERATED").expect("old generated");
+
+        let error = ApplicationService::with_dotnet(DotnetBridge::with_executable(
+            "/definitely/missing/masterdata-dotnet",
+        ))
+        .build(Some(directory.path()), directory.path(), false)
+        .expect_err("binary/generated path collision");
+
+        assert_eq!(error.diagnostic().code, "E-BUILD-ARTIFACT-PATH-COLLISION");
+        assert_eq!(
+            fs::read(generated.join("Item.g.cs")).expect("old generated"),
+            b"OLD-GENERATED"
+        );
+    }
+
+    #[test]
+    fn binary_output_overlapping_generated_manifest_is_rejected() {
+        let directory = test_project(
+            "binary_output = \".masterdata/generated/.masterdata-generated-files.json\"\n",
+        );
+        let generated = directory.path().join(".masterdata/generated");
+        fs::create_dir_all(&generated).expect("generated");
+        write_manifest(&generated, &["Item.g.cs"]);
+
+        let error = ApplicationService::with_dotnet(DotnetBridge::with_executable(
+            "/definitely/missing/masterdata-dotnet",
+        ))
+        .build(Some(directory.path()), directory.path(), false)
+        .expect_err("manifest/binary path collision");
+
+        assert_eq!(error.diagnostic().code, "E-BUILD-ARTIFACT-PATH-COLLISION");
+        assert!(generated.join(GENERATED_MANIFEST_FILENAME).is_file());
+    }
+
+    #[test]
+    fn binary_nested_under_generated_output_is_allowed_when_paths_do_not_overlap() {
+        let directory = tempdir().expect("temporary directory");
+        let generated = directory.path().join("Generated");
+        let binary = generated.join("artifacts/masterdata.bytes");
+        let plan = generation_plan(&[("Item.g.cs", "NEW-GENERATED")]);
+
+        validate_artifact_layout(&plan, &generated, &binary)
+            .expect("non-colliding nested binary output");
+        assert!(!generated.exists());
+        assert!(!binary.exists());
+    }
+
+    #[test]
+    fn first_build_binary_generated_collision_leaves_no_artifact() {
+        let directory = test_project("binary_output = \".masterdata/generated/Item.g.cs\"\n");
+        let generated = directory.path().join(".masterdata/generated");
+        let binary = generated.join("Item.g.cs");
+
+        let error = ApplicationService::new()
+            .build(Some(directory.path()), directory.path(), false)
+            .expect_err("first-build path collision");
+
+        assert_eq!(error.diagnostic().code, "E-BUILD-ARTIFACT-PATH-COLLISION");
+        assert!(!generated.exists());
+        assert!(!binary.exists());
+    }
+
+    #[test]
+    fn generated_plan_reserved_and_prefix_collisions_are_rejected() {
+        let directory = tempdir().expect("temporary directory");
+        let binary = directory.path().join("masterdata.bytes");
+
+        let reserved = generation_plan(&[(GENERATED_MANIFEST_FILENAME, "NEW")]);
+        let error = validate_artifact_layout(&reserved, directory.path(), &binary)
+            .expect_err("reserved manifest path");
+        assert_eq!(error.diagnostic().code, "E-BUILD-ARTIFACT-PATH-COLLISION");
+
+        let overlapping = generation_plan(&[("A", "NEW-A"), ("A/B.g.cs", "NEW-B")]);
+        let error = validate_artifact_layout(&overlapping, directory.path(), &binary)
+            .expect_err("generated plan path shape");
+        assert_eq!(error.diagnostic().code, "E-BUILD-ARTIFACT-PATH-COLLISION");
     }
 
     #[test]

@@ -9,4 +9,6 @@ description = "Shared application workflows for the masterdata CLI and GUI"
 masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
 masterdata-core = { path = "../masterdata-core" }
 masterdata-dotnet = { path = "../masterdata-dotnet" }
+serde.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true

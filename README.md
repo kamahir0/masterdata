@@ -107,7 +107,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、明示的に設定された`build.binary_output`の同一filesystem上へ中間成果物をstageし、実MasterMemory builderとbinary reload validationが成功した後にbinaryをatomic publishし、最後にgenerated C#をpublishします。失敗したbuildは既存のbinary/generated outputを変更しません。binary output未設定のnon-dry-run buildは明示的な設定エラーで停止します。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、明示的に設定された`build.binary_output`の同一filesystem上へ.NET builderの中間成果物をstageし、実MasterMemory builderとbinary reload validationが成功した後にgenerated C#の完全なsetとbinaryをpublication用に準備します。generated C# outputはset単位で切り替え、binaryはatomic publishします。後段のpublicationが失敗した場合は、通常のI/O failureに対して既存のbinary/generated outputをrollbackして保持します。binary output未設定のnon-dry-run buildは明示的な設定エラーで停止します。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## ProjectとYAMLの規約
 

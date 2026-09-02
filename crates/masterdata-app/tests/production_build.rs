@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -112,6 +113,74 @@ fn production_build_uses_resolved_build_selection() {
     assert_eq!(ids, [1001]);
 }
 
+#[test]
+fn production_build_removes_stale_generated_file_after_source_removal() {
+    let _dotnet_test_guard = dotnet_test_guard();
+    if !dotnet_available() {
+        eprintln!(".NET SDK is unavailable; skipping stale generated output test");
+        return;
+    }
+
+    let project = copy_full_fixture("stale generated project with spaces");
+    let service = ApplicationService::new();
+    service
+        .build(Some(project.path()), project.path(), false)
+        .expect("initial production build");
+    let generated = project.path().join(".masterdata/generated");
+    let stale = generated.join("LongFeatures.g.cs");
+    assert!(stale.is_file(), "initial build should publish LongFeatures");
+
+    fs::remove_file(project.path().join("sources/long-features.yaml"))
+        .expect("remove deleted type source");
+    service
+        .build(Some(project.path()), project.path(), false)
+        .expect("production rebuild after source removal");
+
+    assert!(
+        !stale.exists(),
+        "removed generated type must not remain stale"
+    );
+    assert!(generated.join("ItemMaster.g.cs").is_file());
+}
+
+#[test]
+fn production_build_rolls_back_generated_output_when_binary_publication_fails() {
+    let _dotnet_test_guard = dotnet_test_guard();
+    if !dotnet_available() {
+        eprintln!(".NET SDK is unavailable; skipping publication rollback test");
+        return;
+    }
+
+    let project = copy_full_fixture("publication rollback project with spaces");
+    let service = ApplicationService::new();
+    service
+        .build(Some(project.path()), project.path(), false)
+        .expect("initial production build");
+
+    let generated = project.path().join(".masterdata/generated");
+    let before = snapshot_files(&generated);
+    let binary = project.path().join(".masterdata/output/masterdata.bytes");
+    fs::remove_file(&binary).expect("remove binary for deterministic failure");
+    fs::create_dir(&binary).expect("binary path conflict");
+    fs::write(
+        project.path().join("sources/new-type.yaml"),
+        "kind: type\nname: NewGeneratedType\nvalueObject:\n  underlying: int\n",
+    )
+    .expect("new type source");
+
+    let error = service
+        .build(Some(project.path()), project.path(), false)
+        .expect_err("binary publication must fail");
+
+    assert_eq!(error.diagnostic().code, "E-BUILD-BINARY-PUBLISH");
+    assert_eq!(snapshot_files(&generated), before);
+    assert!(!generated.join("NewGeneratedType.g.cs").exists());
+    assert!(
+        binary.is_dir(),
+        "the injected binary conflict remains untouched"
+    );
+}
+
 fn copy_full_fixture(label: &str) -> TempDir {
     let directory = Builder::new()
         .prefix(&format!("{label}-"))
@@ -147,4 +216,30 @@ fn dotnet_available() -> bool {
         .arg("--version")
         .output()
         .is_ok_and(|output| output.status.success())
+}
+
+fn snapshot_files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    let mut snapshot = BTreeMap::new();
+    snapshot_files_recursive(root, root, &mut snapshot);
+    snapshot
+}
+
+fn snapshot_files_recursive(
+    root: &Path,
+    directory: &Path,
+    snapshot: &mut BTreeMap<PathBuf, Vec<u8>>,
+) {
+    for entry in fs::read_dir(directory).expect("snapshot directory") {
+        let entry = entry.expect("snapshot entry");
+        let path = entry.path();
+        if path.is_dir() {
+            snapshot_files_recursive(root, &path, snapshot);
+        } else {
+            let relative = path.strip_prefix(root).expect("snapshot relative path");
+            snapshot.insert(
+                relative.to_path_buf(),
+                fs::read(path).expect("snapshot file"),
+            );
+        }
+    }
 }

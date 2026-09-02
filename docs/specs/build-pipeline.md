@@ -30,8 +30,9 @@ canonical ordering、validation済みTable model、およびschema source-conten
 MessagePack/MasterMemory v3 attributesを含むTableとType SystemのC# loweringをplanする。.NET crateはbridge smoke test、
 stagedなschema-specific builder、独立したMasterMemory v3 technical spikeの双方を実行できる。non-dry-run application
 buildは、validated modelからinternal requestを作成し、staging workspaceでC# compile、DatabaseBuilder、binary reload
-validationを実行する。全stage成功後にbinaryをatomic publishし、その後にgenerated C#をpublishする。Reference、cache reuse、
-released binary compatibilityは別scopeである。
+validationを実行する。全stage成功後にgenerated C#の完全なsetとbinaryをpublication用に準備し、generated C#をset単位で切り替えた
+後にbinaryをatomic publishする。後段の通常のI/O failureでは、先に切り替えたartifactをrollbackして既存のartifact pairを保持する。
+Reference、cache reuse、released binary compatibilityは別scopeである。
 
 Record Tags、Build Profiles、Build Selectionのselection semanticsは、[Build Selection仕様](build-selection.md)が所有する。このdocumentの
 high-level pipelineにおけるsemantic validationは、selection前のprofile-independent validationと、selection後のdataset-level

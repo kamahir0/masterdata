@@ -320,10 +320,10 @@ fn is_path_ancestor_or_equal(candidate_path: &Path, target_path: &Path) -> bool 
         let Some(target) = canonicalize_with_missing_tail(target_path) else {
             return false;
         };
-        return normalized_path_is_ancestor_or_equal(
+        normalized_path_is_ancestor_or_equal(
             &normalized_path(&candidate),
             &normalized_path(&target),
-        );
+        )
     }
 
     #[cfg(not(windows))]

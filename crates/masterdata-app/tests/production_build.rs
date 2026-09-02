@@ -1,13 +1,28 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 use masterdata_app::ApplicationService;
 use masterdata_core::{BuildSelection, PROJECT_CONFIG_FILENAME};
 use tempfile::{Builder, TempDir};
 
+// WHY: The standard test harness runs these real .NET integration tests in
+// parallel, but the .NET CLI first-use/NuGet migration state is process-shared.
+// IF REMOVED: first-time setup can race and fail before the production builder runs.
+// EVIDENCE: .github/workflows/ci.yml; Regression: production_build_handoffs_full_selected_model_through_real_builder.
+static DOTNET_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn dotnet_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    DOTNET_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("production .NET test lock is not poisoned")
+}
+
 #[test]
 fn production_build_handoffs_full_selected_model_through_real_builder() {
+    let _dotnet_test_guard = dotnet_test_guard();
     if !dotnet_available() {
         eprintln!(".NET SDK is unavailable; skipping production builder integration test");
         return;
@@ -54,6 +69,7 @@ fn production_build_handoffs_full_selected_model_through_real_builder() {
 
 #[test]
 fn production_build_accepts_empty_selected_table() {
+    let _dotnet_test_guard = dotnet_test_guard();
     if !dotnet_available() {
         eprintln!(".NET SDK is unavailable; skipping empty-table builder integration test");
         return;
@@ -74,6 +90,7 @@ fn production_build_accepts_empty_selected_table() {
 
 #[test]
 fn production_build_uses_resolved_build_selection() {
+    let _dotnet_test_guard = dotnet_test_guard();
     if !dotnet_available() {
         eprintln!(".NET SDK is unavailable; skipping selection builder integration test");
         return;

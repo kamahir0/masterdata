@@ -10,5 +10,9 @@ description = "The single Rust-to-.NET bridge for MasterMemory build operations"
 [dependencies]
 masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
 masterdata-core = { path = "../masterdata-core" }
+same-file.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

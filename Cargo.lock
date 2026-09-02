@@ -1930,8 +1930,10 @@ version = "0.1.0"
 dependencies = [
  "masterdata-codegen-csharp",
  "masterdata-core",
+ "same-file",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -565,7 +565,7 @@ fn validate_build_report(
             ),
         ));
     }
-    if !same_path(&report.binary_path, &request.output_path) {
+    if !same_filesystem_path(&report.binary_path, &request.output_path) {
         return Err(MasterdataError::new(
             "E-DOTNET-BUILDER-REPORT",
             ErrorKind::ExternalTool,
@@ -622,14 +622,149 @@ fn validate_build_report(
     Ok(())
 }
 
-fn same_path(left: &Path, right: &Path) -> bool {
+// WHY: The .NET builder reports the path after Windows has resolved it, while
+// the Rust request can retain an 8.3 short-name spelling. Comparing filesystem
+// identities accepts equivalent representations without accepting another
+// staged artifact.
+// IF REMOVED: Windows short/long path pairs are rejected by report validation.
+// EVIDENCE: docs/specs/build-pipeline.md; Regression: build_report_accepts_windows_short_path_for_same_file.
+fn same_filesystem_path(left: &Path, right: &Path) -> bool {
+    same_file::is_same_file(left, right).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
     #[cfg(windows)]
-    {
-        left.to_string_lossy()
-            .eq_ignore_ascii_case(&right.to_string_lossy())
+    use std::path::Path;
+
+    use tempfile::tempdir;
+
+    use super::{same_filesystem_path, validate_build_report};
+    use crate::protocol::{
+        BUILD_PROTOCOL_VERSION, MASTERMEMORY_VERSION, MESSAGEPACK_VERSION, MasterMemoryBuildReport,
+        MasterMemoryBuildRequest,
+    };
+
+    fn request(output_path: PathBuf) -> MasterMemoryBuildRequest {
+        MasterMemoryBuildRequest {
+            protocol_version: BUILD_PROTOCOL_VERSION,
+            namespace: "Masterdata.Generated".to_owned(),
+            output_path,
+            tables: Vec::new(),
+        }
     }
-    #[cfg(not(windows))]
-    {
-        left == right
+
+    fn report(binary_path: PathBuf, binary_size: u64) -> MasterMemoryBuildReport {
+        MasterMemoryBuildReport {
+            status: "ok".to_owned(),
+            protocol_version: BUILD_PROTOCOL_VERSION,
+            master_memory_version: MASTERMEMORY_VERSION.to_owned(),
+            message_pack_version: MESSAGEPACK_VERSION.to_owned(),
+            binary_path,
+            binary_size,
+            table_count: 0,
+            record_count: 0,
+            tables: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn build_report_accepts_requested_path_with_spaces() {
+        let directory = tempdir().expect("temporary directory");
+        let output_directory = directory.path().join("output directory with spaces");
+        fs::create_dir(&output_directory).expect("output directory");
+        let output_path = output_directory.join("masterdata.bytes");
+        fs::write(&output_path, b"binary").expect("binary");
+
+        let result = validate_build_report(&report(output_path.clone(), 6), &request(output_path));
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_report_accepts_equivalent_existing_path() {
+        let directory = tempdir().expect("temporary directory");
+        let output_directory = directory.path().join("output");
+        fs::create_dir(&output_directory).expect("output directory");
+        let output_path = output_directory.join("masterdata.bytes");
+        fs::write(&output_path, b"binary").expect("binary");
+        let equivalent_path = output_directory.join(".").join("masterdata.bytes");
+
+        assert!(same_filesystem_path(&output_path, &equivalent_path));
+        let result = validate_build_report(&report(equivalent_path, 6), &request(output_path));
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_report_rejects_different_existing_file() {
+        let directory = tempdir().expect("temporary directory");
+        let requested_path = directory.path().join("requested.bytes");
+        let reported_path = directory.path().join("sibling.bytes");
+        fs::write(&requested_path, b"binary").expect("requested binary");
+        fs::write(&reported_path, b"binary").expect("reported binary");
+
+        assert!(!same_filesystem_path(&requested_path, &reported_path));
+        let error = validate_build_report(&report(reported_path, 6), &request(requested_path))
+            .expect_err("different files must be rejected");
+
+        assert_eq!(error.diagnostic().code, "E-DOTNET-BUILDER-REPORT");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn build_report_accepts_windows_short_path_for_same_file() {
+        let directory = tempdir().expect("temporary directory");
+        let output_directory = directory.path().join("output directory with spaces");
+        fs::create_dir(&output_directory).expect("output directory");
+        let output_path = output_directory.join("masterdata.bytes");
+        fs::write(&output_path, b"binary").expect("binary");
+
+        let Some(short_path) = windows_short_path(&output_path) else {
+            eprintln!("Windows 8.3 short paths are unavailable; skipping representation check");
+            return;
+        };
+        if short_path == output_path {
+            eprintln!("Windows 8.3 short paths are disabled; skipping representation check");
+            return;
+        }
+
+        let result = validate_build_report(&report(short_path, 6), &request(output_path));
+
+        assert!(result.is_ok());
+    }
+
+    #[cfg(windows)]
+    fn windows_short_path(path: &Path) -> Option<PathBuf> {
+        use std::os::windows::ffi::OsStrExt;
+
+        let wide_path = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let mut buffer = vec![0u16; 32_768];
+        let length = unsafe {
+            GetShortPathNameW(wide_path.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32)
+        };
+        if length == 0 || length as usize >= buffer.len() {
+            return None;
+        }
+        Some(PathBuf::from(String::from_utf16_lossy(
+            &buffer[..length as usize],
+        )))
+    }
+
+    #[cfg(windows)]
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetShortPathNameW(
+            long_path: *const u16,
+            short_path: *mut u16,
+            buffer_length: u32,
+        ) -> u32;
     }
 }

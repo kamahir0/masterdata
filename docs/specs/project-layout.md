@@ -61,8 +61,25 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 normative semanticsは[Build pipeline仕様](build-pipeline.md)の`BUILD-ARTIFACT-*`および`PUBLISH-*`が所有する。このdocumentはproject marker、
 project metadata、およびsource rootのconfiguration boundaryを所有する。
 
-current implementationはlegacyの`build.output`とoptionalな`build.binary_output`を受理するが、これはApproved configuration contractではなく、
-migration未実施のimplementation gapである。legacy keyの受理期間、warning/error、自動移行、既存artifactの移動・削除は別途定義する。
+current implementationはlegacyの`build.output`とoptionalな`build.binary_output`を受理するが、これはApproved configuration contractに反する
+implementation gapである。canonical implementationでは[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)のhard cutに従ってstructured
+migration diagnosticで拒否し、既存artifactを変更しない。
+
+`init`が生成するminimum configurationにはpublish targetを含めなくてもよい。例えば次のconfigurationだけでcanonical buildを開始できる。
+
+```toml
+[project]
+id = "my-game-master-data"
+name = "My Game Master Data"
+version = "0.1.0"
+
+[sources]
+roots = ["sources"]
+
+[build]
+artifact_dir = ".masterdata/output"
+cache = ".masterdata/cache"
+```
 
 以下の詳細なconfigurationとpath ruleによって、これらのruleは独立してtraceできる。
 path APIに関するimplementation noteはnon-normativeであり、callerは特定のshell separatorを
@@ -83,6 +100,28 @@ path APIに関するimplementation noteはnon-normativeであり、callerは特�
 は空であってはならず（MUST）。`publish.targets`の存在、kind、path、およびtarget ownershipのshapeは、
 [Build pipeline仕様](build-pipeline.md)の`PUBLISH-001`、`PUBLISH-002`、および`PUBLISH-009`が所有する。
 
+### PROJECT-CONFIG-004
+
+configurationにlegacy `build.output`が存在する場合、canonical configuration implementationはそのfieldを受理してはならず（MUST NOT）、
+`E-CONFIG-LEGACY-BUILD-OUTPUT`を含むstructured migration diagnosticを返さなければならない（MUST）。configurationにlegacy
+`build.binary_output`が存在する場合も同様に受理してはならず、`E-CONFIG-LEGACY-BINARY-OUTPUT`を含むstructured migration diagnosticを
+返さなければならない（MUST）。diagnosticはlegacy field名と、`build.output`については`build.artifact_dir`または`kind = "csharp"` publish targetを、
+`build.binary_output`についてはcanonical `.masterdata/output/masterdata.bytes`または`kind = "binary"` publish targetを、ユーザーが明示的に選ぶ
+migration guidanceとして示さなければならない（MUST）。これらはgeneric unknown-key errorへ置き換えてはならない。両方が存在する場合は、両方をstable orderでcollectしてもよい（MAY）。
+first-error modelでは`build.output`、`build.binary_output`の順に診断しなければならない（MUST）。
+
+### PROJECT-CONFIG-005
+
+legacy configurationのrejectionはbuild/publish operationを開始してはならず（MUST）、旧pathを`build.artifact_dir`または`publish.targets`へ自動変換してはならない
+（MUST NOT）。rejection時にcanonical output、legacy output、binary、external publish destination、またはそれらのparentをmove、delete、rename、writeしてはならない
+（MUST NOT）。
+
+### PROJECT-CONFIG-006
+
+`init`はcanonical configurationとして`build.artifact_dir = ".masterdata/output"`と`build.cache = ".masterdata/cache"`を生成しなければならず（MUST）、
+legacy `build.output`または`build.binary_output`を生成してはならない（MUST NOT）。`publish.targets`は0..Nであるため、初期configurationで生成しなくてもよい（MAY）。
+publish targetがない初期projectでも、canonical buildがproject-local artifactを作成できるconfigurationを生成しなければならない（MUST）。
+
 ### PROJECT-PATH-001
 
 relativeなsource pathとcanonical build artifact pathはproject rootを基準にresolveしなければならない（MUST）。canonical artifact pathは
@@ -100,7 +139,7 @@ cycle-safetyのinternal guardとしてsymlink entryをfollowしない。これ�
 このmatrixは上記requirementに対するnon-normativeなimplementation evidenceまたは将来のacceptance planである。test numberが
 requirement definitionに見えないよう、canonical ruleの隣に置く。`implement-spec` は同じ
 observable behaviorを、このmatrixによって確認する。Approved configuration contractへ変更された
-`PROJECT-CONFIG-003`と`PROJECT-PATH-001`は、現行legacy parserのtestを新contractのevidenceとして扱わず、
+`PROJECT-CONFIG-003`から`PROJECT-CONFIG-006`および`PROJECT-PATH-001`は、現行legacy parserのtestを新contractのevidenceとして扱わず、
 implementation taskでtestを追加する。
 
 | Requirement（要件ID） | Observable behavior（観測可能な挙動） | Implementation owner（実装owner） | Success case（成功例） | Failure case（失敗例） | Test（テスト） | Fixture |
@@ -114,6 +153,9 @@ implementation taskでtestを追加する。
 | PROJECT-CONFIG-001 | project metadata fieldがwhitespace以外のvalueを含む。 | `masterdata-core::ProjectConfig::validate` | metadataが揃ったblockを受け入れる。 | 空の `id`、`name`、`version` はstructured config diagnosticを返す。 | `project_config_001_requires_non_empty_metadata` | Temporary project |
 | PROJECT-CONFIG-002 | 少なくとも1つのsource rootが設定されている。 | `masterdata-core::ProjectConfig::validate` | source rootのあるprojectを受け入れる。 | 空の `sources.roots` listはstructured config diagnosticを返す。 | `project_config_002_requires_a_source_root` | Temporary project |
 | PROJECT-CONFIG-003 | 設定されたsource root、canonical artifact path、cache pathが空でない。 | `masterdata-core::ProjectConfig::validate` | 空でないpathを受け入れる。 | 空のsource、`artifact_dir`、またはcache pathはstructured config diagnosticを返す。 | `implement-specで追加` | Temporary project |
+| PROJECT-CONFIG-004 | legacy `build.output` / `build.binary_output`はmigration-aware structured diagnosticで拒否され、generic unknown-key errorへ潰れない。 | `masterdata-core::ProjectConfig::validate` | 新configurationを受け入れる。 | 各legacy fieldを対応するdiagnostic codeで拒否する。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`（planned） | Temporary project |
+| PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | `masterdata-core::ProjectConfig::validate` / application boundary | 既存artifactがそのまま残る。 | rejection後にcanonical/legacy/external artifactが変更されない。 | `project_config_005_rejects_legacy_config_without_artifact_mutation`（planned） | Temporary project |
+| PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `masterdata-core::Project::init` | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 | `project_config_006_init_generates_canonical_config`（planned） | Temporary project |
 | PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootである。 | `masterdata-core::Project::info` / `masterdata-app` | project rootからcanonical/publish pathを解決する。 | canonical artifactがproject外へescapeする、またはpublish pathがprocess working directoryを基準に解決される。 | `implement-specで追加` | Temporary project |
 
 すべてのrowは、path separatorがplatformによって異なっても有効でなければならない。

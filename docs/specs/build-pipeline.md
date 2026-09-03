@@ -8,6 +8,7 @@ Status: Approved
 境界を定義するApproved canonical specificationである。`BUILD-ARTIFACT-001`から`BUILD-ARTIFACT-005`および
 `PUBLISH-001`から`PUBLISH-010`は、Human maintainerの承認を経てcurrent normative contractとなった。この承認とcanonical
 documentへの適用は[仕様変更0004](../spec-changes/0004-canonical-artifacts-publish-targets.md)に記録する。
+legacy configurationのhard cutとstructured migration diagnosticの適用は、[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)に記録する。
 
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
 各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
@@ -17,7 +18,7 @@ implementation evidenceが揃ったことを意味しない。現行のconfigura
 
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
 このcanonical applicationは、configuration parser、CLI、またはproduction implementationを変更しない。影響するcanonical specificationのStatus変更と
-configuration contractのreconciliationは、仕様変更0004に記録する。
+configuration contractのreconciliationは、仕様変更0004および0005に記録する。
 
 ## 承認されたcanonical model
 
@@ -87,8 +88,8 @@ canonical artifact rootはMasterData tool-ownedでなければならず（MUST�
 扱ってはならない（MUST NOT）。canonical root内に置くものは、canonical C#、canonical binary、およびartifact setを識別するために別途承認された
 tool metadataに限る方向とする。
 
-current `build.output`配下のmanaged/unmanaged file coexistenceは移行期間のlegacy behaviorであり、canonical root ownershipの代替ではない。
-legacy artifactを自動削除または自動移行するpolicyは、このspecificationでは確定しない。
+current `build.output`配下のmanaged/unmanaged file coexistenceは、現行implementationに残るlegacy behaviorであり、canonical root ownershipの代替ではない。
+canonical configuration implementationは旧configurationを受理せず、既存legacy artifactを自動削除または自動移行しない。
 
 ### BUILD-ARTIFACT-003
 
@@ -312,18 +313,24 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。current parser/modelがこのshapeをまだ
 受理しないことはimplementation gapであり、legacy configurationを別のcanonical contractとして扱う根拠にはならない。
 
-## 現行設定からのmigration
+## Legacy configuration hard cutと手動migration
 
-現行設定を直ちに削除、拒否、または自動変換するimplementationは今回行わない。このspecification上のmigration mappingは次のとおりである。
+canonical configuration implementationは`build.output`と`build.binary_output`を即時hard cutで受理してはならない（MUST NOT）。これらを
+compatibility alias、warning-only、またはautomatic migrationとして受理してはならない。拒否時は
+[Project layout仕様](project-layout.md)の`PROJECT-CONFIG-004`および`PROJECT-CONFIG-005`に従い、structured migration diagnosticを返し、
+build/publish作業とfilesystem artifactの変更を開始してはならない。
+
+旧configurationから新configurationへの移行は、ユーザーが旧pathの意図を確認して明示的に設定する手動migrationである。mappingは自動変換規則ではなく、
+次のように責務を選び直すためのnon-normative guidanceである。
 
 | 現行設定 | target modelでの扱い | 備考 |
 | --- | --- | --- |
-| `build.output` | `build.artifact_dir`へ置き換える候補 | 現行はgenerated C# directoryとして機能している。外部C#配置は`publish.targets`へ分離する |
-| `build.binary_output` | canonical root内の固定binary pathへ置き換える候補 | 外部binary配置は`kind = "binary"` targetへ分離する |
+| `build.output` | project-local canonical artifactなら`build.artifact_dir`、外部C#配置なら`kind = "csharp"` publish targetへ、ユーザーが明示的に置き換える | 旧pathがcanonicalかexternal destinationかをtoolは推測しない |
+| `build.binary_output` | canonical binaryは`.masterdata/output/masterdata.bytes`、外部配置は`kind = "binary"` publish targetへ、ユーザーが明示的に置き換える | 旧pathの責務をtoolは推測しない |
 | `build.cache` | `.masterdata/cache`などのcache設定として維持 | canonical outputと混在させない |
 
-legacy configを受理する期間、warning/error、既存artifactからcanonical layoutへ移行する順序、旧managed/unmanaged outputとの関係は、
-implementation前に別途migration decisionとして確定する。`schema_source_content_hash`をsemantic artifact identityやbuilder cache keyへ昇格させてはならない。
+旧`.masterdata/generated`、旧binary、外部Generated directory、Unity Assets等の既存artifactは、このconfiguration rejectionによってmove、delete、renameしてはならない。
+`schema_source_content_hash`をsemantic artifact identityやbuilder cache keyへ昇格させてはならない。
 
 ## Project identityとdirectory naming
 
@@ -369,7 +376,6 @@ monorepo/separate repositoryの想定、およびdirectory basenameとproject id
 - absolute publish pathを許可するか、外部targetのparent directory作成と既存destinationの詳細なI/O policy。
 - 複数publish targetの一部成功時のretry、rollback、再開、およびoperation/exit semantics。複数destinationのcross-path atomicityは保証するか。
 - `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
-- legacy `build.output` / `build.binary_output`と既存artifactをcanonical layoutへ移行する時期、compatibility、diagnostic、および自動移行の有無。
 - canonical artifactのmetadata/version、semantic schema hash、builder cache key、released-schema binary compatibilityをどの独立specificationで定義するか。
 - Unity `.meta` lifecycleとpublish manifestの連携をMasterData publisherが持つか、Unity importerへ委譲するか。
 - generated .NET projectのownership、cache eviction、Unity asset importがartifact publicationをどう観測するか。
@@ -379,9 +385,9 @@ monorepo/separate repositoryの想定、およびdirectory basenameとproject id
 
 ## Statusと実装方針
 
-この文書の`Status: Approved`は、仕様変更0004に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
+この文書の`Status: Approved`は、仕様変更0004および0005に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
 `Implemented`へ変更しない。
 
 このlifecycle taskはdocs-onlyであり、Rust、CLI、Tauri、config parser/model、publish filesystem implementation、current `build.output`、current
-`build.binary_output`、およびcurrent production behaviorを変更しない。承認されたrequirementを対象にimplementation task、tests、fixtures、
-migration planを別途作成する。legacy configurationの受理期間、warning/error、自動移行、既存artifactの移動・削除は未承認である。
+`build.binary_output`、およびcurrent production behaviorを変更しない。承認されたrequirementを対象にimplementation task、tests、fixturesを別途作成する。
+legacy configurationの受理、alias、warning-only、automatic migrationは禁止され、legacy artifactのmove/delete/renameは行わない。

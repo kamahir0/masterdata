@@ -1,6 +1,6 @@
 # Projectの構成と探索（Project layout and discovery）
 
-Status: Implemented
+Status: Approved
 
 ## 規範ルール
 
@@ -45,11 +45,25 @@ version = "0.1.0"
 roots = ["sources"]
 
 [build]
-output = ".masterdata/generated"
+artifact_dir = ".masterdata/output"
 cache = ".masterdata/cache"
+
+[[publish.targets]]
+kind = "csharp"
+path = "../unity/Assets/MasterData/Generated"
+
+[[publish.targets]]
+kind = "binary"
+path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 ```
 
-`project.id`、`project.name`、`project.version`、および少なくとも1つのsource rootが必要である。
+`project.id`、`project.name`、`project.version`、および少なくとも1つのsource rootが必要である。canonical artifactとexternal publish targetの
+normative semanticsは[Build pipeline仕様](build-pipeline.md)の`BUILD-ARTIFACT-*`および`PUBLISH-*`が所有する。このdocumentはproject marker、
+project metadata、およびsource rootのconfiguration boundaryを所有する。
+
+current implementationはlegacyの`build.output`とoptionalな`build.binary_output`を受理するが、これはApproved configuration contractではなく、
+migration未実施のimplementation gapである。legacy keyの受理期間、warning/error、自動移行、既存artifactの移動・削除は別途定義する。
+
 以下の詳細なconfigurationとpath ruleによって、これらのruleは独立してtraceできる。
 path APIに関するimplementation noteはnon-normativeであり、callerは特定のshell separatorを
 前提にせずplatformのpath valueを使用するべきである。
@@ -65,14 +79,16 @@ path APIに関するimplementation noteはnon-normativeであり、callerは特�
 
 ### PROJECT-CONFIG-003
 
-設定されたsource rootは空文字列であってはならない（MUST NOT）。`build.output` と `build.cache`
-は空であってはならず（MUST）、任意の `build.binary_output` が存在する場合も空であっては
-ならない（MUST）。
+設定されたsource rootは空文字列であってはならない（MUST NOT）。`build.artifact_dir`と`build.cache`
+は空であってはならず（MUST）。`publish.targets`の存在、kind、path、およびtarget ownershipのshapeは、
+[Build pipeline仕様](build-pipeline.md)の`PUBLISH-001`、`PUBLISH-002`、および`PUBLISH-009`が所有する。
 
 ### PROJECT-PATH-001
 
-relativeなsource pathとbuild pathはproject rootを基準にresolveしなければならない（MUST）。
-absolute pathはabsoluteのまま扱う。
+relativeなsource pathとcanonical build artifact pathはproject rootを基準にresolveしなければならない（MUST）。canonical artifact pathは
+project directory外へescapeしてはならず（MUST NOT）、absolute pathをcanonical artifact rootとして扱ってはならない（MUST NOT）。relativeな
+publish target pathのbaseは、[Build pipeline仕様](build-pipeline.md)の`PUBLISH-002`に従いproject rootとする。absolute publish target pathを
+許可するかは同仕様のOpen Questionであり、このrequirementでは確定しない。
 
 Open Questions: configがnamed source group、ignore pattern、明示的なUnity project linkを将来
 サポートするか、および設定されたsource rootがsymlinkをfollowするか。current implementationは
@@ -81,9 +97,11 @@ cycle-safetyのinternal guardとしてsymlink entryをfollowしない。これ�
 
 ## 受け入れmatrix
 
-このmatrixは上記requirementに対するnon-normativeなimplementation evidenceである。test numberが
+このmatrixは上記requirementに対するnon-normativeなimplementation evidenceまたは将来のacceptance planである。test numberが
 requirement definitionに見えないよう、canonical ruleの隣に置く。`implement-spec` は同じ
-observable behaviorを、このmatrixによって確認する。
+observable behaviorを、このmatrixによって確認する。Approved configuration contractへ変更された
+`PROJECT-CONFIG-003`と`PROJECT-PATH-001`は、現行legacy parserのtestを新contractのevidenceとして扱わず、
+implementation taskでtestを追加する。
 
 | Requirement（要件ID） | Observable behavior（観測可能な挙動） | Implementation owner（実装owner） | Success case（成功例） | Failure case（失敗例） | Test（テスト） | Fixture |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -95,8 +113,8 @@ observable behaviorを、このmatrixによって確認する。
 | PROJECT-006 | 宣言されたYAML `kind` と `table` がdocument semanticsを決める。 | `masterdata-core::Project::load_documents` | 1つのroot内にある複数fileが、宣言したtableを保持する。 | file pathまたはdirectory nameでdocumentを別の意味に変更できない。 | `project_006_source_directory_does_not_define_table_identity` | `fixtures/minimal` |
 | PROJECT-CONFIG-001 | project metadata fieldがwhitespace以外のvalueを含む。 | `masterdata-core::ProjectConfig::validate` | metadataが揃ったblockを受け入れる。 | 空の `id`、`name`、`version` はstructured config diagnosticを返す。 | `project_config_001_requires_non_empty_metadata` | Temporary project |
 | PROJECT-CONFIG-002 | 少なくとも1つのsource rootが設定されている。 | `masterdata-core::ProjectConfig::validate` | source rootのあるprojectを受け入れる。 | 空の `sources.roots` listはstructured config diagnosticを返す。 | `project_config_002_requires_a_source_root` | Temporary project |
-| PROJECT-CONFIG-003 | 設定されたsource pathとbuild pathが空でない。 | `masterdata-core::ProjectConfig::validate` | 空でないpathを受け入れる。 | 空のsource、output、cache、または任意のbinary pathはstructured config diagnosticを返す。 | `project_config_003_rejects_empty_source_or_build_paths` | Temporary project |
-| PROJECT-PATH-001 | relative pathはproject rootを基準にresolveし、absolute pathはabsoluteのまま扱う。 | `masterdata-core::Project::info` | project infoがresolve済みsource/build pathを公開する。 | relative pathがprocess working directoryを基準にresolveされない。 | `project_path_001_resolves_relative_paths_against_project_root` | Temporary project |
+| PROJECT-CONFIG-003 | 設定されたsource root、canonical artifact path、cache pathが空でない。 | `masterdata-core::ProjectConfig::validate` | 空でないpathを受け入れる。 | 空のsource、`artifact_dir`、またはcache pathはstructured config diagnosticを返す。 | `implement-specで追加` | Temporary project |
+| PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootである。 | `masterdata-core::Project::info` / `masterdata-app` | project rootからcanonical/publish pathを解決する。 | canonical artifactがproject外へescapeする、またはpublish pathがprocess working directoryを基準に解決される。 | `implement-specで追加` | Temporary project |
 
 すべてのrowは、path separatorがplatformによって異なっても有効でなければならない。
 symlink traversal safetyはsource-discovery documentationに Open Question として記録された

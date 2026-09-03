@@ -159,7 +159,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 
 ## 文書一覧（Documents）
 
-- [Projectの構成と探索仕様](project-layout.md)
+- [Projectの構成と探索仕様](project-layout.md) — `Status: Approved`
 - [Schema言語仕様](schema-language.md)
 - [Masterdata YAML subset仕様](yaml-subset.md) — `Status: Approved`
 - [Type System仕様](type-system/README.md)
@@ -172,7 +172,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Approved`
 - [Index / reference仕様](index-and-reference.md) — `Status: Draft`（Reference中心。Table/Keyのsemantic ownerは別document）
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
-- [Build pipeline仕様](build-pipeline.md)
+- [Build pipeline仕様](build-pipeline.md) — `Status: Approved`
 - [Compatibility仕様](compatibility/README.md)
   - [Table identity仕様](compatibility/table-identity.md)
   - [Field identity仕様](compatibility/field-identity.md) — `Status: Deprecated`（旧Field ID modelのhistory）

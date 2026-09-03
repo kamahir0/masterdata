@@ -4,28 +4,29 @@ Status: Draft
 
 ## この文書の位置付け
 
-この文書は、MasterData projectのbuild artifactを作成する処理と、作成済みartifactを外部へ配置する処理の
-境界を整理するDraftである。ここでのproposalは、`Status: Approved` または `Status: Implemented` のcanonical
-specificationに代わるimplementation authorityではない。Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、
-[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、各Type System仕様、[YAML subset仕様](yaml-subset.md)、および
-[Project layout仕様](project-layout.md)がそれぞれ所有する。
+この文書は、MasterData projectのcanonical build artifactを作成する処理と、作成済みartifactを外部へ配置する処理の
+境界を整理するDraftである。ここで定義するrequirementは、Human approval前のDraft proposalであり、`Status: Approved` または
+`Status: Implemented` のcanonical specificationに代わるimplementation authorityではない。
 
-今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として
-扱う方向を採用する。この文書は引き続きDraftであり、未確定のobservable behaviorはOpen Questionsに残す。今回の変更は
-specification status、Approved specification、configuration parser、CLI、またはproduction implementationを変更しない。
+Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
+各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
+この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryをDraftとして定義する。
+
+今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
+今回の変更はApproved/Implemented specification、specification status、configuration parser、CLI、またはproduction implementationを変更しない。
 
 ## Human directionを受けたDraftの中心proposal
 
-今回のrefinementでは、次の方向をこのDraftの前提として整理する。
+以下をこのDraftの中心方向として採用する。
 
 - MasterData projectはproject directory内にcanonical build artifact領域を持つ。
 - Unity projectやserver projectなど、project root外を含む外部配置はpublish targetとする。
 - monorepoとseparate repositoryのどちらもdeployment topologyとして扱える。compiler semanticsはGit repository topologyに依存しない。
 - 1つのcanonical artifactを0個以上のpublish targetへ配布できる。配布先ごとにbuildを繰り返さない。
 - canonical artifact領域はMasterData toolが所有するbuild outputであり、user-owned treeへの直接出力とは区別する。
-- project directoryのbasenameはconvention上kebab-caseを基本とするが、project identityは `project.id` であり、basenameから導出しない。
+- project directoryのbasenameはconvention上kebab-caseを基本とするが、project identityは`project.id`であり、basenameから導出しない。
 
-上記はこのDraftで採用するarchitecture directionであり、Human approvalなしに `Approved` へ昇格させない。
+上記はこのDraftで整理したarchitecture directionであり、Human approvalなしに`Approved`へ昇格させない。
 
 ## 提案するpipeline
 
@@ -50,27 +51,44 @@ resolve project
  -> optional publish targets
 ```
 
-ここで `build` はcanonical artifactを作成するoperationであり、外部publishを暗黙に含めない方向をDraft proposalとする。
-`publish` は検証済みcanonical artifact setを外部destinationへ配布する別operationである。
+`build`はcanonical artifactを作成するoperationであり、外部publishを暗黙に含めない。`publish`は検証済みcanonical artifact setを
+外部destinationへ配布する別operationとする。
 
 Build Selectionとselected datasetに対するconstraint validationの順序は、[Build Selection仕様](build-selection.md)の
-`BUILD-SELECT-010`、`BUILD-SELECT-011`、および`BUILD-SELECT-017`に従う。pipelineはselection前のprofile-independent
-validationと、selection後のdataset-level validationを混同してはならない。
+`BUILD-SELECT-010`、`BUILD-SELECT-011`、および`BUILD-SELECT-017`に従う。pipelineはselection前のprofile-independent validationと、
+selection後のdataset-level validationを混同してはならない。
 
-Rust coreはproject/config解決、YAMLのtyped AST、semantic validation、Type System/Table resolution、BuildPlan、および
-canonical artifact生成に必要なvalidated modelを担当する。`masterdata-codegen-csharp` はstructured C# loweringを担当し、
-MasterMemory binary formatとSource Generatorのbehaviorは.NET dependencyに残す。`.NET` process invocationは
-`masterdata-dotnet` に集約し、application serviceはcanonical stagingとpublish orchestrationを担当する。CLIとTauriはこの
-shared workflowを呼び出し、domain semanticsまたは.NET invocationを複製しない。
+Rust coreはproject/config解決、YAMLのtyped AST、semantic validation、Type System/Table resolution、BuildPlan、およびcanonical artifact生成に
+必要なvalidated modelを担当する。`masterdata-codegen-csharp`はresolved modelからstructured C#をloweringし、MasterMemory binary formatと
+Source Generatorのbehaviorは.NET dependencyに残す。`.NET` process invocationは`masterdata-dotnet`に集約し、application serviceはstagingと
+artifact publicationを担当する。CLIとTauriはshared workflowを呼び出し、domain semanticsまたは.NET invocationを複製しない。
 
-generated C#のtype、property、constructor parameterのidentifier contractは[C#命名仕様](type-system/csharp-naming.md)が所有する。
-build pipelineは、source nameのnormalization、transliteration、suffix付与、または自動repairによってこのcontractを置き換えてはならない。
+generated C#のtype、property、constructor parameterのidentifier contractは[C#命名仕様](type-system/csharp-naming.md)が所有する。build pipelineは
+source nameのnormalization、transliteration、suffix付与、または自動repairによってこのcontractを置き換えてはならない。
 
-## Canonical build artifacts
+## Draft normative proposal: canonical build artifacts
 
-### project-localなartifact root
+### BUILD-ARTIFACT-001
 
-v1のcanonical artifact rootは、原則として次のproject-local pathとする。
+v1のcanonical artifact rootはMasterData project directoryの配下でなければならない（MUST）。default locationは`.masterdata/output/`とする。
+canonical rootを設定で上書きする場合も、`artifact_dir`はproject rootを基準とするproject-local relative pathでなければならず（MUST）、
+absolute pathまたは`..`によるproject directory外へのescapeをcanonical build destinationとして許可してはならない（MUST NOT）。
+
+canonical artifact rootの場所はGit repositoryのroot、checkout directoryのbasename、Unity projectの場所、またはsource YAMLのdirectoryから
+導出してはならない（MUST NOT）。
+
+### BUILD-ARTIFACT-002
+
+canonical artifact rootはMasterData tool-ownedでなければならず（MUST）、canonical buildはそのrootをuser-owned output treeとの共存場所として
+扱ってはならない（MUST NOT）。canonical root内に置くものは、canonical C#、canonical binary、およびartifact setを識別するために別途承認された
+tool metadataに限る方向とする。
+
+current `build.output`配下のmanaged/unmanaged file coexistenceは移行期間のlegacy behaviorであり、canonical root ownershipの代替ではない。
+legacy artifactを自動削除または自動移行するpolicyは、このDraftでは確定しない。
+
+### BUILD-ARTIFACT-003
+
+v1のcanonical layoutは次のとおりでなければならない（MUST）。
 
 ```text
 <project root>/
@@ -86,58 +104,31 @@ v1のcanonical artifact rootは、原則として次のproject-local pathとす�
    └─ cache/
 ```
 
-このDraftでは、v1に必要なbinaryを `output/masterdata.bytes` に置く構成を第一候補とする。将来、binaryやmetadataを
-subdirectoryへ分ける必要が生じた場合は、別の仕様refinementで扱う。今回のDraftはその将来layoutを先取りしない。
+v1ではbinaryを`output/masterdata.bytes`へ置く。`output/binary/`や`output/metadata/`への分割はこのDraftで先取りしない。
 
-canonical rootには、generated C#、MasterMemory binary、およびそれらを識別するために必要なtool metadataだけを置く方向とする。
-canonical rootはtool-ownedであり、通常のuser-owned fileとのcoexistenceを前提にしない。このownershipは、現在の
-`build.output` 配下で行っているmanaged/unmanaged file coexistenceの一時的なmigration behaviorとは区別する。
+### BUILD-ARTIFACT-004
 
-canonical C#とbinaryは1回のvalidated build resultに由来するcoherent artifact setでなければならない。build失敗時に最後の
-coherent setを破壊してはならず、成功時にpartial setや前回buildのstale generated fileを残してはならない。これは
-[YAMLをSource of TruthとするADR](../adr/0001-yaml-is-source-of-truth.md)および、schema revision・generated C#・binaryを
-coherent artifact setとして扱う[MessagePack key ADR](../adr/0005-messagepack-key-as-serialization-only.md)のarchitecture directionに従う。
+canonical C#とcanonical binaryは、同一のvalidated build resultから作成されたcoherent artifact setでなければならない（MUST）。
+buildが成功した場合はcompleteなcurrent setを公開し、前回buildで不要になったcanonical generated fileを残してはならない（MUST）。
+build失敗時は、最後のcoherent canonical setを利用不能にするpartial setを公開してはならない（MUST NOT）。
 
-canonical outputのdefault locationがあるため、通常のcanonical `build` は任意の外部binary pathを必須入力にしない方向とする。
-ただし現行implementationは `build.binary_output` を明示的に要求するため、この変更は将来のimplementation/migration taskで行い、
-今回のrefinementだけでは挙動を変更しない。
+canonical artifactの作成は、raw YAMLをauthorityとするvalidation、Type System/Table resolution、Build Selection、必要なconstraint validation、
+canonical ordering、およびC#/.NET validationを経た後に行う。canonical artifact自体をsource of truth、semantic schema hash、cache key、または
+released compatibility identityとして扱ってはならない（MUST NOT）。
 
-### artifact directory設定のDraft proposal
+### BUILD-ARTIFACT-005
 
-canonical rootを上書き可能にする場合は、現行の `build.output` とは別に次のkeyを候補とする。
+canonical buildはcanonical artifactだけを作成し、configured external publish targetを暗黙に更新してはならない（MUST NOT）。
+`publish`はcanonical artifact setを入力とする別operationでなければならない（MUST）。
 
-```toml
-[build]
-artifact_dir = ".masterdata/output"
-cache = ".masterdata/cache"
-```
+`build --publish`のような統合UXは将来候補であり、このrequirementはそのcommandの存在またはexit semanticsを確定しない。
 
-`artifact_dir` はproject rootを基準とするrelative pathを第一候補とし、resolved pathがproject directory外へ出ないことを
-想定する。absolute path、`..` によるescape、symlinkを含むrootの扱いなど、正確なpath validationはimplementation taskで
-既存のpath policyと照合する。canonical artifactの内部layoutは `csharp/` と `masterdata.bytes` を固定する方向であり、
-binary pathを別の任意pathから推論しない。
+## Draft normative proposal: publish targets
 
-`cache` はcanonical outputとは別の領域である。`schema_source_content_hash` はsource bytesのhashであり、semantic schema hashまたは
-builder cache keyではない。これをartifact identityや将来のbuilder reuse cache keyとして流用しない。
+### PUBLISH-001
 
-### project identityとdirectory naming
-
-projectは引き続き `masterdata.toml` と `project.id` によって識別する。project directoryのbasenameは、initやrepository運用上の
-presentation conventionとしてkebab-caseを基本にできるが、table/type/artifactのidentityを決めない。checkout directoryをrenameしても
-`project.id` が変わらない限りproject identityは変わらない。
-
-この整理は、filesystem locationにsemantic meaningを与えない[ADR 0004](../adr/0004-file-location-has-no-semantic-meaning.md)および
-[Project layout仕様](project-layout.md)のcurrent identity ruleを変更しない。
-
-## Publish targets
-
-### 責務と構成
-
-publish targetはcanonical artifactのdistribution destinationを表す。targetは0個以上定義でき、同じartifact kindに複数の
-destinationを持てる。publishはraw YAML、raw DataDocument、既存のgenerated C#、またはsource file orderを入力にしてはならない。
-canonical artifact setがRustのvalidated/resolved modelから作成され、検証済みであることを前提にする。
-
-設定syntaxは次のtarget単位の形を第一候補とする。
+publish targetはcanonical artifactのdistribution destinationを表し、projectは0個以上のtargetを持つことができる（MAY）。v1のconfiguration
+surfaceはtarget単位の次の形をcanonical proposalとする。
 
 ```toml
 [[publish.targets]]
@@ -153,154 +144,237 @@ kind = "binary"
 path = "../dedicated-server/data/masterdata.bytes"
 ```
 
-`kind = "csharp"` はcanonical C# artifact setをdirectory destinationへ配布し、`kind = "binary"` はcanonical binaryを
-explicit file destinationへ配布する方向とする。relative pathとabsolute pathの両方をmonorepo/separate repositoryのdeployment topology
-で利用できるようにする候補である。relative pathのbase、parent creation、targetの重複、symlink、path containment、および既存destinationの
-overwrite policyはOpen Questionとして残す。
+v1のtarget kindは`csharp`と`binary`だけとする。未定義のfuture kindをこのDraftで仕様化しない。1つのcanonical artifactを複数targetへpublishでき、
+targetごとにschema parse、semantic validation、C# generation、またはMasterMemory buildを繰り返してはならない（MUST NOT）。
 
-1つのcanonical C# setからUnity Client A/Bへ、1つのbinaryからUnityとdedicated serverへpublishできる。destinationごとにschemaを
-再parseしたり、builderを再実行したりしてはならない。compilerはGit repositoryの境界、remote、branch、またはcheckout basenameを
-検査してdeployment semanticsを決めない。
+### PUBLISH-002
 
-### publish destinationのownership
+relativeなpublish target pathはMasterData project rootを基準にresolveしなければならない（MUST）。process current working directory、source root、
+checkout directoryのbasenameをrelative pathの基準にしてはならない（MUST NOT）。
 
-publish destinationはuser-owned treeである可能性があるため、canonical rootとは別のownership policyが必要である。次の候補を
-比較対象として記録する。
-
-| artifact | 候補 | 保護される境界 |
-| --- | --- | --- |
-| C# | dedicated destination directoryをtool-ownedと明示する | directory内のgenerated setを一括管理し、未知のuser fileを黙って削除しない境界を別途定義する |
-| C# | generated-file manifestでtool-owned fileだけを管理する | unmanaged fileを保持し、manifestにないfileを上書き・削除しない |
-| binary | explicit file target | 指定された1つのfileだけをpublisher-ownedとして扱う |
-
-どの候補をpublish v1のcanonical ownership policyとするかは、外部destinationにuser-owned contentが存在するか、stale fileをどう
-retireするか、manifestをどこで管理するかに依存する。新しいpublish ownershipをこのDraftで暗黙に確定せず、Open Questionsに残す。
-いずれの候補でも、user-owned fileをsilent delete、silent overwrite、またはgenerated nameの自動repairで置き換えてはならない。
-
-### artifact buildとpublishの成功状態
-
-canonical `build` の成功と、全publish targetへの配布成功は別のoperation resultとして扱う方向とする。
+このruleにより、次のmonorepo構成をcwdに依存せず表現できる。
 
 ```text
-canonical build success
-  -> canonical artifacts are available
-  -> publish may be attempted independently
-
-publish target A success + target B failure
-  -> canonical build remains successful
-  -> publish operation reports distribution failure
+workspace/
+├─ master-data/
+│  └─ masterdata.toml
+└─ unity/
+   └─ Assets/
 ```
 
-publish target間のpartial successをrollbackするか、再実行時にどのtargetを対象とするか、canonical artifactのversion/identityを
-どのように確認するかは未確定である。filesystem transactionとして複数の外部destinationを同時atomic commitできるとは主張しない。
+`master-data/masterdata.toml`から`../unity/...`を指定する。absolute publish pathを許可するか、parent creation、symlink、path containmentを
+どう扱うかは、PUBLISH-002のrelative baseとは別のOpen Questionとして残す。
 
-publish-only operationを許可する場合、既存canonical artifactを「最後のvalid build result」と信頼するためのtool metadataまたは
-build identityが必要になる可能性がある。metadataのexact shape、trust条件、semantic schema hashとの関係は今回定義しない。
-publishがraw YAMLや任意の既存generated C#をauthorityとしてbypassすることは禁止する。
+### PUBLISH-003
 
-## Operation semanticsのDraft proposal
+publishは、Rustのvalidated/resolved modelから作成され、canonical artifact setとして検証済みのinputだけを使用しなければならない（MUST）。
+raw YAML、raw DataDocument、source file order、既存の任意generated C#をpublishのauthorityとして使用してはならない（MUST NOT）。
 
-通常operationは次の責務を持つ方向とする。
+publish-only operationのためにcanonical artifactがvalidなbuild resultであることを証明するmetadataが必要になる可能性はあるが、
+そのmetadata、trust条件、semantic schema hashとの関係はこのDraftでは定義しない。
 
-| operation | 処理 | canonical artifact | publish target |
-| --- | --- | --- | --- |
-| `validate` | YAML parse、profile-independent validation、selection、およびsemantic validation | 書き込まない | 実行しない |
-| `schema` | validation後にC# generation planを作成し、canonical C# artifactを作成する | C#のみ | 実行しない |
-| `build` | validation、C# generation、MasterMemory binary build/reload validationを行う | C#とbinary | 実行しない |
-| `publish` | validなcanonical artifact setをconfigured targetsへ配布する | 変更しない | 実行する |
+### PUBLISH-004
 
-`masterdata build --publish` のような統合UXは将来候補であり、このDraftではcommandの存在、失敗時のexit semantics、targetごとの
-retry/rollbackを確定しない。operationを統合する場合も、publishがpipeline途中のvalidationを飛ばすbypassになってはならない。
+C# publish targetはmanifest-based ownershipを使用しなければならない（MUST）。publish target directory全体をMasterData tool-ownedと
+みなしてはならない（MUST NOT）。manifestはtarget directoryの配下に置き、v1のreserved filenameは
+`.masterdata-publish-manifest.json`とする。
 
-### dry-run
+manifestは、直前のsuccessful publishでMasterData publisherが所有したrelative file pathsを識別するownership metadataに限る。manifestから
+schema semantics、generated C#のauthority、semantic schema hash、cache key、またはreleased compatibility identityを復元してはならない（MUST NOT）。
+manifestが存在しない初回publishでは、previous managed setは空として扱い、destinationに既にある他のentryを拡張子やcontentからmanagedと推測してはならない（MUST NOT）。
+現行implementationにあるlegacy markerは旧artifact migrationの入力候補に限り、新しいpublish targetのownership sourceへ自動昇格させない。
 
-`build --dry-run` はvalidationとplan作成までにとどまり、canonical output、publish target、binary、generated C#のfinal pathを変更しない。
-canonical outputが標準化されても、dry-runがfilesystem上のartifactを作成したように見せない方向を維持する。
+manifestのv1 contentは、少なくともformat versionとmanaged relative pathsを持たなければならない（MUST）。conceptual shapeは次のとおりである。
+
+```json
+{
+  "version": 1,
+  "files": [
+    "Enemy.g.cs",
+    "Item.g.cs"
+  ]
+}
+```
+
+`files`はtarget directoryからのrelative file pathであり、directory外へescapeしてはならない（MUST NOT）。pathのdeterministic orderingを使用する。
+manifest path自体はpublisher-reserved pathであり、generated C# fileがmanifest pathとcollisionしてはならない（MUST NOT）。
+
+### PUBLISH-005
+
+C# publish成功後のmanaged file setは、そのtargetのmanifestに記録されたcurrent setと一致しなければならない（MUST）。publisherは前回manifestの
+managed pathsとcanonical C# artifact setの差分を、次のように扱う。
+
+- addition: current canonical pathを追加する。
+- update: current canonical contentで同じmanaged pathを更新する。
+- removal: 前回managedだがcurrent setにないpathをstale managed artifactとしてretireする。
+- rename: 旧managed pathをretireし、新pathを追加する。
+
+例えば前回manifestが`Item.g.cs`、`Enemy.g.cs`、`ItemId.g.cs`を含み、current canonical setが`Item.g.cs`と`Enemy.g.cs`だけなら、
+`ItemId.g.cs`はsuccessful publish後に存在してはならない（MUST NOT）。publisherはtarget directory全体を空にして再copyするのではなく、
+前回managed setとcurrent setの差分だけを管理しなければならない（MUST）。
+この差分管理は、`ItemId.g.cs.meta`のようにmanifestにない隣接entryをstale managed artifactとして扱わない。
+
+### PUBLISH-006
+
+manifestに記録されていないregular fileまたはdirectoryはunmanaged user contentとして扱い、MasterData publisherはsilent deleteまたはsilent
+overwriteしてはならない（MUST NOT）。特に`Item.g.cs.meta`、`UserNotes.txt`、`SomeEditorUtility.cs`のようなfileは、manifestに記録されていない限り
+MasterData ownership外である。Unityの`.meta` lifecycleを、generated C#とのbasenameが一致することだけを理由にMasterData側で管理してはならない（MUST NOT）。
+
+current canonical C# pathが既存unmanaged entryとfilesystem上で衝突する場合、publishはcollision errorで停止しなければならない（MUST）。
+publisherはそのentryを自動adopt、automatic rename、suffix付与、またはgenerated fileによるoverwriteで解決してはならない（MUST NOT）。
+file/file、file/directory、directory/file、nested pathなど、next managed setを安全にmaterializeできないpath shapeは同じcollisionとして扱う。
+
+### PUBLISH-007
+
+C# publishの概念pipelineは次のとおりである。
+
+```text
+load valid canonical C# artifact set
+ -> inspect previous publish manifest
+ -> classify previous managed paths
+ -> inspect destination unmanaged entries
+ -> reject NEW managed vs unmanaged path collisions
+ -> prepare complete next managed set
+ -> retire previous-managed minus current-generated paths
+ -> write next manifest
+ -> publish target
+```
+
+staging、set switch、rollback、または別のmechanical strategyを使用してよいが、user-owned contentを巻き込むdirectory-wide delete/re-copyを
+ownership policyとして導入してはならない（MUST NOT）。
+
+### PUBLISH-008
+
+C# publish targetについて、通常のI/O failureに対する目標状態は次のとおりである。
+
+```text
+Ok
+ -> complete current managed C# set
+ -> stale previous-managed paths absent
+ -> unmanaged user content preserved
+ -> manifest describes current managed set
+
+Err
+ -> previous managed publish set remains usable
+ -> unmanaged user content is not silently destroyed
+```
+
+このrequirementはfilesystem crashまたはpower-loss時に複数fileを同時atomic commitできることを保証しない。cross-file atomicity、retry、rollbackの
+実装strategyは後段で決めるが、実装が保証していない同時atomic commitをproduct contractとして説明してはならない（MUST NOT）。
+
+### PUBLISH-009
+
+`kind = "binary"` targetはconfigured explicit file 1個だけをpublisher-ownedとして扱わなければならない（MUST）。同じconfigured target fileに既存の
+binaryがある場合、そのfileを新しいcanonical binaryでreplaceできる方向とする。binary publisherはparent directory、sibling file、隣接する`.meta`、または
+同じdirectoryの他のentryへownershipを拡張してはならない（MUST NOT）。
+
+binary publishはC# manifestをownership metadataとして使用してはならない（MUST NOT）。binary targetのparent creation、既存fileの具体的なreplace
+mechanism、およびsymlink/path safetyは別途定義する。
+
+### PUBLISH-010
+
+publish targetのpathは、canonical artifactの生成元であるMasterData projectまたはGit repositoryの構造を推測して解決してはならない（MUST NOT）。
+monorepoではproject rootから隣接repositoryへrelative pathを指定でき、separate repositoryでは適切なabsoluteまたはrelative filesystem pathを
+使用できる方向とする。compilerはrepository topology自体をsemantic inputにしない。
+
+## Configuration proposal
+
+現行のconfiguration ownerは`Status: Implemented`の[Project layout仕様](project-layout.md)であり、このDraftはそのcurrent parser/modelを変更しない。
+将来のconfigurationは、artifact settingsとpublish target settingsを分離する。
+
+```toml
+[project]
+id = "game.masterdata"
+name = "Game Master Data"
+version = "0.1.0"
+
+[sources]
+roots = ["sources"]
+
+[build]
+artifact_dir = ".masterdata/output"
+cache = ".masterdata/cache"
+
+[[publish.targets]]
+kind = "csharp"
+path = "../unity/Assets/MasterData/Generated"
+
+[[publish.targets]]
+kind = "binary"
+path = "../unity/Assets/StreamingAssets/masterdata.bytes"
+```
+
+`artifact_dir`はcanonical build rootを指定し、`publish.targets`はcanonical artifactの外部destinationだけを指定する。`build.binary_output`を
+canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。
 
 ## 現行設定からのmigration
 
-現行のconfiguration ownerは `Status: Implemented` の[Project layout仕様](project-layout.md)であり、現在のparser/modelをこの
-refinementで削除しない。次のmigration mappingをDraft proposalとして記録する。
+現行設定を直ちに削除、拒否、または自動変換するimplementationは今回行わない。Draft上のmigration mappingは次のとおりである。
 
 | 現行設定 | target modelでの扱い | 備考 |
 | --- | --- | --- |
-| `build.output` | `build.artifact_dir` に置き換える候補 | 現行はgenerated C# directoryとして機能している。外部C#配置はpublish targetへ分離する |
-| `build.binary_output` | canonical root内の固定binary pathに置き換える候補 | 外部binary配置はbinary publish targetへ分離する |
-| `build.cache` | `.masterdata/cache` などのcache設定として維持 | canonical outputと混在させず、source-content hashをcache identityへ昇格させない |
+| `build.output` | `build.artifact_dir`へ置き換える候補 | 現行はgenerated C# directoryとして機能している。外部C#配置は`publish.targets`へ分離する |
+| `build.binary_output` | canonical root内の固定binary pathへ置き換える候補 | 外部binary配置は`kind = "binary"` targetへ分離する |
+| `build.cache` | `.masterdata/cache`などのcache設定として維持 | canonical outputと混在させない |
 
-既存設定を直ちに削除、拒否、または自動変換するimplementationは今回行わない。legacy configを受理する期間、warning/error、
-既存artifactからcanonical layoutへ移行する方法、および既存のmanaged/unmanaged generated outputとの関係は、implementation taskの
-前にmigration decisionとして確定する必要がある。
+legacy configを受理する期間、warning/error、既存artifactからcanonical layoutへ移行する順序、旧managed/unmanaged outputとの関係は、
+implementation前に別途migration decisionとして確定する。`schema_source_content_hash`をsemantic artifact identityやbuilder cache keyへ昇格させてはならない。
 
-新modelでは、canonical rootをproject-localなtool-owned directoryとして扱うため、旧モデルの
+## Project identityとdirectory naming
 
-```text
-Generated/
-├─ Item.g.cs
-└─ artifacts/masterdata.bytes
-```
+projectは引き続き`masterdata.toml`と`project.id`によって識別する。directory basenameはinitやrepository運用上のpresentation conventionとしてkebab-caseを
+基本にできるが、table、type、artifact、またはpublish targetのidentityを決めない。checkout directoryをrenameしても`project.id`が変わらない限り
+project identityは変わらない。
 
-のようなgenerated C# directory配下へのnested binaryはcanonical layoutに含めない。binaryを `csharp/` の外側に置くことで、
-binaryのownershipをgenerated-file ownershipと同時に推論する必要がなくなる。これはB7のownership ambiguityを解消する方向であるが、
-現行設定・既存artifactを自動移行する実装を意味しない。
+この整理は、filesystem locationにsemantic meaningを与えない[ADR 0004](../adr/0004-file-location-has-no-semantic-meaning.md)および
+[Project layout仕様](project-layout.md)のcurrent identity ruleを変更しない。
 
-## Artifact coherenceとsafetyの境界
+## B7 / B8との関係
 
-canonical buildは、validated/resolved modelからcompleteなC# setとbinaryを同一staging workspaceで準備し、必要なcompile/reload validationが
-成功した後にcanonical rootへpublishする。失敗時に既存のcoherent canonical setを残すためのstaging、set publication、atomic binary
-replacement、rollbackの具体的なimplementationはapplication layerが所有する。
+旧モデルでは、generated C# directoryの配下にbinaryを置く任意cross-placementが、generated file ownershipとbinary ownershipを同じpathから推測する
+必要を生じさせていた。新canonical modelでは、`.masterdata/output/`全体をtool-owned rootとし、その直下に`csharp/`と`masterdata.bytes`を分離する。
+canonical binaryをC# publish destinationへ混在させないため、B7のownership ambiguityを解消する方向である。
 
-このDraftはfilesystem crashやpower-loss時にC#とbinaryを同時atomic commitできることを保証しない。外部publish targetについても、
-canonical artifact作成とcross-path distributionを同一filesystem transactionとして扱わない。実装が保証していないcross-artifact
-transactionalityをproduct contractとして説明してはならない。
+この整理は、外部publish destinationでのfilesystem-equivalent path、case equivalence、Unicode normalization、symlinkなどの問題を解決しない。
+それらはB8としてpublish layerのpath safety implementation/fix scopeに残し、ASCII lowercaseなどの具体的な実装方式をこのDraftで仕様化しない。
 
-canonical rootのtool-owned boundaryはB3/B4/B5のようなuser fileとgenerated/binary pathの衝突を限定する方向だが、publish destination
-には同じpath safetyが必要である。case sensitivity、Unicode normalization、symlink、directory replacement、manifest ownershipの
-詳細は実装時に別途確認し、今回のDraftで新しいfilesystem policyを発明しない。
-canonical rootをproject-localなtool-owned領域へ整理することは、publish destinationに残るfilesystem path equivalenceやUnicode
-normalizationの問題（B8）を解消するものではない。B8はpublish layerのimplementation/fix scopeとして別途扱う。
+## 責務境界と非目標
 
-## Build pipelineの責務境界
-
-- `masterdata-core`: project/config解決、typed YAML AST、Type System/Table resolution、Build Selection、record/constraint validation、
-  canonical ordering、normalized semantic model。
+- `masterdata-core`: project/config解決、typed YAML AST、Type System/Table resolution、Build Selection、record/constraint validation、canonical ordering、
+  normalized semantic model。
 - `masterdata-codegen-csharp`: resolved modelからのC# generation planとcanonical C# artifact materialization。raw YAMLからsemanticを推論しない。
-- `masterdata-dotnet`: internal normalized protocol、.NET process invocation、schema-specific builder、MasterMemory/MessagePackのcompile、
-  DatabaseBuilder、MemoryDatabase reload validation。
-- `masterdata-app`: build/publish operationのorchestration、staging、canonical artifact publication、将来のpublish target adapter。
+- `masterdata-dotnet`: internal normalized protocol、.NET process invocation、schema-specific builder、MasterMemory/MessagePack compile、DatabaseBuilder、
+  MemoryDatabase reload validation。
+- `masterdata-app`: build/publish orchestration、staging、canonical artifact publication、将来のpublish target adapter。
 - CLI/Tauri: application serviceを呼び出すadapter。YAML semantics、filesystem discovery、または.NET process invocationを複製しない。
 
-`masterdata-core` が公開する `schema_source_content_hash` はsource bytesのdiagnostic/change-detection inputであり、semantic artifact
-identity、released binary compatibility、またはbuilder cache reuseを意味しない。Reference、semantic schema hash、builder cache、released
-binary compatibility、production artifact versioningはこのDraftの実装対象ではない。
+このrefinementでは、Reference、named Build Profile adapter、GUI、Unity importer、semantic schema hash、builder cache/reuse、cache eviction、
+released-schema binary compatibility、exact binary bytes identity、artifact signing/versioning、publish filesystem copy、CLI command追加、config parser変更を
+実装または確定しない。
 
 ## Open Questions（未解決事項）
 
-今回のHuman directionによって、canonical outputをproject-local build layerとし、外部配置をpublish layerとして分離する方向、
-monorepo/separate repositoryの両方を想定すること、複数publish targetを持つ方向、およびdirectory basenameをproject identityにしない
-ことは、このDraftの前提として整理した。以下は依然として未解決である。
+今回のHuman directionによって、project-local canonical output、canonical root ownership、C# manifest-based ownership、stale managed file retirement、
+unmanaged preservation/collision、binary explicit-file ownership、`[[publish.targets]]` syntax、relative target pathのproject-root base、複数targetの方向、
+monorepo/separate repositoryの想定、およびdirectory basenameとproject identityの分離は、このDraftのproposalとして整理した。以下だけを未解決として残す。
 
-- `[[publish.targets]]` と `[[publish.csharp]]` / `[[publish.binary]]` のどちらをcanonical configuration syntaxとするか。
-- `build.artifact_dir` のproject-local path validation、absolute path、`..`、symlink、親directory作成、およびcanonical root内のmetadata layout。
-- canonical rootのmigration時に、現行 `build.output` / `build.binary_output` と既存artifactをどの順序・diagnostic・compatibility policyで扱うか。
-- publish C# targetをdedicated tool-owned directoryとするか、manifest-based ownershipとするか。user-owned entry、stale file、rename、overwriteをどう扱うか。
-- publish binary targetのexplicit file ownership、既存file replacement、parent creation、case/Unicode/symlink path safety。
 - publish-onlyが必要とするcanonical artifact metadata、build identity、trust判定、およびmetadataの保存場所。
+- external publish pathでのfilesystem-equivalent path、case equivalence、Unicode normalization、symlink、path containmentの正確なpolicy（B8）。
+- absolute publish pathを許可するか、外部targetのparent directory作成と既存destinationの詳細なI/O policy。
 - 複数publish targetの一部成功時のretry、rollback、再開、およびoperation/exit semantics。複数destinationのcross-path atomicityは保証するか。
-- `masterdata build --publish` を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
-- `schema` operationでcanonical C#だけを作成するか、metadataを含むartifact setとして扱うか。
-- canonical layoutを将来 `output/binary/` や `output/metadata/` へ分割する必要があるか。
+- `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
+- legacy `build.output` / `build.binary_output`と既存artifactをcanonical layoutへ移行する時期、compatibility、diagnostic、および自動移行の有無。
+- canonical artifactのmetadata/version、semantic schema hash、builder cache key、released-schema binary compatibilityをどの独立specificationで定義するか。
+- Unity `.meta` lifecycleとpublish manifestの連携をMasterData publisherが持つか、Unity importerへ委譲するか。
 - generated .NET projectのownership、cache eviction、Unity asset importがartifact publicationをどう観測するか。
 - source discoveryでsymlinkをfollowまたはignoreするproduct-level policy。current traversal guardはcycle防止のためsymlink entryをfollowしない。
-- semantic schema hash、builder cache key、artifact version、released-schema binary compatibilityをどの独立specificationで定義するか。
 
-## 非目標
+- canonical layoutを将来`output/binary/`や`output/metadata/`へ分割する必要があるかは、v1 layoutを承認する際に再確認する。
 
-このDraft refinementは次を実装または確定しない。
+## Statusと実装方針
 
-- Reference semantics、named Build Profile adapter、GUI、Unity importer。
-- semantic schema hash、builder cache/reuse、cache eviction。
-- released-schema binary compatibility、exact binary bytes identity、artifact signing/versioning。
-- canonical output migration、publish filesystem copy、atomic directory replacement、CLI command追加、config parser変更。
+この文書の`Status: Draft`は維持する。Human approvalなしに`Approved`または`Implemented`へ変更しない。
 
-これらは、Human review後に必要なApproved/Implemented specificationとimplementation taskへ分離する。
+このrefinementはdocs-onlyであり、Rust、CLI、Tauri、config parser/model、publish filesystem implementation、current `build.output`、current
+`build.binary_output`、およびcurrent production behaviorを変更しない。Human review後、承認されたrequirementだけを対象にimplementation task、tests、
+fixtures、migration planを別途作成する。

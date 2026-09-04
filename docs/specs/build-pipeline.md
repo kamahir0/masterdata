@@ -8,13 +8,16 @@ Status: Approved
 境界を定義するApproved canonical specificationである。`BUILD-ARTIFACT-001`から`BUILD-ARTIFACT-005`および
 `PUBLISH-001`から`PUBLISH-010`は、Human maintainerの承認を経てcurrent normative contractとなった。この承認とcanonical
 documentへの適用は[仕様変更0004](../spec-changes/0004-canonical-artifacts-publish-targets.md)に記録する。
+external publish destinationのfilesystem path safetyに関する`PUBLISH-PATH-001`から
+`PUBLISH-PATH-010`は、仕様変更0006のHuman Approvalとcanonical applicationによってcurrent
+normative contractとなった。
 legacy configurationのhard cutとstructured migration diagnosticの適用は、[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)に記録する。
 
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
 各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
 この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryを定義する。`Approved`は
 implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builderは実装済みであるが、external
-filesystem publisherは未実装であるため、`PUBLISH-004`以降のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
+filesystem publisherは未実装であるため、`PUBLISH-004`以降および`PUBLISH-PATH-*`のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
 
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
 このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
@@ -168,8 +171,9 @@ workspace/
    └─ Assets/
 ```
 
-`master-data/masterdata.toml`から`../unity/...`を指定する。absolute publish pathを許可するか、parent creation、symlink、path containmentを
-どう扱うかは、PUBLISH-002のrelative baseとは別のOpen Questionとして残す。
+`master-data/masterdata.toml`から`../unity/...`を指定する。absolute publish pathも許可し、configured absolute filesystem destinationとして扱う。
+relative targetとabsolute targetのいずれも、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のfilesystem safety validationを受ける。
+parent creation、symlink、path containmentの詳細は、同requirementsが所有する。
 
 ### PUBLISH-003
 
@@ -283,6 +287,197 @@ publish targetのpathは、canonical artifactの生成元であるMasterData pro
 monorepoではproject rootから隣接repositoryへrelative pathを指定でき、separate repositoryでは適切なabsoluteまたはrelative filesystem pathを
 使用できる方向とする。compilerはrepository topology自体をsemantic inputにしない。
 
+## Normative requirements: publish path safety
+
+### PUBLISH-PATH-001
+
+publish targetのpath比較は、文字列のlexical equalityではなく、targetが存在するdestination
+filesystemのnamespaceとentry/object identityを基準にしなければならない（MUST）。filesystemが
+同じentry/objectまたは重複namespaceとして扱うpathは、同一pathまたはcollisionとして扱わなければ
+ならない（MUST）。既存pathのcanonicalized prefix、filesystem identity、symlink alias、
+case-sensitiveまたはcase-insensitiveなdirectory lookup、およびfilesystemが同一entryとして扱う
+Unicode spellingをこの判定に含める。
+
+このruleは、少なくとも次の比較へ同じ意味で適用する。
+
+- current generated C# pathとexisting unmanaged entry
+- manifest pathとdestination entry、manifest path同士、およびreserved manifest path
+- binary targetとcurrent generated C#、manifest、existing unmanaged entry
+- target同士のownership region
+- publish targetとproject、`masterdata.toml`、source root、canonical artifact root、cache
+
+publisherは`path.to_lowercase()`、ASCII-only normalization、NFCだけ、またはOS名だけを、全
+filesystemに通用するequivalence algorithmとして仕様化してはならない（MUST NOT）。同一entryか
+どうかをdestination filesystemから確認できる場合、その結果を優先する。確認できない場合の
+fail-closedは`PUBLISH-PATH-002`に従う。
+
+### PUBLISH-PATH-002
+
+まだ存在しないpublish targetまたはgenerated pathを、存在しないという理由だけでunsafeと判定しては
+ならない（MUST NOT）。publisherは、必要に応じてlongest existing ancestor/prefixをdestination
+filesystem上で解決し、残りのmissing tailを保持したpath namespaceとしてcollisionとcontainmentを
+判定しなければならない（MUST）。このmechanical strategyはcanonical specificationで特定の
+Rust crateまたはOS APIに固定しない。
+
+existing prefix、missing tail、case behavior、symlink、またはnamespaceの安全性を証明できない
+場合、publisherはstructured path/config errorでrejectしなければならず（MUST）、destinationへ
+mutationを開始してはならない（MUST）。通常のsafeな未存在targetは、検証済みのparent creation
+policyに従ってsupportしてよい（MAY）。
+
+### PUBLISH-PATH-003
+
+C# target rootまたはtarget rootへ到達する既存ancestor componentがsymlinkである場合、publishを
+開始してはならない（MUST NOT）。publisherはconfigured targetのspellingからsymlink先のtreeを
+自動的にownershipしたと推測してはならない。
+
+C# target rootが存在しない場合は、`PUBLISH-PATH-002`および`PUBLISH-PATH-009`のpreflight後に
+必要なdirectoryを作成してよい。existing target rootはreal directoryでなければならず（MUST）、
+file、symlink、またはspecial filesystem objectの場合はrejectしなければならない（MUST）。
+target directory全体をdeleteして再作成するownership strategyは導入してはならない（MUST NOT）。
+
+target内のunmanaged symlinkはuser-owned contentとして扱い、publisherはfollow、delete、または
+symlink先のoverwriteをしてはならない（MUST NOT）。current generated pathまたはmanaged pathが
+そのsymlinkとfilesystem上でcollisionする場合はrejectする。
+
+### PUBLISH-PATH-004
+
+C# targetのmanaged pathは`PUBLISH-004`のmanifestに記録されたrelative file pathとreserved
+manifest fileに限る。manifest外のregular file、directory、`.meta`、およびsymlinkはunmanaged
+contentとして保持し、current generated pathがfilesystem上でそのentryとcollisionする場合は
+rejectしなければならない（MUST）。publisherはunmanaged entryをautomatic adoption、rename、
+suffix付与、delete、またはoverwriteによって解決してはならない（MUST NOT）。
+
+previous manifestに記録されたmanaged pathをretireまたはupdateする場合、destinationの対象は
+expectedなregular fileでなければならない（MUST）。managed pathの現在entryがdirectory、symlink、
+またはspecial filesystem objectへ置換されている場合、manifest記載だけを根拠に強制delete、
+recursive removal、symlink followをしてはならず、ownership mismatchとしてrejectする。
+
+manifest pathとcurrent generated pathがcaseまたはUnicodeを含む異なるspellingでも、destination
+filesystemが同じentryとして扱うなら、同じmanaged slotまたはcollisionとして扱う。文字列だけで
+stale removalとadditionを別pathだと判断してはならない。
+
+### PUBLISH-PATH-005
+
+manifestが存在しない初回publishではprevious managed setを空として扱う、という`PUBLISH-004`の
+ruleを維持する。既存manifestが次のいずれかに該当する場合、publisherはownershipを確定できない
+ためpublishをrejectしなければならない（MUST）。
+
+- JSON shape、format version、relative path、path containmentが不正である。
+- 未対応のmanifest versionである。
+- `files`にfilesystem上同一entryへresolveするduplicate aliasがある。
+- manifest自身がregular fileではなく、symlink、directory、またはspecial objectである。
+
+malformedまたはambiguous manifestを削除、修復、merge、再採用してはならない（MUST NOT）。reject
+時はstale managed fileを削除せず、unmanaged contentとmanifestを変更してはならない（MUST NOT）。
+`.masterdata-publish-manifest.json`はpublisher-reserved pathであり、current generated C# path、
+binary target、または別のreserved artifactがdestination filesystem上でこのpathとcollisionする
+場合はrejectする。
+
+### PUBLISH-PATH-006
+
+`kind = "binary"` targetのpublisher ownershipはconfigured explicit fileそのものに限る。target
+entryが存在しない場合は、safeなexisting ancestorのpreflight後に作成してよい（MAY）。targetが
+existing regular fileの場合はcanonical binaryでreplaceしてよい（MAY）。targetがdirectory、
+symlink、またはspecial filesystem objectの場合、publisherはrejectしなければならない（MUST）。
+targetまでの既存ancestor componentがsymlinkの場合もrejectしなければならない（MUST）。
+
+binary publisherはC# manifestをownership metadataとして使用してはならず（MUST NOT）、parent
+directory、sibling file、隣接する`.meta`、または他のdirectory entryを削除・rename・overwriteして
+はならない（MUST NOT）。既存regular fileをreplaceできることは、そのparentやsiblingのownershipを
+意味しない。
+
+### PUBLISH-PATH-007
+
+publish targetは、destination filesystem上で次のMasterData critical pathと、publisherがその
+protected regionを管理・置換できるequalまたはancestor/descendant overlapをしてはならない（MUST）。
+
+- MasterData project rootおよび`masterdata.toml`
+- configured source rootsとそのtree
+- canonical artifact rootとそのtree
+- build cacheとそのtree
+
+この判定には`PUBLISH-PATH-001`のfilesystem equivalenceを適用する。project rootそのもの、または
+project rootを含む外側のdirectoryをtargetにする場合はrejectするが、project root内の独立した
+`dist/`のようなsafeなdirectoryまで一律に禁止しない。source root、canonical artifact root、cache
+については、targetがそのregionの内側・外側のどちらからでもregionを管理・置換できる場合を
+rejectする。`masterdata.toml`自身、source YAML、canonical C#、canonical binary、またはcacheを
+binary explicit targetにすることも許可しない。
+
+### PUBLISH-PATH-008
+
+複数publish targetはindependentなownership regionとして扱う。target pathがfilesystem上で
+equivalent、ancestor/descendant、またはその他のnamespace overlapとなるconfigurationは、
+target mutation開始前にrejectしなければならない（MUST）。少なくとも次を含む。
+
+- 同じbinary fileを指すduplicate targetまたはcase/Unicode alias
+- C# target内にbinary targetがある構成
+- C# target同士のnested overlap
+- C# targetとbinary targetが同じentryまたはnamespaceを共有する構成
+
+target kindが同じか異なるかにかかわらずownership regionのoverlapを許可してはならない（MUST NOT）。
+target graphのcollisionをoperation orderで解決したり、一方のtargetをautomaticにsubdirectory
+ownershipへ変更したりしてはならない（MUST NOT）。
+
+### PUBLISH-PATH-009
+
+relative publish target pathは引き続きMasterData project rootを基準にresolveしなければならない
+（MUST）。process current working directory、source root、checkout directory basenameをbaseに
+してはならない。absolute publish target pathも許可し、configured absolute filesystem destination
+として扱わなければならない（MUST）。relative targetとabsolute targetのいずれも、
+`PUBLISH-PATH-001`から`PUBLISH-PATH-008`のsafety checkを受けなければならない（MUST）。
+
+target rootまたはbinary targetのmissing parent directoryは、既存prefix、symlink、protected
+path、target graphのpreflightが成功した後に限り作成してよい（MAY）。新規directoryの作成は、
+そのparentやsiblingsのownershipをpublisherへ移さない。preflight前にparentを作成してはならない
+（MUST NOT）。
+
+### PUBLISH-PATH-010
+
+既知のpath collision、ownership ambiguity、unexpected filesystem type、protected path overlap、
+symlink policy違反、およびtarget graph collisionは、いずれかのpublish destinationをmutation
+する前に検出してrejectしなければならない（MUST）。0..N targetを全てpreflightしてから、必要な
+parent creation、C# file operation、manifest update、binary replacementを開始する。
+
+preflight後にfilesystemが変更された場合、publisherは各mutation時点でunexpected symlink/type
+changeを安全側にrejectし、危険なfollow、recursive delete、またはpartial overwriteを行っては
+ならない（MUST NOT）。このruleは外部processやuserとのraceをOS-level handleで完全排除すること、
+crash/power-loss時のcross-target atomicity、またはpartial publishのretry/rollback semanticsを
+自動的に保証するものではない。通常のI/O failureの目標状態は既存の`PUBLISH-008`に従う。
+
+## Filesystem pathの例
+
+以下はpath文字列の比較結果ではなく、実際のdestination filesystemが返すnamespace/identity結果に
+基づいて判定する。
+
+- case-insensitiveなfilesystemで`Generated/Item.g.cs`と`generated/item.g.cs`が同じentryになる
+  場合、C# generated pathとunmanaged entry、またはtarget同士のcollisionとしてrejectする。case-
+  sensitiveなfilesystemで別entryになる場合にまで一律rejectしない。
+- `Café.g.cs`と`Café.g.cs`がdestination filesystem上で同一entryになる場合はcollisionとしてreject
+  する。filesystemが別entryとして扱う場合、MasterDataが文字列をNFC等へ変換して別意図を作っては
+  ならない。
+- `../unity/NewGenerated`のようにtarget自体が未存在でも、既存ancestorが安全に解決でき、missing
+  tailのnamespaceにcollisionがない場合は、preflight後のparent creationを許可できる。
+- target rootまたは既存ancestorがsymlinkである場合、symlink先をtarget namespaceと推測せずrejectする。
+
+## Publish path safety acceptance matrix
+
+このmatrixは`PUBLISH-PATH-001`から`PUBLISH-PATH-010`に対する将来のimplementation evidenceであり、
+現時点のtest passを表さない。external filesystem publisherの実装時に、各testを追加または
+同等のevidenceへ置き換える（pending implementation）。
+
+| Requirement | Planned evidence（pending implementation） | Observation |
+| --- | --- | --- |
+| PUBLISH-PATH-001 | `publish_path_rejects_filesystem_equivalent_unmanaged_collision`; `publish_path_rejects_equivalent_binary_targets`; `publish_path_handles_case_sensitive_and_insensitive_volumes` | destination filesystemの実際のnamespaceをprobeし、OS名だけで分岐しない。 |
+| PUBLISH-PATH-002 | `publish_path_accepts_safe_missing_target_tail`; `publish_path_rejects_unresolvable_identity_without_mutation` | existing prefix、missing tail、case behaviorの判定不能をfail closedで確認する。 |
+| PUBLISH-PATH-003 | `publish_path_rejects_csharp_target_symlink`; `publish_path_rejects_csharp_ancestor_symlink`; `publish_path_never_follows_unmanaged_symlink` | target root/ancestorとtarget内symlinkを分けて確認する。 |
+| PUBLISH-PATH-004 | `publish_path_rejects_case_or_unicode_equivalent_unmanaged_csharp_entry`; `publish_path_rejects_managed_path_type_change`; `publish_path_preserves_meta_and_unmanaged_files` | file/file、file/directory、directory/file、nested pathを含める。 |
+| PUBLISH-PATH-005 | `publish_path_rejects_malformed_manifest_without_mutation`; `publish_path_rejects_manifest_alias_duplicates`; `publish_path_rejects_reserved_manifest_alias_collision` | missing manifestの初回publishはempty managed setとして確認する。 |
+| PUBLISH-PATH-006 | `publish_path_rejects_binary_symlink_or_directory`; `publish_path_replaces_explicit_regular_file`; `publish_path_preserves_binary_siblings` | explicit fileだけがpublisher-ownedであることを確認する。 |
+| PUBLISH-PATH-007 | `publish_path_rejects_source_canonical_cache_and_config_overlap`; `publish_path_allows_safe_project_local_dist` | protected path aliasとsafeなproject-local destinationを区別する。 |
+| PUBLISH-PATH-008 | `publish_path_rejects_nested_csharp_targets`; `publish_path_rejects_csharp_binary_overlap`; `publish_path_rejects_target_aliases` | missing target同士もdestination namespaceで比較する。 |
+| PUBLISH-PATH-009 | `publish_path_resolves_relative_target_from_project_root`; `publish_path_accepts_absolute_target`; `publish_path_creates_missing_parent_after_preflight` | cwd変更とrelative/absolute resolutionを分離して検証する。 |
+| PUBLISH-PATH-010 | `publish_path_validates_all_targets_before_mutation`; `publish_path_rejects_type_change_during_mutation`; `publish_path_preserves_previous_destination_on_preflight_error` | crash durabilityやpartial retryはこのmatrixに含めない。 |
+
 ## Approved configuration contract
 
 project marker、source discovery、およびproject metadataのownerは[Project layout仕様](project-layout.md)である。artifact settingsとpublish
@@ -349,8 +544,9 @@ project identityは変わらない。
 canonical binaryをC# publish destinationへ混在させないため、B7のownership ambiguityはarchitecture上解消される。legacy configurationはhard cutで拒否され、
 旧artifactの自動移行は行わない。
 
-この整理は、外部publish destinationでのfilesystem-equivalent path、case equivalence、Unicode normalization、symlinkなどの問題を解決しない。
-それらはB8としてpublish layerのpath safety implementation/fix scopeに残し、ASCII lowercaseなどの具体的な実装方式をこのspecificationで仕様化しない。
+外部publish destinationのfilesystem-equivalent path、case equivalence、Unicode spelling、symlink、path containment、およびtarget間overlapは、
+`PUBLISH-PATH-001`から`PUBLISH-PATH-010`によって、destination filesystemのnamespaceとidentityを基準に検証する。これはB8のpath-safety
+contractを閉じるが、ASCII lowercase、NFC-only normalization、またはOS名によるcase ruleを実装方式として仕様化するものではない。
 
 ## 責務境界と非目標
 
@@ -370,11 +566,10 @@ released-schema binary compatibility、exact binary bytes identity、artifact si
 
 今回のHuman Approvalによって、project-local canonical output、canonical root ownership、C# manifest-based ownership、stale managed file retirement、
 unmanaged preservation/collision、binary explicit-file ownership、`[[publish.targets]]` syntax、relative target pathのproject-root base、複数targetの方向、
-monorepo/separate repositoryの想定、およびdirectory basenameとproject identityの分離はApproved contractとなった。以下だけを未解決として残す。
+monorepo/separate repositoryの想定、directory basenameとproject identityの分離、およびB8の`PUBLISH-PATH-001`から`PUBLISH-PATH-010`はApproved contractとなった。
+以下だけを未解決として残す。
 
 - publish-onlyが必要とするcanonical artifact metadata、build identity、trust判定、およびmetadataの保存場所。
-- external publish pathでのfilesystem-equivalent path、case equivalence、Unicode normalization、symlink、path containmentの正確なpolicy（B8）。
-- absolute publish pathを許可するか、外部targetのparent directory作成と既存destinationの詳細なI/O policy。
 - 複数publish targetの一部成功時のretry、rollback、再開、およびoperation/exit semantics。複数destinationのcross-path atomicityは保証するか。
 - `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
 - canonical artifactのmetadata/version、semantic schema hash、builder cache key、released-schema binary compatibilityをどの独立specificationで定義するか。
@@ -390,5 +585,5 @@ monorepo/separate repositoryの想定、およびdirectory basenameとproject id
 `Implemented`へ変更しない。
 
 canonical configuration implementationは`artifact_dir`をproject-local rootとして検証し、complete artifact rootをbuildする。external publish targetのfilesystem
-operationは未実装であり、このdocumentのStatusは`Approved`のまま維持する。
+operationは未実装であり、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`もfuture publisherのpreflight contractである。このdocumentのStatusは`Approved`のまま維持する。
 legacy configurationの受理、alias、warning-only、automatic migrationは禁止され、legacy artifactのmove/delete/renameは行わない。

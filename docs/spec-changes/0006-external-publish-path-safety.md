@@ -1,6 +1,6 @@
 # 仕様変更: external publish targetのfilesystem path safetyを定義する（Specification change）
 
-Status: Proposed
+Status: Applied
 
 <!-- Lifecycle: Draft -> Proposed -> Approved -> Applied、またはRejected。canonical
      specificationを変更する前にhuman approvalが必要である。 -->
@@ -14,20 +14,20 @@ Status: Proposed
 - [`docs/adr/0004-file-location-has-no-semantic-meaning.md`](../adr/0004-file-location-has-no-semantic-meaning.md)。
   file locationをdomain identityと解釈しない境界を維持する。
 
-このproposalのcanonical requirement ownerは`build-pipeline.md`である。既存の
+このchangeのcanonical requirement ownerは`build-pipeline.md`である。既存の
 `PUBLISH-001`から`PUBLISH-010`、`BUILD-ARTIFACT-001`から`BUILD-ARTIFACT-005`、および
 `PROJECT-PATH-001`の意味をrename、reassign、または直接変更しない。`PUBLISH-PATH-*`は、
-external publish implementationの前に承認されるべきpath-safety補助requirementの候補である。
+external publish implementationのためのpath-safety補助requirementとして追加する。
 
 ## 根拠と分類（Source Evidence and Classification）
 
 現行のApproved contractは、canonical artifactと0..N個のexternal publish targetを分離し、
 C# targetではmanifest-based ownership、binary targetではexplicit file ownershipを採用している。
-一方、external destinationのfilesystem-equivalent path、case equivalence、Unicode、symlink、
-path containment、parent creation、およびtarget間のcollisionは、
-[`build-pipeline.md`](../specs/build-pipeline.md)のOpen Questions（B8）に残っている。
+一方、このchange作成時点ではexternal destinationのfilesystem-equivalent path、case equivalence、
+Unicode、symlink、path containment、parent creation、およびtarget間のcollisionが、
+[`build-pipeline.md`](../specs/build-pipeline.md)のOpen Questions（B8）に残っていた。
 
-このproposalのstatementは次のように分類する。
+このchangeで記録するstatementは次のように分類する。
 
 - `Constraint`: destination filesystemが同じentry/objectまたは重複namespaceとして扱うpathを、
   lexical spellingだけで別artifactとして扱ってはならない。
@@ -35,18 +35,17 @@ path containment、parent creation、およびtarget間のcollisionは、
   destination mutationより前にrejectしなければならない。
 - `Constraint`: unmanaged content、manifest ownership、binary explicit-file ownership、
   canonical/source/cache/configの保護境界を混同してはならない。
-- `Proposal`: v1ではpublish target rootまたはancestorのsymlink traversalをrejectする。
-- `Proposal`: v1では異なるpublish targetのownership regionのoverlapをrejectする。
-- `Proposal`: absolute external target pathを許可する。
+- `Decision`: v1ではpublish target rootまたはancestorのsymlink traversalをrejectする。
+- `Decision`: v1では異なるpublish targetのownership regionのoverlapをrejectする。
+- `Decision`: absolute external target pathを許可する。
 - `Decision（既承認）`: relative target pathのbaseはMasterData project root、target syntaxは
   `[[publish.targets]]`、v1 kindは`csharp`と`binary`、C# ownershipはmanifest-based、
   binary ownershipはexplicit fileである。
 
-このtask inputはB8をrefineするevidenceであり、Human Approval operationではない。canonical
-Approved document、Rust、CLI、Tauri、filesystem publisher、test fixture、cache、および
-production behaviorは変更しない。
+このtask inputはB8のHuman Approvalを明示し、以下のdeltaをcanonical documentsへ適用する根拠である。
+Rust、CLI、Tauri、filesystem publisher、test fixture、cache、およびproduction behaviorは変更しない。
 
-## 提案する差分（Proposed Delta）
+## 適用した差分（Applied Delta）
 
 ### PUBLISH-PATH-001 — destination filesystem namespace
 
@@ -85,8 +84,8 @@ policyに従ってsupportしてよい（MAY）。
 
 ### PUBLISH-PATH-003 — C# target rootとsymlink traversal
 
-このproposalのv1 candidateでは、C# target rootまたはtarget rootへ到達する既存ancestor component
-がsymlinkである場合、publishを開始してはならない（MUST NOT）。publisherはconfigured target
+v1では、C# target rootまたはtarget rootへ到達する既存ancestor componentがsymlinkである場合、
+publishを開始してはならない（MUST NOT）。publisherはconfigured target
 のspellingからsymlink先のtreeを自動的にownershipしたと推測してはならない。
 
 C# target rootが存在しない場合は、`PUBLISH-PATH-002`および`PUBLISH-PATH-009`のpreflight後に
@@ -138,7 +137,7 @@ binary target、または別のreserved artifactがdestination filesystem上で�
 entryが存在しない場合は、safeなexisting ancestorのpreflight後に作成してよい（MAY）。targetが
 existing regular fileの場合はcanonical binaryでreplaceしてよい（MAY）。targetがdirectory、
 symlink、またはspecial filesystem objectの場合、publisherはrejectしなければならない（MUST）。
-targetまでの既存ancestor componentがsymlinkの場合も、v1 candidateではrejectする。
+targetまでの既存ancestor componentがsymlinkの場合もrejectしなければならない（MUST）。
 
 binary publisherはC# manifestをownership metadataとして使用してはならず（MUST NOT）、parent
 directory、sibling file、隣接する`.meta`、または他のdirectory entryを削除・rename・overwriteして
@@ -173,16 +172,17 @@ target mutation開始前にrejectしなければならない（MUST）。少な�
 - C# target同士のnested overlap
 - C# targetとbinary targetが同じentryまたはnamespaceを共有する構成
 
-このproposalのv1 candidateでは、target kindが同じか異なるかにかかわらずownership regionの
-overlapを許可しない。target graphのcollisionをoperation orderで解決したり、一方のtargetを
+target kindが同じか異なるかにかかわらずownership regionのoverlapを許可してはならない（MUST NOT）。
+target graphのcollisionをoperation orderで解決したり、一方のtargetを
 automaticにsubdirectory ownershipへ変更したりしてはならない（MUST NOT）。
 
 ### PUBLISH-PATH-009 — path baseとparent creation
 
 relative publish target pathは引き続きMasterData project rootを基準にresolveしなければならない
 （MUST）。process current working directory、source root、checkout directory basenameをbaseに
-してはならない。absolute pathを許可するかどうかはこのrequirementではまだ確定せず、許可された
-場合にも`PUBLISH-PATH-001`から`PUBLISH-PATH-008`のsafety checkを省略してはならない（MUST NOT）。
+してはならない。absolute publish target pathも許可し、configured absolute filesystem destination
+として扱わなければならない（MUST）。relative targetとabsolute targetのいずれも、
+`PUBLISH-PATH-001`から`PUBLISH-PATH-008`のsafety checkを受けなければならない（MUST）。
 
 target rootまたはbinary targetのmissing parent directoryは、既存prefix、symlink、protected
 path、target graphのpreflightが成功した後に限り作成してよい（MAY）。新規directoryの作成は、
@@ -215,22 +215,18 @@ crash/power-loss時のcross-target atomicity、またはpartial publishのretry/
   ならない。
 - `../unity/NewGenerated`のようにtarget自体が未存在でも、既存ancestorが安全に解決でき、missing
   tailのnamespaceにcollisionがない場合は、preflight後のparent creationを許可できる。
-- target rootまたは既存ancestorがsymlinkである場合、v1 candidateではsymlink先をtarget namespace
-  と推測せずrejectする。
+- target rootまたは既存ancestorがsymlinkである場合、symlink先をtarget namespaceと推測せずrejectする。
 
-## 推奨する初期値とHuman review項目
+## 承認済みの選択（Approved Decisions）
 
-以下はこのproposalのrecommended initial valueであり、Human Approval前の未確定選択である。
+このtask inputでHuman maintainerが明示的に承認した選択は次のとおりである。
 
-| 項目 | 推奨（Recommended） | 代替案 | trade-off |
-| --- | --- | --- | --- |
-| A. absolute publish path | v1でallowする | v1ではrejectする | separate repositoryやCI workspaceを相対pathへ固定せずに扱える一方、absolute pathにも同じpath-safety検証が必要になる。 |
-| B. target root/ancestor symlink | v1ではtraversalをrejectする | identity-safeな解決を条件にallowする | ownership境界とreviewは単純になるが、symlinkで構成されたworkspaceの柔軟性を失う。 |
-| C. target ownership overlap | equivalentまたはnested overlapをrejectする | operation orderと明示ownershipでallowする | 0..N targetの独立性とpreflight/no-mutationを保ちやすいが、同じnamespaceへの意図的な複数配置は表現できない。 |
-
-A、B、Cは、agentがApprovedと宣言せず、Human reviewerがこのproposalを承認するときに選択する。
-特にAをallowする場合も、project-local canonical artifact rootの制約をexternal targetへ拡張したり、
-path safetyを省略したりしない。
+- A. absolute external publish pathはv1でallowする。relative pathはproject root基準、absolute
+  pathはconfigured absolute filesystem destinationとし、いずれもpath-safety validationを受ける。
+- B. C# / binary target rootおよび既存ancestor componentのsymlink traversalはv1でrejectする。
+  target内部のunmanaged symlinkはpreserveし、follow、delete、overwriteしない。
+- C. publish targetのownership regionはkindにかかわらずdisjointでなければならない。
+  equivalent、nested、またはnamespace-overlapping targetはrejectする。
 
 ## 互換性（Compatibility）
 
@@ -246,12 +242,12 @@ C# manifest ownership、stale managed file retirement、unmanaged preservation�
 ownershipは変更しない。ASCII lowercase、NFC、OS名によるcase rule、Git repository topologyを
 新しいidentity semanticsとして追加しない。
 
-このproposalはpublish-only trust metadata、semantic schema hash、builder cache、Unity`.meta`
+このchangeはpublish-only trust metadata、semantic schema hash、builder cache、Unity`.meta`
 lifecycle、cross-target rollback/retry、`build --publish`、GUI、Referenceを定義しない。
 
 ## 受け入れと実装への影響（Acceptance and Implementation Impact）
 
-これは`refine-spec`と`review-spec`のためのproposalであり、以下のtestはfuture evidenceである。
+これは適用後もimplementation evidenceを持たないため、以下のtestはfuture evidenceである。
 現時点でtestまたはfixtureが実装済み・pass済みであることを主張しない。
 
 | Requirement | Planned evidence（すべてpending implementation） | Fixture / observation |
@@ -265,7 +261,7 @@ lifecycle、cross-target rollback/retry、`build --publish`、GUI、Referenceを
 | PUBLISH-PATH-007 | `publish_path_rejects_source_canonical_cache_and_config_overlap`; `publish_path_allows_safe_project_local_dist` | target pathをMasterData critical pathへaliasさせ、sentinel不変を確認する。 |
 | PUBLISH-PATH-008 | `publish_path_rejects_nested_csharp_targets`; `publish_path_rejects_csharp_binary_overlap`; `publish_path_rejects_target_aliases` | missing target同士もdestination namespaceで比較する。 |
 | PUBLISH-PATH-009 | `publish_path_resolves_relative_target_from_project_root`; `publish_path_creates_missing_parent_after_preflight` | cwd変更、space/Unicode path、absolute path policyの選択を分離して検証する。 |
-| PUBLISH-PATH-010 | `publish_path_validates_all_targets_before_mutation`; `publish_path_rejects_type_change_during_mutation`; `publish_path_preserves_previous_destination_on_preflight_error` | crash durabilityやpartial retryはこのproposalのevidenceに含めない。 |
+| PUBLISH-PATH-010 | `publish_path_validates_all_targets_before_mutation`; `publish_path_rejects_type_change_during_mutation`; `publish_path_preserves_previous_destination_on_preflight_error` | crash durabilityやpartial retryはこのchangeのevidenceに含めない。 |
 
 実装時は、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`を`masterdata-app`のpublish orchestrationへ
 接続し、path resolution/identityのmechanismを適切なfilesystem adapterへ隔離する。Rust coreの
@@ -273,7 +269,7 @@ YAML semantics、canonical artifact builder、または.NET builderへpublish ow
 
 ## B8の境界
 
-このproposalが閉じるのは、external publishを開始する前に、destination filesystemのidentityと
+このchangeが閉じるのは、external publishを開始する前に、destination filesystemのidentityと
 ownership namespaceを安全に検証するためのcontractである。filesystem crash/power-loss時の
 cross-target atomicity、partial successのretry/rollback、publish-only artifact trust、Unity
 importer、`.meta` lifecycle、remote publishingは別scopeである。
@@ -284,34 +280,36 @@ importer、`.meta` lifecycle、remote publishingは別scopeである。
 
 ## 未解決事項（Open Questions）
 
-このproposalにおいて、Human reviewerがpath-safety contractとして選択する必要があるものだけを
-残す。
-
-- absolute external publish pathをv1でallowするかrejectするか（A）。
-- C# targetおよびbinary targetの既存root/ancestor symlink traversalをv1で全面rejectするか、
-  filesystem identityを安全に証明できる場合にallowするか（B）。
-- 異なるpublish targetのequivalent/nested ownership regionを全面rejectするか、明示的な
-  ordering/ownership contractを追加してallowするか（C）。
-
-以下はこのproposalで推奨するcontractとして整理したため、追加の未定義semanticにはしない。
-
-- existing prefixとmissing tailによるfuture pathの扱い、およびidentity判定不能時のfail-closed。
-- manifest ambiguity、reserved manifest collision、unexpected entry typeのsafe rejection。
-- binary explicit-file ownership、parent creationはpreflight後に限ること、protected MasterData pathの拒否。
+このchangeのB8 path-safety選択（absolute path、symlink traversal、target ownership overlap）は
+Human Approvalによって解消された。このchange自体に残るpath-safetyのOpen Questionはない。
 
 partial publishのretry/rollback、publish-only trust metadata、semantic hash/cache、Unity`.meta`、
-build --publishなどの既存Open Questionは、このB8 proposalへ複製しない。
+build --publishなどの既存Open Questionは、このchangeのpath-safety contractに含めない。
 
 ## レビュー（Review）
 
-Status `Proposed`。Human Approvalは未実施であり、このproposalをimplementation authorityとして
-扱ってはならない。reviewでは、既存Approved `PUBLISH-001`から`PUBLISH-010`との重複・強度・
-ownership boundaryを確認し、A/B/Cの選択と、target-to-target partial operationを別scopeへ残す
-ことを確認する。
+Status `Applied`。Human Approvalを記録し、承認済みdeltaをcanonical `build-pipeline.md`と
+`project-layout.md`へ適用した。external filesystem publisherは未実装であり、実装時はこの
+changeのrequirementとacceptance matrixを使用する。target-to-target partial operation、
+publish-only trust、その他の未実装機能は別scopeに残す。
 
-canonical `build-pipeline.md`、`project-layout.md`、spec status、Rust code、CLI、Tauri、
-filesystem publisher、tests、fixturesはこのrefinementでは変更しない。
+canonical `build-pipeline.md`と`project-layout.md`以外のproduction code、CLI、Tauri、
+filesystem publisher、tests、fixturesはこのapplicationでは変更していない。
 
 ## 承認記録（Approval Record）
 
-<!-- Human maintainerによる明示的なapproval operationはまだ実施されていない。 -->
+このtask inputにおいてHuman maintainerは、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`を
+canonical contractへ進めることを明示的に承認した。承認された選択は次のとおりである。
+
+- A. absolute external publish target pathをv1でallowする。
+- B. C# / binary target rootおよび既存ancestor componentのsymlink traversalをv1でrejectする。
+  target内部のunmanaged symlinkはpreserveし、follow、delete、overwriteしない。
+- C. publish targetのownership regionをkindにかかわらずdisjointとし、equivalent、nested、
+  またはnamespace-overlapping targetをrejectする。
+
+このapprovalを根拠として、承認済みdeltaを
+[`docs/specs/build-pipeline.md`](../specs/build-pipeline.md)および
+[`docs/specs/project-layout.md`](../specs/project-layout.md)へ適用した。canonical documentsの
+Statusは`Approved`のまま維持し、external publish implementationのevidenceがないため
+`Implemented`へ変更していない。本artifactをapplication済みdeltaのaudit recordとして
+`Status: Applied`にした。

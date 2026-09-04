@@ -1890,8 +1890,6 @@ dependencies = [
  "masterdata-codegen-csharp",
  "masterdata-core",
  "masterdata-dotnet",
- "serde",
- "serde_json",
  "tempfile",
 ]
 

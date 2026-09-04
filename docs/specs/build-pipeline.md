@@ -13,12 +13,12 @@ legacy configurationのhard cutとstructured migration diagnosticの適用は、
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
 各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
 この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryを定義する。`Approved`は
-implementation evidenceが揃ったことを意味しない。現行のconfiguration parser、CLI、filesystem publisherはlegacy contractを
-実装しているため、対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
+implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builderは実装済みであるが、external
+filesystem publisherは未実装であるため、`PUBLISH-004`以降のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
 
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
-このcanonical applicationは、configuration parser、CLI、またはproduction implementationを変更しない。影響するcanonical specificationのStatus変更と
-configuration contractのreconciliationは、仕様変更0004および0005に記録する。
+このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
+external publish operationは未実装であり、影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004および0005に記録する。
 
 ## 承認されたcanonical model
 
@@ -88,8 +88,9 @@ canonical artifact rootはMasterData tool-ownedでなければならず（MUST�
 扱ってはならない（MUST NOT）。canonical root内に置くものは、canonical C#、canonical binary、およびartifact setを識別するために別途承認された
 tool metadataに限る方向とする。
 
-current `build.output`配下のmanaged/unmanaged file coexistenceは、現行implementationに残るlegacy behaviorであり、canonical root ownershipの代替ではない。
-canonical configuration implementationは旧configurationを受理せず、既存legacy artifactを自動削除または自動移行しない。
+current `build.output`配下のmanaged/unmanaged file coexistenceは旧implementationのbehaviorであり、canonical root ownershipの代替ではない。
+canonical configuration implementationは旧configurationを受理せず、既存legacy artifactを自動削除または自動移行しない。canonical outputはcomplete rootとして
+stagingし、successful build後にcoherentな`csharp/`と`masterdata.bytes`のsetを公開する。
 
 ### BUILD-ARTIFACT-003
 
@@ -310,8 +311,8 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 ```
 
 `artifact_dir`はcanonical build rootを指定し、`publish.targets`はcanonical artifactの外部destinationだけを指定する。`build.binary_output`を
-canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。current parser/modelがこのshapeをまだ
-受理しないことはimplementation gapであり、legacy configurationを別のcanonical contractとして扱う根拠にはならない。
+canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。current parser/modelはこのshapeを受理するが、
+external publish operationはまだ実行しない。
 
 ## Legacy configuration hard cutと手動migration
 
@@ -345,8 +346,8 @@ project identityは変わらない。
 
 旧モデルでは、generated C# directoryの配下にbinaryを置く任意cross-placementが、generated file ownershipとbinary ownershipを同じpathから推測する
 必要を生じさせていた。Approved canonical modelでは、`.masterdata/output/`全体をtool-owned rootとし、その直下に`csharp/`と`masterdata.bytes`を分離する。
-canonical binaryをC# publish destinationへ混在させないため、B7のownership ambiguityはarchitecture上解消される。ただしcurrent implementationの
-legacy configurationからの移行は未実施であり、implementation pendingとして扱う。
+canonical binaryをC# publish destinationへ混在させないため、B7のownership ambiguityはarchitecture上解消される。legacy configurationはhard cutで拒否され、
+旧artifactの自動移行は行わない。
 
 この整理は、外部publish destinationでのfilesystem-equivalent path、case equivalence、Unicode normalization、symlinkなどの問題を解決しない。
 それらはB8としてpublish layerのpath safety implementation/fix scopeに残し、ASCII lowercaseなどの具体的な実装方式をこのspecificationで仕様化しない。
@@ -388,6 +389,6 @@ monorepo/separate repositoryの想定、およびdirectory basenameとproject id
 この文書の`Status: Approved`は、仕様変更0004および0005に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
 `Implemented`へ変更しない。
 
-このlifecycle taskはdocs-onlyであり、Rust、CLI、Tauri、config parser/model、publish filesystem implementation、current `build.output`、current
-`build.binary_output`、およびcurrent production behaviorを変更しない。承認されたrequirementを対象にimplementation task、tests、fixturesを別途作成する。
+canonical configuration implementationは`artifact_dir`をproject-local rootとして検証し、complete artifact rootをbuildする。external publish targetのfilesystem
+operationは未実装であり、このdocumentのStatusは`Approved`のまま維持する。
 legacy configurationの受理、alias、warning-only、automatic migrationは禁止され、legacy artifactのmove/delete/renameは行わない。

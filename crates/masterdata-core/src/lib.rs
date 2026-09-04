@@ -16,7 +16,10 @@ mod type_system;
 mod validation;
 
 pub use application::ProjectService;
-pub use config::{BuildConfig, ProjectConfig, ProjectMetadata, SourceConfig};
+pub use config::{
+    BuildConfig, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget, PublishTargetKind,
+    SourceConfig,
+};
 pub use document::{
     ConversionDefinition, CustomTypeDefinition, DataDocument, EnumDefinition, EnumMember,
     FieldDefinition, FlagsDefinition, IntegerLiteral, LoadedDocument, PrimaryKeyDefinition,
@@ -27,7 +30,10 @@ pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use pipeline::{
     BuildPlan, BuildStatus, compute_schema_source_content_hash, prepare_build_with_selection,
 };
-pub use project::{InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, initialize_project};
+pub use project::{
+    InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, PublishTargetInfo,
+    initialize_project,
+};
 pub use table::{
     BuildSelection, ResolvedPrimaryKey, ResolvedRecord, ResolvedSecondaryKey, ResolvedTable,
     TableBuild, resolve_tables,

@@ -29,7 +29,7 @@ enum Command {
     ProjectInfo(OutputArgs),
     /// Parse and run basic semantic validation on project sources.
     Validate(OutputArgs),
-    /// Validate, build, and publish the configured MasterMemory binary.
+    /// Validate and build the project's canonical artifacts.
     Build(BuildArgs),
 }
 
@@ -131,11 +131,16 @@ fn run() -> Result<()> {
                 for root in info.source_roots {
                     println!("  - {}", root.display());
                 }
-                println!("generated C# output: {}", info.build_output.display());
-                if let Some(binary_output) = info.build_binary_output {
-                    println!("MasterMemory binary output: {}", binary_output.display());
+                println!("canonical artifact root: {}", info.artifact_root.display());
+                println!("canonical C# output: {}", info.csharp_output.display());
+                println!("canonical binary output: {}", info.binary_output.display());
+                println!("build cache: {}", info.cache.display());
+                if !info.publish_targets.is_empty() {
+                    println!("configured publish targets:");
+                    for target in info.publish_targets {
+                        println!("  - {:?}: {}", target.kind, target.resolved_path.display());
+                    }
                 }
-                println!("build cache: {}", info.build_cache.display());
             }
         }
         Command::Validate(args) => {
@@ -185,13 +190,13 @@ fn run() -> Result<()> {
                 println!("dry-run: no files written and no .NET builder invoked");
             } else {
                 println!(
-                    "wrote {} C# scaffold file(s) to {}",
+                    "wrote {} canonical C# file(s) to {}",
                     execution.written_files.len(),
-                    plan.generated_output.display()
+                    plan.csharp_output.display()
                 );
                 if let Some(binary) = &execution.binary {
                     println!(
-                        "published MasterMemory binary: {} ({} bytes)",
+                        "built canonical MasterMemory binary: {} ({} bytes)",
                         binary.binary_path.display(),
                         binary.binary_size
                     );

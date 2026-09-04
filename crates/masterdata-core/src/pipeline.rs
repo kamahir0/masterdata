@@ -25,8 +25,9 @@ pub struct BuildPlan {
     pub tables: Vec<ResolvedTable>,
     pub validation: ValidationReport,
     pub schema_source_content_hash: String,
-    pub generated_output: std::path::PathBuf,
-    pub binary_output: Option<std::path::PathBuf>,
+    pub artifact_root: std::path::PathBuf,
+    pub csharp_output: std::path::PathBuf,
+    pub binary_output: std::path::PathBuf,
     pub cache_directory: std::path::PathBuf,
     pub status: BuildStatus,
 }
@@ -66,8 +67,10 @@ pub fn prepare_build_with_selection(
         compute_schema_source_content_hash(&documents, project.root())?;
     let info = project.info();
     Ok(BuildPlan {
-        binary_output: info.build_binary_output.clone(),
-        cache_directory: info.build_cache.clone(),
+        artifact_root: info.artifact_root.clone(),
+        csharp_output: info.csharp_output.clone(),
+        binary_output: info.binary_output.clone(),
+        cache_directory: info.cache.clone(),
         project: info,
         documents,
         type_system,
@@ -75,7 +78,6 @@ pub fn prepare_build_with_selection(
         tables,
         validation,
         schema_source_content_hash,
-        generated_output: project.build_output_path(),
         status: BuildStatus::ReadyForDotnet,
     })
 }

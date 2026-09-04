@@ -3,7 +3,9 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 
-use masterdata_core::{InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectService};
+use masterdata_core::{
+    InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectService, PublishTargetKind,
+};
 use tempfile::tempdir;
 
 #[test]
@@ -64,6 +66,20 @@ fn project_info_exposes_serializable_discovered_project() {
         .expect("info");
     let json = serde_json::to_string(&info).expect("json");
     assert!(json.contains("serializable"));
+    assert_eq!(
+        info.artifact_root,
+        directory.path().join(".masterdata/output")
+    );
+    assert_eq!(
+        info.csharp_output,
+        directory.path().join(".masterdata/output/csharp")
+    );
+    assert_eq!(
+        info.binary_output,
+        directory.path().join(".masterdata/output/masterdata.bytes")
+    );
+    assert_eq!(info.cache, directory.path().join(".masterdata/cache"));
+    assert!(info.publish_targets.is_empty());
 }
 
 #[test]
@@ -138,18 +154,13 @@ fn project_config_003_rejects_empty_source_or_build_paths() {
             "E-PROJECT-CONFIG-EMPTY-SOURCE-ROOT",
         ),
         (
-            "output",
-            "[build]\noutput = \"\"\n",
+            "artifact",
+            "[build]\nartifact_dir = \"\"\n",
             "E-PROJECT-CONFIG-EMPTY-BUILD-PATH",
         ),
         (
             "cache",
             "[build]\ncache = \"\"\n",
-            "E-PROJECT-CONFIG-EMPTY-BUILD-PATH",
-        ),
-        (
-            "binary",
-            "[build]\nbinary_output = \"\"\n",
             "E-PROJECT-CONFIG-EMPTY-BUILD-PATH",
         ),
     ];
@@ -175,7 +186,7 @@ fn project_path_001_resolves_relative_paths_against_project_root() {
     fs::create_dir(directory.path().join("sources")).expect("sources");
     fs::write(
         directory.path().join(PROJECT_CONFIG_FILENAME),
-        "[project]\nid = \"paths\"\nname = \"Paths\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"source-data\"]\n\n[build]\noutput = \"generated\"\ncache = \"cache\"\nbinary_output = \"build/masterdata.bytes\"\n",
+        "[project]\nid = \"paths\"\nname = \"Paths\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"source-data\"]\n\n[build]\nartifact_dir = \"generated\"\ncache = \"cache\"\n\n[[publish.targets]]\nkind = \"csharp\"\npath = \"../unity/Generated\"\n\n[[publish.targets]]\nkind = \"binary\"\npath = \"../server/data/masterdata.bytes\"\n",
     )
     .expect("config");
 
@@ -186,12 +197,196 @@ fn project_path_001_resolves_relative_paths_against_project_root() {
         info.source_roots,
         vec![directory.path().join("source-data")]
     );
-    assert_eq!(info.build_output, directory.path().join("generated"));
+    assert_eq!(info.artifact_root, directory.path().join("generated"));
     assert_eq!(
-        info.build_binary_output,
-        Some(directory.path().join("build/masterdata.bytes"))
+        info.csharp_output,
+        directory.path().join("generated/csharp")
     );
-    assert_eq!(info.build_cache, directory.path().join("cache"));
+    assert_eq!(
+        info.binary_output,
+        directory.path().join("generated/masterdata.bytes")
+    );
+    assert_eq!(info.cache, directory.path().join("cache"));
+    assert_eq!(info.publish_targets.len(), 2);
+    assert_eq!(info.publish_targets[0].kind, PublishTargetKind::CSharp);
+    assert_eq!(
+        info.publish_targets[0].resolved_path,
+        directory
+            .path()
+            .parent()
+            .expect("temporary directory parent")
+            .join("unity/Generated")
+    );
+    assert_eq!(info.publish_targets[1].kind, PublishTargetKind::Binary);
+    assert_eq!(
+        info.publish_targets[1].resolved_path,
+        directory
+            .path()
+            .parent()
+            .expect("temporary directory parent")
+            .join("server/data/masterdata.bytes")
+    );
+}
+
+#[test]
+fn project_config_004_rejects_legacy_build_paths_with_migration_diagnostics() {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+
+    for (field, code, guidance) in [
+        (
+            "output",
+            "E-CONFIG-LEGACY-BUILD-OUTPUT",
+            "build.artifact_dir",
+        ),
+        (
+            "binary_output",
+            "E-CONFIG-LEGACY-BINARY-OUTPUT",
+            "masterdata.bytes",
+        ),
+    ] {
+        let content = format!(
+            "[project]\nid = \"legacy\"\nname = \"Legacy\"\nversion = \"0.1.0\"\n\n[build]\n{field} = \"old/path\"\n"
+        );
+        fs::write(directory.path().join(PROJECT_CONFIG_FILENAME), content).expect("config");
+
+        let error = Project::discover(Some(directory.path()), directory.path())
+            .expect_err("legacy path must be rejected");
+        assert_eq!(error.diagnostic().code, code);
+        assert_eq!(
+            error.diagnostic().source.as_deref(),
+            Some(directory.path().join(PROJECT_CONFIG_FILENAME).as_path())
+        );
+        assert!(
+            error
+                .diagnostic()
+                .suggestion
+                .as_deref()
+                .unwrap()
+                .contains(guidance)
+        );
+        assert!(
+            error
+                .diagnostic()
+                .related_requirements
+                .contains(&"PROJECT-CONFIG-004".to_owned())
+        );
+    }
+}
+
+#[test]
+fn project_config_004_reports_legacy_output_before_binary_output() {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"legacy\"\nname = \"Legacy\"\nversion = \"0.1.0\"\n\n[build]\noutput = \"old/csharp\"\nbinary_output = \"old/data.bytes\"\n",
+    )
+    .expect("config");
+
+    let error = Project::discover(Some(directory.path()), directory.path())
+        .expect_err("legacy paths must be rejected");
+    assert_eq!(error.diagnostic().code, "E-CONFIG-LEGACY-BUILD-OUTPUT");
+}
+
+#[test]
+fn project_config_005_rejects_legacy_config_without_artifact_mutation() {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    let legacy_generated = directory.path().join(".masterdata/generated/legacy.g.cs");
+    let canonical_sentinel = directory.path().join(".masterdata/output/sentinel");
+    let external_sentinel = directory.path().join("Generated/external.g.cs");
+    let binary_sentinel = directory.path().join("old/masterdata.bytes");
+    for path in [
+        &legacy_generated,
+        &canonical_sentinel,
+        &external_sentinel,
+        &binary_sentinel,
+    ] {
+        fs::create_dir_all(path.parent().expect("sentinel parent")).expect("sentinel parent");
+        fs::write(path, b"KEEP").expect("sentinel");
+    }
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"legacy\"\nname = \"Legacy\"\nversion = \"0.1.0\"\n\n[build]\noutput = \"Generated\"\nbinary_output = \"old/masterdata.bytes\"\n",
+    )
+    .expect("config");
+
+    let error = Project::discover(Some(directory.path()), directory.path())
+        .expect_err("legacy configuration must stop before build work");
+
+    assert_eq!(error.diagnostic().code, "E-CONFIG-LEGACY-BUILD-OUTPUT");
+    for path in [
+        &legacy_generated,
+        &canonical_sentinel,
+        &external_sentinel,
+        &binary_sentinel,
+    ] {
+        assert_eq!(fs::read(path).expect("sentinel remains"), b"KEEP");
+    }
+}
+
+#[test]
+fn publish_config_rejects_unknown_target_kind() {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"publish\"\nname = \"Publish\"\nversion = \"0.1.0\"\n\n[[publish.targets]]\nkind = \"package\"\npath = \"out/package\"\n",
+    )
+    .expect("config");
+
+    let error = Project::discover(Some(directory.path()), directory.path())
+        .expect_err("unknown publish target kind");
+    assert_eq!(error.diagnostic().code, "E-PROJECT-CONFIG-PARSE");
+}
+
+#[test]
+fn project_path_001_rejects_unsafe_canonical_artifact_paths() {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    for (name, artifact_dir) in [
+        ("absolute", directory.path().to_string_lossy().to_string()),
+        ("escape", "../outside".to_owned()),
+        ("root", ".".to_owned()),
+    ] {
+        let root = directory.path().join(name);
+        fs::create_dir_all(root.join("sources")).expect("sources");
+        fs::write(
+            root.join(PROJECT_CONFIG_FILENAME),
+            format!(
+                "[project]\nid = \"path\"\nname = \"Path\"\nversion = \"0.1.0\"\n\n[build]\nartifact_dir = '{artifact_dir}'\n"
+            ),
+        )
+        .expect("config");
+        let error = Project::discover(Some(&root), &root).expect_err("unsafe artifact path");
+        assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    }
+}
+
+#[test]
+fn project_path_001_rejects_artifact_source_and_cache_overlap() {
+    let cases = [
+        ("source-overlap", "sources", "sources"),
+        (
+            "cache-overlap",
+            ".masterdata/output",
+            ".masterdata/output/cache",
+        ),
+    ];
+    for (name, artifact_dir, cache) in cases {
+        let directory = tempdir().expect("temp directory");
+        fs::create_dir_all(directory.path().join("sources")).expect("sources");
+        fs::write(
+            directory.path().join(PROJECT_CONFIG_FILENAME),
+            format!(
+                "[project]\nid = \"path\"\nname = \"Path\"\nversion = \"0.1.0\"\n\n[build]\nartifact_dir = \"{artifact_dir}\"\ncache = \"{cache}\"\n"
+            ),
+        )
+        .expect("config");
+        let error = Project::discover(Some(directory.path()), directory.path()).expect_err(name);
+        assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    }
 }
 
 #[test]
@@ -211,6 +406,12 @@ fn init_creates_a_project_marker_and_source_root() {
     assert_eq!(info.project_id, "new.project");
     assert!(target.join(PROJECT_CONFIG_FILENAME).is_file());
     assert!(target.join("sources").is_dir());
+    let config = fs::read_to_string(target.join(PROJECT_CONFIG_FILENAME)).expect("config");
+    assert!(config.contains("artifact_dir = \".masterdata/output\""));
+    assert!(config.contains("cache = \".masterdata/cache\""));
+    assert!(!config.contains("output = "));
+    assert!(!config.contains("binary_output = "));
+    assert!(!config.contains("publish.targets"));
 }
 
 #[test]

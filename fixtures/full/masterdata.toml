@@ -7,6 +7,5 @@ version = "0.1.0"
 roots = ["sources"]
 
 [build]
-output = ".masterdata/generated"
-binary_output = ".masterdata/output/masterdata.bytes"
+artifact_dir = ".masterdata/output"
 cache = ".masterdata/cache"

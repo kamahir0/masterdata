@@ -82,12 +82,12 @@ fn type_source_hash_tracks_raw_type_bytes() {
 }
 
 #[test]
-fn build_plan_keeps_generated_binary_and_cache_outputs_distinct() {
+fn build_plan_uses_canonical_artifact_layout_and_cache() {
     let directory = tempdir().expect("temp directory");
     write_project(
         directory.path(),
         "kind: schema\ntable: item\nfields: []\n",
-        "output = \"generated-csharp\"\nbinary_output = \"generated-binary/items.bytes\"\ncache = \"build-cache\"\n",
+        "artifact_dir = \"generated-artifacts\"\ncache = \"build-cache\"\n",
     );
 
     let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
@@ -96,12 +96,18 @@ fn build_plan_keeps_generated_binary_and_cache_outputs_distinct() {
         .expect("build plan");
 
     assert_eq!(
-        plan.generated_output,
-        directory.path().join("generated-csharp")
+        plan.artifact_root,
+        directory.path().join("generated-artifacts")
     );
     assert_eq!(
         plan.binary_output,
-        Some(directory.path().join("generated-binary/items.bytes"))
+        directory
+            .path()
+            .join("generated-artifacts/masterdata.bytes")
+    );
+    assert_eq!(
+        plan.csharp_output,
+        directory.path().join("generated-artifacts/csharp")
     );
     assert_eq!(plan.cache_directory, directory.path().join("build-cache"));
 }

@@ -8,9 +8,11 @@ type ProjectInfo = {
   name: string;
   version: string;
   source_roots: string[];
-  build_output: string;
-  build_binary_output: string | null;
-  build_cache: string;
+  artifact_root: string;
+  csharp_output: string;
+  binary_output: string;
+  cache: string;
+  publish_targets: { kind: "csharp" | "binary"; path: string; resolved_path: string }[];
 };
 
 type Diagnostic = {
@@ -161,6 +163,22 @@ function ProjectCard({ project }: { project: ProjectInfo }) {
         <div>
           <dt>Source roots</dt>
           <dd>{project.source_roots.join(", ")}</dd>
+        </div>
+        <div>
+          <dt>Canonical artifacts</dt>
+          <dd>{project.artifact_root}</dd>
+        </div>
+        <div>
+          <dt>Canonical C#</dt>
+          <dd>{project.csharp_output}</dd>
+        </div>
+        <div>
+          <dt>Canonical binary</dt>
+          <dd>{project.binary_output}</dd>
+        </div>
+        <div>
+          <dt>Build cache</dt>
+          <dd>{project.cache}</dd>
         </div>
       </dl>
     </article>

@@ -241,7 +241,10 @@ impl DotnetBridge {
         let program_path = workspace.join("Program.cs");
         let request_path = workspace.join("request.json");
         let report_path = workspace.join("report.json");
-        let options_path = generated_source_dir.join("BuilderOptions.g.cs");
+        // Keep the Source Generator option assembly outside the canonical C#
+        // artifact directory. It is a builder input, not a schema-generated
+        // artifact that should be published with the canonical set.
+        let options_path = workspace.join("BuilderOptions.g.cs");
 
         fs::copy(&template_program, &program_path).map_err(|error| {
             MasterdataError::new(
@@ -490,6 +493,7 @@ fn staged_project_file() -> &'static str {
     <PackageReference Include="MasterMemory" Version="3.0.4" />
     <PackageReference Include="MessagePack" Version="3.1.3" />
     <Compile Include="Generated/**/*.g.cs" />
+    <Compile Include="BuilderOptions.g.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

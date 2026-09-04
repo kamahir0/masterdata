@@ -120,6 +120,11 @@ impl MasterdataError {
         self
     }
 
+    pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
+        self.diagnostic.suggestion = Some(suggestion.into());
+        self
+    }
+
     pub fn with_related_requirement(mut self, requirement: impl Into<String>) -> Self {
         self.diagnostic
             .related_requirements

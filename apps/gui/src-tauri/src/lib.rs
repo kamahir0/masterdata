@@ -74,9 +74,10 @@ fn project_info(project_path: Option<String>) -> std::result::Result<ProjectInfo
 struct BuildResponse {
     project: ProjectInfo,
     schema_source_content_hash: String,
-    generated_output: PathBuf,
-    binary_output: Option<PathBuf>,
-    cache_directory: PathBuf,
+    artifact_root: PathBuf,
+    csharp_output: PathBuf,
+    binary_output: PathBuf,
+    cache: PathBuf,
     generated_files: Vec<PathBuf>,
     dry_run: bool,
 }
@@ -95,9 +96,10 @@ fn build(
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
         schema_source_content_hash: execution.plan.schema_source_content_hash,
-        generated_output: execution.plan.generated_output,
+        artifact_root: execution.plan.artifact_root,
+        csharp_output: execution.plan.csharp_output,
         binary_output: execution.plan.binary_output,
-        cache_directory: execution.plan.cache_directory,
+        cache: execution.plan.cache_directory,
         generated_files: execution.written_files,
         dry_run,
     })

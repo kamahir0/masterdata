@@ -37,10 +37,10 @@ resolve project
   -> resolve indexes/references
   -> generate C#
   -> schema hash
-  -> compile/reuse .NET builder
+  -> compile schema-specific .NET builder
   -> build MasterMemory binary
   -> validate binary
-  -> atomic output replace
+  -> atomic canonical artifact-root switch
 ```
 
 ## 前提条件
@@ -107,7 +107,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、明示的に設定された`build.binary_output`の同一filesystem上へ.NET builderの中間成果物をstageし、実MasterMemory builderとbinary reload validationが成功した後にgenerated C#の完全なsetとbinaryをpublication用に準備します。generated C# outputはset単位で切り替え、binaryはatomic publishします。後段のpublicationが失敗した場合は、通常のI/O failureに対して既存のbinary/generated outputをrollbackして保持します。binary output未設定のnon-dry-run buildは明示的な設定エラーで停止します。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、project-localな`.masterdata/output/`へ完全なcanonical artifact set（`csharp/`と`masterdata.bytes`）をstageし、実MasterMemory builderとbinary reload validationが成功した後にroot単位で切り替えます。buildは外部publish targetを暗黙には更新しません。旧`build.output`と`build.binary_output`はmigration diagnosticで拒否されます。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## ProjectとYAMLの規約
 

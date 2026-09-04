@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::ProjectConfig;
+use crate::config::{ProjectConfig, PublishTargetKind};
 use crate::document::{ProjectDocuments, parse_yaml_document};
 use crate::error::{ErrorKind, MasterdataError, Result, io_error};
 use crate::validation::{ValidationReport, validate_documents};
@@ -30,9 +30,18 @@ pub struct ProjectInfo {
     pub name: String,
     pub version: String,
     pub source_roots: Vec<PathBuf>,
-    pub build_output: PathBuf,
-    pub build_binary_output: Option<PathBuf>,
-    pub build_cache: PathBuf,
+    pub artifact_root: PathBuf,
+    pub csharp_output: PathBuf,
+    pub binary_output: PathBuf,
+    pub cache: PathBuf,
+    pub publish_targets: Vec<PublishTargetInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct PublishTargetInfo {
+    pub kind: PublishTargetKind,
+    pub path: String,
+    pub resolved_path: PathBuf,
 }
 
 impl Project {
@@ -93,11 +102,20 @@ impl Project {
         );
         let content =
             fs::read_to_string(&config_path).map_err(|error| io_error(&config_path, error))?;
-        let config: ProjectConfig = toml::from_str(&content).map_err(|error| {
+        let raw: toml::Value = toml::from_str(&content).map_err(|error| {
             MasterdataError::new(
                 "E-PROJECT-CONFIG-PARSE",
                 ErrorKind::Config,
                 format!("could not parse TOML: {error}"),
+            )
+            .with_source(config_path.clone())
+        })?;
+        reject_legacy_build_paths(&raw, &config_path)?;
+        let config: ProjectConfig = raw.try_into().map_err(|error| {
+            MasterdataError::new(
+                "E-PROJECT-CONFIG-PARSE",
+                ErrorKind::Config,
+                format!("could not parse project configuration: {error}"),
             )
             .with_source(config_path.clone())
         })?;
@@ -108,6 +126,7 @@ impl Project {
             }
         })?;
         let root = config_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        validate_project_paths(&root, &config)?;
         Ok(Self {
             root,
             config_path,
@@ -141,14 +160,21 @@ impl Project {
                 .iter()
                 .map(|root| resolve_project_path(&self.root, root))
                 .collect(),
-            build_output: resolve_project_path(&self.root, &self.config.build.output),
-            build_binary_output: self
+            artifact_root: self.artifact_root_path(),
+            csharp_output: self.csharp_output_path(),
+            binary_output: self.binary_output_path(),
+            cache: self.cache_path(),
+            publish_targets: self
                 .config
-                .build
-                .binary_output
-                .as_deref()
-                .map(|path| resolve_project_path(&self.root, path)),
-            build_cache: resolve_project_path(&self.root, &self.config.build.cache),
+                .publish
+                .targets
+                .iter()
+                .map(|target| PublishTargetInfo {
+                    kind: target.kind,
+                    path: target.path.clone(),
+                    resolved_path: resolve_project_path(&self.root, &target.path),
+                })
+                .collect(),
         }
     }
 
@@ -188,19 +214,19 @@ impl Project {
         Ok(validate_documents(&documents))
     }
 
-    pub fn build_output_path(&self) -> PathBuf {
-        resolve_project_path(&self.root, &self.config.build.output)
+    pub fn artifact_root_path(&self) -> PathBuf {
+        resolve_project_path(&self.root, &self.config.build.artifact_dir)
     }
 
-    pub fn build_binary_output_path(&self) -> Option<PathBuf> {
-        self.config
-            .build
-            .binary_output
-            .as_deref()
-            .map(|path| resolve_project_path(&self.root, path))
+    pub fn csharp_output_path(&self) -> PathBuf {
+        self.artifact_root_path().join("csharp")
     }
 
-    pub fn build_cache_path(&self) -> PathBuf {
+    pub fn binary_output_path(&self) -> PathBuf {
+        self.artifact_root_path().join("masterdata.bytes")
+    }
+
+    pub fn cache_path(&self) -> PathBuf {
         resolve_project_path(&self.root, &self.config.build.cache)
     }
 }
@@ -230,6 +256,7 @@ pub fn initialize_project(root: &Path, options: &InitOptions) -> Result<ProjectI
         },
         sources: Default::default(),
         build: Default::default(),
+        publish: Default::default(),
     };
     config.validate()?;
     let content = toml::to_string_pretty(&config).map_err(|error| {
@@ -301,16 +328,192 @@ fn is_yaml(path: &Path) -> bool {
 fn resolve_project_path(root: &Path, configured: &str) -> PathBuf {
     let configured = Path::new(configured);
     if configured.is_absolute() {
-        configured.to_path_buf()
+        normalize_path(configured)
     } else {
-        root.join(configured)
+        normalize_path(&root.join(configured))
     }
 }
 
 fn absolute_path(path: &Path, base: &Path) -> PathBuf {
     if path.is_absolute() {
-        path.to_path_buf()
+        normalize_path(path)
     } else {
-        base.join(path)
+        normalize_path(&base.join(path))
     }
 }
+
+fn reject_legacy_build_paths(raw: &toml::Value, config_path: &Path) -> Result<()> {
+    let Some(build) = raw.get("build").and_then(toml::Value::as_table) else {
+        return Ok(());
+    };
+
+    if build.contains_key("output") {
+        return Err(legacy_build_path_error(
+            config_path,
+            "build.output",
+            "use build.artifact_dir for project-local canonical artifacts, or add a kind = \"csharp\" publish target for an external destination",
+            "E-CONFIG-LEGACY-BUILD-OUTPUT",
+        ));
+    }
+    if build.contains_key("binary_output") {
+        return Err(legacy_build_path_error(
+            config_path,
+            "build.binary_output",
+            "the canonical binary is .masterdata/output/masterdata.bytes; use a kind = \"binary\" publish target for an external destination",
+            "E-CONFIG-LEGACY-BINARY-OUTPUT",
+        ));
+    }
+    Ok(())
+}
+
+fn legacy_build_path_error(
+    config_path: &Path,
+    field: &str,
+    guidance: &str,
+    code: &str,
+) -> MasterdataError {
+    MasterdataError::new(
+        code,
+        ErrorKind::Config,
+        format!("{field} is no longer supported by the canonical artifact model"),
+    )
+    .with_source(config_path.to_path_buf())
+    .with_suggestion(guidance)
+    .with_related_requirement("PROJECT-CONFIG-004")
+    .with_related_requirement("PROJECT-CONFIG-005")
+}
+
+fn validate_project_paths(root: &Path, config: &ProjectConfig) -> Result<()> {
+    let artifact_root =
+        resolve_project_local_path(root, &config.build.artifact_dir, "build.artifact_dir")?;
+    validate_no_symlink_components(&artifact_root, root, "build.artifact_dir")?;
+    if let Ok(metadata) = fs::symlink_metadata(&artifact_root) {
+        if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
+            return Err(unsafe_project_path_error(
+                &artifact_root,
+                "canonical artifact root must be a real directory when it already exists",
+            ));
+        }
+    }
+
+    for source in &config.sources.roots {
+        let source_path = resolve_project_path(root, source);
+        if paths_overlap(&artifact_root, &source_path) {
+            return Err(unsafe_project_path_error(
+                &artifact_root,
+                format!(
+                    "canonical artifact root overlaps configured source root `{}`",
+                    source_path.display()
+                ),
+            ));
+        }
+    }
+
+    let cache_path = resolve_project_path(root, &config.build.cache);
+    if paths_overlap(&artifact_root, &cache_path) {
+        return Err(unsafe_project_path_error(
+            &artifact_root,
+            format!(
+                "canonical artifact root overlaps build cache `{}`",
+                cache_path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_project_local_path(root: &Path, configured: &str, field: &str) -> Result<PathBuf> {
+    let configured_path = Path::new(configured);
+    if configured_path.is_absolute() {
+        return Err(unsafe_project_path_error(
+            configured_path,
+            format!("{field} must be a project-local relative path"),
+        ));
+    }
+    let resolved = resolve_project_path(root, configured);
+    if resolved == root || !resolved.starts_with(root) {
+        return Err(unsafe_project_path_error(
+            &resolved,
+            format!("{field} must remain inside the project root"),
+        ));
+    }
+    Ok(resolved)
+}
+
+fn validate_no_symlink_components(path: &Path, root: &Path, field: &str) -> Result<()> {
+    let relative = path.strip_prefix(root).map_err(|_| {
+        unsafe_project_path_error(
+            path,
+            format!("{field} cannot be resolved from project root"),
+        )
+    })?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        let PathComponent::Normal(name) = component else {
+            continue;
+        };
+        current.push(name);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(unsafe_project_path_error(
+                    &current,
+                    format!("{field} must not traverse a symlink"),
+                ));
+            }
+            Ok(metadata) if !metadata.is_dir() && current != path => {
+                return Err(unsafe_project_path_error(
+                    &current,
+                    format!("{field} contains a non-directory path component"),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(io_error(&current, error)),
+        }
+    }
+    Ok(())
+}
+
+fn unsafe_project_path_error(path: &Path, message: impl Into<String>) -> MasterdataError {
+    MasterdataError::new("E-PROJECT-PATH-UNSAFE", ErrorKind::Config, message)
+        .with_source(path.to_path_buf())
+        .with_related_requirement("PROJECT-PATH-001")
+        .with_related_requirement("BUILD-ARTIFACT-001")
+}
+
+fn paths_overlap(left: &Path, right: &Path) -> bool {
+    is_path_ancestor_or_equal(left, right) || is_path_ancestor_or_equal(right, left)
+}
+
+fn is_path_ancestor_or_equal(candidate: &Path, target: &Path) -> bool {
+    candidate
+        .components()
+        .eq(target.components().take(candidate.components().count()))
+        && candidate.components().count() <= target.components().count()
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    let mut rooted = false;
+    for component in path.components() {
+        match component {
+            std::path::Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            std::path::Component::RootDir => {
+                rooted = true;
+                normalized.push(std::path::MAIN_SEPARATOR.to_string());
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if normalized.file_name().is_some() {
+                    normalized.pop();
+                } else if !rooted {
+                    normalized.push("..");
+                }
+            }
+            std::path::Component::Normal(part) => normalized.push(part),
+        }
+    }
+    normalized
+}
+
+use std::path::Component as PathComponent;

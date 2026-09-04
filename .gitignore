@@ -18,9 +18,11 @@
 
 # masterdata generated and local state
 /.masterdata/cache/
+/.masterdata/output/
 /.masterdata/generated/
 /.masterdata/dev-project/
 **/.masterdata/cache/
+**/.masterdata/output/
 **/.masterdata/generated/
 **/.masterdata/dev-project/
 /target/dev-project/

@@ -61,9 +61,9 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 normative semanticsは[Build pipeline仕様](build-pipeline.md)の`BUILD-ARTIFACT-*`および`PUBLISH-*`が所有する。このdocumentはproject marker、
 project metadata、およびsource rootのconfiguration boundaryを所有する。
 
-current implementationはlegacyの`build.output`とoptionalな`build.binary_output`を受理するが、これはApproved configuration contractに反する
-implementation gapである。canonical implementationでは[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)のhard cutに従ってstructured
-migration diagnosticで拒否し、既存artifactを変更しない。
+current implementationはcanonicalな`build.artifact_dir`、`build.cache`、およびoptionalな`publish.targets`を読み込み、legacyの
+`build.output`と`build.binary_output`を[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)のhard cutに従ってstructured migration
+diagnosticで拒否する。legacy configuration rejectionはbuild開始前に行われ、既存artifactを変更しない。external publish operation自体は未実装である。
 
 `init`が生成するminimum configurationにはpublish targetを含めなくてもよい。例えば次のconfigurationだけでcanonical buildを開始できる。
 
@@ -139,8 +139,7 @@ cycle-safetyのinternal guardとしてsymlink entryをfollowしない。これ�
 このmatrixは上記requirementに対するnon-normativeなimplementation evidenceまたは将来のacceptance planである。test numberが
 requirement definitionに見えないよう、canonical ruleの隣に置く。`implement-spec` は同じ
 observable behaviorを、このmatrixによって確認する。Approved configuration contractへ変更された
-`PROJECT-CONFIG-003`から`PROJECT-CONFIG-006`および`PROJECT-PATH-001`は、現行legacy parserのtestを新contractのevidenceとして扱わず、
-implementation taskでtestを追加する。
+`PROJECT-CONFIG-003`から`PROJECT-CONFIG-006`および`PROJECT-PATH-001`は、canonical configuration implementationとそのtest evidenceで確認する。
 
 | Requirement（要件ID） | Observable behavior（観測可能な挙動） | Implementation owner（実装owner） | Success case（成功例） | Failure case（失敗例） | Test（テスト） | Fixture |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -152,11 +151,11 @@ implementation taskでtestを追加する。
 | PROJECT-006 | 宣言されたYAML `kind` と `table` がdocument semanticsを決める。 | `masterdata-core::Project::load_documents` | 1つのroot内にある複数fileが、宣言したtableを保持する。 | file pathまたはdirectory nameでdocumentを別の意味に変更できない。 | `project_006_source_directory_does_not_define_table_identity` | `fixtures/minimal` |
 | PROJECT-CONFIG-001 | project metadata fieldがwhitespace以外のvalueを含む。 | `masterdata-core::ProjectConfig::validate` | metadataが揃ったblockを受け入れる。 | 空の `id`、`name`、`version` はstructured config diagnosticを返す。 | `project_config_001_requires_non_empty_metadata` | Temporary project |
 | PROJECT-CONFIG-002 | 少なくとも1つのsource rootが設定されている。 | `masterdata-core::ProjectConfig::validate` | source rootのあるprojectを受け入れる。 | 空の `sources.roots` listはstructured config diagnosticを返す。 | `project_config_002_requires_a_source_root` | Temporary project |
-| PROJECT-CONFIG-003 | 設定されたsource root、canonical artifact path、cache pathが空でない。 | `masterdata-core::ProjectConfig::validate` | 空でないpathを受け入れる。 | 空のsource、`artifact_dir`、またはcache pathはstructured config diagnosticを返す。 | `implement-specで追加` | Temporary project |
-| PROJECT-CONFIG-004 | legacy `build.output` / `build.binary_output`はmigration-aware structured diagnosticで拒否され、generic unknown-key errorへ潰れない。 | `masterdata-core::ProjectConfig::validate` | 新configurationを受け入れる。 | 各legacy fieldを対応するdiagnostic codeで拒否する。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`（planned） | Temporary project |
-| PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | `masterdata-core::ProjectConfig::validate` / application boundary | 既存artifactがそのまま残る。 | rejection後にcanonical/legacy/external artifactが変更されない。 | `project_config_005_rejects_legacy_config_without_artifact_mutation`（planned） | Temporary project |
-| PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `masterdata-core::Project::init` | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 | `project_config_006_init_generates_canonical_config`（planned） | Temporary project |
-| PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootである。 | `masterdata-core::Project::info` / `masterdata-app` | project rootからcanonical/publish pathを解決する。 | canonical artifactがproject外へescapeする、またはpublish pathがprocess working directoryを基準に解決される。 | `implement-specで追加` | Temporary project |
+| PROJECT-CONFIG-003 | 設定されたsource root、canonical artifact path、cache pathが空でない。 | `masterdata-core::ProjectConfig::validate` | 空でないpathを受け入れる。 | 空のsource、`artifact_dir`、またはcache pathはstructured config diagnosticを返す。 | `project_config_003_rejects_empty_source_or_build_paths` | Temporary project |
+| PROJECT-CONFIG-004 | legacy `build.output` / `build.binary_output`はmigration-aware structured diagnosticで拒否され、generic unknown-key errorへ潰れない。 | `masterdata-core::Project::from_config_path` | 新configurationを受け入れる。 | 各legacy fieldを対応するdiagnostic codeで拒否する。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`; `project_config_004_reports_legacy_output_before_binary_output` | Temporary project |
+| PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | `masterdata-core::Project::from_config_path` | 旧artifactを残したままoperation開始を拒否する。 | rejection後にcanonical/legacy/external artifactが変更されない。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`（config boundary） | Temporary project |
+| PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `masterdata-core::initialize_project` | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 | `init_creates_a_project_marker_and_source_root` | Temporary project |
+| PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootである。 | `masterdata-core::Project::info` / `masterdata-core::Project::from_config_path` | project rootからcanonical/publish pathを解決する。 | canonical artifactがproject外へescapeする、またはprocess working directoryを基準に解決される。 | `project_path_001_resolves_relative_paths_against_project_root`; `project_path_001_rejects_unsafe_canonical_artifact_paths`; `project_path_001_rejects_artifact_source_and_cache_overlap` | Temporary project |
 
 すべてのrowは、path separatorがplatformによって異なっても有効でなければならない。
 symlink traversal safetyはsource-discovery documentationに Open Question として記録された

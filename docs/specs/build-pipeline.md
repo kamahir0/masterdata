@@ -11,17 +11,20 @@ documentへの適用は[仕様変更0004](../spec-changes/0004-canonical-artifac
 external publish destinationのfilesystem path safetyに関する`PUBLISH-PATH-001`から
 `PUBLISH-PATH-010`は、仕様変更0006のHuman Approvalとcanonical applicationによってcurrent
 normative contractとなった。
+publish-only operationが使用するcanonical artifact-set receiptに関する`ARTIFACT-SET-001`から
+`ARTIFACT-SET-008`は、[仕様変更0007](../spec-changes/0007-canonical-artifact-set-receipt.md)のHuman Approvalとcanonical applicationによって
+current normative contractとなった。
 legacy configurationのhard cutとstructured migration diagnosticの適用は、[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)に記録する。
 
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
 各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
 この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryを定義する。`Approved`は
 implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builderは実装済みであるが、external
-filesystem publisherは未実装であるため、`PUBLISH-004`以降および`PUBLISH-PATH-*`のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
+filesystem publisherとartifact-set receipt runtimeは未実装であるため、`PUBLISH-004`以降、`PUBLISH-PATH-*`、および`ARTIFACT-SET-*`のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
 
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
 このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
-external publish operationは未実装であり、影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004および0005に記録する。
+external publish operationは未実装であり、影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004、0005、および0007に記録する。
 
 ## 承認されたcanonical model
 
@@ -32,9 +35,10 @@ external publish operationは未実装であり、影響するcanonical specific
 - monorepoとseparate repositoryのどちらもdeployment topologyとして扱える。compiler semanticsはGit repository topologyに依存しない。
 - 1つのcanonical artifactを0個以上のpublish targetへ配布できる。配布先ごとにbuildを繰り返さない。
 - canonical artifact領域はMasterData toolが所有するbuild outputであり、user-owned treeへの直接出力とは区別する。
+- canonical C#、canonical binary、およびartifact-set receiptは、最後に成功したfull buildに由来するcoherent setとして扱う。
 - project directoryのbasenameはconvention上kebab-caseを基本とするが、project identityは`project.id`であり、basenameから導出しない。
 
-上記のapproval記録は仕様変更0004を参照する。implementation evidenceが揃うまで、この文書を`Implemented`へ変更しない。
+上記のapproval記録は仕様変更0004および0007を参照する。implementation evidenceが揃うまで、この文書を`Implemented`へ変更しない。
 
 ## Canonical pipeline
 
@@ -55,6 +59,8 @@ resolve project
  -> compile schema-specific .NET builder
  -> build MasterMemory binary
  -> reload/validate binary
+ -> hash staged canonical C# and binary
+ -> stage artifact-set receipt
  -> publish complete canonical artifact set
  -> optional publish targets
 ```
@@ -88,12 +94,11 @@ canonical artifact rootの場所はGit repositoryのroot、checkout directoryの
 ### BUILD-ARTIFACT-002
 
 canonical artifact rootはMasterData tool-ownedでなければならず（MUST）、canonical buildはそのrootをuser-owned output treeとの共存場所として
-扱ってはならない（MUST NOT）。canonical root内に置くものは、canonical C#、canonical binary、およびartifact setを識別するために別途承認された
-tool metadataに限る方向とする。
+扱ってはならない（MUST NOT）。canonical root内に置くものは、canonical C#、canonical binary、および別途承認されたartifact-set receiptなどのtool metadataに限る。
 
 current `build.output`配下のmanaged/unmanaged file coexistenceは旧implementationのbehaviorであり、canonical root ownershipの代替ではない。
 canonical configuration implementationは旧configurationを受理せず、既存legacy artifactを自動削除または自動移行しない。canonical outputはcomplete rootとして
-stagingし、successful build後にcoherentな`csharp/`と`masterdata.bytes`のsetを公開する。
+stagingし、successful build後にcoherentな`csharp/`、`masterdata.bytes`、およびreceiptのsetを公開する。receiptを含むcomplete setの外側でmetadataだけを更新してはならない（MUST NOT）。
 
 ### BUILD-ARTIFACT-003
 
@@ -109,15 +114,16 @@ v1のcanonical layoutは次のとおりでなければならない（MUST）。
    │  ├─ csharp/
    │  │  ├─ Item.g.cs
    │  │  └─ Enemy.g.cs
-   │  └─ masterdata.bytes
+   │  ├─ masterdata.bytes
+   │  └─ .masterdata-artifact-set.json
    └─ cache/
 ```
 
-v1ではbinaryを`output/masterdata.bytes`へ置く。`output/binary/`や`output/metadata/`への分割はこのspecificationで先取りしない。
+v1ではbinaryを`output/masterdata.bytes`へ置き、receiptを`output/.masterdata-artifact-set.json`へ置く。`output/binary/`や`output/metadata/`への分割はこのspecificationで先取りしない。
 
 ### BUILD-ARTIFACT-004
 
-canonical C#とcanonical binaryは、同一のvalidated build resultから作成されたcoherent artifact setでなければならない（MUST）。
+canonical C#、canonical binary、およびartifact-set receiptは、同一のvalidated build resultから作成されたcoherent artifact setでなければならない（MUST）。
 buildが成功した場合はcompleteなcurrent setを公開し、前回buildで不要になったcanonical generated fileを残してはならない（MUST）。
 build失敗時は、最後のcoherent canonical setを利用不能にするpartial setを公開してはならない（MUST NOT）。
 
@@ -131,6 +137,123 @@ canonical buildはcanonical artifactだけを作成し、configured external pub
 `publish`はcanonical artifact setを入力とする別operationでなければならない（MUST）。
 
 `build --publish`のような統合UXは将来候補であり、このrequirementはそのcommandの存在またはexit semanticsを確定しない。
+
+## Normative requirements: canonical artifact-set receipt
+
+### ARTIFACT-SET-001
+
+successfulなnon-dry-run full buildは、canonical C#、canonical binary、およびartifact-set receiptを、1つのcoherent canonical artifact setとして
+公開しなければならない（MUST）。receiptだけを先に、またはC#とbinaryのpublication後に別操作として更新してはならない（MUST NOT）。通常のI/O
+failureでは、成功時はcompleteなNEW C#、NEW binary、matching NEW receiptを、失敗時はprevious complete C#、binary、matching receiptを維持する。
+filesystem crashまたはpower-loss時のglobal atomicityは、このrequirementでは保証しない。
+
+### ARTIFACT-SET-002
+
+receiptのv1 reserved filenameは`.masterdata-artifact-set.json`とする。receiptは少なくとも次のsemantic fieldsを持たなければならない（MUST）。
+
+```json
+{
+  "version": 1,
+  "project_id": "game.masterdata",
+  "hash_algorithm": "sha256",
+  "csharp": [
+    { "path": "Enemy.g.cs", "hash": "..." },
+    { "path": "Item.g.cs", "hash": "..." }
+  ],
+  "binary": {
+    "path": "masterdata.bytes",
+    "hash": "..."
+  }
+}
+```
+
+v1の`version`は`1`、`hash_algorithm`は`sha256`でなければならない（MUST）。hashは対象artifact fileのexact byte sequenceに対するSHA-256であり、
+lowercase 64桁hexをcanonical representationとする。JSON whitespaceやproperty serialization orderはsemantic contractとしない。receiptはtimestamp、
+random UUID、absolute checkout path、Git commit、machine hostname、またはcurrent cwdを必須identity fieldとして持ってはならない（MUST NOT）。C# pathをdeterministic orderで
+記録するため、同じ`project.id`と同じcanonical artifact bytesから生成されるreceiptのsemantic contentはdeterministicでなければならない（MUST）。
+`version`はreceipt JSON formatのversionであり、MasterMemory binary format、builder protocol、project semantic version、またはreleased compatibility versionを表してはならない（MUST NOT）。
+
+### ARTIFACT-SET-003
+
+receiptの`csharp[].path`はcanonical artifact rootの`csharp/`からのrelative file pathでなければならず（MUST）、non-empty、directory外へescapeしない、
+deterministic order、filesystem namespace上のunique pathでなければならない（MUST）。absolute path、`..`、target-directory relative path、process cwd
+relative pathを受理してはならない（MUST NOT）。receipt representationではpath separatorに`/`を使用し、platform filesystem pathへの変換はadapterが行う。
+
+receiptはcurrent canonical C# file setの全fileと`masterdata.bytes`を記述し、それぞれのexact bytesをhashしなければならない（MUST）。binaryのreceipt pathはv1では
+`masterdata.bytes`に固定し、arbitrary binary destinationや`build.binary_output`を復活させてはならない（MUST NOT）。receipt対象はexpected regular fileでなければならず、
+symlink、directory、special filesystem objectをartifactとしてhashしてはならない（MUST NOT）。
+source hash、`schema_source_content_hash`、semantic schema hash、またはcache keyをv1 receiptの必須fieldやpublish eligibility keyへ昇格させてはならない（MUST NOT）。
+
+### ARTIFACT-SET-004
+
+publish operationは、いずれかのexternal targetをpreflightまたはmutationする前に、canonical receiptとartifact setを検証しなければならない（MUST）。
+最低限、receiptの存在とregular-file type、supported version、valid shape、current `project.id`との`project_id`一致、supported hash algorithm、全C# pathの
+安全性、receiptとactual `csharp/` file setの完全一致、全C# hash、固定binary path、binaryの存在・regular-file type・hash、およびcanonical root entryのexpected typeを確認する。
+全検証に成功した場合だけ、setをpublish-eligibleとして扱う。receipt自身はC#またはbinary publish targetへcopyせず、検証済みC# setと`masterdata.bytes`だけを各targetへ配布する。
+
+receiptのproject identityは`project.id`だけであり、directory basename、absolute checkout path、Git repository、current cwd、`project.name`、または`project.version`を
+identityへbindしてはならない（MUST NOT）。directoryを移動しても`project.id`が一致する限りreceipt validityを失わせず、`project.id`が変更された場合はmismatchとしてrejectする。
+publish targetのkindまたはpathもreceipt identityへbindしてはならず、build後のtarget追加・変更だけでreceiptをinvalidにしてはならない（MUST NOT）。
+
+receipt validationはYAMLの再parse、semantic validation、C#再生成、.NET builder、またはimplicit buildを開始してはならない（MUST NOT）。receipt validation failureは、missing、invalid、
+mismatch、project mismatchなどのreason、canonical artifact rootまたはreceipt path、および関連Requirement IDを識別できるstructured diagnosticを返さなければならず（MUST）、
+external target parent creation、C# target mutation、publish manifest mutation、stale deletion、binary replacementを開始してはならない（MUST NOT）。
+canonical root直下には`csharp/` directory、`masterdata.bytes`、およびreceiptだけをexpected entryとして許可し、それ以外のunexpected entryまたはtypeはrejectしなければならない（MUST）。
+
+### ARTIFACT-SET-005
+
+current YAMLまたはsource treeがlast successful build以降に変更されたことだけを理由に、validなreceipt付きcanonical artifact setのpublishをrejectしてはならない（MUST NOT）。
+publishはcurrent sourceのfreshnessをparse、hash、validate、compareしてはならず、source変更を理由にimplicit buildしてはならない（MUST NOT）。YAMLは引き続きbuild時の
+canonical source of truthであるが、publish operationのauthorityはlast successful publish-eligible canonical artifact setである。source YAMLが削除またはrenameされても、
+current project configをloadでき、receipt validationに成功する限り、そのsetはpublish可能である。
+
+### ARTIFACT-SET-006
+
+receiptがないcanonical rootはpublish-eligibleとみなしてはならない（MUST）。`csharp/`と`masterdata.bytes`だけが存在するpre-receipt setを、publisherはenumerate、
+hash、receipt生成によってautomatic adoptしてはならない（MUST NOT）。missing receipt、malformed JSON/shape、unsupported versionまたはhash algorithm、missing required field、
+invalid/escaping path、duplicate path、invalid hash、project id mismatch、receipt自身のsymlink/directory/special type、またはartifact setのmissing/extra/tampered entryは
+rejectしなければならない（MUST）。
+
+reject時はautomatic repair、migration、inference、stale deletionを行わず、canonical artifact set、receipt、およびexternal destinationを変更してはならない（MUST）。
+missingまたはlegacy receiptには、`masterdata build`で新しいcoherent setを生成するguidanceを返す。receipt導入以前のartifactにcompatibility grace periodは設けない。
+
+### ARTIFACT-SET-007
+
+receiptはcanonical artifact-set consistency、accidental/manual artifact driftの検出、missing/extra fileの検出、byte mismatch、およびproject identity mismatchを保証する
+integrity receiptである。SHA-256を使用してもreceipt自身が署名されていないため、malicious actorによるartifactとreceiptの同時改変、producer authentication、
+supply-chain attestation、remote provenance、artifact signing、またはreleased compatibilityを防止・証明するsecurity authenticity contractではない（MUST NOT）。
+
+receiptはYAML semantics、schema/Table/Type/Reference identity、source of truth、semantic schema hash、compiled builder cache key、incremental compiler identity、または
+released compatibility identityとして扱ってはならない（MUST NOT）。
+
+### ARTIFACT-SET-008
+
+publish-valid receiptを生成または更新できるoperationは、complete canonical C# setとvalidated canonical binaryを同じbuild resultとして生成したfull buildに限る（MUST）。
+pipeline途中で停止するschema-only、generate-only、validate-only等のoperationは、complete C#とbinaryを生成していない限りreceiptを発行または更新してはならない（MUST NOT）。
+これによりNEW C#、OLD binary、または一部だけ更新されたapparently valid receiptを作ってはならない。
+
+`masterdata build --dry-run`はreceiptをcreate、update、delete、invalidateしてはならない（MUST NOT）。C# generation failure、.NET compile failure、DatabaseBuilder failure、
+reload validation failure、receipt generation failure、またはcanonical root publication failure時は、通常のI/O failure semanticsの範囲でprevious complete setとmatching
+receiptを保持し、receipt generation failureをsuccessとして扱ってはならない（MUST NOT）。
+
+receipt validation後は、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のall-target preflightへ進み、receipt invalid時にそのpreflightまたはdestination mutationへ到達してはならない。
+
+## Artifact-set receipt acceptance matrix
+
+このmatrixは`ARTIFACT-SET-001`から`ARTIFACT-SET-008`に対する将来のimplementation evidenceであり、現時点のtest passを表さない。すべてpending implementationである。
+
+| Requirement | Planned evidence（pending implementation） | Observation |
+| --- | --- | --- |
+| ARTIFACT-SET-001 | `full_build_writes_matching_artifact_receipt`; `failed_build_preserves_previous_receipt_and_set` | C#、binary、receiptをwhole-root setとして扱い、通常のI/O failureで旧setを保持する。 |
+| ARTIFACT-SET-002 | `artifact_receipt_has_v1_shape_and_sha256_hashes`; `artifact_receipt_is_deterministic` | version、project id、hash algorithm、deterministic representationを確認する。 |
+| ARTIFACT-SET-003 | `artifact_receipt_covers_complete_csharp_and_binary_set`; `artifact_receipt_rejects_unsafe_paths` | all C# path、固定binary path、separator、duplicate/escapeを確認する。 |
+| ARTIFACT-SET-004 | `publish_validates_receipt_before_external_mutation`; `publish_rejects_tampered_artifact_set` | receipt、actual set、hash、project id、entry typeを検証し、B8 preflightより前に停止する。 |
+| ARTIFACT-SET-005 | `publish_accepts_last_receipt_after_current_yaml_change`; `publish_does_not_rebuild_current_sources` | source change、source deletion、publish target変更でreceipt validityを不必要に失わせない。 |
+| ARTIFACT-SET-006 | `publish_rejects_missing_or_malformed_receipt_without_mutation`; `publish_rejects_legacy_pre_receipt_set` | automatic adoption/repair/migrationを行わず、旧destinationを変更しない。 |
+| ARTIFACT-SET-007 | `artifact_receipt_does_not_claim_authenticity_or_cache_identity` | consistency/integrityと署名・provenance・cache semanticsを区別する。 |
+| ARTIFACT-SET-008 | `dry_run_leaves_receipt_untouched`; `partial_build_does_not_issue_receipt`; `receipt_generation_failure_preserves_previous_set` | complete full buildだけがreceiptを発行し、failure時にreceiptだけ更新しない。 |
+
+receiptはexternal C# destinationの`.masterdata-publish-manifest.json`とは異なるmetadataであり、前者を後者のownership sourceとして扱ってはならない。
 
 ## Normative requirements: publish targets
 
@@ -180,8 +303,9 @@ parent creation、symlink、path containmentの詳細は、同requirementsが所
 publishは、Rustのvalidated/resolved modelから作成され、canonical artifact setとして検証済みのinputだけを使用しなければならない（MUST）。
 raw YAML、raw DataDocument、source file order、既存の任意generated C#をpublishのauthorityとして使用してはならない（MUST NOT）。
 
-publish-only operationのためにcanonical artifactがvalidなbuild resultであることを証明するmetadataが必要になる可能性はあるが、
-そのmetadata、trust条件、semantic schema hashとの関係はこのspecificationでは定義しない。
+publish-only operationは、`ARTIFACT-SET-001`から`ARTIFACT-SET-008`に従って検証されたcanonical artifact-set receiptを使って、
+last successful build resultをpublish-eligibleと確立しなければならない（MUST）。publishはcurrent YAMLのfreshnessを再検証するためにimplicit buildを開始してはならない（MUST NOT）。
+receiptのtrust scope、source freshness、semantic schema hashとの関係は同requirementsが所有する。
 
 ### PUBLISH-004
 
@@ -559,20 +683,21 @@ contractを閉じるが、ASCII lowercase、NFC-only normalization、またはOS
 - CLI/Tauri: application serviceを呼び出すadapter。YAML semantics、filesystem discovery、または.NET process invocationを複製しない。
 
 このspecificationでは、Reference、named Build Profile adapter、GUI、Unity importer、semantic schema hash、builder cache/reuse、cache eviction、
-released-schema binary compatibility、exact binary bytes identity、artifact signing/versioning、publish filesystem copy、CLI command追加、config parser変更を
+released-schema binary compatibility、exact binary bytes identity、artifact signing/attestation、Git provenance、publish filesystem copy、CLI command追加、config parser変更を
 実装または確定しない。
 
 ## Open Questions（未解決事項）
 
 今回のHuman Approvalによって、project-local canonical output、canonical root ownership、C# manifest-based ownership、stale managed file retirement、
 unmanaged preservation/collision、binary explicit-file ownership、`[[publish.targets]]` syntax、relative target pathのproject-root base、複数targetの方向、
-monorepo/separate repositoryの想定、directory basenameとproject identityの分離、およびB8の`PUBLISH-PATH-001`から`PUBLISH-PATH-010`はApproved contractとなった。
+monorepo/separate repositoryの想定、directory basenameとproject identityの分離、B8の`PUBLISH-PATH-001`から`PUBLISH-PATH-010`、およびcanonical
+artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`はApproved contractとなった。
 以下だけを未解決として残す。
 
-- publish-onlyが必要とするcanonical artifact metadata、build identity、trust判定、およびmetadataの保存場所。
 - 複数publish targetの一部成功時のretry、rollback、再開、およびoperation/exit semantics。複数destinationのcross-path atomicityは保証するか。
 - `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
-- canonical artifactのmetadata/version、semantic schema hash、builder cache key、released-schema binary compatibilityをどの独立specificationで定義するか。
+- semantic schema hash、builder cache key、released-schema binary compatibilityをreceiptと独立したspecificationで定義するか。
+- artifact signing、producer authentication、supply-chain attestation、remote provenanceを将来導入する必要があるか。
 - Unity `.meta` lifecycleとpublish manifestの連携をMasterData publisherが持つか、Unity importerへ委譲するか。
 - generated .NET projectのownership、cache eviction、Unity asset importがartifact publicationをどう観測するか。
 - source discoveryでsymlinkをfollowまたはignoreするproduct-level policy。current traversal guardはcycle防止のためsymlink entryをfollowしない。
@@ -581,7 +706,7 @@ monorepo/separate repositoryの想定、directory basenameとproject identityの
 
 ## Statusと実装方針
 
-この文書の`Status: Approved`は、仕様変更0004および0005に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
+この文書の`Status: Approved`は、仕様変更0004、0005、0006、および0007に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
 `Implemented`へ変更しない。
 
 canonical configuration implementationは`artifact_dir`をproject-local rootとして検証し、complete artifact rootをbuildする。external publish targetのfilesystem

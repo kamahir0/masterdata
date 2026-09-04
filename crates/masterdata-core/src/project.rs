@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -396,9 +397,35 @@ fn validate_project_paths(root: &Path, config: &ProjectConfig) -> Result<()> {
         }
     }
 
+    // WHY: Lexical project-local paths do not prove that two names refer to
+    // different filesystem regions. Source/cache symlinks and case-folding
+    // filesystems can alias a canonical artifact root, including when its
+    // final components have not been created yet.
+    // IF REMOVED: whole-root publication could rename a source or cache tree
+    // away and replace it with canonical artifacts.
+    // EVIDENCE: docs/specs/project-layout.md; docs/specs/build-pipeline.md;
+    // Regression: project_path_001_rejects_source_symlink_alias;
+    // project_path_001_rejects_source_symlink_ancestor_alias;
+    // project_path_001_rejects_cache_symlink_alias;
+    // project_path_001_handles_case_alias_using_filesystem_behavior.
+    // Regression: project_path_001_handles_case_alias_with_missing_tails_using_filesystem_behavior.
+    let artifact_filesystem_path = resolve_existing_prefix(&artifact_root, "build.artifact_dir")?;
+    let project_filesystem_path = resolve_existing_prefix(root, "project root")?;
+    if filesystem_paths_equal(&artifact_filesystem_path, &project_filesystem_path)? {
+        return Err(unsafe_project_path_error(
+            &artifact_root,
+            "canonical artifact root aliases the project root",
+        ));
+    }
+
     for source in &config.sources.roots {
         let source_path = resolve_project_path(root, source);
-        if paths_overlap(&artifact_root, &source_path) {
+        if paths_overlap_with_filesystem_alias(
+            &artifact_root,
+            &source_path,
+            "sources root",
+            &artifact_filesystem_path,
+        )? {
             return Err(unsafe_project_path_error(
                 &artifact_root,
                 format!(
@@ -410,7 +437,12 @@ fn validate_project_paths(root: &Path, config: &ProjectConfig) -> Result<()> {
     }
 
     let cache_path = resolve_project_path(root, &config.build.cache);
-    if paths_overlap(&artifact_root, &cache_path) {
+    if paths_overlap_with_filesystem_alias(
+        &artifact_root,
+        &cache_path,
+        "build.cache",
+        &artifact_filesystem_path,
+    )? {
         return Err(unsafe_project_path_error(
             &artifact_root,
             format!(
@@ -479,10 +511,265 @@ fn unsafe_project_path_error(path: &Path, message: impl Into<String>) -> Masterd
         .with_source(path.to_path_buf())
         .with_related_requirement("PROJECT-PATH-001")
         .with_related_requirement("BUILD-ARTIFACT-001")
+        .with_related_requirement("BUILD-ARTIFACT-002")
 }
 
 fn paths_overlap(left: &Path, right: &Path) -> bool {
     is_path_ancestor_or_equal(left, right) || is_path_ancestor_or_equal(right, left)
+}
+
+fn paths_overlap_with_filesystem_alias(
+    left: &Path,
+    right: &Path,
+    right_field: &str,
+    left_filesystem_path: &ResolvedFilesystemPath,
+) -> Result<bool> {
+    if paths_overlap(left, right) {
+        return Ok(true);
+    }
+
+    let right_filesystem_path = resolve_existing_prefix(right, right_field)?;
+    if paths_overlap(
+        &left_filesystem_path.canonical_path,
+        &right_filesystem_path.canonical_path,
+    ) {
+        return Ok(true);
+    }
+
+    if same_existing_prefix(left_filesystem_path, &right_filesystem_path, right_field)? {
+        return relative_tails_overlap(left_filesystem_path, &right_filesystem_path);
+    }
+    Ok(false)
+}
+
+/// Resolve all existing path components through the filesystem and retain a
+/// not-yet-created tail for comparison with another project path.
+///
+/// `canonicalize` alone cannot handle the future artifact root, while a
+/// lexical comparison cannot observe symlink aliases or the target volume's
+/// case behavior. The longest existing prefix gives both behaviors without
+/// inventing a global case-folding rule.
+#[derive(Debug)]
+struct ResolvedFilesystemPath {
+    canonical_path: PathBuf,
+    existing_prefix: PathBuf,
+    missing_tail: Vec<OsString>,
+}
+
+fn resolve_existing_prefix(path: &Path, field: &str) -> Result<ResolvedFilesystemPath> {
+    let mut existing = path.to_path_buf();
+    let mut missing_tail = Vec::<OsString>::new();
+
+    loop {
+        match fs::symlink_metadata(&existing) {
+            Ok(_) => {
+                if !missing_tail.is_empty() {
+                    let followed = fs::metadata(&existing).map_err(|error| {
+                        unsafe_project_path_error(
+                            &existing,
+                            format!(
+                                "could not resolve {field} for filesystem alias safety: {error}"
+                            ),
+                        )
+                    })?;
+                    if !followed.is_dir() {
+                        return Err(unsafe_project_path_error(
+                            &existing,
+                            format!(
+                                "{field} has a non-directory component before its unresolved tail"
+                            ),
+                        ));
+                    }
+                }
+
+                let canonical_prefix = fs::canonicalize(&existing).map_err(|error| {
+                    unsafe_project_path_error(
+                        &existing,
+                        format!("could not resolve {field} for filesystem alias safety: {error}"),
+                    )
+                })?;
+                let mut canonical_path = canonical_prefix;
+                for component in missing_tail.iter().rev() {
+                    canonical_path.push(component);
+                }
+                return Ok(ResolvedFilesystemPath {
+                    canonical_path,
+                    existing_prefix: existing,
+                    missing_tail: missing_tail.into_iter().rev().collect(),
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let Some(name) = existing.file_name() else {
+                    return Err(unsafe_project_path_error(
+                        path,
+                        format!("could not resolve {field} for filesystem alias safety"),
+                    ));
+                };
+                missing_tail.push(name.to_os_string());
+                if !existing.pop() {
+                    return Err(unsafe_project_path_error(
+                        path,
+                        format!("could not resolve {field} for filesystem alias safety"),
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(unsafe_project_path_error(
+                    &existing,
+                    format!("could not resolve {field} for filesystem alias safety: {error}"),
+                ));
+            }
+        }
+    }
+}
+
+fn filesystem_paths_equal(
+    left: &ResolvedFilesystemPath,
+    right: &ResolvedFilesystemPath,
+) -> Result<bool> {
+    if left.canonical_path == right.canonical_path {
+        return Ok(true);
+    }
+    if !left.missing_tail.is_empty() || !right.missing_tail.is_empty() {
+        return Ok(false);
+    }
+    same_file::is_same_file(&left.existing_prefix, &right.existing_prefix).map_err(|error| {
+        unsafe_project_path_error(
+            &right.existing_prefix,
+            format!("could not compare filesystem identity: {error}"),
+        )
+    })
+}
+
+fn same_existing_prefix(
+    left: &ResolvedFilesystemPath,
+    right: &ResolvedFilesystemPath,
+    right_field: &str,
+) -> Result<bool> {
+    same_file::is_same_file(&left.existing_prefix, &right.existing_prefix).map_err(|error| {
+        unsafe_project_path_error(
+            &right.existing_prefix,
+            format!("could not resolve {right_field} for filesystem alias safety: {error}"),
+        )
+    })
+}
+
+fn relative_tails_overlap(
+    left: &ResolvedFilesystemPath,
+    right: &ResolvedFilesystemPath,
+) -> Result<bool> {
+    if component_prefix(
+        &left.missing_tail,
+        &right.missing_tail,
+        &left.existing_prefix,
+    )? {
+        return Ok(true);
+    }
+    component_prefix(
+        &right.missing_tail,
+        &left.missing_tail,
+        &left.existing_prefix,
+    )
+}
+
+fn component_prefix(
+    candidate: &[OsString],
+    target: &[OsString],
+    existing_prefix: &Path,
+) -> Result<bool> {
+    if candidate.len() > target.len() {
+        return Ok(false);
+    }
+
+    for (candidate, target) in candidate.iter().zip(target) {
+        if candidate == target {
+            continue;
+        }
+        if !ascii_case_variant(candidate, target) {
+            return Ok(false);
+        }
+        match detect_case_behavior(existing_prefix)? {
+            CaseBehavior::Insensitive => {}
+            CaseBehavior::Sensitive => return Ok(false),
+            CaseBehavior::Unknown => {
+                return Err(unsafe_project_path_error(
+                    existing_prefix,
+                    "could not determine filesystem case behavior for future path safety",
+                ));
+            }
+        }
+    }
+    Ok(true)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaseBehavior {
+    Sensitive,
+    Insensitive,
+    Unknown,
+}
+
+/// Probe the actual directory namespace without creating a temporary entry.
+/// An existing entry and a case-variant lookup distinguish a case-insensitive
+/// directory from a case-sensitive one; seeing both exact spellings means the
+/// filesystem keeps them distinct. Empty directories remain Unknown so a
+/// future case collision cannot be silently allowed.
+fn detect_case_behavior(directory: &Path) -> Result<CaseBehavior> {
+    let entries = fs::read_dir(directory).map_err(|error| {
+        unsafe_project_path_error(
+            directory,
+            format!("could not inspect filesystem case behavior: {error}"),
+        )
+    })?;
+    let names = entries
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name())
+                .map_err(|error| unsafe_project_path_error(directory, error.to_string()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    for name in &names {
+        let Some(variant) = ascii_case_variant_for_probe(name) else {
+            continue;
+        };
+        let variant_exists = match fs::symlink_metadata(directory.join(&variant)) {
+            Ok(_) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => {
+                return Err(unsafe_project_path_error(
+                    directory,
+                    format!("could not inspect filesystem case behavior: {error}"),
+                ));
+            }
+        };
+        if !variant_exists {
+            return Ok(CaseBehavior::Sensitive);
+        }
+        if names.iter().any(|entry| entry == &variant) {
+            return Ok(CaseBehavior::Sensitive);
+        }
+        return Ok(CaseBehavior::Insensitive);
+    }
+    Ok(CaseBehavior::Unknown)
+}
+
+fn ascii_case_variant(left: &OsString, right: &OsString) -> bool {
+    left.to_str()
+        .zip(right.to_str())
+        .is_some_and(|(left, right)| left != right && left.eq_ignore_ascii_case(right))
+}
+
+fn ascii_case_variant_for_probe(name: &OsString) -> Option<OsString> {
+    let mut variant = name.to_str()?.as_bytes().to_vec();
+    let index = variant.iter().position(u8::is_ascii_alphabetic)?;
+    let byte = variant[index];
+    variant[index] = if byte.is_ascii_lowercase() {
+        byte.to_ascii_uppercase()
+    } else {
+        byte.to_ascii_lowercase()
+    };
+    String::from_utf8(variant).ok().map(OsString::from)
 }
 
 fn is_path_ancestor_or_equal(candidate: &Path, target: &Path) -> bool {

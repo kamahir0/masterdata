@@ -485,6 +485,135 @@ fn source_discovery_does_not_follow_symlink_entries_guard() {
     assert_eq!(files.len(), 1);
 }
 
+#[cfg(unix)]
+#[test]
+fn project_path_001_rejects_source_symlink_alias() {
+    let directory = tempdir().expect("temporary directory");
+    let actual_sources = directory.path().join("actual-sources");
+    fs::create_dir(&actual_sources).expect("actual sources");
+    let sentinel = actual_sources.join("item.yaml");
+    fs::write(&sentinel, "kind: data\ntable: item\nrecords: []\n").expect("source");
+    symlink(&actual_sources, directory.path().join("sources-link")).expect("source symlink");
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"alias\"\nname = \"Alias\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources-link\"]\n\n[build]\nartifact_dir = \"actual-sources\"\ncache = \".masterdata/cache\"\n",
+    )
+    .expect("config");
+
+    let error = Project::discover(Some(directory.path()), directory.path())
+        .expect_err("source alias must be rejected");
+    assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    assert_eq!(
+        fs::read(&sentinel).expect("source remains"),
+        b"kind: data\ntable: item\nrecords: []\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn project_path_001_allows_nonoverlapping_source_symlink() {
+    let directory = tempdir().expect("temporary directory");
+    let actual_sources = directory.path().join("actual-sources");
+    fs::create_dir(&actual_sources).expect("actual sources");
+    symlink(&actual_sources, directory.path().join("sources-link")).expect("source symlink");
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"alias\"\nname = \"Alias\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources-link\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
+    )
+    .expect("config");
+
+    Project::discover(Some(directory.path()), directory.path())
+        .expect("unrelated source symlink remains allowed");
+}
+
+#[cfg(unix)]
+#[test]
+fn project_path_001_rejects_source_symlink_ancestor_alias() {
+    let directory = tempdir().expect("temporary directory");
+    let actual_sources = directory.path().join("actual-sources");
+    fs::create_dir(&actual_sources).expect("actual sources");
+    symlink(&actual_sources, directory.path().join("sources-link")).expect("source symlink");
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"alias\"\nname = \"Alias\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources-link\"]\n\n[build]\nartifact_dir = \"actual-sources/generated\"\ncache = \".masterdata/cache\"\n",
+    )
+    .expect("config");
+
+    let error = Project::discover(Some(directory.path()), directory.path())
+        .expect_err("source ancestor alias must be rejected");
+    assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    assert!(!actual_sources.join("generated").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn project_path_001_rejects_cache_symlink_alias() {
+    let directory = tempdir().expect("temporary directory");
+    let artifact_root = directory.path().join(".masterdata/output");
+    fs::create_dir_all(&artifact_root).expect("artifact root");
+    let sentinel = artifact_root.join("sentinel");
+    fs::write(&sentinel, b"KEEP").expect("artifact sentinel");
+    symlink(
+        &artifact_root,
+        directory.path().join(".masterdata/cache-link"),
+    )
+    .expect("cache symlink");
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"cache-alias\"\nname = \"Cache Alias\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache-link\"\n",
+    )
+    .expect("config");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+
+    let error = Project::discover(Some(directory.path()), directory.path())
+        .expect_err("cache alias must be rejected");
+    assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    assert_eq!(fs::read(&sentinel).expect("artifact remains"), b"KEEP");
+}
+
+#[test]
+fn project_path_001_handles_case_alias_using_filesystem_behavior() {
+    let directory = tempdir().expect("temporary directory");
+    let sources = directory.path().join("Sources");
+    fs::create_dir(&sources).expect("sources");
+    let case_insensitive = fs::metadata(directory.path().join("sources")).is_ok();
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"case-alias\"\nname = \"Case Alias\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"Sources\"]\n\n[build]\nartifact_dir = \"sources\"\ncache = \".masterdata/cache\"\n",
+    )
+    .expect("config");
+
+    let result = Project::discover(Some(directory.path()), directory.path());
+    if case_insensitive {
+        let error = result.expect_err("case alias must be rejected");
+        assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    } else {
+        result.expect("distinct case-sensitive paths remain valid");
+    }
+}
+
+#[test]
+fn project_path_001_handles_case_alias_with_missing_tails_using_filesystem_behavior() {
+    let directory = tempdir().expect("temporary directory");
+    let sources = directory.path().join("Sources");
+    fs::create_dir(&sources).expect("sources");
+    fs::write(sources.join("case-probe.yaml"), "# probe\n").expect("probe entry");
+    let case_insensitive = fs::metadata(directory.path().join("sources")).is_ok();
+    fs::write(
+        directory.path().join(PROJECT_CONFIG_FILENAME),
+        "[project]\nid = \"case-future-alias\"\nname = \"Case Future Alias\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"Sources/source-data\"]\n\n[build]\nartifact_dir = \"sources/Source-Data\"\ncache = \".masterdata/cache\"\n",
+    )
+    .expect("config");
+
+    let result = Project::discover(Some(directory.path()), directory.path());
+    if case_insensitive {
+        let error = result.expect_err("future case alias must be rejected");
+        assert_eq!(error.diagnostic().code, "E-PROJECT-PATH-UNSAFE");
+    } else {
+        result.expect("distinct case-sensitive future paths remain valid");
+    }
+}
+
 #[test]
 fn missing_source_root_has_no_unrelated_table_identity_requirement() {
     let directory = tempdir().expect("temp directory");

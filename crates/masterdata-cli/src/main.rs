@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use masterdata_app::ApplicationService;
+use masterdata_app::NativeApplicationService;
 use masterdata_core::{ErrorKind, InitOptions, MasterdataError, Result};
 
 #[derive(Debug, Parser)]
@@ -79,7 +79,7 @@ fn run() -> Result<()> {
             format!("could not determine current directory: {error}"),
         )
     })?;
-    let service = ApplicationService::new();
+    let service = NativeApplicationService::new();
 
     match cli.command {
         Command::Init(args) => {

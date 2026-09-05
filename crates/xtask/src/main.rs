@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::{Parser, Subcommand};
-use masterdata_app::ApplicationService;
+use masterdata_app::NativeApplicationService;
 use masterdata_core::{ErrorKind, MasterdataError, Project, Result};
 
 mod rationale_check;
@@ -212,6 +212,22 @@ fn cli_smoke() -> Result<()> {
             OsString::from("--"),
             OsString::from("--project"),
             destination.as_os_str().to_owned(),
+            OsString::from("build"),
+            OsString::from("--dry-run"),
+        ],
+        &repository_root(),
+        &[],
+    )?;
+    run_program(
+        cargo_command(),
+        [
+            OsString::from("run"),
+            OsString::from("--quiet"),
+            OsString::from("--package"),
+            OsString::from("masterdata-cli"),
+            OsString::from("--"),
+            OsString::from("--project"),
+            destination.as_os_str().to_owned(),
             OsString::from("validate"),
         ],
         &repository_root(),
@@ -252,7 +268,7 @@ fn test_integration() -> Result<()> {
             "minimal fixture validation failed",
         ));
     }
-    let service = ApplicationService::new();
+    let service = NativeApplicationService::new();
     let plan = service.prepare_build(Some(&destination), &repository_root())?;
     let generation = service.plan_csharp(&plan)?;
     println!("fixture: {}", destination.display());
@@ -293,7 +309,7 @@ fn test_integration() -> Result<()> {
 }
 
 fn mastermemory_spike() -> Result<()> {
-    let report = ApplicationService::new().mastermemory_spike(&repository_root())?;
+    let report = NativeApplicationService::new().mastermemory_spike(&repository_root())?;
     println!(
         "MasterMemory {} / MessagePack {}: binary {} bytes, reloaded item {} = {}",
         report.master_memory_version,

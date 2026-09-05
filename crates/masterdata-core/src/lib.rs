@@ -15,7 +15,7 @@ mod table;
 mod type_system;
 mod validation;
 
-pub use application::ProjectService;
+pub use application::{NativeProjectService, ProjectService};
 pub use config::{
     BuildConfig, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget, PublishTargetKind,
     SourceConfig,
@@ -28,7 +28,8 @@ pub use document::{
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use pipeline::{
-    BuildPlan, BuildStatus, compute_schema_source_content_hash, prepare_build_with_selection,
+    BuildPlan, BuildStatus, SemanticBuildPreparation, compute_schema_source_content_hash,
+    prepare_build_from_documents, prepare_build_with_selection, prepare_semantic_build,
 };
 pub use project::{
     InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, PublishTargetInfo,

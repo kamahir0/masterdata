@@ -1,16 +1,23 @@
 use std::path::Path;
 
 use crate::Result;
-use crate::pipeline::{BuildPlan, prepare_build, prepare_build_with_selection};
+use crate::pipeline::{BuildPlan, prepare_build_from_documents};
 use crate::project::{InitOptions, Project, ProjectInfo, initialize_project};
 use crate::table::BuildSelection;
 use crate::validation::ValidationReport;
 
-/// Application service shared by CLI and Tauri.
+/// Native project service used by native composition roots.
+//
+// WHY: project discovery, filesystem reads, and native path resolution are
+// host I/O responsibilities. Naming this boundary explicitly prevents a
+// future Browser Host from treating native project access as pure semantics.
+// IF REMOVED: native filesystem authority can leak into shared/browser
+// preparation and create a second, incompatible project-loading path.
+// EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
 #[derive(Debug, Default, Clone, Copy)]
-pub struct ProjectService;
+pub struct NativeProjectService;
 
-impl ProjectService {
+impl NativeProjectService {
     pub fn new() -> Self {
         Self
     }
@@ -37,7 +44,8 @@ impl ProjectService {
         current_dir: &Path,
     ) -> Result<BuildPlan> {
         let project = Project::discover(explicit_project, current_dir)?;
-        prepare_build(&project)
+        let documents = project.load_documents()?;
+        prepare_build_from_documents(project.info(), documents, &BuildSelection::unfiltered())
     }
 
     pub fn prepare_build_with_selection(
@@ -47,10 +55,14 @@ impl ProjectService {
         selection: &BuildSelection,
     ) -> Result<BuildPlan> {
         let project = Project::discover(explicit_project, current_dir)?;
-        prepare_build_with_selection(&project, selection)
+        let documents = project.load_documents()?;
+        prepare_build_from_documents(project.info(), documents, selection)
     }
 
     pub fn init(&self, root: &Path, options: &InitOptions) -> Result<ProjectInfo> {
         initialize_project(root, options)
     }
 }
+
+/// Compatibility name for existing core consumers.
+pub type ProjectService = NativeProjectService;

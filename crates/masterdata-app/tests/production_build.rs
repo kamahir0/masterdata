@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-use masterdata_app::ApplicationService;
+use masterdata_app::NativeApplicationService;
 use masterdata_core::{BuildSelection, PROJECT_CONFIG_FILENAME};
 use tempfile::{Builder, TempDir};
 
@@ -34,7 +34,7 @@ fn production_build_handoffs_full_selected_model_through_real_builder() {
     fs::create_dir_all(legacy_generated.parent().expect("legacy parent"))
         .expect("legacy generated directory");
     fs::write(&legacy_generated, b"legacy artifact").expect("legacy generated file");
-    let execution = ApplicationService::new()
+    let execution = NativeApplicationService::new()
         .build(Some(project.path()), project.path(), false)
         .expect("production build");
 
@@ -107,7 +107,7 @@ fn production_build_accepts_empty_selected_table() {
     let project = copy_full_fixture("empty production project with spaces");
     fs::remove_file(project.path().join("sources/catalog-data.yaml")).expect("remove data fixture");
 
-    let execution = ApplicationService::new()
+    let execution = NativeApplicationService::new()
         .build(Some(project.path()), project.path(), false)
         .expect("empty table production build");
     let binary = execution.binary.expect("binary report");
@@ -128,7 +128,7 @@ fn production_build_uses_resolved_build_selection() {
     let project = copy_full_fixture("selected production project with spaces");
     let selection =
         BuildSelection::new(["production"], std::iter::empty::<&str>()).expect("selection");
-    let execution = ApplicationService::new()
+    let execution = NativeApplicationService::new()
         .build_with_selection(Some(project.path()), project.path(), &selection, false)
         .expect("selected production build");
     let binary = execution.binary.expect("binary report");
@@ -150,7 +150,7 @@ fn production_build_removes_stale_generated_file_after_source_removal() {
     }
 
     let project = copy_full_fixture("stale generated project with spaces");
-    let service = ApplicationService::new();
+    let service = NativeApplicationService::new();
     service
         .build(Some(project.path()), project.path(), false)
         .expect("initial production build");
@@ -180,7 +180,7 @@ fn production_build_failure_preserves_existing_canonical_artifact_set() {
     }
 
     let project = copy_full_fixture("publication rollback project with spaces");
-    let service = ApplicationService::new();
+    let service = NativeApplicationService::new();
     service
         .build(Some(project.path()), project.path(), false)
         .expect("initial production build");
@@ -188,9 +188,9 @@ fn production_build_failure_preserves_existing_canonical_artifact_set() {
     let artifact_root = project.path().join(".masterdata/output");
     let before = snapshot_files(&artifact_root);
 
-    let error = ApplicationService::with_dotnet(masterdata_dotnet::DotnetBridge::with_executable(
-        "/definitely/missing/masterdata-dotnet",
-    ))
+    let error = NativeApplicationService::with_dotnet(
+        masterdata_dotnet::DotnetBridge::with_executable("/definitely/missing/masterdata-dotnet"),
+    )
     .build(Some(project.path()), project.path(), false)
     .expect_err("unavailable builder must fail");
 
@@ -204,7 +204,7 @@ fn production_build_dry_run_does_not_create_canonical_artifacts() {
     let artifact_root = project.path().join(".masterdata/output");
     assert!(!artifact_root.exists());
 
-    let execution = ApplicationService::new()
+    let execution = NativeApplicationService::new()
         .build(Some(project.path()), project.path(), true)
         .expect("dry-run build");
 

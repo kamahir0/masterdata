@@ -195,6 +195,13 @@ impl SourceDocument {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoadedDocument {
     pub path: PathBuf,
+    // WHY: Shared semantic preparation must hash the exact UTF-8 source that
+    // was parsed, rather than consulting native filesystem state again.
+    // IF REMOVED: a browser or native snapshot could validate one source and
+    // hash a different later filesystem version.
+    // EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
+    // Regression: schema_source_hash_uses_loaded_source_content.
+    pub source: String,
     pub document: SourceDocument,
 }
 
@@ -233,6 +240,7 @@ impl ProjectDocuments {
 }
 
 pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocument> {
+    let source = content.to_owned();
     // serde_yaml normalizes numeric-looking and legacy YAML scalar spellings
     // before typed deserialization. Keep the subset lexical gate before that
     // boundary so forbidden spellings cannot become indistinguishable from
@@ -287,7 +295,11 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
         .with_source(path.clone())
     })?;
 
-    Ok(LoadedDocument { path, document })
+    Ok(LoadedDocument {
+        path,
+        source,
+        document,
+    })
 }
 
 #[derive(Default)]

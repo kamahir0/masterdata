@@ -1,6 +1,9 @@
 use std::fs;
 
-use masterdata_core::{Project, ProjectService};
+use masterdata_core::{
+    BuildSelection, Project, ProjectService, compute_schema_source_content_hash,
+    prepare_build_from_documents, prepare_semantic_build,
+};
 use tempfile::tempdir;
 
 fn write_project(root: &std::path::Path, schema: &str, build: &str) {
@@ -46,6 +49,50 @@ fn schema_source_hash_tracks_raw_schema_bytes() {
         .schema_source_content_hash;
 
     assert_ne!(first, second);
+}
+
+#[test]
+fn schema_source_hash_uses_loaded_source_content() {
+    let directory = tempdir().expect("temp directory");
+    write_project(
+        directory.path(),
+        "kind: schema\ntable: item\nfields: []\n",
+        "",
+    );
+
+    let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
+    let documents = project.load_documents().expect("loaded documents");
+    let expected = compute_schema_source_content_hash(&documents);
+
+    fs::remove_file(directory.path().join("sources/schema.yaml")).expect("remove source");
+
+    assert_eq!(compute_schema_source_content_hash(&documents), expected);
+}
+
+#[test]
+fn build_preparation_accepts_loaded_documents() {
+    let directory = tempdir().expect("temp directory");
+    write_project(
+        directory.path(),
+        "kind: schema\ntable: item\nfields: []\n",
+        "",
+    );
+
+    let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
+    let documents = project.load_documents().expect("loaded documents");
+    fs::remove_file(directory.path().join("sources/schema.yaml")).expect("remove source");
+
+    let semantic = prepare_semantic_build(documents.clone(), &BuildSelection::unfiltered())
+        .expect("semantic preparation");
+    let plan =
+        prepare_build_from_documents(project.info(), documents, &BuildSelection::unfiltered())
+            .expect("build plan from snapshot");
+
+    assert_eq!(
+        plan.schema_source_content_hash,
+        semantic.schema_source_content_hash
+    );
+    assert!(plan.validation.valid);
 }
 
 #[test]

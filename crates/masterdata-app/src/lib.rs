@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use masterdata_codegen_csharp::{CSharpGenerationPlan, CSharpGenerator};
 use masterdata_core::{
-    BuildPlan, BuildSelection, ErrorKind, InitOptions, MasterdataError, ProjectInfo,
-    ProjectService, Result, ValidationReport,
+    BuildPlan, BuildSelection, ErrorKind, InitOptions, MasterdataError, NativeProjectService,
+    ProjectInfo, Result, ValidationReport,
 };
 use masterdata_dotnet::{
     BridgeSmokeReport, DotnetBridge, MasterMemoryBuildReport, MasterMemoryBuildRequest,
@@ -20,22 +20,27 @@ use masterdata_dotnet::{
 use tempfile::TempDir;
 
 #[derive(Debug, Clone)]
-pub struct ApplicationService {
-    project: ProjectService,
+pub struct NativeApplicationService {
+    project: NativeProjectService,
     generator: CSharpGenerator,
     dotnet: DotnetBridge,
 }
 
-impl Default for ApplicationService {
+// WHY: CLI, Tauri, and a future Connected Web adapter must use one native
+// application workflow while the CLI remains direct and in-process.
+// IF REMOVED: host adapters can fork build/.NET/artifact semantics or force
+// the CLI through a transport boundary.
+// EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
+impl Default for NativeApplicationService {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ApplicationService {
+impl NativeApplicationService {
     pub fn new() -> Self {
         Self {
-            project: ProjectService::new(),
+            project: NativeProjectService::new(),
             generator: CSharpGenerator::default(),
             dotnet: DotnetBridge::default(),
         }
@@ -46,7 +51,7 @@ impl ApplicationService {
     /// adapters.
     pub fn with_dotnet(dotnet: DotnetBridge) -> Self {
         Self {
-            project: ProjectService::new(),
+            project: NativeProjectService::new(),
             generator: CSharpGenerator::default(),
             dotnet,
         }
@@ -220,6 +225,10 @@ impl ApplicationService {
         self.dotnet.mastermemory_spike(repository_root)
     }
 }
+
+/// Compatibility name for existing CLI, Tauri, test, and repository-tool
+/// consumers. The implementation authority is `NativeApplicationService`.
+pub type ApplicationService = NativeApplicationService;
 
 #[derive(Debug, Clone)]
 pub struct BuildExecution {

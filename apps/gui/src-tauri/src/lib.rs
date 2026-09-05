@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use masterdata_app::ApplicationService;
+use masterdata_app::NativeApplicationService;
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo};
 use serde::Serialize;
 
@@ -64,7 +64,7 @@ fn project_info(project_path: Option<String>) -> std::result::Result<ProjectInfo
     let current_dir = current_directory()?;
     let configured_path = project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok());
     let explicit_path = configured_path.as_deref().map(Path::new);
-    ApplicationService::new()
+    NativeApplicationService::new()
         .project_info(explicit_path, &current_dir)
         .map_err(ApiError::from)
 }
@@ -90,7 +90,7 @@ fn build(
     let current_dir = current_directory()?;
     let configured_path = project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok());
     let explicit_path = configured_path.as_deref().map(Path::new);
-    let execution = ApplicationService::new()
+    let execution = NativeApplicationService::new()
         .build(explicit_path, &current_dir, dry_run)
         .map_err(ApiError::from)?;
     Ok(BuildResponse {

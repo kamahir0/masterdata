@@ -104,7 +104,8 @@ path/execution semanticsは変更しない。Connected WebはそれらのNative 
 
 - browser support matrix、File System Access API fallback、IndexedDB等のexact persistence。
 - Native HostのHTTP/WebSocket等のtransport、port discovery、pairing token、origin allowlist。
-- Native Host installer/service lifecycle、auto-start、update、protocol backward compatibility window。
+- Native Host lifecycle integrationのmechanical choice、update、protocol backward compatibility window。zero-terminal normal
+  workflowのobservable contractは、後続のspecification changeで確定する。
 - dirty-buffer handoff、Standalone/Connected transition UX、permission/session renewal。
 - GitHub Pages custom domain、PWA/offline、service worker/cache、browser filesystem edge cases。
 
@@ -115,3 +116,8 @@ boundary、CLI direct composition、shared frontend/domain、.NET boundary維持
 承認した。採用されたobservable behaviorのcanonical ownerは
 [Runtime hosts仕様](../specs/runtime-hosts.md)であり、RFCはalternativeとtrade-offを記録する。詳細なruntime、security、
 transportは後続のimplementation/specification taskで決める。
+
+通常のWeb利用でterminalを要求しないNative Host lifecycleのobservable contractは、
+[specification change 0010](../spec-changes/0010-zero-terminal-native-host-lifecycle.md)および
+`RUNTIME-HOST-014..016`としてruntime hosts仕様へ適用する。RFCのStatusと、Native Hostのmechanical implementation
+choicesは変更しない。

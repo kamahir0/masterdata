@@ -6,7 +6,8 @@ Status: Approved
 Native Host / Browser Hostのruntime boundaryを定義する。これは
 [Web / Native Host runtime RFC](../rfcs/0004-web-native-host-runtime.md)、
 [Host capability composition ADR](../adr/0006-host-capability-composition.md)、および
-[specification change 0009](../spec-changes/0009-web-native-host-architecture.md)を根拠とする。
+[specification change 0009](../spec-changes/0009-web-native-host-architecture.md)と
+[zero-terminal lifecycle change 0010](../spec-changes/0010-zero-terminal-native-host-lifecycle.md)を根拠とする。
 
 このdocumentのnormative requirementは、Web runtime、WASM adapter、Native Host、loopback transport、
 またはpublish runtimeの実装を意味しない。既存のbuild/publish semanticsは
@@ -53,7 +54,7 @@ MasterDataは、YAMLをsource of truthとするlocal-first productである。We
 
 ## Normative Requirements
 
-### RUNTIME-HOST-001 — shared semantics and frontend
+### RUNTIME-HOST-001
 
 CLI、Tauri Desktop、Standalone Web、Connected Webは、同じdomain/application semanticsを共有しなければ
 ならない（MUST）。YAML semantics、validation、Type System、Table resolution、Build Selectionなどを
@@ -61,14 +62,14 @@ hostごとに再実装してはならない（MUST NOT）。editor/domain UIの�
 利用すべきであり（SHOULD）、entrypoint、transport adapter、permission UIなどhost固有部分は分離してよい
 （MAY）。これは全source codeを100%共有することを要求しない。
 
-### RUNTIME-HOST-002 — CLI direct composition
+### RUNTIME-HOST-002
 
 CLIは、Native Application Servicesをin-processの直接呼び出しで利用しなければならない（MUST）。Web対応を
 理由として、CLIにlocalhost RPC、HTTP/WebSocket round-trip、browser transport、または不要なserialization
 を必須にしてはならない（MUST NOT）。CLI単体のdirect pathと性能特性は、Webのtransport boundaryから独立して
 維持する。
 
-### RUNTIME-HOST-003 — Standalone Web capability boundary
+### RUNTIME-HOST-003
 
 Standalone WebはBrowser Hostを通じて、userが明示的に許可したworkspaceのopen、source read、source edit、
 source write、YAML parse、semantic validation、Type System、Table validation、Build Selection semantics
@@ -79,14 +80,14 @@ canonical artifact publication、またはexternal publishを実行してはな�
 存在しない場合、UI/application contractは機能が利用不可であることをcapabilityとして判定できなければ
 ならず、unsupportedなbuildを実行してからerrorにする設計を必須にしてはならない（MUST NOT）。
 
-### RUNTIME-HOST-004 — Connected Web native capability
+### RUNTIME-HOST-004
 
 Webがcompatibleかつexplicitly authorizedなNative Hostへ接続したConnected modeでは、Native Hostがadvertise
 し、かつsessionでgrantしたcapabilityの範囲でworkspace access、validation、build、publish、native
 filesystem semantics、system dotnetを利用できる（MAY）。Connected WebはNative capabilityを暗黙に仮定して
 はならず、capabilityがないoperationを実行してはならない（MUST NOT）。
 
-### RUNTIME-HOST-005 — capability-driven feature availability
+### RUNTIME-HOST-005
 
 build、publish、workspace read/writeなどのfeature availabilityは、OSやhost名だけではなく、negotiatedかつ
 granted capabilityによって決定しなければならない（MUST）。概念上のcapabilityには
@@ -94,7 +95,7 @@ granted capabilityによって決定しなければならない（MUST）。概�
 この仕様で固定しない。`web`だから常にbuild不可、または`desktop`だから常にbuild可というplatform-only
 分岐をcanonical contractにしてはならない（MUST NOT）。
 
-### RUNTIME-HOST-006 — shared Native Application Services
+### RUNTIME-HOST-006
 
 CLI、Tauri Desktop、Connected Webは、Native filesystem、project loading、path safety、system dotnet、
 canonical artifact build/publication、external publishなどのNative Application Servicesを共有しなければ
@@ -102,7 +103,7 @@ canonical artifact build/publication、external publishなどのNative Applicati
 Connected WebをCLIとは異なるbuild pipelineの実装として扱ってはならない（MUST NOT）。adapterはuse-caseを
 呼び出すboundaryであり、shared application semanticsのauthorityではない。
 
-### RUNTIME-HOST-007 — Browser workspace authorization
+### RUNTIME-HOST-007
 
 Browser Hostは、userのexplicit permissionを得たworkspaceだけをapplicationへ提供しなければならない
 （MUST）。workspace外のfileを暗黙にread/writeしてはならず（MUST NOT）、local absolute filesystem pathを
@@ -110,7 +111,7 @@ Webのauthorityまたはpermission tokenとして扱ってはならない（MUST
 project-relative pathとpermission-granted workspace boundaryを提供する。File System Access API、IndexedDB、
 またはそれらのfallbackの選択はこの仕様で固定しない。
 
-### RUNTIME-HOST-008 — Native Host security boundary
+### RUNTIME-HOST-008
 
 Native Hostは、少なくとも次のsecurity boundaryを持たなければならない（MUST）。
 
@@ -128,7 +129,7 @@ publish authorityを得られるprotocolを設計してはならない（MUST NO
 coarse-grained boundaryを優先しなければならない（MUST）。token format、pairing UX、origin allowlist、
 transport mechanicsの詳細は後続security designで定める。
 
-### RUNTIME-HOST-009 — protocol and capability negotiation
+### RUNTIME-HOST-009
 
 Connected Webは、Native Hostとの接続前またはoperation開始前に、少なくともprotocol version、engine/tool
 version information、およびcapabilitiesをnegotiationできなければならない（MUST）。互換性を確認できない
@@ -136,7 +137,7 @@ Native Hostへcommandを送ってはならず（MUST NOT）、Standalone modeへ
 guidanceを可能にする。wire JSON shape、transport protocol、backward compatibility windowはこの仕様で
 固定しない。
 
-### RUNTIME-HOST-010 — Native-only MasterMemory/.NET boundary
+### RUNTIME-HOST-010
 
 Native full buildは、[ADR 0003](../adr/0003-dotnet-mastermemory-bridge.md)の.NET delegation boundaryを
 使用しなければならない（MUST）。Web対応を理由にbrowserへRoslyn、system dotnet、MasterMemory builderを
@@ -144,7 +145,7 @@ bundleしてはならず（MUST NOT）、raw YAMLをbrowser独自のbuilderへ�
 formatをRustまたはbrowser側で再実装してはならない（MUST NOT）。Standalone Webはbinary buildを行わず、Connected Webの
 full buildはNative Hostが既存Native pipelineとsystem dotnetを実行する。
 
-### RUNTIME-HOST-011 — workspace URL local bookmark semantics
+### RUNTIME-HOST-011
 
 workspace URLは、同じmachine/browser profileまたはNative registrationでworkspaceを再openするためのlocal
 bookmark/registration semanticsとして扱わなければならない（MUST）。URLへOS absolute filesystem pathを埋め
@@ -153,7 +154,7 @@ bookmark/registration semanticsとして扱わなければならない（MUST）
 identityが存在しない場合はworkspaceの再選択を可能にする。cloud project share URLやcross-device identityは
 この仕様の意味に含めない。
 
-### RUNTIME-HOST-012 — static hosting and local-first Web
+### RUNTIME-HOST-012
 
 Web frontendは、central application server、database、user account、remote build serviceへの必須依存なしに
 static hostingできなければならない（MUST）。初期deployment targetはGitHub Pagesとするが、GitHub Pages固有の
@@ -161,7 +162,7 @@ static hostingできなければならない（MUST）。初期deployment target
 維持する。Standalone Webのuser dataとcomputeはlocal-firstであり、cloud workspace sync、multi-user
 collaboration、remote buildはこのcontractの必須機能ではない。
 
-### RUNTIME-HOST-013 — host boundary and synchronous pure core
+### RUNTIME-HOST-013
 
 host boundaryはfilesystem I/O、workspace acquisition、native filesystem identity、process execution、
 system dotnet、artifact/external publication、browser persistence、browser permission、およびtransportなど
@@ -169,6 +170,66 @@ host固有の責務に限定すべきである（SHOULD）。YAML parser、typed
 などのpure/domain logicへ、platform、transport、または不要なasync semanticsを漏らしてはならない（MUST NOT）。
 asyncなHost I/Oはbytesまたはlogical documentsへ変換してからsynchronousなpure coreへ渡し、結果を必要に
 応じてasync Host I/Oへ戻す境界を基本とする。Web対応だけを理由に全coreをtrait化またはasync化しない。
+
+### RUNTIME-HOST-014
+
+Native componentsがsupported environmentへ正常にinstall/setupされ、必要なpairingまたはauthorizationが有効な場合、
+通常のWeb利用でConnected modeを利用可能にするためにterminal操作、manual CLI invocation、またはshellからのNative Host
+手動起動を要求してはならない（MUST NOT）。Native distribution/setupは、Webから利用可能なNative Host lifecycle
+integrationを提供しなければならない（MUST）。これはbrowserが任意のinstalled executableをspawnできることを意味せず、
+login/startup service、background agent、on-demand activation、desktop helper、custom protocol等のexact mechanismは
+この仕様で固定しない。
+
+初回setup時に必要な明示的なauthorizationを省略してはならない。zero-terminalはzero-consentを意味せず、後続の
+reauthorization requirementもこの要件によって弱められない。
+
+### RUNTIME-HOST-015
+
+Web起動時にNative Hostが利用可能な場合、Web applicationはterminal操作なしにhost detection、protocol negotiation、
+capability negotiation、および既存authorizationのvalidationを自動的に試行できなければならない（MUST）。
+
+次の条件がすべて成立した場合、Web applicationはConnected modeへ自動遷移しなければならない（MUST）。
+
+- compatibleなNative Hostがdiscoveredである。
+- protocol compatibilityが確認されている。
+- required authorizationがvalidである。
+- advertised/granted capabilitiesが既知である。
+
+初回pairing、authorization expiry、またはsecurity-sensitiveなreauthorizationが必要な場合、Web applicationは
+explicit user consentを要求しなければならず（MUST）、無効なauthorizationを自動的に再利用してはならない（MUST NOT）。
+Connected modeは全capabilityを無条件に有効化する状態ではなく、build、publish、workspace read/writeなどのoperationは
+既存のcapability contractに従う。
+
+### RUNTIME-HOST-016
+
+Native Hostがunavailable、incompatible、またはunauthorizedの場合、Web applicationはStandalone modeを維持または
+fallbackできなければならない（MUST）。その状態ではnative operationを実行せず、利用可能なauthoring/validationを継続し、
+必要に応じてconnect、setup、update、またはreauthorizeのactionable guidanceを提示する。
+
+Native Hostのdetect、activation、またはhandshake failureだけを理由に、Web pageのstartupまたはStandalone authoringを
+fatal failureにしてはならない（MUST NOT）。protocol mismatchの場合もnative commandを送らず、Standalone fallbackまたは
+update guidanceを維持する。Native Host lifecycle failureはCLIのdirect/in-process compositionを変更せず、CLI使用時に
+RPC、daemon round-trip、Native Host availability、またはWeb handshakeを必須にしない。
+
+## Connected lifecycle state model
+
+これはexact transportやprocess managerを固定しないconceptual lifecycleである。
+
+```text
+Native components installed/setup
+    -> Web opened
+    -> Native Host discovered/available
+    -> protocol + capability negotiation
+    -> valid prior authorization checked
+       | valid                         | missing/expired/incompatible/unavailable
+       v                               v
+Connected mode                    Standalone mode + recovery guidance
+       |
+capability-scoped native operations
+```
+
+初回またはauthorization expiry時は、explicit user authorizationを完了した後に同じnegotiationを再開する。後続の通常
+visitでは、validなauthorizationを再利用できる範囲でterminalを介さないautomatic pathを使用する。
 
 ## Capabilityとcomposition root
 
@@ -207,7 +268,8 @@ semantic schema cache、`build --publish`、Unity`.meta` lifecycle、artifact si
 
 - Standalone Webの正式browser support matrix、File System Access API fallback、browser filesystem edge case
 - IndexedDB等のexact persistence、PWA、offline install、service worker/cache policy
-- Native HostのHTTP/WebSocket等のtransport、port discovery、installer/service lifecycle、auto-start、update
+- Native Host lifecycle integrationのmechanical choice（background service、on-demand activation、OS-specific startup、
+  package/installer形態、process lifetime、idle shutdown、crash restart）とupdate mechanism
 - pairing token、production/development origin allowlist、protocol backward compatibility window
 - Standalone/Connected transition、dirty buffer handoff、permission/session UI
 - GitHub Pages custom domain
@@ -228,6 +290,9 @@ semantic schema cache、`build --publish`、Unity`.meta` lifecycle、artifact si
 | RUNTIME-HOST-010 | `connected_web_uses_same_native_build_service_as_cli` and .NET boundary integration evidence | pending implementation |
 | RUNTIME-HOST-012 | `web_architecture_does_not_require_remote_backend` | pending implementation |
 | RUNTIME-HOST-013 | shared domain/host adapter boundary review and async boundary evidence | pending implementation |
+| RUNTIME-HOST-014 | `paired_native_host_connects_without_terminal_command`; `cli_does_not_depend_on_native_host_process` | pending implementation |
+| RUNTIME-HOST-015 | `web_start_auto_negotiates_native_host`; `first_connection_requires_explicit_authorization`; `expired_authorization_requires_reauthorization` | pending implementation |
+| RUNTIME-HOST-016 | `native_host_unavailable_keeps_standalone_usable`; `protocol_mismatch_keeps_native_operations_disabled` | pending implementation |
 
 ## Open Questions
 
@@ -236,7 +301,9 @@ observable detailを決めるまでOpenとする。
 
 - Standalone Webのbrowser support matrixとFile System Access API fallback strategy。
 - Browser persistenceのexact mechanism（IndexedDB等）とworkspace registration storage。
-- Native Hostのtransport、port discovery、installer/service lifecycle、auto-start、update mechanism。
+- Native Host lifecycle integrationの具体方式（background service vs on-demand activation、OS-specific startup integration、
+  installer/package manager、process lifetime、idle shutdown、crash restart、update mechanism）。zero-terminal normal workflow
+  自体は`RUNTIME-HOST-014..016`で確定している。
 - pairing token format、production/development origin allowlist、session renewal、protocol compatibility window。
 - exact workspace dirty-buffer synchronizationとStandalone/Connected mode transition UX。
 - GitHub Pages custom domain、PWA/offline install、service worker/cache policy。

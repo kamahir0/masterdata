@@ -6,6 +6,8 @@ Status: Draft
 
 Web frontendはstatic hosting可能な共有frontendとし、初期deployment targetはGitHub Pagesとする。ただし通常利用にcentral application server、database、user account、remote build serviceを必須にしない。Webのhost capability、composition root、Browser/Native Host boundaryは[Runtime hosts仕様](../specs/runtime-hosts.md)で定義する。
 
+Native componentsのsetupと初回authorizationが完了したユーザーは、通常のWeb利用でterminal操作を繰り返さずにNative Hostへ再接続し、利用可能なnative capabilityを得られる方向とする。
+
 clone可能なrepositoryを、人間のdeveloperとAI agentの双方が理解できる状態にする。behaviorはGitで仕様化し、generated artifactは再現可能にし、errorはstructured locationを持たせ、未対応featureは黙って近似せず明示する。
 
 ## 成功条件
@@ -13,6 +15,7 @@ clone可能なrepositoryを、人間のdeveloperとAI agentの双方が理解で
 - developerがUnityを開かずにprojectをdiscoverし、validateできる。
 - 同じvalidation resultをCLIとGUIの双方から取得できる。
 - Standalone Webからも共有semanticsによるauthoring・validationを利用でき、native capabilityが必要なoperationは対応するNative Hostへ明示的に接続して実行できる。
+- Native Host-enabled environmentでは、valid authorizationの範囲でWeb起動時のdetection・handshake・capability negotiationからConnected modeへ移行できる。
 - YAML fileを分割または移動してもtable identityが変わらない。
 - schema evolutionにstable IDとcompatibility checkが明示されている。
 - MasterMemory internalsは.NET ecosystemへ委譲されたままである。

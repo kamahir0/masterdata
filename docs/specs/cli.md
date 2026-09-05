@@ -179,11 +179,19 @@ surfaceとruntime capabilityは別に判定する。これは`RUNTIME-HOST-002`�
 
 ### CLI-011
 
-CLIから公開される段階的なOperationは、前段のresolve、parse、validation、semantic
-resolutionを飛ばしてはならない（MUST NOT）。後段のartifact生成またはpublishを行わずに
-前段の境界で停止することは許可されるが、後段Operationが前段の成功を暗黙に仮定して
-validation bypassを行ってはならない。これは「途中までで止めることはできるが、前段を
-飛ばしてはならない」という既存のpipeline contractをCLI surfaceへ適用するものである。
+`CLI-011`は、source-derived staged operationである`validate`、`generate`、`build`に
+適用する。これらのOperationは、source resolve、parse、semantic validation / resolution
+という前段を飛ばしてはならない（MUST NOT）。後段のartifact生成を行わず前段の境界で
+停止することは許可されるが、後段のsource-derived Operationがvalidation bypassを行って
+はならない。
+
+`publish`はsource-derived staged pipelineの後段stageではない。`publish`のpreconditionは
+publish-eligible canonical artifact setであり、current YAMLのparse、validation、freshness
+comparison、implicit buildをCLI specificationが要求してはならない（MUST NOT）。receipt
+validation、artifact integrity validation、target preflight、target executionは
+[build pipeline仕様](build-pipeline.md)が所有する。この区別により、「途中までで止める
+ことはできるが、source-derived前段を飛ばしてはならない」というruleと、Approved publish
+semanticsを両立させる。
 
 ## 現行実装との差分
 
@@ -237,7 +245,7 @@ pass済みとは扱わない。
 | CLI-007 | build失敗時のpublish未開始、publish失敗時のbuild保持、partial failure集約のtest | pending implementation |
 | CLI-008 | `-p`を受理する未承認compatibilityが存在しないことのCLI test | pending implementation |
 | CLI-009 | migrateがSchema Migration engineへ委譲され、CLIがsemantic logicを複製しないtest | pending implementation |
-| CLI-011 | 段階的Operationが前段をskipせず、境界で停止できることのCLI pipeline test | pending implementation |
+| CLI-011 | source-derived validate/generate/buildが前段をskipせず、publishがsource validationを要求しないことのCLI pipeline test | pending implementation |
 
 ## Open Questions
 
@@ -246,7 +254,8 @@ pass済みとは扱わない。
 `generate`が生成したC#をstdout、explicit output directory、dedicated non-canonical
 tool-owned areaのどこへmaterializeするかは未決定である。canonical full build artifact
 setのC#だけを部分更新する方式は採用できない。Human Approval前にdestination、cleanup、
-existing generated filesとの関係を発明してはならない。
+existing generated filesとの関係を発明してはならない。ユーザー向けproject directory
+layoutや`.masterdata/generated/csharp`等のrecommended layoutも、このproposalでは決めない。
 
 ### OQ-B: CLI result contract
 

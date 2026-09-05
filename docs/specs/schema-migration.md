@@ -77,21 +77,33 @@ Migrationは、少なくとも次のsemantic flowを経なければならない�
 
 ```text
 resolve project/workspace snapshot
-→ parse Migration Command
-→ semantic target resolution
-→ operation type/precondition check
+→ receive / validate Migration Command semantic input
+→ current exact source snapshotをcanonical parse / semantic resolution
+→ semantic target resolution / operation precondition check
 → affected logical documents calculation
-→ transformed source snapshotをin-memory構築
-→ existing canonical parser / validator / type / table / selectionでfull-project再検証
+→ Migration Commandをexpected transformed semantic snapshotへ適用
+→ deterministic source patch plan作成
+→ patchをin-memory sourceへ適用
+→ patched sourceをcanonical parserで再parse / semantic resolution
+→ expected transformed semantic resultとの整合確認
+→ existing canonical validator / type / table / selectionでfull-project再検証
 → deterministic Migration Plan作成
 → execution authorization checks
+→ commit直前のlost-update preflight
 → source mutation commit
 ```
+
+ここで`receive / validate Migration Command semantic input`は、frontend-independentな
+semantic入力を受け取り、そのshapeとoperation argumentsを検証することを表す。CLI text
+syntax parserをsemantic coreが必須とする意味ではない。CLI、GUI、Web、AI adapterは、それぞれ
+の入力をこのsemantic modelへ変換してよいが、specific CLI grammar、SQL-like grammar、
+serialized AST shapeはこのspecで固定しない。
 
 Migration専用の簡易validatorをcanonical validation pathの代わりに使用してはならず
 （MUST NOT）、対象fileだけの局所検証で成功扱いしてはならない（MUST NOT）。transformed
 project全体を既存のparser、Type System、Table/Key、Build Selection、およびvalidation
-semanticsへ戻して検証する。
+semanticsへ戻して検証する。text patchが適用できただけではMigration成功と扱ってはならず
+（MUST NOT）、patched sourceを再parseしてexpected transformed semantic resultと確認する。
 
 ### MIGRATION-006
 
@@ -102,13 +114,28 @@ full validationしなければならない（MUST）。新field declarationは�
 renumberしてはならない（MUST NOT）。GUI等がmax active key + 1を提案しても、それを
 semantic allocation ruleとして扱ってはならない。
 
-既存recordへ導入するvalueのinitializer semanticsが確定するまで、Migration engineは
-各recordへ非決定的な値を生成して成功扱いしてはならない（MUST NOT）。initializerの必須性、
-empty table、nullable、expressionの扱いはOQ-Bに残す。
+対象Tableのexisting recordsが1件以上ある場合、`AddField`はexplicit initializerを要求
+しなければならない（MUST）。v1のinitializerはconstant valueだけであり、既存のcanonical
+YAML scalar、sequence、およびtype semanticsで型検査する。例えば`0`、`""`、`null`、`[]`
+は、対象field typeが許可する場合にだけ有効である。nullable fieldへ`null`を導入する場合も
+explicit `null` initializerを要求し、arrayへempty valueを導入する場合もexplicit `[]`
+initializerを要求する。
+
+v1ではexpression、other-field reference、function call、recordごとのAI-generated value、
+implicit language/runtime default、implicit `null`をinitializerとして許可してはならない
+（MUST NOT）。existing recordsが0件の場合はinitializerを省略してよい（MAY）。initializerを
+指定した場合は、recordsの有無にかかわらず同じcanonical type/value semanticsで検証する。
 
 ### MIGRATION-007
 
-`RenameField`は、target logical Tableとfieldをresolveし、schema declarationのsource name、
+v1の`RenameField` target resolutionは、logical Table identityと対象snapshot上のcurrent
+field nameの組で行わなければならない（MUST）。MessagePack `key`をfield identityへ昇格
+してはならず（MUST NOT）、新しいstable Field IDを導入してはならない（MUST NOT）。Tableが
+存在しない、fieldが存在しない、またはsemantic resolutionできない場合はprecondition
+failureとしてsource mutationを開始してはならない。Rename後の新nameはtarget selectorでは
+なくoperation argumentである。physical YAML pathはtarget identityではない。
+
+`RenameField`は、解決されたtargetについてschema declarationのsource name、
 対象Tableの全record member name、および既存Approved schema structureにおけるresolved
 field referenceを更新しなければならない（MUST）。Renameはpresentation/source nameの
 変更であり、MessagePack serialization `key`を変更または再割当してはならない（MUST NOT）。
@@ -120,6 +147,9 @@ Primary Key field reference、Secondary Key field referenceなど、既存Approv
 
 ### MIGRATION-008
 
+v1の`DropField` target resolutionも、logical Table identityと対象snapshot上のcurrent
+field nameの組で行う。対象Table、field、またはそのsemantic resolutionが存在しない場合
+はprecondition failureとして扱い、source mutationを開始してはならない（MUST NOT）。
 `DropField`はschema field declarationを削除し、対象Tableの全recordから該当valueを削除
 するdestructive operationである。commit mutationには、explicitでmachine-actionableな
 destructive execution authorizationが必要であり、interactive promptだけに依存しては
@@ -142,20 +172,28 @@ mutationしてはならない（MUST NOT）。console formatting、JSON field名
 
 ### MIGRATION-010
 
-複数YAML fileへ跨るMigration commitは、通常のI/O failureについて次のsource-set境界を
-満たす方向で設計しなければならない（MUST）。
+複数YAML fileへ跨るMigration commitは、通常のI/O failureについて次のobservable
+source-set statesを区別しなければならない（MUST）。
 
 ```text
 Success
 → complete NEW migrated source set
 
-ordinary commit error
-→ previous complete OLD source set remains usable
+commit failure + rollback success
+→ complete OLD source set remains usable
+
+commit failure + rollback failure
+→ Recovery Required
 ```
 
-staging、preflight、rollback、renameなどの具体的mechanismは固定しない。process crash、
-OS crash、power lossまで含むglobal filesystem transaction atomicityを保証してはならない
-（MUST NOT）。
+`Recovery Required`の場合、successとして報告してはならず（MUST NOT）、それ以上のintentional
+mutationを停止しなければならない（MUST）。recoveryに必要なstaged、backup、journal相当
+の情報は可能な範囲で保持し、affected filesの状態をstructuredに報告できる方向とする。
+automatic silent continuationを行ってはならない（MUST NOT）。
+
+backup layout、journal format、staging directory、recovery CLI commandなどの具体的mechanism
+は固定しない。process crash、OS crash、power lossまで含むglobal filesystem transaction
+atomicityを保証してはならない（MUST NOT）。
 
 ### MIGRATION-011
 
@@ -182,13 +220,52 @@ authorization failure、target resolution failure、precondition failure、full 
 failure、plan生成failureは、source setを変更せずにstructured diagnosticsとして返す方向
 とする。
 
+### MIGRATION-014
+
+MigrationによるYAML source mutationは、source-preservingかつdeterministicでなければならない
+（MUST）。同じexact source snapshot、同じMigration Command semantic input、および同じ
+execution optionsからは、同じtransformed source bytesを生成しなければならない（MUST）。
+これは、同じsemantic stateからglobally canonicalizedな同一YAML bytesを要求するものではない。
+
+Migrationにより変更不要なsource fileはbyte-for-byte unchangedでなければならない（MUST）。
+affected fileでも、migrationに不要なpresentation informationを保持しなければならない
+（MUST）。少なくともcomments、quote style、indentation、blank lines、unrelated mapping /
+sequence formatting、およびunrelated source textをmigrationの副作用で変更または削除しては
+ならない。Migrationに必要なsource spansだけを変更する方向とする。
+
+semantic AST全体を通常serializerで全面再出力する方式は、v1 Migrationの通常成功pathに
+使用してはならない（MUST NOT）。CST library、lossless parser、rope、text patch engine、
+source span representationなどのmechanismは固定しない。
+
+### MIGRATION-015
+
+source-preserving rewriteであっても、text patchが適用できただけではMigration成功と扱って
+はならない（MUST NOT）。実行は、current exact source snapshotをcanonical parse / semantic
+resolutionし、Migration Commandをexpected transformed semantic snapshotへ適用し、
+deterministic source patch planを生成し、patchをin-memory sourceへ適用した後、patched
+sourceをcanonical parserで再parseしなければならない（MUST）。再parse後のsemantic resultは
+expected transformed semantic resultと整合し、さらにfull-project validationを通過しなければ
+ならない。内部のsnapshot、patch、comparison representationは固定しない。
+
+### MIGRATION-016
+
+Migrationはsnapshot取得後に他のHuman、AI、またはprocessが行った変更を古いsnapshotで
+上書きしてはならない（MUST NOT）。source commit開始直前に、少なくともaffected source
+files全体について、current source bytesまたは同等のfile identityがMigration Planのbase
+となったexact source snapshotと一致することをpreflightしなければならない（MUST）。
+
+1つでも不一致がある場合、source mutationを開始してはならず（MUST NOT）、concurrent
+modificationまたはstale planとしてstructured diagnosticで報告できる方向とする。mtimeだけ
+をsemantic identityとして固定せず、exact bytes、hash、file identityなどのmechanismは後続
+実装に残す。
+
 ## Operation別の境界
 
 ### AddField
 
 `AddField`の対象はlogical Tableであり、YAML file pathではない。新fieldの`key`は既存の
 MessagePack serialization keyと衝突してはならず、既存keyの意味を変えてはならない。既存
-recordに値が必要なことは確定しているが、その値の供給方法はOQ-Bで未決定である。
+recordがある場合は、MIGRATION-006に従うexplicit constant initializerが必要である。
 
 ### RenameField
 
@@ -211,6 +288,26 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 このspecは要求しない。canonical artifact set receiptはpublish eligibilityとbyte integrity
 を扱う既存contractであり、Migration input authorityではない。
 
+## Refined v1 decisions
+
+このProposed refinementで、次のv1 observable semanticsを提案として具体化する。
+
+- existing recordsが1件以上の`AddField`にはexplicit constant initializerを要求する。
+- existing recordsが0件の場合、`AddField` initializerは省略できる。initializerを指定した
+  場合はcanonical type/value semanticsで検証する。
+- `RenameField` / `DropField`のtargetはlogical Table identityとcurrent field nameで解決
+  し、MessagePack `key`や新しいField IDをidentityにしない。
+- YAML rewriteはsource-preservingかつdeterministicで、不要なpresentation informationを
+  変更せず、affected filesだけを必要なsource spansで更新する。
+- semantic transformed resultとpatched sourceをcanonical parserで突き合わせ、patch成功
+  だけではMigration成功にしない。
+- commit直前にaffected source filesのlost updateを検出し、stale planならmutationを開始
+  しない。
+- ordinary commit failureは、rollback成功ならOLD、rollback failureなら`Recovery Required`
+  として報告する。
+
+これらはまだHuman Approval前であり、`Status: Proposed`のcontract候補である。
+
 ## Acceptance matrix（future evidence）
 
 この文書はProposedであり、以下はすべてplanned evidenceである。未実施のtestをpass済み
@@ -222,12 +319,15 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 | MIGRATION-002, MIGRATION-003 | Add/Rename/Dropだけをv1 semantic operationとして識別し、SQL/text edit grammarを要求しないtest | pending implementation |
 | MIGRATION-004 | 同一snapshot・command・optionsから同一plan/resultになるdeterminism test | pending implementation |
 | MIGRATION-005, MIGRATION-013 | transformed snapshotを既存parser/type/table/selection/full validationへ戻し、failure時にmutationしないtest | pending implementation |
-| MIGRATION-006 | AddFieldが全recordを対象にし、既存keyを変更せず、initializer未確定をsilentに補わないtest | pending implementation |
+| MIGRATION-006 | AddFieldが全recordを対象にし、既存keyを変更せず、record存在時のexplicit constant initializerを要求するtest | pending implementation |
 | MIGRATION-007 | RenameFieldがMessagePack keyを維持し、Primary/Secondary Key参照をsemanticに更新するtest | pending implementation |
 | MIGRATION-008 | destructive authorizationなしのDropFieldがmutationせず、依存fieldを黙って削除しないtest | pending implementation |
 | MIGRATION-009 | deterministic plan、dry-run no mutation、affected file/record diagnosticsのtest | pending implementation |
-| MIGRATION-010 | multi-file ordinary commit failureがprevious complete source setを保持するtest | pending implementation |
+| MIGRATION-010 | multi-file commitがOLD / NEW / Recovery Requiredを正しく報告するtest | pending implementation |
 | MIGRATION-012 | in-memory semantic engineがnative filesystem、RPC、async runtimeなしで呼び出せるarchitecture/WASM evidence | pending implementation |
+| MIGRATION-014 | unaffected fileのbyte preservation、affected fileのpresentation preservation、deterministic source bytesのtest | pending implementation |
+| MIGRATION-015 | patched sourceの再parseとexpected transformed semantic resultの整合確認test | pending implementation |
+| MIGRATION-016 | commit直前のconcurrent modification / stale planを検出しmutationしないtest | pending implementation |
 
 ## Open Questions / Specification Gaps
 
@@ -236,34 +336,33 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 `generate`のmaterialization先はCLI仕様側のOQ-Aで管理する。MigrationがC#だけを
 `.masterdata/output/csharp/`へ書くことは、canonical C# + binary + receiptのcoherenceを
 壊すため、Generate outputの未決定事項が解決するまでMigrationからも類推してはならない。
+`.masterdata/generated/csharp`などのuser-facing recommended project directory layoutも
+このproposalでは決めない。
 
-### OQ-B: AddField initializer
+### OQ-B: Concrete public argument grammar
 
-既存recordへ新fieldのvalueを導入するv1 contractが未決定である。constant initializer、
-empty tableでの省略、nullableへの暗黙null、expression、型ごとのdefaultのいずれを許可
-するかは、既存type/value semanticsだけから一意に定まらない。決定前に実装を開始しては
-ならない。
+`migrate`の具体的なargument grammar、CLI syntax、GUI/Web/AI adapterからsemantic inputへ
+変換するsurfaceは未決定である。MIGRATION-003とCLI-009のsemantic boundaryは固定するが、
+SQL-like languageやserialized ASTを選択しない。
 
-### OQ-C: YAML rewrite fidelity
+### OQ-C: Concrete source patch mechanism
 
-comments、formatting、key formatting、quote、unmodified regionをどこまでpreserveするか
-は未決定である。lossless CST/text edit、semantic-equivalent reserialization、comments
-preservation、modified region以外のbyte preservationのいずれを必須にするかを決めるまで、
-「ASTをserializeすればよい」または「全体再serializeでよい」と実装方針を確定してはならない。
+CST library、lossless parser、rope、text patch engine、source span representationなどの
+具体的なimplementation mechanismは未決定である。MIGRATION-014/015のobservable contractを
+満たす方法は、後続のimplementation designで選択する。
 
-### OQ-D: Field target identity
+### OQ-D: Concrete staging / journal / recovery mechanism
 
-`RenameField`と`DropField`が対象fieldを選択するsemantic selectorを、current source
-`name`、別のapproved identity、または別の明示的 declarationで表すかは未決定である。
-MessagePack `key`をfield identityへ昇格することは`SCHEMA-KEY-001`に反するため、keyを暗黙
-selectorとして採用してはならない。public grammarとは別に、target resolution semanticsを
-Human reviewで確定する必要がある。
+backup layout、journal format、staging directory、rollback implementation、Recovery Required
+からのrecovery CLI commandは未決定である。MIGRATION-010のobservable state、silent
+continuation禁止、crash/power-lossへの非保証境界はこのproposalで固定する。
 
-### OQ-E: Commit recovery detail
+### OQ-E: Recommended project directory layout
 
-ordinary I/O failureでold source setを保持する高位invariantは提案するが、rollback failure、
-staging directory cleanup、recovery guidance、cross-volume commitの詳細は未決定である。
-process/OS crashのglobal atomicityを追加で保証しない境界も維持する。
+user-facing MasterData projectのrecommended directory layoutは後続の独立specificationで
+設計する。`.masterdata/generated/`、`sources/schemas/`、`sources/data/`、`sources/types/`
+等を、このproposalからcanonicalまたはrecommended layoutとして導出してはならない。既存の
+project root、`build.artifact_dir`、`build.cache`のApproved contractは変更しない。
 
 ### OQ-F: Diagnostic and result contract
 

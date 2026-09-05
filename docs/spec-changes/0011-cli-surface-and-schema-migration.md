@@ -39,20 +39,35 @@ Status: Proposed
 - Schema Migration v1のsemantic operationは`AddField`、`RenameField`、`DropField`に限定する。
 - SQL-like public syntaxは固定せず、semantic Command ASTとexecution semanticsを先にreviewする。
 - DropFieldにはexplicitでmachine-actionableなdestructive authorizationを要求する。
-- Migrationはtransformed projectを既存canonical parser/type/table/selection/full validationへ
- 戻してから、source commitを行う。
+- Migrationは必要なsource / schema / type closureをresolveし、operation-specific postcondition
+  とsafe source commitを確認する。Project全体error-freeはMigration successの条件にしない。
+- Migrationと無関係であることを安全に判定できる既存diagnosticは許容し、対象との関係を
+  判定できないunclassifiable sourceはfail closedする。
+- Build Selectionの全profile、unfiltered selection、specific selected-dataset validationを
+  Migration success gateにしない。
 - existing recordsがあるAddFieldにはexplicit constant initializerを要求し、expression、
   reference、function、implicit default/null、recordごとのAI-generated valueを許可しない。
+- AddField initializerはPrimitive / Value Object / Enumのscalar、Nullableのexplicit null/value、
+  Array / Flagsのsequence、Custom Typeのmappingなど、target typeのApproved canonical data
+  representationとしてvalidなconstant valueとする。
+- AddFieldはschema fields sequence末尾と各record mapping member末尾へappendし、既存順序を
+  reorderしない。
 - MigrationのYAML rewriteはsource-preservingかつdeterministicとし、unaffected fileはbyte-for-byte
   unchanged、affected fileは不要なcomments/formatting等を保持する。全体再serializeを通常成功
   pathにしない。
 - patched sourceはcanonical parserで再parseし、expected transformed semantic resultと整合確認
-  してからfull validationする。
+  し、operation-specific postconditionを確認する。project-wide diagnosticsは別に収集できる。
 - RenameField / DropFieldのtargetはlogical Table identityとcurrent field nameで解決し、
   MessagePack `key`や新しいField IDをidentityにしない。
-- commit直前にaffected source filesのlost updateを検出し、stale planならmutationを開始しない。
+- commit直前にproject config、migration-relevant source file set membership、closure判断に
+  使用したcanonical source inputのlost updateを検出し、stale planならmutationを開始しない。
 - commit failureはrollback成功ならOLD、rollback failureなら`Recovery Required`として扱い、
   silent continuationをしない。
+- data record mapping member orderにはdomain semanticsを与えず、このproposed deltaを
+  `SCHEMA-TABLE-006`等のTable/Data ownerへ将来適用する。schema field declaration orderの
+  presentation semanticsとは分離する。`docs/specs/table-and-keys.md`は今回変更しない。
+- Migrationはimplicit Formatterではなく、formatter operation、standard order、`$tags` placement
+  を今回決めない。
 - user-facing recommended project directory layoutは別議題へdeferし、今回決めない。
 
 上記はこのchangeをHuman Approval済みとして示す記録ではない。`Status: Proposed`を維持し、
@@ -76,10 +91,10 @@ CLI specificationは、既存Approved build/publish requirementsをコピーし�
 
 `docs/specs/schema-migration.md`をMigration v1 semanticsのcanonical owner候補として追加する。
 新しいRequirement familyは`MIGRATION-001`から始め、YAML source authority、v1 operation scope、
-semantic Command model、determinism、full-project revalidation、Add/Rename/Dropの意味、
-destructive authorization、plan/dry-run、source-preserving rewrite、lost-update protection、
-multi-file source commit safety、host boundaryを提案する。refinementでは
-`MIGRATION-014`〜`MIGRATION-016`を追加する。
+semantic Command model、determinism、migration resolution closure、Migration Resolvable、
+Add/Rename/Dropのoperation-specific postcondition、destructive authorization、plan/dry-run、
+source-preserving rewrite、lost-update protection、multi-file source commit safety、host
+boundaryを提案する。refinementでは`MIGRATION-014`〜`MIGRATION-017`を追加する。
 
 `SCHEMA-KEY-*`、`SCHEMA-TABLE-*`、Type System、YAML subset、Build Selectionの既存semanticは
 それぞれのownerを維持し、Migration specから再定義しない。
@@ -93,6 +108,17 @@ publish operationではない。
 
 `masterdata build --publish`は、既存Approved build/publish pipelineのsemanticを複製せず、
 build success only → publishというcomposition boundaryだけを提案する。
+
+### Migration Resolvableのrefinement
+
+独立reviewで、既存proposalのfull-project validation wordingが、Migrationと無関係な既存
+diagnosticまでMigration blockingにすることを確認した。Migration successを、Project全体の
+error-freeではなく、target・必要なsemantic closure・operation-specific postcondition・
+safe commitを確定できるMigration Resolvable modelへ変更する。
+
+Build Selectionはbuild-time selected logical datasetのownerであり、全profileのPK / Unique /
+Reference validationをMigration success gateにしない。ただしclosure外と安全に分類できない
+壊れたsource documentはunrelatedと推測せずblockingとする。
 
 ### CLI-011のrefinement
 
@@ -129,13 +155,18 @@ Human Approval前であり、次のevidenceはすべて未実装・未通過で�
 - `validate`のartifact/publish target no-mutation evidence
 - `generate`のmaterialization決定後のcanonical artifact set non-corruption evidence
 - `build --publish`のbuild failure、publish failure、partial result、no cross-rollback evidence
-- Migration deterministic plan、full-project revalidation、dry-run no-mutation evidence
-- AddField key preservation、constant initializer、禁止されたimplicit/default valueのevidence
+- Migration resolution closure、Migration Resolvable、operation-specific postcondition、
+  unrelated diagnosticsの許容、unclassifiable sourceのfail-closed evidence
+- Build Selection selected-dataset validationをMigration success gateにしないevidence
+- Migration deterministic plan、patched source semantic round-trip、dry-run no-mutation evidence
+- AddField key preservation、canonical constant representation、schema/data末尾append、禁止された
+  implicit/default valueのevidence
 - RenameFieldのMessagePack key preservationとresolved key/index reference evidence
 - DropFieldのexplicit destructive authorizationとdependency failure evidence
 - source-preserving rewrite、patched source semantic round-trip、unaffected byte preservationのevidence
-- commit直前のlost-update rejection evidence
+- project config / source membership / closure inputを含むcommit直前のlost-update rejection evidence
 - multi-file commitのOLD / NEW / Recovery Required state evidence
+- schema field orderとdata mapping member orderを分離し、Formatter semanticsを混在させないevidence
 
 ### Implementation Gap
 
@@ -162,19 +193,27 @@ Human Approval前であり、次のevidenceはすべて未実装・未通過で�
 - OQ-E: user-facing recommended project directory layout。`.masterdata/generated/csharp`等を
   今回のcanonical/recommended layoutにしない
 - OQ-F: migration plan/resultのstructured diagnostics、JSON、stdout/stderr、exit code contract
+- OQ-G: formatter operation、record standard formatting order、`$tags` placement、schema formatter
 - global CLI `--json`、short options、deprecation/versioning、Build Profile syntax、SQL-like grammar
 
 これらを実装都合で暗黙に選択してはならない。
 
+OQ-CとOQ-Dは主にimplementation detailであり、observable contractが先に承認されるまで
+mechanismを固定しない。OQ-A、OQ-B、OQ-E、OQ-F、OQ-Gはproduct/public semanticとして
+Human reviewで解決する。
+
 ## レビュー（Review）
 
 - 必要なreview: CLI public surfaceとSchema Migration v1 semanticsの分離、CLI-011とstandalone
-  publishの整合、AddField initializer、source-preserving rewrite、field target identity、
-  lost-update protection、Recovery Required state、既存Approved build/publish/runtime
-  contractsとの参照関係、OQ-A〜OQ-Fの十分性。
+  publishの整合、Migration Resolvableとdiagnostic boundary、Build Selection非依存、AddField
+  initializerと末尾append、source-preserving rewrite、field target identity、lost-update
+  protection、Recovery Required state、schema/data order owner、Formatter境界、既存Approved
+  build/publish/runtime contractsとの参照関係、OQ-A〜OQ-Gの十分性。
 - independent reviewで発見したCLI-011 / publish conflictを修正し、initializer、rewrite
-  fidelity、field identity、lost update、recovery stateのrefinementをこのProposed changeへ
-  反映した。
+  fidelity、field identity、Migration Resolvable、Build Selection boundary、lost update、
+  recovery state、AddField placementのrefinementをこのProposed changeへ反映した。
+- `docs/specs/table-and-keys.md`のrecord mapping member orderについては、Approved canonical
+  ownerへ将来deltaを適用する予定を記録するが、今回その文書は変更していない。
 - Human Approval: 未実施。`Status: Proposed`から変更してはならない。
 - canonical apply: 未実施。`docs/specs/build-pipeline.md`、`project-layout.md`、
   `runtime-hosts.md`の未承認semantic変更は行っていない。

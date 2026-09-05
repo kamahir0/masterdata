@@ -165,8 +165,11 @@ publish
 `masterdata migrate`は、Schema Migration v1仕様が定義するschema-aware deterministic
 transformationを公開するtop-level CLI commandとして分類する。`migrate`のsubcommand、
 argument grammar、SQL-like syntax、JSON plan schemaはこのCLI仕様で固定してはならない
-（MUST NOT）。Migrationのsemantic AST、対象解決、full-project validation、destructive
-authorization、source commitは[Schema Migration v1仕様](schema-migration.md)が所有する。
+（MUST NOT）。Migrationのsemantic AST、対象解決、resolution closure、operation-specific
+postcondition、destructive authorization、source commitは[Schema Migration v1仕様](schema-migration.md)が所有する。
+Migration executionのsuccessはProject全体がerror-freeであることを意味せず、Migration
+Resolvableとoperation-specific postconditionを満たしたことを意味する。project-wide
+diagnosticsとCLI resultの分離方法はSchema Migration仕様の未決定output contractへ委譲する。
 
 ### CLI-010
 

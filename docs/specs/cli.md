@@ -1,14 +1,14 @@
 # CLI surface仕様
 
-Status: Proposed
+Status: Approved
 
 この文書は、MasterDataのpublic CLI terminology、canonical command surface、および
-複数のsemantic operationをCLIからcompositionする規則を提案する。Human Approval前の
-ため、現時点では実装authorityではない。既存のApproved specificationが所有するbuild、
-artifact receipt、publish、host capabilityの意味を再定義せず、それらを参照してCLI
+複数のsemantic operationをCLIからcompositionする規則を定義する。StatusはApprovedであり、
+CLI surfaceのcurrent canonical authorityである。既存のApproved specificationが所有する
+build、artifact receipt、publish、host capabilityの意味を再定義せず、それらを参照してCLI
 surfaceへ写像することだけを所有する。
 
-関連する提案変更は
+適用した仕様変更は
 [0011-cli-surface-and-schema-migration](../spec-changes/0011-cli-surface-and-schema-migration.md)
 である。
 
@@ -45,7 +45,7 @@ CLIの仕様は、Operation、CLI Command、Capabilityを別conceptとして扱�
 
 ### CLI-002
 
-提案するcanonical public CLI command nameは、次の7つである。
+canonical public CLI command nameは、次の7つである。
 
 | CLI command | 主なOperation | semantic owner |
 | --- | --- | --- |
@@ -57,8 +57,8 @@ CLIの仕様は、Operation、CLI Command、Capabilityを別conceptとして扱�
 | `publish` | 既存artifact setのexternal配布 | build pipeline仕様 |
 | `migrate` | schema-aware deterministic transformation | Schema Migration v1仕様 |
 
-この表のcommand nameは提案surfaceであり、Human Approvalなしに実装済みsurface、
-deprecation policy、argument grammar、output schemaを確定したものではない。`generate`
+この表のcommand nameはcanonical surfaceである。ただし、実装済みであることを意味せず、
+deprecation policy、argument grammar、output schemaをこの仕様で確定しない。`generate`
 の出力先と`migrate`のargument grammarはOpen Questionとして扱う。
 
 ### CLI-003
@@ -91,7 +91,7 @@ resolve project
 
 `generate`は現在のcanonical artifact setを部分的に置換または破壊してはならない
 （MUST NOT）。C#生成物をstdoutへ出すか、explicit output directoryへ出すか、tool-owned
-non-canonical areaへ出すかなど、最終的なmaterialization先はこのproposalでは決めない。
+non-canonical areaへ出すかなど、最終的なmaterialization先はこの仕様では決めない。
 この未決定事項は「Open Questions」のOQ-Aで管理する。
 
 ### CLI-005
@@ -128,8 +128,7 @@ PUBLISH、PUBLISH-PATH、PUBLISH-EXECの各semanticは、それぞれのowner sp
 
 ### CLI-007
 
-`masterdata build --publish`は、次のcompositionを持つ正式なconvenience UX候補として
-提案する。
+`masterdata build --publish`は、次のcompositionを持つ正式なconvenience UXとして定義する。
 
 ```text
 build
@@ -157,8 +156,8 @@ publish
 ### CLI-008
 
 短縮option `-p`は今回予約または仕様化しない（MUST NOT）。convenience compositionの
-提案surfaceで指定する正式形は`--publish`だけである。その他のshort option、global
-`--json`、stdout/stderr、exit code taxonomyはこのproposalでは固定しない。
+canonical surfaceで指定する正式形は`--publish`だけである。その他のshort option、global
+`--json`、stdout/stderr、exit code taxonomyはこの仕様では固定しない。
 
 ### CLI-009
 
@@ -199,14 +198,14 @@ semanticsを両立させる。
 ## 現行実装との差分
 
 現在のCLI実装が提供するcommandは、`init`、`doctor`、`project-info`、`validate`、`build`
-である。したがって、提案surfaceとの差分は次のとおりである。
+である。したがって、canonical surfaceとの差分は次のとおりである。
 
 - `project-info`は現行実装に存在するが、今回のtarget canonical public command setには
   含めない。
-- このdocs-only proposalでは`project-info`を削除、rename、別namespaceへ移動しない。
+- このdocs-only canonicalizationでは`project-info`を削除、rename、別namespaceへ移動しない。
 - `generate`、`publish`、`migrate`、`build --publish`は未実装であり、Implementation Gap
   として扱う。
-- `project-info`の将来のdiagnostics/info系surfaceは、このproposalでは代替案を確定しない。
+- `project-info`の将来のdiagnostics/info系surfaceは、この仕様では代替案を確定しない。
 
 この差分は仕様を実装済みと示すものではない。`artifact-set receipt runtime`、external
 publish runtime、Build Profile CLI wiringも、command surfaceとは別の既存Implementation
@@ -222,7 +221,7 @@ process、pairing、Web handshakeを要求しない。
 
 ## 固定しないCLI事項
 
-次の事項は今回のProposed surfaceの一部として固定しない。
+次の事項はこのApproved surfaceに関連する未決定事項として固定しない。
 
 - global `--json`、machine-readable output schema、stdout/stderr contract
 - exit code taxonomy全体
@@ -234,7 +233,7 @@ process、pairing、Web handshakeを要求しない。
 
 ## Acceptance matrix（future evidence）
 
-この文書はProposedであり、以下はすべて実装前のplanned evidenceである。未実施のtestを
+この文書はApprovedだが、以下のevidenceはすべて実装前のplanned evidenceである。未実施のtestを
 pass済みとは扱わない。
 
 | Requirement | Planned evidence | Status |
@@ -256,15 +255,15 @@ pass済みとは扱わない。
 
 `generate`が生成したC#をstdout、explicit output directory、dedicated non-canonical
 tool-owned areaのどこへmaterializeするかは未決定である。canonical full build artifact
-setのC#だけを部分更新する方式は採用できない。Human Approval前にdestination、cleanup、
+setのC#だけを部分更新する方式は採用できない。destination、cleanup、
 existing generated filesとの関係を発明してはならない。ユーザー向けproject directory
-layoutや`.masterdata/generated/csharp`等のrecommended layoutも、このproposalでは決めない。
+layoutや`.masterdata/generated/csharp`等のrecommended layoutも、この仕様では決めない。
 
 ### OQ-B: CLI result contract
 
 `build --publish`におけるbuild successとpublish failure/partial failureの区別を、どの
 structured result、console形式、exit codeで表現するかは未決定である。CLI-007のsemantic
-result境界だけを先に提案し、global output/exit contractは別途決める。
+result境界だけをこの仕様で定義し、global output/exit contractは別途決める。
 
 ### OQ-C: Public argument surface
 
@@ -273,6 +272,6 @@ versioning/deprecation policyは未決定である。
 
 ## Non-goals
 
-このproposalは、CLI parser、Tauri command、Web UI、Native Host、migration engine、YAML
+この仕様は、CLI parser、Tauri command、Web UI、Native Host、migration engine、YAML
 rewrite、receipt runtime、external publisher、`project-info` removalを実装または確定
 しない。

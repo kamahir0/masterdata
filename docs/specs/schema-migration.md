@@ -1,11 +1,11 @@
 # Schema Migration v1仕様
 
-Status: Proposed
+Status: Approved
 
 この文書は、YAMLをcanonical source of truthとするMasterData projectに対する、
-schema-aware deterministic migrationのsemantic contractを提案する。Human Approval前の
-ため、実装authorityではない。SQL-like public language、specific CLI grammar、YAML rewrite
-library、filesystem transaction mechanismはこの文書では確定しない。
+schema-aware deterministic migrationのsemantic contractを定義する。StatusはApprovedであり、
+Migration v1 semanticsのcurrent canonical authorityである。SQL-like public language、specific
+CLI grammar、YAML rewrite library、filesystem transaction mechanismはこの文書では確定しない。
 
 CLI surfaceとのcompositionは[CLI surface仕様](cli.md)、既存のYAML/schema/type/table
 semanticは、[YAML subset仕様](yaml-subset.md)、[Table / Key仕様](table-and-keys.md)、
@@ -63,7 +63,7 @@ query、binary mutationはv1 scope外であり、Migration v1の成功operation�
 Migration Command semantic modelは、text edit命令ではなく、logical Table identity、field
 semantic selectorまたはdeclaration、およびsemantic operationを表さなければならない
 （MUST）。public SQL grammar、`migrate add-field ...`の具体的なCLI grammar、または特定の
-Rust struct layoutは、このproposalでは固定しない。Command ASTを第二のsource of truthや
+Rust struct layoutは、この仕様では固定しない。Command ASTを第二のsource of truthや
 serialized domain schemaに昇格させてはならない（MUST NOT）。
 
 ### MIGRATION-004
@@ -196,7 +196,7 @@ affected source files、affected record count、validation resultまたはdiagno
 conceptually表現できるものとする。ここでのvalidation resultはMigration closureと
 operation-specific postconditionを指し、Project全体error-freeを意味しない。dry-runまたはplan-only実行はcanonical YAML sourceを
 mutationしてはならない（MUST NOT）。console formatting、JSON field名、`--json` schemaは
-このproposalで固定しない。
+この仕様で固定しない。
 
 ### MIGRATION-010
 
@@ -388,9 +388,8 @@ record memberが削除され、drop対象fieldを必要とする依存が黙っ�
 AddFieldのschema末尾appendはこのMigration Operationのobservable behaviorである。
 
 一方、data record mappingのmember source orderは、同じfield/value mappingである限りdomain
-semanticsを持たないという設計意図を、このproposalのfuture canonical deltaとして
-`docs/specs/table-and-keys.md`へ適用予定である。現在のApproved documentはHuman Approval前
-なので変更しない。Migrationはrecord mappingをMessagePack key順へ並べ替えず、Formatterの
+semanticsを持たない。これは`docs/specs/table-and-keys.md`の`SCHEMA-TABLE-006`へ適用された
+canonical ruleである。Migrationはrecord mappingをMessagePack key順へ並べ替えず、Formatterの
 役割を引き受けない。
 
 ## MigrationとFormatterの境界
@@ -410,7 +409,7 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 
 ## Refined v1 decisions
 
-このProposed refinementで、次のv1 observable semanticsを提案として具体化する。
+このApproved specificationで、次のv1 observable semanticsを定義する。
 
 - existing recordsが1件以上の`AddField`にはexplicit constant initializerを要求する。
 - existing recordsが0件の場合、`AddField` initializerは省略できる。initializerを指定した
@@ -430,12 +429,13 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 - AddFieldのschema fieldは末尾へappendし、record memberも末尾へappendする。record mapping
   orderをMessagePack key orderへ正規化しない。
 
-これらはまだHuman Approval前であり、`Status: Proposed`のcontract候補である。
+これらはこのApproved specificationのcontractである。ただし、下記のimplementation evidenceが
+未実施であることから、実装済みを意味しない。
 
 ## Acceptance matrix（future evidence）
 
-この文書はProposedであり、以下はすべてplanned evidenceである。未実施のtestをpass済み
-とは扱わない。
+この文書はApprovedだが、以下はすべてplanned evidenceである。未実施のtestをpass済みとは
+扱わない。
 
 | Requirement | Planned evidence | Status |
 | --- | --- | --- |
@@ -462,7 +462,7 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 `.masterdata/output/csharp/`へ書くことは、canonical C# + binary + receiptのcoherenceを
 壊すため、Generate outputの未決定事項が解決するまでMigrationからも類推してはならない。
 `.masterdata/generated/csharp`などのuser-facing recommended project directory layoutも
-このproposalでは決めない。
+この仕様では決めない。
 
 ### OQ-B: Concrete public argument grammar
 
@@ -480,13 +480,13 @@ CST library、lossless parser、rope、text patch engine、source span represent
 
 backup layout、journal format、staging directory、rollback implementation、Recovery Required
 からのrecovery CLI commandは未決定である。MIGRATION-010のobservable state、silent
-continuation禁止、crash/power-lossへの非保証境界はこのproposalで固定する。
+continuation禁止、crash/power-lossへの非保証境界はこの仕様で固定する。
 
 ### OQ-E: Recommended project directory layout
 
 user-facing MasterData projectのrecommended directory layoutは後続の独立specificationで
 設計する。`.masterdata/generated/`、`sources/schemas/`、`sources/data/`、`sources/types/`
-等を、このproposalからcanonicalまたはrecommended layoutとして導出してはならない。既存の
+等を、この仕様からcanonicalまたはrecommended layoutとして導出してはならない。既存の
 project root、`build.artifact_dir`、`build.cache`のApproved contractは変更しない。
 
 ### OQ-F: Diagnostic and result contract
@@ -503,6 +503,6 @@ orderを混在させない。
 
 ## Non-goals
 
-このproposalは、migration parser、SQL parser、YAML mutation engine、CST導入、CLI parser変更、
+この仕様は、migration parser、SQL parser、YAML mutation engine、CST導入、CLI parser変更、
 GUI/Web filesystem adapter、Native Host/RPC、receipt runtime、external publisher、cache、
 Build Profile wiring、Reference runtime、binary inspectorを実装しない。

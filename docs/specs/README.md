@@ -174,8 +174,8 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
 - [Build pipeline仕様](build-pipeline.md) — `Status: Approved`
 - [Runtime hosts / composition root / capability仕様](runtime-hosts.md) — `Status: Approved`
-- [CLI surface仕様](cli.md) — `Status: Proposed`（Human Approval pending）
-- [Schema Migration v1仕様](schema-migration.md) — `Status: Proposed`（Human Approval pending）
+- [CLI surface仕様](cli.md) — `Status: Approved`
+- [Schema Migration v1仕様](schema-migration.md) — `Status: Approved`
 - [Compatibility仕様](compatibility/README.md)
   - [Table identity仕様](compatibility/table-identity.md)
   - [Field identity仕様](compatibility/field-identity.md) — `Status: Deprecated`（旧Field ID modelのhistory）

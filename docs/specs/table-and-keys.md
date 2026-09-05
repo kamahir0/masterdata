@@ -156,7 +156,10 @@ null不可、Nullable fieldはentryが必須でnullまたはvalidな`T`、Array 
 Approved Build Selection仕様の`$tags`を許可するが、`$tags`をdomain fieldとして生成またはbinaryへserializeしてはならない（MUST NOT）。
 
 複数のdata documentが同じlogical `table`へ提供するrecordsは、logical Tableへmergeしなければならない（MUST）。file path、file discovery order、data
-document order、およびsource record orderをdomain record semanticsまたはbinary semanticsとして扱ってはならない（MUST NOT）。
+document order、およびsource record orderをdomain record semanticsまたはbinary semanticsとして扱ってはならない（MUST NOT）。同じrecordが同じ
+field/value mappingを持つ限り、record mappingのmember source orderだけが異なる入力を、異なるrecord domain semantics、record identity、selected
+logical dataset semantics、またはbinary semanticsとして扱ってはならない（MUST NOT）。このruleはmapping member orderに限り、`$tags`のset semanticsを
+変更せず、schema field declaration orderのpresentation semanticsも変更しない。
 
 ### SCHEMA-TABLE-007
 
@@ -293,7 +296,7 @@ deltaはそれらを導入しない。
 | `SCHEMA-TABLE-003` | Primitive、Value Object、Custom Type、Enum、Flags EnumをTable fieldのbase typeとして使用でき、例えば`Reward`または`Feature`へresolveする。`T`、`T?`、`T[]`はField Modifiers仕様どおりに解決される。 | Table、Index、Primary Key、Secondary Key、Reference等のschema construct、unknown type category、unsupported type referenceがfield base typeとして受理される。Custom Type/Flags Enumをfieldとして許可したことだけを理由にkey componentとして許可する。 |
 | `SCHEMA-TABLE-004` | YAML field orderがGUI columnとgenerated property declaration orderへ反映され、`[Key(n)]`は明示keyを保持する。 | propertyがkeyやalphabetical順へsortされ、field reorderがrecord/key semanticsを変更する。 |
 | `SCHEMA-TABLE-005` | rowが`public sealed partial class`、`get; init;` property、`[MemoryTable]`、`[MessagePackObject]`、`[Key(n)]`を持つ。 | record、mutable setter、`required`、row structural equality、またはMessagePack/Primary/Secondary attributesの誤ったmappingが生成される。 |
-| `SCHEMA-TABLE-006` | 複数data documentのrecordsが同じTableへmergeされ、schema-unknown memberはrejectされる。Required/Nullable/Arrayと`$tags`がowner仕様どおりに扱われる。 | source file orderがdomain semanticsを変える、unknown fieldをignoreする、`$tags`がrow/binary fieldになる。 |
+| `SCHEMA-TABLE-006` | 複数data documentのrecordsが同じTableへmergeされ、schema-unknown memberはrejectされる。Required/Nullable/Arrayと`$tags`がowner仕様どおりに扱われ、同じfield/value mappingのrecord mapping member order差がrecord、selected dataset、binary semanticsを変えない。 | source file orderまたはrecord mapping member orderがdomain/binary semanticsを変える、unknown fieldをignoreする、`$tags`がrow/binary fieldになる。 |
 | `SCHEMA-TABLE-007` | selection後のselected logical datasetに対してのみPK/unique constraintとReference validationが適用される。 | source全体でprofile-separated duplicateを先にrejectする、またはselection前にdataset constraintを適用する。 |
 | `SCHEMA-TABLE-008` | selected rowsがPrimary Keyのdeclared orderでcanonical sortされ、source order/file splitで同じdatasetのbinary semanticsが変わらない。 | record/file discovery orderがbinary semanticsを変える、またはcomposite component orderを無視する。 |
 | `INDEX-PRIMARY-001` | `primaryKey.fields`が存在し、non-emptyでcurrent field symbolsへresolveし、Tableごとにexactly 1つのPrimary Keyとなる。 | missing Primary Key、empty fields、unknown field、duplicate component、`id` magic inference、`nonUnique`が受理される。 |

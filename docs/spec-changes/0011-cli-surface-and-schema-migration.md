@@ -1,20 +1,20 @@
-# 仕様変更: CLI surfaceとSchema Migration v1の提案
+# 仕様変更: CLI surfaceとSchema Migration v1のcanonical化
 
-Status: Proposed
+Status: Applied
 
-<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied。Human Approval前はcanonical
-     Approved specificationを変更しない。 -->
+<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied。Human Approval後に承認済みdeltaを
+     canonical specificationへ適用したaudit recordである。 -->
 
 ## Affected Specifications
 
-- `docs/specs/cli.md` — 新規、`Status: Proposed`、CLI terminologyとcommand surfaceのowner
-- `docs/specs/schema-migration.md` — 新規、`Status: Proposed`、Migration v1 semanticsのowner
+- `docs/specs/cli.md` — 新規、`Status: Approved`、CLI terminologyとcommand surfaceのowner
+- `docs/specs/schema-migration.md` — 新規、`Status: Approved`、Migration v1 semanticsのowner
+- `docs/specs/table-and-keys.md` — `Status: Approved`、SCHEMA-TABLE-006へdata record mapping orderのdeltaを適用
 - `docs/specs/build-pipeline.md` — `Status: Approved`、変更しない。build/publish/receiptの既存ownerを参照する
 - `docs/specs/runtime-hosts.md` — `Status: Approved`、変更しない。Operation/Capability/host boundaryを参照する
 - `docs/specs/project-layout.md` — `Status: Approved`、変更しない。project identityとsource path semanticsを参照する
 
-既存Approved specificationへ未承認のsemantic deltaを直接適用せず、新規Proposed ownerへ
-隔離する。
+既存Approved specificationへ適用したdeltaと、変更しない既存ownerの範囲をこのchangeに記録する。
 
 ## 根拠と分類（Source Evidence and Classification）
 
@@ -22,22 +22,22 @@ Status: Proposed
 将来のschema-aware deterministic migrationの境界をimplementation前にreview可能にする
 ためのものです。
 
-### Human decisionとして記録する提案入力
+### 承認された入力（Approved Scope）
 
-今回のrequestで示された次の内容を、Human Approval済みcanonical contractとは扱わず、
-このproposalのreview対象として記録する。
+Human maintainerが明示的に承認した、今回canonical化するcontract scopeを記録する。
 
 - CLI terminologyはOperation、CLI Command、Capabilityを分離する。
-- target public command surfaceは`init`、`doctor`、`validate`、`generate`、`build`、
-  `publish`、`migrate`とする方向で提案する。
+- canonical public command surfaceは`init`、`doctor`、`validate`、`generate`、`build`、
+  `publish`、`migrate`とする。
 - 現行の`project-info`は削除せず、target surfaceとの差をImplementation Gapとして記録する。
 - `generate`はvalidation後にC# generationで停止するが、materialization先は未決定とする。
 - `publish`はimplicit build/revalidationを行わず、last successful receipt-valid canonical
   artifact setを既存Approved pipelineで配布する。
-- `build --publish`はbuild成功後だけpublishするcompositionとして提案する。publish failure
+- `build --publish`はbuild成功後だけpublishするcompositionとする。publish failure
   はbuild済みcanonical artifactをrollbackせず、aggregate failureを返す。
 - Schema Migration v1のsemantic operationは`AddField`、`RenameField`、`DropField`に限定する。
-- SQL-like public syntaxは固定せず、semantic Command ASTとexecution semanticsを先にreviewする。
+- SQL-like public syntaxは固定せず、semantic Command ASTとexecution semanticsをpublic syntaxに
+  先行するsemantic contractとして定義する。
 - DropFieldにはexplicitでmachine-actionableなdestructive authorizationを要求する。
 - Migrationは必要なsource / schema / type closureをresolveし、operation-specific postcondition
   とsafe source commitを確認する。Project全体error-freeはMigration successの条件にしない。
@@ -63,24 +63,23 @@ Status: Proposed
   mutationを開始しない。
 - commit failureはrollback成功ならOLD、rollback failureなら`Recovery Required`として扱い、
   silent continuationをしない。
-- data record mapping member orderにはdomain semanticsを与えず、このproposed deltaを
-  `SCHEMA-TABLE-006`等のTable/Data ownerへ将来適用する。schema field declaration orderの
-  presentation semanticsとは分離する。`docs/specs/table-and-keys.md`は今回変更しない。
+- data record mapping member orderにはdomain semanticsを与えず、このchangeで
+  `SCHEMA-TABLE-006`へ適用する。schema field declaration orderのpresentation semanticsとは
+  分離する。
 - Migrationはimplicit Formatterではなく、formatter operation、standard order、`$tags` placement
   を今回決めない。
 - user-facing recommended project directory layoutは別議題へdeferし、今回決めない。
 
-上記はこのchangeをHuman Approval済みとして示す記録ではない。`Status: Proposed`を維持し、
-canonical specificationへの適用は明示的承認後にのみ可能とする。
+上記scopeは末尾のApproval Recordに記録したexplicit Human Approvalを根拠として、以下の
+canonical specificationへ適用した。
 
-## 提案する差分（Proposed Delta）
+## 適用した差分（Applied Delta）
 
 ### CLI owner
 
-`docs/specs/cli.md`をCLI surfaceのcanonical owner候補として追加する。新しいRequirement
-familyは`CLI-001`から始め、OperationとCommandの用語、提案command surface、validate、
-generate、build、publish、build --publish、migrateの境界、current implementation gapを
-定義する。
+`docs/specs/cli.md`をCLI surfaceのcanonical ownerとして追加し、`Status: Approved`へ進めた。
+`CLI-001`から`CLI-011`で、OperationとCommandの用語、canonical command surface、validate、
+generate、build、publish、build --publish、migrateの境界、current implementation gapを定義する。
 
 CLI specificationは、既存Approved build/publish requirementsをコピーしない。`BUILD-ARTIFACT-*`、
 `ARTIFACT-SET-*`、`PUBLISH-*`、`PUBLISH-PATH-*`、`PUBLISH-EXEC-*`をownerとして参照する。
@@ -89,25 +88,25 @@ CLI specificationは、既存Approved build/publish requirementsをコピーし�
 
 ### Schema Migration owner
 
-`docs/specs/schema-migration.md`をMigration v1 semanticsのcanonical owner候補として追加する。
-新しいRequirement familyは`MIGRATION-001`から始め、YAML source authority、v1 operation scope、
+`docs/specs/schema-migration.md`をMigration v1 semanticsのcanonical ownerとして追加し、
+`Status: Approved`へ進めた。`MIGRATION-001`から`MIGRATION-017`で、YAML source authority、v1 operation scope、
 semantic Command model、determinism、migration resolution closure、Migration Resolvable、
 Add/Rename/Dropのoperation-specific postcondition、destructive authorization、plan/dry-run、
 source-preserving rewrite、lost-update protection、multi-file source commit safety、host
-boundaryを提案する。refinementでは`MIGRATION-014`〜`MIGRATION-017`を追加する。
+boundaryを定義する。既存Requirement IDのrename、reassign、追加は行っていない。
 
 `SCHEMA-KEY-*`、`SCHEMA-TABLE-*`、Type System、YAML subset、Build Selectionの既存semanticは
 それぞれのownerを維持し、Migration specから再定義しない。
 
 ### CLIとMigrationのcomposition
 
-`masterdata migrate`というtop-level operation nameはCLI taxonomyへ提案するが、subcommand
+`masterdata migrate`というtop-level operation nameはCLI taxonomyへ定義するが、subcommand
 grammar、SQL-like language、JSON plan schema、global output/exit contractは固定しない。
 Migrationはsource snapshotを変換するsemantic Operationであり、生成artifactのauthorityや
 publish operationではない。
 
 `masterdata build --publish`は、既存Approved build/publish pipelineのsemanticを複製せず、
-build success only → publishというcomposition boundaryだけを提案する。
+build success only → publishというcomposition boundaryだけを定義する。
 
 ### Migration Resolvableのrefinement
 
@@ -138,12 +137,12 @@ parse/validateしないApproved standalone publishと文面上衝突すること
 
 - 既存の`init`、`doctor`、`project-info`、`validate`、`build`実装はこのdocs-only changeで
   変更しない。
-- `project-info`はtarget canonical command setに含めない提案だが、削除・rename・代替
+- `project-info`はtarget canonical command setに含めないが、削除・rename・代替
   namespaceは決めない。
 - `generate`、`publish`、`migrate`、`build --publish`、migration engineは未実装である。
 - Migrationは将来、source YAMLの意図的な変換を行うため、実装時にはsource compatibility、
   backup/recoveryを別途検証する必要がある。source-preserving rewrite、lost-update protection、
-  `Recovery Required`はこのProposed refinementで候補contractとして追加する。
+  `Recovery Required`はこのApplied changeでcanonical contractとして追加した。
 - canonical binary、generated C#、artifact receipt、external publish targetはMigrationの
   authorityではない。`build`と`publish`の責務分離、receipt validation、B8 path safety、
   multi-target execution semanticsを変更しない。
@@ -154,7 +153,7 @@ parse/validateしないApproved standalone publishと文面上衝突すること
 
 ### Planned evidence
 
-Human Approval前であり、次のevidenceはすべて未実装・未通過である。
+Human Approval済みだが、次のevidenceはすべて未実装・未通過である。
 
 - CLI command surface、Operation owner、Capability boundaryのarchitecture/integration evidence
 - `validate`のartifact/publish target no-mutation evidence
@@ -176,7 +175,7 @@ Human Approval前であり、次のevidenceはすべて未実装・未通過で�
 
 ### Implementation Gap
 
-このproposalをApprovedへ進めても、以下が直ちに実装済みになるわけではない。
+このchangeをAppliedにしても、以下が直ちに実装済みになるわけではない。
 
 - `generate` commandとそのmaterialization policy
 - external `publish` runtimeとartifact-set receipt runtime
@@ -185,12 +184,12 @@ Human Approval前であり、次のevidenceはすべて未実装・未通過で�
 - `project-info`のtarget surface整理
 - Build Profile CLI wiring、Reference runtime、cache等の既存別gap
 
-実装は、Human Approval後にcanonical docsへAppliedされたRequirementだけをauthorityとして
-開始する。
+実装は、今回Approvedになったcanonical specificationのRequirementをauthorityとして開始できる。
 
 ## 未解決事項（Open Questions）
 
-最低限、次をapproval-blockingなreview itemとして残す。
+次の事項は、承認済みobservable contractと矛盾しない形でdeferred future product decision、
+implementation detail、またはimplementation gapとして残す。
 
 - OQ-A: `generate` C# outputのmaterialization先、既存outputとの関係、cleanup
 - OQ-B: concrete `migrate` public argument grammarとCLI/GUI/Web/AI adapter input surface
@@ -202,11 +201,13 @@ Human Approval前であり、次のevidenceはすべて未実装・未通過で�
 - OQ-G: formatter operation、record standard formatting order、`$tags` placement、schema formatter
 - global CLI `--json`、short options、deprecation/versioning、Build Profile syntax、SQL-like grammar
 
-これらを実装都合で暗黙に選択してはならない。
+これらを実装都合で暗黙に選択してはならない。未決定事項を残したまま承認されたcontractの
+実装を開始できるが、該当する未決定behaviorを実装前に追加承認なく確定してはならない。
 
-OQ-CとOQ-Dは主にimplementation detailであり、observable contractが先に承認されるまで
-mechanismを固定しない。OQ-A、OQ-B、OQ-E、OQ-F、OQ-Gはproduct/public semanticとして
-Human reviewで解決する。
+OQ-CとOQ-Dは主にimplementation detailであり、mechanismを固定しない。OQ-A、OQ-B、OQ-E、
+OQ-F、OQ-Gはdeferred product/public semantic decisionである。global CLI output、short
+options、deprecation/versioning、Build Profile CLI wiring、SQL-like grammarは別のpublic
+surfaceまたはimplementation gapとして扱う。
 
 ## レビュー（Review）
 
@@ -217,13 +218,37 @@ Human reviewで解決する。
   build/publish/runtime contractsとの参照関係、OQ-A〜OQ-Gの十分性。
 - independent reviewで発見したCLI-011 / publish conflictを修正し、initializer、rewrite
   fidelity、field identity、Migration Resolvable、Build Selection boundary、lost update、
-  recovery state、AddField placementのrefinementをこのProposed changeへ反映した。
-- `docs/specs/table-and-keys.md`のrecord mapping member orderについては、Approved canonical
-  ownerへ将来deltaを適用する予定を記録するが、今回その文書は変更していない。
-- Human Approval: 未実施。`Status: Proposed`から変更してはならない。
-- canonical apply: 未実施。`docs/specs/build-pipeline.md`、`project-layout.md`、
-  `runtime-hosts.md`の未承認semantic変更は行っていない。
+  recovery state、AddField placementをこのchangeへ反映した。
+- `docs/specs/table-and-keys.md`のSCHEMA-TABLE-006へrecord mapping member orderのdeltaを適用し、
+  schema field declaration orderのpresentation semanticsおよび`$tags` ownerは変更していない。
+- Human Approval済み。`docs/specs/cli.md`と`docs/specs/schema-migration.md`を`Approved`へ進めた。
+- canonical apply済み。`docs/specs/build-pipeline.md`、`project-layout.md`、`runtime-hosts.md`の
+  既存semanticは変更していない。production implementationは未実施であり、Implementedではない。
 
 ## 承認記録（Approval Record）
 
-Human maintainerによる明示的なApprovalはまだ記録しない。
+Human maintainerは、`5945010c745287b0f0e8fe107c6fe4747e46afb8`時点の0011 proposalを最終reviewし、
+Blockingなしを確認した後、「次に進む」と回答した。これは、このconversationにおけるexplicitな
+Human Approvalであり、commitまたはpushから推測したものではない。
+
+承認scopeは次のとおりである。
+
+- CLI terminologyとcanonical command surface
+- `generate` / `build` / `publish` / `build --publish`のresponsibility boundary
+- Schema Migration v1の`AddField` / `RenameField` / `DropField`
+- Migration Resolvable model
+- diagnostic-tolerant resolutionとunclassifiable sourceのfail-closed
+- Build Selection selected-dataset validation非依存
+- AddField initializerとschema/data append placement
+- RenameField / DropFieldのidentityとdependency semantics
+- source-preserving deterministic rewrite
+- stale-plan protection
+- `Recovery Required`
+- schema field orderとdata record mapping member orderの分離
+- MigrationとFormatterの責務分離
+- unresolved future decisionsを解決せずdeferしたまま承認すること
+
+このapprovalを根拠として、`docs/specs/cli.md`、`docs/specs/schema-migration.md`、および
+`docs/specs/table-and-keys.md`の承認済みdeltaをcanonical specificationへ適用した。
+CLI runtime、Migration engine、YAML patch、source commit、tests、fixturesは未実装であり、
+このspecification changeのStatusは`Applied`である。

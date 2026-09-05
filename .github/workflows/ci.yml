@@ -33,6 +33,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,6 +42,7 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
+      - run: cargo xtask check-wasm
       - run: cargo xtask check-all
 
   windows:

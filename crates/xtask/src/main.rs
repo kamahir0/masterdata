@@ -37,6 +37,8 @@ enum CommandKind {
     CheckRationale,
     /// Run the isolated real MasterMemory v3 .NET technical spike.
     MastermemorySpike,
+    /// Compile the in-memory semantic authoring path for wasm32.
+    CheckWasm,
     /// Run the repository's main checks.
     CheckAll,
     /// Recreate target/dev-project from fixtures/minimal.
@@ -60,6 +62,7 @@ fn run() -> Result<()> {
         CommandKind::CheckSpecs => check_specs(),
         CommandKind::CheckRationale => check_rationale(),
         CommandKind::MastermemorySpike => mastermemory_spike(),
+        CommandKind::CheckWasm => check_wasm(),
         CommandKind::CheckAll => check_all(),
         CommandKind::DevReset => {
             let destination = reset_dev_project()?;
@@ -343,6 +346,23 @@ fn check_rationale() -> Result<()> {
         summary.source_files, summary.rationale_blocks, summary.references
     );
     Ok(())
+}
+
+fn check_wasm() -> Result<()> {
+    run_program(
+        cargo_command(),
+        [
+            OsString::from("check"),
+            OsString::from("--package"),
+            OsString::from("masterdata-core"),
+            OsString::from("--example"),
+            OsString::from("wasm_authoring_semantic_path"),
+            OsString::from("--target"),
+            OsString::from("wasm32-unknown-unknown"),
+        ],
+        &repository_root(),
+        &[],
+    )
 }
 
 fn check_all() -> Result<()> {

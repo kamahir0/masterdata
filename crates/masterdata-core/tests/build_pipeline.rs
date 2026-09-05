@@ -1,10 +1,13 @@
 use std::fs;
 
 use masterdata_core::{
-    BuildSelection, Project, ProjectService, compute_schema_source_content_hash,
-    prepare_build_from_documents, prepare_semantic_build,
+    BuildSelection, Project, ProjectDocuments, ProjectService, compute_schema_source_content_hash,
+    parse_yaml_document, prepare_build_from_documents, prepare_semantic_build,
 };
 use tempfile::tempdir;
+
+const IN_MEMORY_SCHEMA: &str = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: name\n    type: string\nprimaryKey:\n  fields: [id]\n";
+const IN_MEMORY_DATA: &str = "kind: data\ntable: item\nrecords:\n  - id: 1\n    name: Potion\n";
 
 fn write_project(root: &std::path::Path, schema: &str, build: &str) {
     fs::create_dir_all(root.join("sources")).expect("sources");
@@ -93,6 +96,28 @@ fn build_preparation_accepts_loaded_documents() {
         semantic.schema_source_content_hash
     );
     assert!(plan.validation.valid);
+}
+
+#[test]
+fn semantic_build_from_in_memory_sources() {
+    let schema = parse_yaml_document(
+        std::path::PathBuf::from("schemas/item.yaml"),
+        IN_MEMORY_SCHEMA,
+    )
+    .expect("schema");
+    let data = parse_yaml_document(std::path::PathBuf::from("data/item.yaml"), IN_MEMORY_DATA)
+        .expect("data");
+    let documents = ProjectDocuments {
+        files: vec![schema, data],
+    };
+
+    let preparation = prepare_semantic_build(documents, &BuildSelection::unfiltered())
+        .expect("semantic preparation");
+
+    assert!(preparation.validation.valid);
+    assert_eq!(preparation.tables.len(), 1);
+    assert_eq!(preparation.tables[0].primary_key.fields, vec!["id"]);
+    assert_eq!(preparation.tables[0].records.len(), 1);
 }
 
 #[test]

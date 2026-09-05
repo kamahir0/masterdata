@@ -59,8 +59,8 @@ Status: Proposed
   し、operation-specific postconditionを確認する。project-wide diagnosticsは別に収集できる。
 - RenameField / DropFieldのtargetはlogical Table identityとcurrent field nameで解決し、
   MessagePack `key`や新しいField IDをidentityにしない。
-- commit直前にproject config、migration-relevant source file set membership、closure判断に
-  使用したcanonical source inputのlost updateを検出し、stale planならmutationを開始しない。
+- commit直前にMIGRATION-016が定義するbase project inputsのstale updateを検出し、不一致なら
+  mutationを開始しない。
 - commit failureはrollback成功ならOLD、rollback failureなら`Recovery Required`として扱い、
   silent continuationをしない。
 - data record mapping member orderにはdomain semanticsを与えず、このproposed deltaを
@@ -114,7 +114,12 @@ build success only → publishというcomposition boundaryだけを提案する
 独立reviewで、既存proposalのfull-project validation wordingが、Migrationと無関係な既存
 diagnosticまでMigration blockingにすることを確認した。Migration successを、Project全体の
 error-freeではなく、target・必要なsemantic closure・operation-specific postcondition・
-safe commitを確定できるMigration Resolvable modelへ変更する。
+safe commitを確定できるMigration Resolvable modelへ変更する。canonical parsing / semantic
+resolutionはdiagnosticを生成してもよい。必要なstructure、logical Table / field symbols、type
+declarations、operation-specific dependency、patch location / provenanceを安全かつ決定論的に
+resolveでき、diagnosticがclosure外またはMigration operationと安全に無関係であると分類できる
+限り、そのdiagnosticだけではMigrationをblockingにしない。一方、closureを構成できない、target
+との関係を判定できない、またはunclassifiable sourceはfail closedする。
 
 Build Selectionはbuild-time selected logical datasetのownerであり、全profileのPK / Unique /
 Reference validationをMigration success gateにしない。ただしclosure外と安全に分類できない
@@ -164,7 +169,8 @@ Human Approval前であり、次のevidenceはすべて未実装・未通過で�
 - RenameFieldのMessagePack key preservationとresolved key/index reference evidence
 - DropFieldのexplicit destructive authorizationとdependency failure evidence
 - source-preserving rewrite、patched source semantic round-trip、unaffected byte preservationのevidence
-- project config / source membership / closure inputを含むcommit直前のlost-update rejection evidence
+- MIGRATION-016が定義するproject config、source file set membership、closure / postcondition判断で
+  ロードしたcanonical source inputsを含むcommit直前のstale-update rejection evidence
 - multi-file commitのOLD / NEW / Recovery Required state evidence
 - schema field orderとdata mapping member orderを分離し、Formatter semanticsを混在させないevidence
 

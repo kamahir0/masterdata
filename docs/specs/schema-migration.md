@@ -109,6 +109,13 @@ specific profileのselected-dataset validationをMigration success gateにして
 closure外でmigrationと無関係であることを安全に判定できたproject diagnosticは、Migration
 を拒否する理由にしてはならない。逆に、source documentが壊れていてMigration対象Tableに
 属するかどうかを安全に分類できない場合は、unrelatedと推測せずblockingとして扱う。
+canonical parsing / semantic resolutionがdiagnosticを生成すること自体は、resolution failureを
+意味しない。Migration resolution closureに必要なstructure、logical Table / field symbols、type
+declarations、operation-specific dependency、source patch location / provenanceを安全かつ決定論的に
+resolveでき、diagnosticがclosure外またはMigration operationと安全に無関係であると分類できる
+限り、そのdiagnosticだけを理由にMigrationを拒否してはならない。必要なclosureを構成できない、
+targetとの関係を判定できない、またはsourceがunclassifiableである場合は、既存のfail-closed
+境界に従いblockingとして扱う。
 text patchが適用できただけではMigration成功と扱ってはならず（MUST NOT）、patched sourceを
 再parseしてmigration-specific postconditionとexpected transformed semantic resultを確認する。
 
@@ -268,7 +275,11 @@ deterministic source patch planを生成し、patchをin-memory sourceへ適用�
 sourceをcanonical parserで再parseしなければならない（MUST）。再parse後のsemantic resultは
 expected transformed semantic resultと整合し、operation-specific postconditionを満たさなければ
 ならない。Project全体のvalidationをMigration success gateにしてはならず、project-wide
-diagnosticsを収集する場合もMigration execution resultとは別に扱う。内部のsnapshot、patch、
+diagnosticsを収集する場合もMigration execution resultとは別に扱う。canonical parse / semantic
+resolutionでclosure外またはMigration operationと安全に無関係なdiagnosticが生成されても、必要な
+closure、patch location / provenance、expected resultを安全かつ決定論的に確定できる限り、
+それだけでMigrationを失敗扱いにしてはならない。closureを構成できない、targetとの関係を
+判定できない、またはunclassifiable sourceがある場合はfail closedする。内部のsnapshot、patch、
 comparison representationは固定しない。
 
 ### MIGRATION-016
@@ -410,8 +421,8 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
   変更せず、affected filesだけを必要なsource spansで更新する。
 - semantic transformed resultとpatched sourceをcanonical parserで突き合わせ、patch成功
   だけではMigration成功にしない。
-- commit直前にaffected source filesのlost updateを検出し、stale planならmutationを開始
-  しない。
+- commit直前にMIGRATION-016が定義するbase project inputsのstale updateを検出し、不一致なら
+  mutationを開始しない。
 - ordinary commit failureは、rollback成功ならOLD、rollback failureなら`Recovery Required`
   として報告する。
 - Project全体のerror-freeはMigration successの条件にせず、Migration Resolvable、意図した
@@ -431,7 +442,7 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 | MIGRATION-001, MIGRATION-011 | generated C#、binary、receiptをauthorityにせず、YAML sourceだけからmigration inputを構成するtest | pending implementation |
 | MIGRATION-002, MIGRATION-003 | Add/Rename/Dropだけをv1 semantic operationとして識別し、SQL/text edit grammarを要求しないtest | pending implementation |
 | MIGRATION-004 | 同一snapshot・command・optionsから同一plan/resultになるdeterminism test | pending implementation |
-| MIGRATION-005, MIGRATION-013 | migration resolution closure、operation postcondition、blocking diagnosticsを検証し、unrelated diagnosticsだけでは拒否しないtest | pending implementation |
+| MIGRATION-005, MIGRATION-013 | diagnosticを生成し得るcanonical resolutionからmigration closureとoperation postconditionを確定し、closure外のunrelated diagnosticsだけでは拒否しないtest | pending implementation |
 | MIGRATION-006 | AddFieldがcanonical constant valueを検証し、schema/data末尾append、既存key維持、record存在時のexplicit initializerを要求するtest | pending implementation |
 | MIGRATION-007 | RenameFieldがMessagePack keyを維持し、Primary/Secondary Key参照をsemanticに更新するtest | pending implementation |
 | MIGRATION-008 | destructive authorizationなしのDropFieldがmutationせず、依存fieldを黙って削除しないtest | pending implementation |
@@ -440,8 +451,8 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 | MIGRATION-012 | in-memory semantic engineがnative filesystem、RPC、async runtimeなしで呼び出せるarchitecture/WASM evidence | pending implementation |
 | MIGRATION-014 | unaffected fileのbyte preservation、affected fileのpresentation preservation、deterministic source bytesのtest | pending implementation |
 | MIGRATION-015 | patched sourceの再parseとexpected transformed semantic resultの整合確認test | pending implementation |
-| MIGRATION-016 | commit直前のconcurrent modification / stale planを検出しmutationしないtest | pending implementation |
-| MIGRATION-017 | Migration Resolvable、unclassifiable sourceのfail-closed、Build Selection非依存、project diagnostics分離のtest | pending implementation |
+| MIGRATION-016 | MIGRATION-016が定義するproject config、source file set membership、closure / postcondition判断でロードしたcanonical source inputsのstale updateをcommit前に検出しmutationしないtest | pending implementation |
+| MIGRATION-017 | diagnostic-tolerantなMigration Resolvable、unclassifiable sourceのfail-closed、Build Selection非依存、project diagnostics分離のtest | pending implementation |
 
 ## Open Questions / Specification Gaps
 

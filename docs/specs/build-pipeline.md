@@ -14,6 +14,9 @@ normative contractとなった。
 publish-only operationが使用するcanonical artifact-set receiptに関する`ARTIFACT-SET-001`から
 `ARTIFACT-SET-008`は、[仕様変更0007](../spec-changes/0007-canonical-artifact-set-receipt.md)のHuman Approvalとcanonical applicationによって
 current normative contractとなった。
+複数publish targetのall-target preflight、target-local failure、continuation、およびaggregate resultに関する
+`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`は、[仕様変更0008](../spec-changes/0008-multi-target-publish-execution.md)のHuman Approvalと
+canonical applicationによってcurrent normative contractとなった。
 legacy configurationのhard cutとstructured migration diagnosticの適用は、[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)に記録する。
 
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
@@ -25,6 +28,7 @@ filesystem publisherとartifact-set receipt runtimeは未実装であるため�
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
 このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
 external publish operationは未実装であり、影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004、0005、および0007に記録する。
+external publish path safety、receipt、partial executionのlifecycle recordは、それぞれ仕様変更0006、0007、および0008に記録する。
 
 ## 承認されたcanonical model
 
@@ -394,7 +398,9 @@ Err
 ```
 
 このrequirementはfilesystem crashまたはpower-loss時に複数fileを同時atomic commitできることを保証しない。cross-file atomicity、retry、rollbackの
-実装strategyは後段で決めるが、実装が保証していない同時atomic commitをproduct contractとして説明してはならない（MUST NOT）。
+実装strategyはtarget-local failureについて`PUBLISH-EXEC-003`、複数targetのcontinuationとaggregate resultについて
+`PUBLISH-EXEC-002`および`PUBLISH-EXEC-005`に従う。successful targetを後続targetのfailureだけを理由に戻すcross-target rollbackや、
+複数destinationを同時にcommitするglobal atomicityは保証しない。実装が保証していない同時atomic commitをproduct contractとして説明してはならない（MUST NOT）。
 
 ### PUBLISH-009
 
@@ -403,7 +409,9 @@ binaryがある場合、そのfileを新しいcanonical binaryでreplaceでき�
 同じdirectoryの他のentryへownershipを拡張してはならない（MUST NOT）。
 
 binary publishはC# manifestをownership metadataとして使用してはならない（MUST NOT）。binary targetのparent creation、既存fileの具体的なreplace
-mechanism、およびsymlink/path safetyは別途定義する。
+mechanism、およびsymlink/path safetyは別途定義する。execution-time failureが発生した場合は、既存regular fileがあればそのprevious usable
+stateを保持し、initial publishでtargetが存在しなければpartialまたはcorruptなconfigured target pathを公開してはならない（MUST NOT）。
+このtarget-local failure safetyと、他targetを継続するaggregate semanticsは`PUBLISH-EXEC-003`から`PUBLISH-EXEC-005`に従う。
 
 ### PUBLISH-010
 
@@ -565,8 +573,99 @@ parent creation、C# file operation、manifest update、binary replacementを開
 preflight後にfilesystemが変更された場合、publisherは各mutation時点でunexpected symlink/type
 changeを安全側にrejectし、危険なfollow、recursive delete、またはpartial overwriteを行っては
 ならない（MUST NOT）。このruleは外部processやuserとのraceをOS-level handleで完全排除すること、
-crash/power-loss時のcross-target atomicity、またはpartial publishのretry/rollback semanticsを
-自動的に保証するものではない。通常のI/O failureの目標状態は既存の`PUBLISH-008`に従う。
+crash/power-loss時のcross-target atomicityを自動的に保証するものではない。通常のI/O failureに
+おけるtarget-local failureと複数targetのexecution semanticsは`PUBLISH-EXEC-001`から
+`PUBLISH-EXEC-005`に従う。
+
+## Normative requirements: multi-target publish execution
+
+publishは、同じreceipt-valid canonical artifact setを全targetの入力として、次の3 phaseで実行する。
+
+```text
+Phase 1: canonical artifact-set receipt validation
+    -> invalid: Err, no destination mutation
+Phase 2: ALL configured target preflight
+    -> any invalid: Err, no target attempted or mutated
+Phase 3: target execution
+    -> every configured target is attempted
+    -> target-local success or failure/rollback
+    -> per-target results are aggregated
+```
+
+Phase 1は`ARTIFACT-SET-004`から`ARTIFACT-SET-006`、Phase 2は`PUBLISH-PATH-001`から
+`PUBLISH-PATH-010`をownerとする。Phase 3とpartial successのaggregate semanticsは、次のrequirementsをownerとする。
+
+### PUBLISH-EXEC-001
+
+receipt validationに成功した後、publisherはconfigured `publish.targets`の全targetに対して
+`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のpreflightを実行しなければならない（MUST）。
+collision、protected path overlap、symlink violation、manifest ambiguity、ownership ambiguity、
+unsupported filesystem entry type、target graph overlap、またはその他のpreflight errorが1件でも
+ある場合、publishはoverall `Err`を返さなければならず（MUST）、いずれのtargetもattemptまたは
+mutationしてはならない（MUST NOT）。target parentの作成、C# manifestの更新、stale managed fileの
+削除、binary fileのreplaceも開始してはならない（MUST NOT）。
+
+preflight failureではexecution phaseが開始されない。per-target structured resultが
+`not_attempted`を表現できる場合、その状態を使用してよい（MAY）。receipt validation failureも
+このpreflight境界より前のno-mutation failureとして扱う。
+
+### PUBLISH-EXEC-002
+
+all-target preflightが成功した後、publisherはconfigured targetを全てattemptしなければならない
+（MUST）。あるtargetのexecution-time failureを理由に、残りのindependent targetをskipしてはならない
+（MUST NOT）。targetの実行順序はdeterministicなattempt順序およびdiagnostic/report順序として使用
+してよい（MAY）が、`publish.targets`のregistration orderはsuccess dependency graphを意味しては
+ならない（MUST NOT）。target Bがtarget Aのsuccessを待つ、またはtarget Aのfailureを理由にBを
+`not_attempted`とする意味を導入してはならない（MUST NOT）。
+
+全targetは同じvalidated canonical artifact-set receiptを入力として扱い、targetごとにYAMLを再parse、
+semantic validation、C# generation、.NET build、またはimplicit buildを実行してはならない（MUST NOT）。
+preflight後のTOCTOUによりtargetのfilesystem type、symlink、collisionまたはownership safetyが
+invalidになった場合は、そのtargetのexecution failureとして扱い、残りのtargetのattemptを継続する。
+
+### PUBLISH-EXEC-003
+
+各publish targetは独立したfailure domainであり、execution-time failureが発生したtargetは、その
+target自身のprevious usable publish stateを保持または安全にrollbackしなければならない（MUST）。
+
+- C# targetのsuccessはcurrent managed C# setとcurrent manifestをcoherentに公開し、failureはprevious
+  managed setをusableな状態に保持し、unmanaged contentを変更してはならない（MUST）。
+- binary targetのsuccessはconfigured explicit fileへNEW binaryを公開し、既存regular fileのreplace
+  failureではprevious fileをusableな状態に保持しなければならない（MUST）。initial publishでprevious
+  fileが存在しない場合、failure後にpartialまたはcorruptなconfigured target pathを残してはならない
+  （MUST NOT）。
+- target-local rollbackまたはprevious stateの保持自体に失敗した場合、publisherはrollback failureを
+  structured diagnosticとして報告し、targetまたはoverall operationをsuccessとして扱ってはならない
+  （MUST NOT）。
+
+publisherは、あるtargetのfailureから別targetのownershipを推測したり、別targetのmanifestまたは
+fileを修復したりしてはならない（MUST NOT）。
+
+### PUBLISH-EXEC-004
+
+あるtargetがsuccessした後に別targetがfailureしても、後続targetのfailureだけを理由に、既にsuccess
+したtargetをprevious stateへrollbackしてはならない（MUST NOT）。partial successは、successful
+targetのNEW usable stateを保持したままoverall operationがfailureとなる状態を許可する。
+publisherは複数filesystem、repository、volumeをまたぐglobal atomic commit、cross-target transaction
+coordinator、または2-phase commitをv1 contractとして保証してはならない（MUST NOT）。
+
+### PUBLISH-EXEC-005
+
+publisherは全targetのattempt完了後にpublish resultをaggregateしなければならない（MUST）。resultは
+少なくともtargetごとに`succeeded`または`failed`をstructuredに識別できなければならない（MUST）。
+preflight failureでexecution phaseが開始されなかった場合は、必要に応じてtargetを`not_attempted`
+として表現してよい（MAY）。execution phase開始後は、先行targetのfailureだけを理由に後続targetを
+`not_attempted`としてはならない（MUST NOT）。
+
+- 全targetがsuccessした場合、publishはoverall `Ok`を返す。
+- 1件以上のtargetがexecution failure、rollback failure、またはその他のfailureになった場合、他の
+  targetがsuccessしていてもpublishはoverall `Err`を返す。
+- validなreceiptと0 targetの場合、publishはtarget mutationを伴わないsuccessful no-opとしてoverall
+  `Ok`を返す。
+
+partial success後の再実行は、hidden transaction logを前提とせず、current destination stateとtarget-local
+manifestを再評価して安全に同じreceipt-valid artifact setへ収束できる方向でなければならない（MUST）。
+unchanged fileをskipするかどうかなどのperformance optimizationはこのrequirementで固定しない。
 
 ## Filesystem pathの例
 
@@ -600,7 +699,21 @@ crash/power-loss時のcross-target atomicity、またはpartial publishのretry/
 | PUBLISH-PATH-007 | `publish_path_rejects_source_canonical_cache_and_config_overlap`; `publish_path_allows_safe_project_local_dist` | protected path aliasとsafeなproject-local destinationを区別する。 |
 | PUBLISH-PATH-008 | `publish_path_rejects_nested_csharp_targets`; `publish_path_rejects_csharp_binary_overlap`; `publish_path_rejects_target_aliases` | missing target同士もdestination namespaceで比較する。 |
 | PUBLISH-PATH-009 | `publish_path_resolves_relative_target_from_project_root`; `publish_path_accepts_absolute_target`; `publish_path_creates_missing_parent_after_preflight` | cwd変更とrelative/absolute resolutionを分離して検証する。 |
-| PUBLISH-PATH-010 | `publish_path_validates_all_targets_before_mutation`; `publish_path_rejects_type_change_during_mutation`; `publish_path_preserves_previous_destination_on_preflight_error` | crash durabilityやpartial retryはこのmatrixに含めない。 |
+| PUBLISH-PATH-010 | `publish_path_validates_all_targets_before_mutation`; `publish_path_rejects_type_change_during_mutation`; `publish_path_preserves_previous_destination_on_preflight_error` | crash durabilityはこのmatrixに含めない。execution-time failureとpartial retryは`PUBLISH-EXEC-*`のmatrixで確認する。 |
+
+## Publish execution acceptance matrix
+
+このmatrixは`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`に対する将来のimplementation evidenceであり、
+現時点のtest passを表さない。external filesystem publisherの実装時に、各testを追加または同等の
+evidenceへ置き換える（pending implementation）。
+
+| Requirement | Planned evidence（pending implementation） | Observation |
+| --- | --- | --- |
+| PUBLISH-EXEC-001 | `preflight_failure_mutates_no_targets` | receipt validation後の全target preflightで1件でも失敗した場合、parent creation、manifest更新、binary replacementを含むmutationがない。 |
+| PUBLISH-EXEC-002 | `execution_failure_continues_to_later_targets`; `toctou_failure_on_one_target_does_not_skip_others` | execution phase開始後は先行targetのfailureによって後続targetをskipせず、同じreceiptを入力としてattemptする。 |
+| PUBLISH-EXEC-003 | `execution_failure_rolls_back_only_failed_target`; `binary_failure_preserves_previous_file`; `initial_binary_failure_does_not_publish_partial_file`; `csharp_failure_preserves_previous_managed_set` | C# managed set/unmanaged contentとbinary explicit fileのtarget-local safety、rollback failureのErrを確認する。 |
+| PUBLISH-EXEC-004 | `successful_target_is_not_rolled_back_by_later_failure` | 先行success targetのNEW usable stateを、後続target failureだけを理由に戻さない。global atomicityを主張しない。 |
+| PUBLISH-EXEC-005 | `publish_returns_error_after_partial_success`; `publish_reports_per_target_status`; `retry_after_partial_success_converges`; `zero_targets_is_successful_noop` | all succeededのみOk、1件以上のexecution failureはErr、targetごとのstatusと再実行収束を確認する。 |
 
 ## Approved configuration contract
 
@@ -690,11 +803,11 @@ released-schema binary compatibility、exact binary bytes identity、artifact si
 
 今回のHuman Approvalによって、project-local canonical output、canonical root ownership、C# manifest-based ownership、stale managed file retirement、
 unmanaged preservation/collision、binary explicit-file ownership、`[[publish.targets]]` syntax、relative target pathのproject-root base、複数targetの方向、
-monorepo/separate repositoryの想定、directory basenameとproject identityの分離、B8の`PUBLISH-PATH-001`から`PUBLISH-PATH-010`、およびcanonical
-artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`はApproved contractとなった。
+monorepo/separate repositoryの想定、directory basenameとproject identityの分離、B8の`PUBLISH-PATH-001`から`PUBLISH-PATH-010`、canonical
+artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`、および複数targetのexecution semanticsである
+`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`はApproved contractとなった。
 以下だけを未解決として残す。
 
-- 複数publish targetの一部成功時のretry、rollback、再開、およびoperation/exit semantics。複数destinationのcross-path atomicityは保証するか。
 - `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
 - semantic schema hash、builder cache key、released-schema binary compatibilityをreceiptと独立したspecificationで定義するか。
 - artifact signing、producer authentication、supply-chain attestation、remote provenanceを将来導入する必要があるか。
@@ -706,9 +819,10 @@ artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`はApproved con
 
 ## Statusと実装方針
 
-この文書の`Status: Approved`は、仕様変更0004、0005、0006、および0007に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
+この文書の`Status: Approved`は、仕様変更0004、0005、0006、0007、および0008に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
 `Implemented`へ変更しない。
 
 canonical configuration implementationは`artifact_dir`をproject-local rootとして検証し、complete artifact rootをbuildする。external publish targetのfilesystem
-operationは未実装であり、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`もfuture publisherのpreflight contractである。このdocumentのStatusは`Approved`のまま維持する。
+operation、receipt runtime、および`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`のtarget executionは未実装であり、
+`PUBLISH-PATH-001`から`PUBLISH-PATH-010`とともにfuture publisherのpreflight/execution contractである。このdocumentのStatusは`Approved`のまま維持する。
 legacy configurationの受理、alias、warning-only、automatic migrationは禁止され、legacy artifactのmove/delete/renameは行わない。

@@ -173,6 +173,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [Index / reference仕様](index-and-reference.md) — `Status: Draft`（Reference中心。Table/Keyのsemantic ownerは別document）
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
 - [Build pipeline仕様](build-pipeline.md) — `Status: Approved`
+- [Runtime hosts / composition root / capability仕様](runtime-hosts.md) — `Status: Approved`
 - [Compatibility仕様](compatibility/README.md)
   - [Table identity仕様](compatibility/table-identity.md)
   - [Field identity仕様](compatibility/field-identity.md) — `Status: Deprecated`（旧Field ID modelのhistory）

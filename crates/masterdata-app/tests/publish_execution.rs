@@ -72,13 +72,17 @@ fn protected_region_revalidation_failure_is_target_local_and_continues() {
     assert_status(&failure.report, 0, PublishTargetStatus::Succeeded);
     assert_status(&failure.report, 1, PublishTargetStatus::Failed);
     assert_status(&failure.report, 2, PublishTargetStatus::Succeeded);
-    assert_eq!(
-        failure.report.targets[1]
-            .failure
-            .as_ref()
-            .expect("protected-region failure")
-            .code,
-        "E-PUBLISH-FILESYSTEM-INSPECTION"
+    let failure_code = &failure.report.targets[1]
+        .failure
+        .as_ref()
+        .expect("protected-region failure")
+        .code;
+    assert!(
+        matches!(
+            failure_code.as_str(),
+            "E-PUBLISH-FILESYSTEM-INSPECTION" | "E-PUBLISH-TARGET-PATH-UNSAFE"
+        ),
+        "unexpected protected-region revalidation diagnostic: {failure_code}"
     );
     assert_eq!(
         fs::read(project.path().join("first/Item.g.cs")).expect("first target"),

@@ -68,6 +68,32 @@ fn project_006_source_directory_does_not_define_table_identity() {
 }
 
 #[test]
+fn project_convention_does_not_define_semantic_identity() {
+    let directory = tempdir().expect("temp directory");
+    write_project(
+        directory.path(),
+        "kind: schema\ntable: actual-table\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+    );
+    let data_directory = directory.path().join("sources/data/not-the-table-name");
+    fs::create_dir_all(&data_directory).expect("nested data directory");
+    fs::write(
+        data_directory.join("records.yaml"),
+        "kind: data\ntable: actual-table\nrecords:\n  - id: 1001\n",
+    )
+    .expect("nested data");
+
+    let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
+    let documents = project.load_documents().expect("documents");
+    let (path, data) = documents.data().next().expect("data document");
+    assert!(path.ends_with("sources/data/not-the-table-name/records.yaml"));
+    assert_eq!(data.table, "actual-table");
+
+    let report = project.validate().expect("validation report");
+    assert!(report.valid, "{report:?}");
+    assert_eq!(report.tables, ["actual-table"]);
+}
+
+#[test]
 fn id_field_is_not_an_implicit_primary_key() {
     let directory = tempdir().expect("temp directory");
     write_project(

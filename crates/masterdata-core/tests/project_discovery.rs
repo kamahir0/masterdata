@@ -390,7 +390,7 @@ fn project_path_001_rejects_artifact_source_and_cache_overlap() {
 }
 
 #[test]
-fn init_creates_a_project_marker_and_source_root() {
+fn init_creates_kind_first_source_scaffold() {
     let directory = tempdir().expect("temp directory");
     let target = directory.path().join("new-project");
     let info = ProjectService::new()
@@ -406,12 +406,95 @@ fn init_creates_a_project_marker_and_source_root() {
     assert_eq!(info.project_id, "new.project");
     assert!(target.join(PROJECT_CONFIG_FILENAME).is_file());
     assert!(target.join("sources").is_dir());
+    for directory in ["schemas", "types", "data"] {
+        let path = target.join("sources").join(directory);
+        assert!(path.is_dir());
+        assert!(
+            fs::read_dir(path)
+                .expect("source convention directory")
+                .next()
+                .is_none(),
+            "source convention directories must not receive placeholders"
+        );
+    }
     let config = fs::read_to_string(target.join(PROJECT_CONFIG_FILENAME)).expect("config");
     assert!(config.contains("artifact_dir = \".masterdata/output\""));
     assert!(config.contains("cache = \".masterdata/cache\""));
     assert!(!config.contains("output = "));
     assert!(!config.contains("binary_output = "));
     assert!(!config.contains("publish.targets"));
+}
+
+#[test]
+fn init_creates_default_gitignore_when_missing() {
+    let directory = tempdir().expect("temp directory");
+    let target = directory.path().join("new-project");
+
+    ProjectService::new()
+        .init(
+            &target,
+            &InitOptions {
+                project_id: "new.project".to_owned(),
+                name: "New Project".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        )
+        .expect("initialize project");
+
+    assert_eq!(
+        fs::read_to_string(target.join(".gitignore")).expect("gitignore"),
+        "/.masterdata/\n"
+    );
+    assert!(!target.join(".masterdata").exists());
+    assert!(!target.join("sources/schemas/.gitkeep").exists());
+    assert!(!target.join("sources/types/.gitkeep").exists());
+    assert!(!target.join("sources/data/.gitkeep").exists());
+}
+
+#[test]
+fn init_preserves_existing_gitignore() {
+    let directory = tempdir().expect("temp directory");
+    let target = directory.path().join("new-project");
+    let original = b"Library/\nTemp/\n# keep me\n";
+    fs::create_dir_all(&target).expect("project directory");
+    fs::write(target.join(".gitignore"), original).expect("existing gitignore");
+
+    ProjectService::new()
+        .init(
+            &target,
+            &InitOptions {
+                project_id: "new.project".to_owned(),
+                name: "New Project".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        )
+        .expect("initialize project");
+
+    assert_eq!(
+        fs::read(target.join(".gitignore")).expect("gitignore"),
+        original
+    );
+}
+
+#[test]
+fn init_does_not_eager_create_tool_state() {
+    let directory = tempdir().expect("temp directory");
+    let target = directory.path().join("new-project");
+
+    ProjectService::new()
+        .init(
+            &target,
+            &InitOptions {
+                project_id: "new.project".to_owned(),
+                name: "New Project".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        )
+        .expect("initialize project");
+
+    assert!(!target.join(".masterdata").exists());
+    assert!(!target.join(".masterdata/output").exists());
+    assert!(!target.join(".masterdata/cache").exists());
 }
 
 #[test]

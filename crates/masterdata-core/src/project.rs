@@ -1,5 +1,6 @@
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::config::{ProjectConfig, PublishTargetKind};
@@ -8,6 +9,9 @@ use crate::error::{ErrorKind, MasterdataError, Result, io_error};
 use crate::validation::{ValidationReport, validate_documents};
 
 pub const PROJECT_CONFIG_FILENAME: &str = "masterdata.toml";
+
+const DEFAULT_SOURCE_DIRECTORIES: [&str; 3] = ["schemas", "types", "data"];
+const DEFAULT_GITIGNORE: &[u8] = b"/.masterdata/\n";
 
 #[derive(Debug, Clone)]
 pub struct Project {
@@ -232,7 +236,7 @@ impl Project {
     }
 }
 
-/// Create a new project marker and the default source root.
+/// Create a new project marker and the default source scaffold.
 ///
 /// This operation is deliberately small: Unity project detection may provide
 /// future hints, but `masterdata.toml` remains the identity boundary.
@@ -270,7 +274,29 @@ pub fn initialize_project(root: &Path, options: &InitOptions) -> Result<ProjectI
     fs::write(&config_path, content).map_err(|error| io_error(&config_path, error))?;
     let source_root = root.join("sources");
     fs::create_dir_all(&source_root).map_err(|error| io_error(&source_root, error))?;
+    for directory in DEFAULT_SOURCE_DIRECTORIES {
+        let path = source_root.join(directory);
+        fs::create_dir_all(&path).map_err(|error| io_error(&path, error))?;
+    }
+    create_default_gitignore(&root)?;
     Project::from_config_path(config_path).map(|project| project.info())
+}
+
+fn create_default_gitignore(root: &Path) -> Result<()> {
+    let path = root.join(".gitignore");
+    match fs::symlink_metadata(&path) {
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error(&path, error)),
+    }
+
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) => return Err(io_error(&path, error)),
+    };
+    file.write_all(DEFAULT_GITIGNORE)
+        .map_err(|error| io_error(&path, error))
 }
 
 fn find_config_upwards(start: &Path) -> Result<Option<PathBuf>> {

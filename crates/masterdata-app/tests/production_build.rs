@@ -4,14 +4,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-use masterdata_app::NativeApplicationService;
+use masterdata_app::{
+    ARTIFACT_SET_RECEIPT_FILENAME, NativeApplicationService, write_artifact_set_receipt,
+};
 use masterdata_core::{BuildSelection, PROJECT_CONFIG_FILENAME};
 use tempfile::{Builder, TempDir};
 
 // WHY: The standard test harness runs these real .NET integration tests in
 // parallel, but the .NET CLI first-use/NuGet migration state is process-shared.
 // IF REMOVED: first-time setup can race and fail before the production builder runs.
-// EVIDENCE: .github/workflows/ci.yml; Regression: production_build_handoffs_full_selected_model_through_real_builder.
+// EVIDENCE: .github/workflows/ci.yml; Regression: full_build_writes_matching_artifact_receipt.
 static DOTNET_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn dotnet_test_guard() -> std::sync::MutexGuard<'static, ()> {
@@ -22,7 +24,7 @@ fn dotnet_test_guard() -> std::sync::MutexGuard<'static, ()> {
 }
 
 #[test]
-fn production_build_handoffs_full_selected_model_through_real_builder() {
+fn full_build_writes_matching_artifact_receipt() {
     let _dotnet_test_guard = dotnet_test_guard();
     if !dotnet_available() {
         eprintln!(".NET SDK is unavailable; skipping production builder integration test");
@@ -73,12 +75,20 @@ fn production_build_handoffs_full_selected_model_through_real_builder() {
     assert!(generated_source.contains("MasterMemory.SecondaryKey(1, keyOrder: 0)"));
     assert!(generated_source.contains("MasterMemory.SecondaryKey(2, keyOrder: 0)"));
 
+    let validated = NativeApplicationService::new()
+        .validate_artifact_set(Some(project.path()), project.path())
+        .expect("published receipt-valid artifact set");
+    assert_eq!(validated.receipt.project_id, "fixture.full");
+    assert_eq!(validated.csharp.len(), execution.generation.files.len());
+    assert_eq!(validated.binary.relative_path, "masterdata.bytes");
+
     let expected_generated_paths = execution
         .generation
         .files
         .iter()
         .map(|file| PathBuf::from("csharp").join(&file.relative_path))
         .chain([PathBuf::from("masterdata.bytes")])
+        .chain([PathBuf::from(ARTIFACT_SET_RECEIPT_FILENAME)])
         .collect::<BTreeSet<_>>();
     let actual_artifact_paths = snapshot_files(&project.path().join(".masterdata/output"))
         .into_keys()
@@ -172,7 +182,7 @@ fn production_build_removes_stale_generated_file_after_source_removal() {
 }
 
 #[test]
-fn production_build_failure_preserves_existing_canonical_artifact_set() {
+fn failed_build_preserves_previous_receipt_and_set() {
     let _dotnet_test_guard = dotnet_test_guard();
     if !dotnet_available() {
         eprintln!(".NET SDK is unavailable; skipping publication rollback test");
@@ -199,10 +209,15 @@ fn production_build_failure_preserves_existing_canonical_artifact_set() {
 }
 
 #[test]
-fn production_build_dry_run_does_not_create_canonical_artifacts() {
+fn dry_run_leaves_receipt_untouched() {
     let project = copy_full_fixture("dry-run canonical project with spaces");
     let artifact_root = project.path().join(".masterdata/output");
-    assert!(!artifact_root.exists());
+    fs::create_dir_all(artifact_root.join("csharp")).expect("C# directory");
+    fs::write(artifact_root.join("csharp/Existing.g.cs"), b"existing")
+        .expect("existing C# artifact");
+    fs::write(artifact_root.join("masterdata.bytes"), b"existing binary").expect("existing binary");
+    write_artifact_set_receipt(&artifact_root, "fixture.full").expect("existing receipt");
+    let before = snapshot_files(&artifact_root);
 
     let execution = NativeApplicationService::new()
         .build(Some(project.path()), project.path(), true)
@@ -210,7 +225,24 @@ fn production_build_dry_run_does_not_create_canonical_artifacts() {
 
     assert!(execution.binary.is_none());
     assert!(execution.written_files.is_empty());
-    assert!(!artifact_root.exists());
+    assert_eq!(snapshot_files(&artifact_root), before);
+}
+
+#[test]
+fn partial_build_does_not_issue_receipt() {
+    let project = copy_full_fixture("partial build project with spaces");
+    let service = NativeApplicationService::new();
+    let plan = service
+        .prepare_build(Some(project.path()), project.path())
+        .expect("prepare build");
+    service.plan_csharp(&plan).expect("C# plan");
+
+    assert!(
+        !project
+            .path()
+            .join(".masterdata/output/.masterdata-artifact-set.json")
+            .exists()
+    );
 }
 
 fn copy_full_fixture(label: &str) -> TempDir {

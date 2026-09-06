@@ -22,8 +22,9 @@ legacy configurationのhard cutとstructured migration diagnosticの適用は、
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
 各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
 この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryを定義する。`Approved`は
-implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builderは実装済みであるが、external
-filesystem publisherとartifact-set receipt runtimeは未実装であるため、`PUBLISH-004`以降、`PUBLISH-PATH-*`、および`ARTIFACT-SET-*`のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
+implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builder、および
+artifact-set receiptのgeneration / read-only validation runtimeは実装済みである。一方、external filesystem publisherは未実装であるため、
+`PUBLISH-004`以降、`PUBLISH-PATH-*`、およびreceipt validation後のpublish operationに対応するimplementation、tests、fixtures、およびmigrationは別taskで行う。
 
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
 このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
@@ -244,18 +245,19 @@ receipt validation後は、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のall-targ
 
 ## Artifact-set receipt acceptance matrix
 
-このmatrixは`ARTIFACT-SET-001`から`ARTIFACT-SET-008`に対する将来のimplementation evidenceであり、現時点のtest passを表さない。すべてpending implementationである。
+このmatrixは`ARTIFACT-SET-001`から`ARTIFACT-SET-008`に対するimplementation evidenceである。receipt generationとread-only validationに対応する行は本sliceで検証済みであり、
+external publish wiringに依存する行は引き続きpendingである。ここでのtest passはpublish operation全体の実装を意味しない。
 
-| Requirement | Planned evidence（pending implementation） | Observation |
+| Requirement | Evidence | Observation |
 | --- | --- | --- |
-| ARTIFACT-SET-001 | `full_build_writes_matching_artifact_receipt`; `failed_build_preserves_previous_receipt_and_set` | C#、binary、receiptをwhole-root setとして扱い、通常のI/O failureで旧setを保持する。 |
-| ARTIFACT-SET-002 | `artifact_receipt_has_v1_shape_and_sha256_hashes`; `artifact_receipt_is_deterministic` | version、project id、hash algorithm、deterministic representationを確認する。 |
-| ARTIFACT-SET-003 | `artifact_receipt_covers_complete_csharp_and_binary_set`; `artifact_receipt_rejects_unsafe_paths` | all C# path、固定binary path、separator、duplicate/escapeを確認する。 |
-| ARTIFACT-SET-004 | `publish_validates_receipt_before_external_mutation`; `publish_rejects_tampered_artifact_set` | receipt、actual set、hash、project id、entry typeを検証し、B8 preflightより前に停止する。 |
-| ARTIFACT-SET-005 | `publish_accepts_last_receipt_after_current_yaml_change`; `publish_does_not_rebuild_current_sources` | source change、source deletion、publish target変更でreceipt validityを不必要に失わせない。 |
-| ARTIFACT-SET-006 | `publish_rejects_missing_or_malformed_receipt_without_mutation`; `publish_rejects_legacy_pre_receipt_set` | automatic adoption/repair/migrationを行わず、旧destinationを変更しない。 |
-| ARTIFACT-SET-007 | `artifact_receipt_does_not_claim_authenticity_or_cache_identity` | consistency/integrityと署名・provenance・cache semanticsを区別する。 |
-| ARTIFACT-SET-008 | `dry_run_leaves_receipt_untouched`; `partial_build_does_not_issue_receipt`; `receipt_generation_failure_preserves_previous_set` | complete full buildだけがreceiptを発行し、failure時にreceiptだけ更新しない。 |
+| ARTIFACT-SET-001 | `full_build_writes_matching_artifact_receipt`; `failed_build_preserves_previous_receipt_and_set` | implemented: C#、binary、receiptをwhole-root setとして扱い、通常のI/O failureで旧setを保持する。 |
+| ARTIFACT-SET-002 | `artifact_receipt_has_v1_shape_and_sha256_hashes`; `artifact_receipt_is_deterministic` | implemented: version、project id、hash algorithm、deterministic semantic contentを確認する。 |
+| ARTIFACT-SET-003 | `artifact_receipt_covers_complete_csharp_and_binary_set`; `artifact_receipt_rejects_unsafe_paths` | implemented: all C# path、固定binary path、separator、duplicate/escapeを確認する。 |
+| ARTIFACT-SET-004 | receipt validation tests in `masterdata-app` | pending: standalone publishでreceipt validationをexternal mutationより前に接続する。 |
+| ARTIFACT-SET-005 | `receipt_validation_accepts_last_set_after_source_change_without_parsing_yaml` | implemented: source change後もread-only receipt validationはsource freshnessを要求しない。 |
+| ARTIFACT-SET-006 | `missing_receipt_is_rejected_with_build_guidance`; `receipt_validation_rejects_legacy_pre_receipt_set_without_adoption` | implemented: automatic adoption/repairを行わず、build guidanceを返す。 |
+| ARTIFACT-SET-007 | receipt model contains no authenticity/cache identity fields | implemented: consistency/integrityと署名・provenance・cache semanticsを分離する。 |
+| ARTIFACT-SET-008 | `dry_run_leaves_receipt_untouched`; `partial_build_does_not_issue_receipt`; `receipt_generation_failure_preserves_previous_set` | implemented: complete full buildだけがreceiptを発行し、failure時にreceiptだけ更新しない。 |
 
 receiptはexternal C# destinationの`.masterdata-publish-manifest.json`とは異なるmetadataであり、前者を後者のownership sourceとして扱ってはならない。
 

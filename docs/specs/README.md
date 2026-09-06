@@ -187,5 +187,5 @@ MessagePack `key`を含むresolved Table model、source-content hashをbuild-pla
 meaningがない。Approved Type System contractの初回vertical sliceとして、Primitive、Field Modifier、Value Object、Custom Type、
 Enum、Flags Enum、C# namingの解決と生成を実装している。Table/Primary Key/Secondary Key vertical sliceでは、selection後のrecord
 validation、key constraint、uniqueness、Primary Key順のcanonical ordering、MasterMemory/MessagePack C# lowering、およびstagedな
-production binary buildとreload validationまで実装している。Reference、builder cache、released binary compatibility、full GUIは
+production binary buildとreload validation、coherent artifact-set receipt generationとread-only validationまで実装している。Reference、builder cache、released binary compatibility、full GUIは
 意図的に別sliceへ残している。YAML subsetの全strict enforcementも、別途実装gapとして扱う。

@@ -19,6 +19,15 @@ use masterdata_dotnet::{
 };
 use tempfile::TempDir;
 
+mod receipt;
+
+pub use receipt::{
+    ARTIFACT_HASH_ALGORITHM, ARTIFACT_RECEIPT_FILENAME, ARTIFACT_SET_RECEIPT_FILENAME,
+    ARTIFACT_SET_RECEIPT_VERSION, ArtifactReceiptEntry, ArtifactSetReceipt, CANONICAL_BINARY_PATH,
+    ValidatedArtifact, ValidatedArtifactSet, create_artifact_set_receipt, validate_artifact_set,
+    write_artifact_set_receipt,
+};
+
 #[derive(Debug, Clone)]
 pub struct NativeApplicationService {
     project: NativeProjectService,
@@ -93,6 +102,18 @@ impl NativeApplicationService {
     ) -> Result<BuildPlan> {
         self.project
             .prepare_build_with_selection(explicit_project, current_dir, selection)
+    }
+
+    /// Validate the existing canonical artifact set using only project
+    /// configuration and receipt/artifact bytes. This is the application
+    /// boundary intended for a future standalone publisher.
+    pub fn validate_artifact_set(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+    ) -> Result<ValidatedArtifactSet> {
+        let info = self.project.project_info(explicit_project, current_dir)?;
+        receipt::validate_artifact_set(&info.artifact_root, &info.project_id)
     }
 
     pub fn plan_csharp(&self, plan: &BuildPlan) -> Result<CSharpGenerationPlan> {
@@ -198,8 +219,12 @@ impl NativeApplicationService {
                 )
                 .with_source(staged_root_binary.clone())
             })?;
-            validate_staged_artifact_root(&staged_root)?;
-            publish_canonical_artifact_root(&staged_root, final_artifact_root)?;
+            publish_staged_artifact_set(
+                &staged_root,
+                final_artifact_root,
+                &plan.project.project_id,
+                receipt::write_artifact_set_receipt,
+            )?;
 
             report.binary_path = plan.binary_output.clone();
             let written_files = generation
@@ -301,6 +326,26 @@ fn validate_staged_artifact_root(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn publish_staged_artifact_set<F>(
+    staged_root: &Path,
+    final_artifact_root: &Path,
+    project_id: &str,
+    write_receipt: F,
+) -> Result<()>
+where
+    F: Fn(&Path, &str) -> Result<receipt::ArtifactSetReceipt>,
+{
+    validate_staged_artifact_root(staged_root)?;
+    // WHY: Receipt creation and validation happen inside the same staged root
+    // before the whole-root publication switch.
+    // IF REMOVED: a receipt could describe bytes that were never published
+    // together, or a receipt-only write could mutate the previous set.
+    // EVIDENCE: docs/specs/build-pipeline.md; Regression: full_build_writes_matching_artifact_receipt.
+    write_receipt(staged_root, project_id)?;
+    receipt::validate_artifact_set(staged_root, project_id)?;
+    publish_canonical_artifact_root(staged_root, final_artifact_root)
+}
+
 // WHY: Both canonical artifacts are switched as one complete, tool-owned
 // directory after .NET build/reload validation. The previous directory is
 // moved to a same-filesystem temporary sibling until the switch succeeds.
@@ -388,9 +433,13 @@ fn combine_publication_errors(
 mod tests {
     use std::fs;
 
+    use masterdata_core::{ErrorKind, MasterdataError};
     use tempfile::tempdir;
 
-    use super::{publish_canonical_artifact_root, validate_existing_artifact_root};
+    use super::{
+        publish_canonical_artifact_root, publish_staged_artifact_set,
+        validate_existing_artifact_root,
+    };
 
     fn staged_root(root: &std::path::Path, marker: &[u8]) -> std::path::PathBuf {
         let staged = root.join("staged");
@@ -454,5 +503,57 @@ mod tests {
         let error = validate_existing_artifact_root(&final_root).expect_err("file root");
 
         assert_eq!(error.diagnostic().code, "E-BUILD-CANONICAL-PUBLISH");
+    }
+
+    #[test]
+    fn receipt_generation_failure_preserves_previous_set() {
+        let directory = tempdir().expect("temporary directory");
+        let final_root = directory.path().join("output");
+        fs::create_dir_all(final_root.join("csharp")).expect("final C# directory");
+        fs::write(final_root.join("csharp/Old.g.cs"), b"OLD").expect("old C# file");
+        fs::write(final_root.join("masterdata.bytes"), b"OLD").expect("old binary");
+        super::receipt::write_artifact_set_receipt(&final_root, "fixture").expect("old receipt");
+        let before = snapshot_directory(&final_root);
+        let staged = staged_root(directory.path(), b"NEW");
+
+        let error = publish_staged_artifact_set(&staged, &final_root, "fixture", |_root, _id| {
+            Err(MasterdataError::new(
+                "E-TEST-RECEIPT-GENERATION",
+                ErrorKind::Io,
+                "injected receipt generation failure",
+            ))
+        })
+        .expect_err("receipt generation failure");
+
+        assert_eq!(error.diagnostic().code, "E-TEST-RECEIPT-GENERATION");
+        assert_eq!(snapshot_directory(&final_root), before);
+    }
+
+    fn snapshot_directory(
+        root: &std::path::Path,
+    ) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+        let mut snapshot = std::collections::BTreeMap::new();
+        snapshot_directory_recursive(root, root, &mut snapshot);
+        snapshot
+    }
+
+    fn snapshot_directory_recursive(
+        root: &std::path::Path,
+        directory: &std::path::Path,
+        snapshot: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>,
+    ) {
+        for entry in fs::read_dir(directory).expect("snapshot entry") {
+            let entry = entry.expect("snapshot directory entry");
+            let path = entry.path();
+            if path.is_dir() {
+                snapshot_directory_recursive(root, &path, snapshot);
+            } else {
+                let relative = path.strip_prefix(root).expect("snapshot relative path");
+                snapshot.insert(
+                    relative.to_path_buf(),
+                    fs::read(path).expect("snapshot file"),
+                );
+            }
+        }
     }
 }

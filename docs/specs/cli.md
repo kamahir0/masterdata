@@ -194,9 +194,9 @@ semanticsを両立させる。
 - `generate`はcurrent canonical targetではないため、Implementation Gapとして扱わない。
 - `project-info`の将来のdiagnostics/info系surfaceは、この仕様では代替案を確定しない。
 
-この差分は仕様を実装済みと示すものではない。`artifact-set receipt runtime`、external
-publish runtime、Build Profile CLI wiringも、command surfaceとは別の既存Implementation
-Gapである。
+この差分は仕様を実装済みと示すものではない。external publish runtime、Build Profile CLI
+wiring、およびreceipt validationを利用するpublish commandは、command surfaceとは別の
+既存Implementation Gapである。
 
 ## Capabilityとの関係
 

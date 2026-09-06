@@ -2,7 +2,7 @@
 
 `masterdata` は Unity + MasterMemory を対象にした、YAML-firstのローカルファーストなマスターデータ開発システムです。CLIとTauri GUIは、同じRust application serviceとcoreを直接利用します。
 
-このリポジトリはschema-drivenなMasterMemory binary buildを行います。project discovery、設定読込、typed YAML AST、Type Systemの解決・検証、Value Object / Custom Type / Enum / Flags EnumのC#生成、Table/Key validation、Build Selection、stagedな実MasterMemory v3 builder、binary reload validation、CLI、Tauriアプリシェルが動作します。Reference、builder cache、released binary compatibility、Unityへの最終配置は引き続き別scopeです。
+このリポジトリはschema-drivenなMasterMemory binary buildを行います。project discovery、設定読込、typed YAML AST、Type Systemの解決・検証、Value Object / Custom Type / Enum / Flags EnumのC#生成、Table/Key validation、Build Selection、stagedな実MasterMemory v3 builder、binary reload validation、coherent artifact-set receipt generation / validation、CLI、Tauriアプリシェルが動作します。Reference、builder cache、released binary compatibility、Unityへの最終配置は引き続き別scopeです。
 
 ## アーキテクチャ
 
@@ -40,6 +40,8 @@ resolve project
   -> compile schema-specific .NET builder
   -> build MasterMemory binary
   -> validate binary
+  -> hash staged canonical C# and binary
+  -> stage and validate artifact-set receipt
   -> atomic canonical artifact-root switch
 ```
 
@@ -107,7 +109,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、project-localな`.masterdata/output/`へ完全なcanonical artifact set（`csharp/`と`masterdata.bytes`）をstageし、実MasterMemory builderとbinary reload validationが成功した後にroot単位で切り替えます。buildは外部publish targetを暗黙には更新しません。旧`build.output`と`build.binary_output`はmigration diagnosticで拒否されます。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、project-localな`.masterdata/output/`へ完全なcanonical artifact set（`csharp/`、`masterdata.bytes`、`.masterdata-artifact-set.json`）をstageし、実MasterMemory builderとbinary reload validation、receipt validationが成功した後にroot単位で切り替えます。buildは外部publish targetを暗黙には更新しません。既存artifact setのread-only receipt validationもapplication serviceから利用できます。旧`build.output`と`build.binary_output`はmigration diagnosticで拒否されます。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## ProjectとYAMLの規約
 

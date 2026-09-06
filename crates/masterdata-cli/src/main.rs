@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use masterdata_app::NativeApplicationService;
-use masterdata_core::{ErrorKind, InitOptions, MasterdataError, Result};
+use masterdata_app::{NativeApplicationService, PublishExecutionReport, PublishTargetStatus};
+use masterdata_core::{ErrorKind, InitOptions, MasterdataError, PublishTargetKind, Result};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -31,6 +31,8 @@ enum Command {
     Validate(OutputArgs),
     /// Validate and build the project's canonical artifacts.
     Build(BuildArgs),
+    /// Publish the existing receipt-valid canonical artifact set.
+    Publish,
 }
 
 #[derive(Debug, Args)]
@@ -203,6 +205,100 @@ fn run() -> Result<()> {
                 }
             }
         }
+        Command::Publish => match service.publish(cli.project.as_deref(), &current_dir) {
+            Ok(report) => println!("{}", render_publish_report(&report, "succeeded")),
+            Err(failure) => {
+                eprintln!("{}", render_publish_report(&failure.report, "failed"));
+                return Err(failure.error);
+            }
+        },
     }
     Ok(())
+}
+
+fn render_publish_report(report: &PublishExecutionReport, outcome: &str) -> String {
+    let mut rendered = format!("publish: {outcome}");
+    if report.targets.is_empty() {
+        rendered.push_str("\n  (no targets)");
+        return rendered;
+    }
+
+    for target in &report.targets {
+        let status = match target.status {
+            PublishTargetStatus::NotAttempted => "not attempted",
+            PublishTargetStatus::Succeeded => "succeeded",
+            PublishTargetStatus::Failed => "failed",
+        };
+        rendered.push_str(&format!(
+            "\n  [{}] {} {} {status}",
+            target.index,
+            publish_target_kind_name(target.kind),
+            target.configured_path
+        ));
+        if let Some(failure) = &target.failure {
+            rendered.push_str(&format!(": {failure}"));
+        }
+    }
+    rendered
+}
+
+fn publish_target_kind_name(kind: PublishTargetKind) -> &'static str {
+    match kind {
+        PublishTargetKind::CSharp => "csharp",
+        PublishTargetKind::Binary => "binary",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use masterdata_app::{PublishTargetResult, PublishTargetStatus};
+    use masterdata_core::{Diagnostic, ErrorKind, PublishTargetKind};
+
+    use super::{PublishExecutionReport, render_publish_report};
+
+    #[test]
+    fn publish_report_preserves_per_target_status() {
+        let report = PublishExecutionReport {
+            targets: vec![
+                PublishTargetResult {
+                    index: 0,
+                    kind: PublishTargetKind::CSharp,
+                    configured_path: "first".to_owned(),
+                    destination: PathBuf::from("first"),
+                    status: PublishTargetStatus::Succeeded,
+                    failure: None,
+                },
+                PublishTargetResult {
+                    index: 1,
+                    kind: PublishTargetKind::Binary,
+                    configured_path: "second.bytes".to_owned(),
+                    destination: PathBuf::from("second.bytes"),
+                    status: PublishTargetStatus::Failed,
+                    failure: Some(Diagnostic::new(
+                        "E-PUBLISH-TEST",
+                        ErrorKind::Validation,
+                        "target failed",
+                    )),
+                },
+                PublishTargetResult {
+                    index: 2,
+                    kind: PublishTargetKind::CSharp,
+                    configured_path: "third".to_owned(),
+                    destination: PathBuf::from("third"),
+                    status: PublishTargetStatus::Succeeded,
+                    failure: None,
+                },
+            ],
+        };
+
+        let rendered = render_publish_report(&report, "failed");
+        let first = rendered.find("[0] csharp first succeeded").unwrap();
+        let second = rendered.find("[1] binary second.bytes failed").unwrap();
+        let third = rendered.find("[2] csharp third succeeded").unwrap();
+
+        assert!(first < second && second < third);
+        assert!(rendered.contains("[E-PUBLISH-TEST] target failed"));
+    }
 }

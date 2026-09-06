@@ -248,14 +248,15 @@ receipt validation後は、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のall-targ
 
 このmatrixは`ARTIFACT-SET-001`から`ARTIFACT-SET-008`に対するimplementation evidenceである。receipt generation、read-only validation、
 Phase 2 preflight boundary、およびNative Application ServicesのPhase 3入力境界に対応する行は検証済みである。
-standalone publish commandは引き続きpendingであり、ここでのtest passはadapter wiringを含むpublish operation全体の実装を意味しない。
+standalone CLI publishは、Native Application Servicesへのadapter wiringを含めて実装済みである。
+ここでのartifact-set testは、publish runtimeのreceiptおよびPhase 1入力境界のevidenceを所有する。
 
 | Requirement | Evidence | Observation |
 | --- | --- | --- |
 | ARTIFACT-SET-001 | `full_build_writes_matching_artifact_receipt`; `failed_build_preserves_previous_receipt_and_set` | implemented: C#、binary、receiptをwhole-root setとして扱い、通常のI/O failureで旧setを保持する。 |
 | ARTIFACT-SET-002 | `artifact_receipt_has_v1_shape_and_sha256_hashes`; `artifact_receipt_is_deterministic` | implemented: version、project id、hash algorithm、deterministic semantic contentを確認する。 |
 | ARTIFACT-SET-003 | `artifact_receipt_covers_complete_csharp_and_binary_set`; `artifact_receipt_rejects_unsafe_paths` | implemented: all C# path、固定binary path、separator、duplicate/escapeを確認する。 |
-| ARTIFACT-SET-004 | `receipt_failure_prevents_target_inspection_and_mutation` | implemented: Native Application Servicesがreceipt/artifact setをexternal target inspectionより先にread-only検証する。standalone publish commandは未実装である。 |
+| ARTIFACT-SET-004 | `receipt_failure_prevents_target_inspection_and_mutation`; `publish_missing_receipt_fails_without_target_mutation` | implemented: Native Application Servicesとstandalone CLI adapterがreceipt/artifact setをexternal target inspectionより先にread-only検証する。 |
 | ARTIFACT-SET-005 | `receipt_validation_accepts_last_set_after_source_change_without_parsing_yaml` | implemented: source change後もread-only receipt validationはsource freshnessを要求しない。 |
 | ARTIFACT-SET-006 | `missing_receipt_is_rejected_with_build_guidance`; `receipt_validation_rejects_legacy_pre_receipt_set_without_adoption` | implemented: automatic adoption/repairを行わず、build guidanceを返す。 |
 | ARTIFACT-SET-007 | receipt model contains no authenticity/cache identity fields | implemented: consistency/integrityと署名・provenance・cache semanticsを分離する。 |
@@ -745,8 +746,8 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 ```
 
 `artifact_dir`はcanonical build rootを指定し、`publish.targets`はcanonical artifactの外部destinationだけを指定する。`build.binary_output`を
-canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。current parser/modelはこのshapeを受理するが、
-standalone CLI/GUI adapterからのexternal publish executionはまだ実行しない。
+canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。current parser/modelはこのshapeを受理し、
+standalone CLI publishは`NativeApplicationService::publish`へ直接委譲する。GUI/Tauri adapterと`build --publish`は未実装である。
 
 ## Legacy configuration hard cutと手動migration
 
@@ -827,6 +828,6 @@ artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`、および複
 canonical configuration implementationは`artifact_dir`をproject-local rootとして検証し、complete artifact rootをbuildする。external publishの
 Phase 2 filesystem preflightとreceipt validation boundary、および`PUBLISH-EXEC-001`のno-mutation contractは実装済みである。
 Native Application ServicesのC# / binary target execution、target-local rollback、continue-after-failure、aggregate result、および
-`PUBLISH-EXEC-002`から`PUBLISH-EXEC-005`は実装済みである。standalone CLI publish、`build --publish`、GUI/Tauri/Native Host wiringは
-未実装であり、このdocumentのStatusは`Approved`のまま維持する。
+`PUBLISH-EXEC-002`から`PUBLISH-EXEC-005`は実装済みである。standalone CLI publishも実装済みであるが、
+`build --publish`、GUI/Tauri/Native Host wiringは未実装であり、このdocumentのStatusは`Approved`のまま維持する。
 legacy configurationの受理、alias、warning-only、automatic migrationは禁止され、legacy artifactのmove/delete/renameは行わない。

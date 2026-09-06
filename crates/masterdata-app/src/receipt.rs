@@ -821,13 +821,14 @@ fn artifact_error(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::Path;
 
     use serde_json::Value;
     use tempfile::tempdir;
 
     use super::{
         ARTIFACT_SET_RECEIPT_FILENAME, CANONICAL_BINARY_PATH, create_artifact_set_receipt,
-        validate_artifact_set, write_artifact_set_receipt,
+        validate_artifact_set, validate_receipt_relative_path, write_artifact_set_receipt,
     };
 
     fn artifact_root() -> tempfile::TempDir {
@@ -938,6 +939,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn receipt_path_validation_rejects_nested_windows_prefix_components_on_all_hosts() {
+        for unsafe_path in [
+            "nested/C:escape.g.cs",
+            "nested/D:escape.g.cs",
+            "a/b/C:escape.g.cs",
+        ] {
+            let error = validate_receipt_relative_path(unsafe_path, Path::new("receipt.json"))
+                .expect_err("unsafe path component");
+            assert_eq!(error.diagnostic().code, "E-ARTIFACT-SET-CSHARP-PATH-UNSAFE");
+        }
+    }
+
+    #[cfg(not(windows))]
     #[test]
     fn artifact_receipt_generation_rejects_nested_windows_prefix_component() {
         let directory = artifact_root();

@@ -288,7 +288,7 @@ AppliedされたRequirementを使用する。
 | --- | --- |
 | `PROJECT-CONVENTION-001` | `sources/schemas/`、`sources/types/`、`sources/data/`をkind-first human-facing conventionとして扱い、directory/pathからsemantic identityを導出しない。 |
 | `PROJECT-CONFIG-007` | Project Settings（`masterdata.toml`）、Project Tool State（default `.masterdata/**`）、User Settings / UI Stateのscopeを分離し、User Settingsがproject/build/publish semanticsを変更しない。 |
-| `PROJECT-CONFIG-008` | `init`のdefault scaffold、missing-only `.gitignore` generation、`.masterdata`のlazy creation、placeholderを自動生成しない境界を定義する。 |
+| `PROJECT-CONFIG-008` | `init`のdefault scaffold、missing-only `.gitignore` generation、既存`.gitignore`を自動rewrite/appendしない境界、`.masterdata`のlazy creationを定義する。empty source convention directoryの保持方法は定義しない。 |
 
 `CLI-002`、`CLI-011`は既存Requirement IDの精密化として扱い、`CLI-004`はhistorical/superseded traceabilityを
 保持する。`CLI-004`を別のRequirementへreassignまたは再利用しない。既存Requirementのexact tombstone presentationと、

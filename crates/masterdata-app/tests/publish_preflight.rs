@@ -168,7 +168,13 @@ fn publish_path_rejects_case_or_unicode_equivalent_unmanaged_csharp_entry() {
             "E-PUBLISH-UNMANAGED-COLLISION"
         );
     } else {
-        result.expect("distinct Unicode entries are unmanaged siblings");
+        if let Err(error) = result {
+            assert_eq!(
+                error.diagnostic().code,
+                "E-PUBLISH-FILESYSTEM-IDENTITY",
+                "distinct Unicode spellings may be rejected when identity cannot be proven"
+            );
+        }
     }
 }
 

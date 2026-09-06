@@ -8,13 +8,61 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  ubuntu:
-    name: Ubuntu core, frontend, .NET, and GUI compile
+  repository-quality:
+    name: Repository specs, rationale, and formatting
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo xtask check-specs
+      - run: cargo xtask check-rationale
+      - run: cargo fmt --all -- --check
+
+  frontend-quality:
+    name: Frontend lint and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run frontend:lint
+      - run: npm run frontend:test
+
+  wasm:
+    name: WASM semantic path
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo xtask check-wasm
+
+  platform:
+    name: Platform quality gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
     steps:
       - uses: actions/checkout@v4
       - name: Install Tauri Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           # Tauri v2 prerequisites for Ubuntu/Noble. The legacy
@@ -32,8 +80,7 @@ jobs:
             patchelf
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
+          components: clippy
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -42,41 +89,18 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
-      - run: cargo xtask check-wasm
-      - run: cargo xtask check-all
-
-  windows:
-    name: Windows repository quality gate
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
-
-  macos:
-    name: macOS repository quality gate
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
+      - name: Rust lint
+        if: runner.os == 'Linux'
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Rust tests
+        run: cargo test --workspace --exclude masterdata-gui
+      - name: Build frontend for Tauri
+        run: npm run frontend:build
+      - name: Check GUI
+        run: cargo check --package masterdata-gui
+      - name: Test GUI
+        run: cargo test --package masterdata-gui
+      - name: MasterMemory spike
+        run: cargo xtask mastermemory-spike
+      - name: Native integration
+        run: cargo xtask test-integration

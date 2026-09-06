@@ -260,9 +260,10 @@ coarse-grained use-caseを概念例とするが、exact endpointやtransportはO
 
 ## 互換性と非目標
 
-この仕様の適用は既存CLI/Desktop runtimeのobservable behaviorを変更しない。Web runtime、WASM host adapter、
-Native Host process、loopback RPC、external publish、Tauri publish UIは未実装である。Build Profile、Reference、
-semantic schema cache、`build --publish`、Unity`.meta` lifecycle、artifact signingもこの仕様の対象外である。
+この仕様は既存CLI/Desktop runtimeのobservable contractを変更せず、Web runtime、WASM host adapter、Native Host process、
+loopback RPC、external publish adapter、Tauri publish UIのboundaryを定義する。current implementationの進捗やavailable feature
+inventoryはこのspecificationに保持せず、current code / tests / Gitから確認する。Build Profile、Reference、semantic schema cache、
+`build --publish`、Unity`.meta` lifecycle、artifact signingもこの仕様の対象外である。
 
 次の事項は今回のarchitecture acceptanceで決めない。
 
@@ -274,25 +275,25 @@ semantic schema cache、`build --publish`、Unity`.meta` lifecycle、artifact si
 - Standalone/Connected transition、dirty buffer handoff、permission/session UI
 - GitHub Pages custom domain
 
-## Acceptance / future evidence
+## Acceptance expectations
 
-以下はcanonical architectureに対するfuture implementation evidenceであり、現時点ではすべて
-`pending implementation`である。存在しないruntime testをpass済みとは扱わない。
+このsectionは、runtime architecture Requirementsに対応するstableなobservable acceptance expectationを要約する。current
+implementationの進捗、exact test inventory、manual pass/fail statusはtests / code / Gitで確認し、specificationへ複製しない。
 
-| Requirement | Planned evidence | Status |
-| --- | --- | --- |
-| RUNTIME-HOST-001/002 | `cli_uses_direct_native_application_path`; `desktop_and_cli_share_native_build_semantics`; `shared_domain_does_not_depend_on_loopback_transport` | pending implementation |
-| RUNTIME-HOST-003 | `standalone_web_uses_shared_validation_semantics`; `standalone_web_does_not_expose_build_without_native_capability` | pending implementation |
-| RUNTIME-HOST-004/005/006 | `connected_web_can_receive_build_capability_from_native_host`; `connected_web_uses_same_native_build_service_as_cli` | pending implementation |
-| RUNTIME-HOST-007/011 | `native_host_scopes_workspace_authority`; `web_workspace_url_does_not_embed_absolute_filesystem_path` | pending implementation |
-| RUNTIME-HOST-008 | `native_host_rejects_unpaired_privileged_requests`; `native_host_scopes_workspace_authority` | pending implementation |
-| RUNTIME-HOST-009 | `protocol_mismatch_does_not_execute_native_operation` | pending implementation |
-| RUNTIME-HOST-010 | `connected_web_uses_same_native_build_service_as_cli` and .NET boundary integration evidence | pending implementation |
-| RUNTIME-HOST-012 | `web_architecture_does_not_require_remote_backend` | pending implementation |
-| RUNTIME-HOST-013 | shared domain/host adapter boundary review and async boundary evidence | pending implementation |
-| RUNTIME-HOST-014 | `paired_native_host_connects_without_terminal_command`; `cli_does_not_depend_on_native_host_process` | pending implementation |
-| RUNTIME-HOST-015 | `web_start_auto_negotiates_native_host`; `first_connection_requires_explicit_authorization`; `expired_authorization_requires_reauthorization` | pending implementation |
-| RUNTIME-HOST-016 | `native_host_unavailable_keeps_standalone_usable`; `protocol_mismatch_keeps_native_operations_disabled` | pending implementation |
+| Requirement | Observable acceptance expectation |
+| --- | --- |
+| RUNTIME-HOST-001/002 | CLI、Desktop、Webが共有domain/application semanticsを利用し、CLI direct pathにloopback RPCや不要なtransportを必須化しない。 |
+| RUNTIME-HOST-003 | Standalone Webが許可されたworkspaceでauthoring / validationを提供し、Native capabilityなしにnative build / publishを実行しない。 |
+| RUNTIME-HOST-004/005/006 | Connected Webがauthorized Native Hostからgrantされたcapabilityだけを受け取り、CLIと同じNative application serviceを利用する。 |
+| RUNTIME-HOST-007/011 | Native Hostがworkspace authorityをscopeし、Web workspace identityがabsolute filesystem pathを公開しない。 |
+| RUNTIME-HOST-008 | pairing / authorizationなしのprivileged requestをrejectし、workspace authorityを越えない。 |
+| RUNTIME-HOST-009 | protocol mismatch時にnative operationを実行しない。 |
+| RUNTIME-HOST-010 | Connected Webが既存の.NET bridge / Native build boundaryを再利用し、browserへMasterMemory implementationを持ち込まない。 |
+| RUNTIME-HOST-012 | Web architectureがcentral remote backendを必須にしない。 |
+| RUNTIME-HOST-013 | shared domainとhost adapterのboundaryを維持し、host I/O / async boundaryをpure coreへ漏らさない。 |
+| RUNTIME-HOST-014 | paired Native Hostへ通常利用でterminal commandを繰り返さず再接続でき、CLIはNative Host processへ依存しない。 |
+| RUNTIME-HOST-015 | Web start時のcapability negotiation、初回explicit authorization、authorization expiry時の再認可を区別する。 |
+| RUNTIME-HOST-016 | Native Host unavailable時もStandalone Webを利用可能にし、protocol mismatch時はnative operationだけをdisabledにする。 |
 
 ## Open Questions
 

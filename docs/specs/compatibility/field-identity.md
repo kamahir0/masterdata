@@ -44,11 +44,11 @@ identity、rename/deletion identity、Secondary Key identity、Reference identit
 `key`のexact backend attribute shape、upper bound、formatter/resolver、released binary compatibility、およびmigration policyは、
 それぞれの将来仕様が所有する。本仕様のretired historyを理由に、現行keyへtombstoneまたはreuse prohibitionを追加してはならない。
 
-## 実装状態と履歴
+## 履歴とauthority boundary
 
-current scaffoldまたは実装が旧`id`・`reservedFields` shapeを保持している場合、それはApplied delta後のimplementation gapを示す。
-実装状態はこの文書のretired Field ID historyまたは`SCHEMA-KEY-001`の代替authorityではない。specification change 0003は、旧Requirement
-IDを削除・再利用せずretired historyとして保持し、Custom Type constructor orderを`SCHEMA-CUSTOM-017`のYAML declaration orderへ置換した。
+specification change 0003は、旧Requirement IDを削除・再利用せずretired historyとして保持し、Custom Type constructor orderを
+`SCHEMA-CUSTOM-017`のYAML declaration orderへ置換した。将来のcodeが旧`id`・`reservedFields` shapeを参照していても、実装や履歴は
+`SCHEMA-KEY-001`の代替authorityにならず、current implementation realityとしてcode / tests / Gitから別途確認する。
 
 ## Open Questions（未解決事項）
 

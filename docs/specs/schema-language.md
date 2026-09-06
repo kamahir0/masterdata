@@ -22,7 +22,7 @@ table: item
 documentからdataを受け取ってもよい（MAY）。Data fileはfilenameやdirectoryではなく、
 宣言されたtable identityによってmergeする。
 
-## Current scaffoldとcanonical persisted field shape
+## Canonical persisted field shape
 
 ```yaml
 kind: schema
@@ -40,7 +40,7 @@ Rust ASTはschema declarationをtyped（`SchemaDocument`、`FieldDefinition`）�
 
 上記の`key`は、specification change 0003のApplied deltaを反映した、現在のpersisted fieldのcanonical surfaceである。`key`の
 serialization-only semanticsは[Table / Primary Key / Secondary Key仕様](table-and-keys.md)の`SCHEMA-KEY-001`が所有する。
-current scaffoldの実装・ASTが旧`id`や`reservedFields`を保持している場合、それはimplementation gapを示すevidenceであり、
+実装が旧`id`や`reservedFields`を保持している場合、それはApplied delta後のimplementation gapを示すevidenceであり、
 現行canonical contractの代替ではない。
 
 ## Approved Table / Key shape（Approved Table / Keyのshape）
@@ -63,21 +63,21 @@ secondaryKeys:
     nonUnique: true
 ```
 
-このshapeはApproved Table/Key specificationとApplied Field Identity changeの内容を示すcanonical contractである。current
-implementationはMessagePack keyをASTとresolved Table modelへ保持し、selection後のrecord validation、Primary/Secondary Keyのvalidation、
-uniqueness、canonical ordering、C# lowering、およびstaged production binary orchestrationまで行う。Referenceは別sliceのscopeである。
+このshapeはApproved Table/Key specificationとApplied Field Identity changeの内容を示すcanonical contractである。MessagePack keyは
+AST、resolved Table model、C# lowering、binary orchestrationの各boundaryでserialization metadataとして扱い、Reference semanticsは
+別のowner specificationに委譲する。
 `key`はMessagePack `[Key(n)]`へ対応するが、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、または
 schema migration identityを表さない。Custom Typeのpersisted fieldも同じ`key` modelを使用する。
 
-現在のscaffoldが認識するdocumentは `schema`、`data`、`type` である。Approvedの
+このdocument familyが認識するdocumentは `schema`、`data`、`type` である。Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
-unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはcurrent parserがtyped documentとして
-受け付け、Type System validationとC# generationのimplementation contractを構成する。type documentのpathまたはfilenameはtype identityを
+unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはtyped documentとして扱われ、Type System
+validationとC# generationのimplementation contractを構成する。type documentのpathまたはfilenameはtype identityを
 決めず、1つのYAML documentに複数のtype declarationを入れる形式は使用しない。
 
-current scaffoldは `table` をproject-localなlogical table identityとして使用する。存在する場合の
+Schema languageは `table` をproject-localなlogical table identityとして使用する。存在する場合の
 `csharpName` はgenerated C# type-name overrideであり、2つ目のtable identityではない。以前に示した
-`tableId` fieldはRust modelやgeneratorでconsumeされておらず、current scaffoldには意図的に存在しない。
+`tableId` fieldはRust modelやgeneratorがconsumeする第二のidentityとして導入しない。
 この方向のcompatibility implicationは、current-scaffold directionについてAcceptedとなった
 [`docs/rfcs/0001-table-identity.md`](../rfcs/0001-table-identity.md) に記録する。global identity、
 rename migration、released-schema compatibility、legacy `tableId` migration、cross-project identityは
@@ -112,9 +112,9 @@ custom:
 ASCII lexical ruleとgenerated C# identifier mappingは、[C#命名仕様](type-system/csharp-naming.md)が所有する。これはTableの `table` identityや
 `csharpName` presentation nameへ適用されない。
 
-上記Custom Type例の`key`は、Applied specification change 0003とApproved Custom Type / Table / Key specificationが所有する現在の
-canonical surfaceである。current Type System resolverはこのshapeを受け付けるが、`key`はMessagePack serialization metadataとしてのみ扱い、
-constructor orderやlogical field identityへ流用しない。実装状態を理由に旧Field ID modelをcurrent authorityとして扱ってはならない。
+上記Custom Type例の`key`は、Applied specification change 0003とApproved Custom Type / Table / Key specificationが所有するcanonical
+surfaceである。`key`はMessagePack serialization metadataとしてのみ扱い、constructor orderやlogical field identityへ流用しない。
+旧Field ID modelをimplementation statusの根拠だけでcurrent authorityへ戻してはならない。
 
 ## Masterdata YAML subsetとの関係
 

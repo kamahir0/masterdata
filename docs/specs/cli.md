@@ -182,21 +182,11 @@ validation、artifact integrity validation、target preflight、target execution
 ことはできるが、source-derived前段を飛ばしてはならない」というruleと、Approved publish
 semanticsを両立させる。
 
-## 現行実装との差分
+## Implementation realityの確認先
 
-現在のCLI実装が提供するcommandは、`init`、`doctor`、`project-info`、`validate`、`build`、`publish`
-である。したがって、canonical surfaceとの差分は次のとおりである。
-
-- `project-info`は現行実装に存在するが、今回のtarget canonical public command setには
-  含めない。
-- このdocs-only canonicalizationでは`project-info`を削除、rename、別namespaceへ移動しない。
-- `publish`は既存のreceipt-valid artifact setを`NativeApplicationService::publish`へ直接委譲するadapterとして実装済みである。
-- `migrate`、`build --publish`は未実装であり、Implementation Gapとして扱う。
-- `generate`はcurrent canonical targetではないため、Implementation Gapとして扱わない。
-- `project-info`の将来のdiagnostics/info系surfaceは、この仕様では代替案を確定しない。
-
-この差分はcanonical 6 command全体を実装済みと示すものではない。migrateと`build --publish`の
-CLI wiringは引き続きImplementation Gapである。
+このspecificationはcanonical CLI surfaceとcomposition semanticsを所有するが、current command inventory、実装進捗、exact
+test statusは所有しない。利用可能なcommand、adapter wiring、implementation gapはcurrent CLI / application code、tests、Gitから
+freshに確認する。`CLI-004`のhistorical tombstoneだけは、旧`generate` contractのRequirement IDを再利用しないためにこのspecへ保持する。
 
 ## Capabilityとの関係
 
@@ -218,23 +208,23 @@ process、pairing、Web handshakeを要求しない。
 - Generated C# Preview / explicit C# ExportのUX、destination、filename、将来CLI surface
 - `build --publish`の詳細なconsole/result serialization
 
-## Acceptance matrix（implementation / future evidence）
+## Acceptance expectations
 
-この文書はApprovedであり、以下のmatrixは実装済みevidenceとfuture planned evidenceを区別する。
-未実施のtestをpass済みとは扱わない。
+このsectionは、CLI Requirementsに対応するstableなobservable acceptance expectationを要約する。current implementationの進捗、
+exact test inventory、manual pass/fail statusはtests / code / Gitで確認し、specificationへ複製しない。
 
-| Requirement | Planned evidence | Status |
-| --- | --- | --- |
-| CLI-001, CLI-010 | CLI/Tauri/Connected Webが同じOperation ownerを使い、CLI direct pathにRPCがないことを確認するarchitecture/integration evidence | pending implementation |
-| CLI-002 | canonical command surfaceと現行実装gapのCLI acceptance test | pending implementation |
-| CLI-003 | `validate`がartifact、publish target、manifestを変更しないtest | pending implementation |
-| CLI-004 | historical traceabilityを保持し、current command surfaceまたは別semanticへ再利用しないことのdocumentation review | historical tombstone |
-| CLI-005 | buildがcoherent canonical artifact setを生成し、単体ではexternal targetを変更しないtest | pending implementation |
-| CLI-006 | `publish_uses_receipt_valid_artifacts_without_loading_current_yaml`; `publish_missing_receipt_fails_without_target_mutation`; `publish_preflight_failure_mutates_no_targets`; `publish_zero_targets_is_successful_noop`; `publish_report_preserves_per_target_status` | implemented |
-| CLI-007 | build失敗時のpublish未開始、publish失敗時のbuild保持、partial failure集約のtest | pending implementation |
-| CLI-008 | `publish_does_not_accept_unapproved_short_publish_flag` | implemented |
-| CLI-009 | migrateがSchema Migration engineへ委譲され、CLIがsemantic logicを複製しないtest | pending implementation |
-| CLI-011 | source-derived validate/buildが前段をskipせず、publishがsource validationを要求しないことのCLI pipeline test | pending implementation |
+| Requirement | Observable acceptance expectation |
+| --- | --- |
+| CLI-001, CLI-010 | CLI、Tauri、Connected Webが同じOperation ownerを利用し、CLI direct pathにWeb transportを必須化しない。 |
+| CLI-002 | canonical command surfaceを、各Operationのsemantic ownerを複製せずに公開する。 |
+| CLI-003 | validateがsource-derived validationを行い、artifact、publish target、manifestを変更しない。 |
+| CLI-004 | historical Requirement IDを保持し、current command surfaceまたは別semanticへ再利用しない。 |
+| CLI-005 | buildがcoherent canonical artifact setを生成し、単体ではexternal targetを更新しない。 |
+| CLI-006 | publishがreceipt-valid artifact setをsource freshnessに依存せず利用し、missing receiptやpreflight failureではtargetを変更せず、0 targetをsuccessful no-opとし、target statusをaggregateする。 |
+| CLI-007 | build failureではpublishを開始せず、publish failure後もsuccessful buildを保持し、combined operationをfailureとして集約する。 |
+| CLI-008 | 未承認のshort publish flagをcanonical surfaceへ追加しない。 |
+| CLI-009 | migrateをSchema Migration engineへ委譲し、CLIがsemantic logicを複製しない。 |
+| CLI-011 | source-derived validate/buildが前段をskipせず、publishはcurrent source validationやimplicit buildを要求しない。 |
 
 ## Open Questions
 

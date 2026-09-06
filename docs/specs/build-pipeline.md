@@ -21,16 +21,12 @@ legacy configurationのhard cutとstructured migration diagnosticの適用は、
 
 Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)、
 各Type System仕様、[YAML subset仕様](yaml-subset.md)、および[Project layout仕様](project-layout.md)がそれぞれ所有する。
-この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryを定義する。`Approved`は
-implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builder、artifact-set receiptの
-generation / read-only validation runtime、external publishのPhase 2 all-target filesystem preflight、およびNative Application Servicesの
-Phase 3 target-local execution（`PUBLISH-PATH-001`から`PUBLISH-PATH-010`、`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`）は実装済みである。
-一方、standalone CLI publishは実装済みであるが、`build --publish`は未実装である。
+この文書は、これらのdomain semanticsを変更せず、build artifactとpublishのarchitecture boundaryを定義する。`Status: Approved`は
+normative contractのlifecycleを表し、current implementationの完成度を表すimplementation inventoryではない。implementation
+realityはcurrent code、tests、Gitからfreshに確認する。
 
-今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
-このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
-standalone CLI wiringは実装済みであり、GUI/Tauri/Native Host等のwiringは未実装である。影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004、0005、および0007に記録する。
-external publish path safety、receipt、partial executionのlifecycle recordは、それぞれ仕様変更0006、0007、および0008に記録する。
+project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱うdecisionと、その後のreceipt・
+external publish path safety・multi-target executionの適用履歴は、仕様変更0004、0005、0006、0007、および0008に記録する。
 
 ## 承認されたcanonical model
 
@@ -244,23 +240,21 @@ receiptを保持し、receipt generation failureをsuccessとして扱っては�
 
 receipt validation後は、`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のall-target preflightへ進み、receipt invalid時にそのpreflightまたはdestination mutationへ到達してはならない。
 
-## Artifact-set receipt acceptance matrix
+## Artifact-set receipt acceptance expectations
 
-このmatrixは`ARTIFACT-SET-001`から`ARTIFACT-SET-008`に対するimplementation evidenceである。receipt generation、read-only validation、
-Phase 2 preflight boundary、およびNative Application ServicesのPhase 3入力境界に対応する行は検証済みである。
-standalone CLI publishは、Native Application Servicesへのadapter wiringを含めて実装済みである。
-ここでのartifact-set testは、publish runtimeのreceiptおよびPhase 1入力境界のevidenceを所有する。
+このsectionは`ARTIFACT-SET-001`から`ARTIFACT-SET-008`のstableなobservable acceptance expectationを要約する。
+exact test name、current pass/fail、implementation statusはこのspecificationのownerではなく、tests / code / Gitで確認する。
 
-| Requirement | Evidence | Observation |
-| --- | --- | --- |
-| ARTIFACT-SET-001 | `full_build_writes_matching_artifact_receipt`; `failed_build_preserves_previous_receipt_and_set` | implemented: C#、binary、receiptをwhole-root setとして扱い、通常のI/O failureで旧setを保持する。 |
-| ARTIFACT-SET-002 | `artifact_receipt_has_v1_shape_and_sha256_hashes`; `artifact_receipt_is_deterministic` | implemented: version、project id、hash algorithm、deterministic semantic contentを確認する。 |
-| ARTIFACT-SET-003 | `artifact_receipt_covers_complete_csharp_and_binary_set`; `artifact_receipt_rejects_unsafe_paths` | implemented: all C# path、固定binary path、separator、duplicate/escapeを確認する。 |
-| ARTIFACT-SET-004 | `receipt_failure_prevents_target_inspection_and_mutation`; `publish_missing_receipt_fails_without_target_mutation` | implemented: Native Application Servicesとstandalone CLI adapterがreceipt/artifact setをexternal target inspectionより先にread-only検証する。 |
-| ARTIFACT-SET-005 | `receipt_validation_accepts_last_set_after_source_change_without_parsing_yaml` | implemented: source change後もread-only receipt validationはsource freshnessを要求しない。 |
-| ARTIFACT-SET-006 | `missing_receipt_is_rejected_with_build_guidance`; `receipt_validation_rejects_legacy_pre_receipt_set_without_adoption` | implemented: automatic adoption/repairを行わず、build guidanceを返す。 |
-| ARTIFACT-SET-007 | receipt model contains no authenticity/cache identity fields | implemented: consistency/integrityと署名・provenance・cache semanticsを分離する。 |
-| ARTIFACT-SET-008 | `dry_run_leaves_receipt_untouched`; `partial_build_does_not_issue_receipt`; `receipt_generation_failure_preserves_previous_set` | implemented: complete full buildだけがreceiptを発行し、failure時にreceiptだけ更新しない。 |
+| Requirement | Observable acceptance expectation |
+| --- | --- |
+| ARTIFACT-SET-001 | C#、binary、receiptをwhole-rootのcoherent setとして扱い、通常のI/O failureではmatchingするprevious setを保持する。 |
+| ARTIFACT-SET-002 | receiptがversion、project id、hash algorithm、deterministicなsemantic contentを表現する。 |
+| ARTIFACT-SET-003 | receiptがcurrent C# file set、固定binary path、safeなseparator、duplicate/escape防止、およびexact bytesのhashを扱う。 |
+| ARTIFACT-SET-004 | external targetをinspectionまたはmutationする前にreceipt/artifact setをread-only検証する。 |
+| ARTIFACT-SET-005 | source変更後も、validなlast successful artifact setのpublish eligibilityをsource freshnessだけで失わせない。 |
+| ARTIFACT-SET-006 | missingまたはlegacy receiptをautomatic adoption/repairせずrejectし、coherent buildへのguidanceを返す。 |
+| ARTIFACT-SET-007 | consistency/integrity receiptと署名・provenance・cache semantics・authenticityを分離する。 |
+| ARTIFACT-SET-008 | complete full buildだけがreceiptを発行・更新し、dry-run・partial operation・failureではreceiptだけを更新しない。 |
 
 receiptはexternal C# destinationの`.masterdata-publish-manifest.json`とは異なるmetadataであり、前者を後者のownership sourceとして扱ってはならない。
 
@@ -687,36 +681,37 @@ unchanged fileをskipするかどうかなどのperformance optimizationはこ�
   tailのnamespaceにcollisionがない場合は、preflight後のparent creationを許可できる。
 - target rootまたは既存ancestorがsymlinkである場合、symlink先をtarget namespaceと推測せずrejectする。
 
-## Publish path safety acceptance matrix
+## Publish path safety acceptance expectations
 
-このmatrixは`PUBLISH-PATH-001`から`PUBLISH-PATH-010`に対するPhase 2 implementation evidenceである。
-ここで確認するのはread-only preflightまでであり、target executionの実装を意味しない。
+このsectionは`PUBLISH-PATH-001`から`PUBLISH-PATH-010`のstableなobservable acceptance expectationを要約する。
+filesystem-specific evidenceとcurrent implementation statusはtests / code / Gitで確認し、exact test inventoryをspecificationへ
+複製しない。
 
-| Requirement | Evidence | Observation |
-| --- | --- | --- |
-| PUBLISH-PATH-001 | `publish_path_rejects_filesystem_equivalent_unmanaged_collision`; `publish_path_rejects_equivalent_binary_targets`; `publish_path_handles_case_sensitive_and_insensitive_volumes` | destination filesystemの実際のnamespaceをprobeし、OS名だけで分岐しない。 |
-| PUBLISH-PATH-002 | `publish_path_accepts_safe_missing_target_tail`; `publish_path_rejects_unresolvable_identity_without_mutation` | existing prefix、missing tail、case behaviorの判定不能をfail closedで確認する。 |
-| PUBLISH-PATH-003 | `publish_path_rejects_csharp_target_symlink`; `publish_path_rejects_csharp_ancestor_symlink`; `publish_path_rejects_external_csharp_target_through_project_root_symlink`; `publish_path_rejects_external_binary_target_through_project_root_symlink`; `publish_path_never_follows_unmanaged_symlink` | target root/ancestor、trusted project-root anchorの境界、およびtarget内symlinkを分けて確認する。 |
-| PUBLISH-PATH-004 | `publish_path_rejects_case_or_unicode_equivalent_unmanaged_csharp_entry`; `publish_path_rejects_managed_path_type_change`; `publish_path_rejects_missing_previous_managed_entry_on_update_without_mutation`; `publish_path_rejects_missing_previous_managed_entry_on_retire_without_mutation`; `publish_path_preserves_meta_and_unmanaged_files` | file/file、file/directory、missing ownership、directory/file、nested pathを含める。 |
-| PUBLISH-PATH-005 | `publish_path_rejects_malformed_manifest_without_mutation`; `publish_path_rejects_manifest_alias_duplicates`; `publish_path_rejects_reserved_manifest_alias_collision` | missing manifestの初回publishはempty managed setとして確認する。 |
-| PUBLISH-PATH-006 | `publish_path_rejects_binary_symlink_or_directory`; `publish_path_preserves_binary_siblings` | explicit fileだけをreplace候補として検証し、sibling ownershipを広げない。 |
-| PUBLISH-PATH-007 | `publish_path_rejects_source_canonical_cache_and_config_overlap`; `publish_path_allows_safe_project_local_dist` | protected path aliasとsafeなproject-local destinationを区別する。 |
-| PUBLISH-PATH-008 | `publish_path_rejects_nested_csharp_targets`; `publish_path_rejects_csharp_binary_overlap`; `publish_path_rejects_target_aliases` | missing target同士もdestination namespaceで比較する。 |
-| PUBLISH-PATH-009 | `publish_path_resolves_relative_target_from_project_root`; `publish_path_accepts_absolute_target`; `publish_path_accepts_safe_missing_target_tail` | cwd変更、relative/absolute resolution、およびpreflight中にparentを作成しないことを分離して検証する。 |
-| PUBLISH-PATH-010 | `publish_path_validates_all_targets_before_mutation`; `preflight_failure_mutates_no_targets`; `receipt_failure_prevents_target_inspection_and_mutation` | known collision/type/symlink/graph errorを全target preflight後のmutation前に検出する。execution-time failureは`PUBLISH-EXEC-*`のmatrixで確認する。 |
+| Requirement | Observable acceptance expectation |
+| --- | --- |
+| PUBLISH-PATH-001 | destination filesystemの実際のnamespace / identityに基づき、filesystem-equivalentなcollisionを検出する。 |
+| PUBLISH-PATH-002 | safeなexisting prefixとmissing tailを扱い、identityを判定できない場合はfail closedする。 |
+| PUBLISH-PATH-003 | target root / ancestor、trusted project-root anchor、target内symlinkの境界を分け、unsafeなsymlinkをfollowしない。 |
+| PUBLISH-PATH-004 | file/file、file/directory、missing ownership、directory/file、nested pathのcollisionを検出し、unmanaged contentを保護する。 |
+| PUBLISH-PATH-005 | malformed / duplicate / reserved-name collisionのmanifestをrejectし、初回のmissing manifestをempty managed setとして扱う。 |
+| PUBLISH-PATH-006 | explicit binary fileだけをreplace候補として検証し、sibling ownershipを広げない。 |
+| PUBLISH-PATH-007 | protected path aliasとsafeなproject-local destinationを区別する。 |
+| PUBLISH-PATH-008 | missing targetを含むtarget間のnested、binary/C# overlap、filesystem aliasをdestination namespaceで比較する。 |
+| PUBLISH-PATH-009 | relative targetをproject root基準、absolute targetをconfigured destinationとして扱い、preflight中のparent creationを行わない。 |
+| PUBLISH-PATH-010 | known collision / type / symlink / graph errorを全targetのmutation前に検出する。 |
 
-## Publish execution acceptance matrix
+## Publish execution acceptance expectations
 
-このmatrixは`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`に対するimplementation evidenceである。
-Phase 2のno-mutation boundaryと、Native Application ServicesのPhase 3 target execution evidenceを記録する。
+このsectionは`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`のstableなobservable acceptance expectationを要約する。
+Phaseやcurrent implementationの進捗はこのspecificationのownerではない。
 
-| Requirement | Phase 2 / Phase 3 evidence | Observation |
-| --- | --- | --- |
-| PUBLISH-EXEC-001 | `preflight_failure_mutates_no_targets`; `receipt_failure_prevents_target_inspection_and_mutation`; `receipt_failure_mutates_no_targets`; `publish_uses_receipt_valid_artifacts_without_loading_yaml` | receipt validation後の全target preflightで1件でも失敗した場合、parent creation、manifest更新、binary replacementを含むmutationがない。receipt failureもtarget inspection前に停止する。 |
-| PUBLISH-EXEC-002 | `execution_failure_continues_to_later_targets`; `toctou_failure_on_one_target_does_not_skip_others`; `protected_region_revalidation_failure_is_target_local_and_continues`; `protected_region_overlap_after_phase2_is_target_local`; `publish_uses_receipt_valid_artifacts_without_loading_yaml` | execution phase開始後は先行targetのfailureによって後続targetをskipせず、同じreceiptを入力としてattemptする。targetごとにreceipt hash、protected-region identity、およびtarget namespaceを再検証し、revalidation failureをtarget-localとして後続targetを継続する。 |
-| PUBLISH-EXEC-003 | `execution_failure_rolls_back_only_failed_target`; `binary_failure_preserves_previous_file`; `binary_failure_after_previous_file_is_secured_restores_previous_file`; `initial_binary_failure_does_not_publish_partial_file`; `csharp_failure_preserves_previous_managed_set`; `csharp_failure_before_manifest_rolls_back_managed_set`; `csharp_manifest_failure_rolls_back_managed_set`; `csharp_rollback_failure_is_structured`; `binary_rollback_failure_is_structured` | C# managed set/unmanaged contentとbinary explicit fileのtarget-local safety、failure-pointごとのrollback、およびrollback failureのErrを確認する。 |
-| PUBLISH-EXEC-004 | `successful_target_is_not_rolled_back_by_later_failure` | 先行success targetのNEW usable stateを、後続target failureだけを理由に戻さない。global atomicityを主張しない。 |
-| PUBLISH-EXEC-005 | `publish_returns_error_after_partial_success`; `publish_reports_per_target_status`; `retry_after_partial_success_converges`; `zero_targets_is_successful_noop`; `execution_failure_continues_to_later_targets` | all succeededのみOk、1件以上のexecution failureはErr、targetごとのstatusと再実行収束を確認する。 |
+| Requirement | Observable acceptance expectation |
+| --- | --- |
+| PUBLISH-EXEC-001 | receipt validationと全target preflightが完了するまで、parent creation、manifest更新、binary replacementを含むmutationを開始しない。 |
+| PUBLISH-EXEC-002 | execution phase開始後は、あるtargetのfailureで後続targetをskipせず、同じreceiptを入力としてtarget-localに再検証・実行する。 |
+| PUBLISH-EXEC-003 | C# managed set / unmanaged contentとbinary explicit fileについて、failed targetだけを安全にrollbackまたはprevious stateへ保持し、rollback failureをstructured errorにする。 |
+| PUBLISH-EXEC-004 | 後続targetのfailureだけを理由に、先行success targetのNEW usable stateをrollbackしない。global atomicityを主張しない。 |
+| PUBLISH-EXEC-005 | 全target successだけをoverall successとし、execution failureがあればpartial successを含めoverall failureとする。targetごとのstatusをstructuredに表現し、retryで安全に収束できる。0 targetはmutationなしのsuccessful no-opとする。 |
 
 ## Approved configuration contract
 
@@ -746,8 +741,7 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 ```
 
 `artifact_dir`はcanonical build rootを指定し、`publish.targets`はcanonical artifactの外部destinationだけを指定する。`build.binary_output`を
-canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。current parser/modelはこのshapeを受理し、
-standalone CLI publishは`NativeApplicationService::publish`へ直接委譲する。GUI/Tauri adapterと`build --publish`は未実装である。
+canonical binaryの任意destinationとして再利用しない。target kindを増やす場合は、別途仕様化する。
 
 ## Legacy configuration hard cutと手動migration
 
@@ -822,12 +816,6 @@ artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`、および複
 
 ## Statusと実装方針
 
-この文書の`Status: Approved`は、仕様変更0004、0005、0006、0007、および0008に記録されたHuman Approvalとcanonical applicationを反映する。implementation evidenceが揃う前に
-`Implemented`へ変更しない。
-
-canonical configuration implementationは`artifact_dir`をproject-local rootとして検証し、complete artifact rootをbuildする。external publishの
-Phase 2 filesystem preflightとreceipt validation boundary、および`PUBLISH-EXEC-001`のno-mutation contractは実装済みである。
-Native Application ServicesのC# / binary target execution、target-local rollback、continue-after-failure、aggregate result、および
-`PUBLISH-EXEC-002`から`PUBLISH-EXEC-005`は実装済みである。standalone CLI publishも実装済みであるが、
-`build --publish`、GUI/Tauri/Native Host wiringは未実装であり、このdocumentのStatusは`Approved`のまま維持する。
-legacy configurationの受理、alias、warning-only、automatic migrationは禁止され、legacy artifactのmove/delete/renameは行わない。
+この文書の`Status: Approved`は、仕様変更0004、0005、0006、0007、および0008に記録されたHuman Approvalとcanonical applicationを反映する。
+`Implemented`へのlifecycle transitionは、[仕様index](README.md)のevidence ruleに従う。current implementationの一覧、exact test
+inventory、manual pass/fail statusはこのcanonical specificationに保持せず、current code / tests / Gitから確認する。

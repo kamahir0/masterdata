@@ -166,6 +166,62 @@ copyするのではなく、そのrequirementへlinkするか関係を要約す�
 複数の意味を持つ場合は、Open Questionとして曖昧さを記録するか、terminology documentを
 refineしてから使用する。
 
+## Conversation knowledgeの耐久化（Durability Review）
+
+conversationはdurable knowledgeのsource evidenceになり得るが、conversation logそのものをrepositoryへ保存しては
+ならない（MUST NOT）。保存するかどうかは、次の基準で判定する。
+
+> その情報を知らないfuture developer / AI agentが、合理的ではあるが意図に反した判断をする可能性があるか。
+
+Noであれば、会話のcontextとしてのみ扱い、必ずしもrepositoryへ保存しない。Yesであれば、既存のStatement Classification
+でDecision、Requirement、Constraint、Preference、Proposal、Idea、Question、Open Question、Rejectedなどへ分類し、
+既存ownerと重複しないdurable knowledge候補としてroutingする。会話の表現をそのままcopyせず、将来の判断に必要な
+observable rule、rationale、boundary、またはpriorityだけを抽出する。
+
+### Durable knowledgeのrouting
+
+| Knowledge | Canonical owner / route |
+| --- | --- |
+| Requirement、Constraint、semantic Decision | semantic changeなら`docs/spec-changes/`のlifecycleを通し、Applied後に`docs/specs/**`へ反映する |
+| Architecture decision | `docs/adr/**` |
+| Substantialな未決定alternative比較 | `docs/rfcs/**` |
+| Product motivation / long-term direction | `docs/product/vision.md` |
+| Current development priority | `docs/current-objective.md` |
+| Approved contractに密接なDeferred / Rejected boundary | canonical ownerへ重複しない形で保存し、必要ならdecision historyへlinkする |
+| Local unusual implementation WHY | nearby rationale、regression test、または必要なevidence |
+
+既存ownerで保持できない重要なknowledgeが見つかった場合は、会話から新しいdocument hierarchyを即興で作らず、
+`Knowledge Architecture Gap`として報告する。Current ObjectiveへRequirement本文、architecture本文、implementation status一覧、
+test inventoryをcopyしてはならない。Product Direction、Future Candidate、Approved Requirementは強度を保って区別し、
+Future CandidateやHuman preferenceからMUST / SHOULD、public command、config key、protocol、file formatを発明しない。
+
+## Authority precedence
+
+同じrepository内で情報が衝突した場合の優先関係は次のとおりである。
+
+1. Observable semantics: `Status: Approved` / `Status: Implemented` specification
+2. Architecture WHY: `docs/adr/**`
+3. Current development priority: `docs/current-objective.md`
+4. Implementation reality: current code / tests / Git history（必要に応じてcurrent CI）
+5. Long-term product direction: `docs/product/vision.md`
+
+この順序は、Current ObjectiveがSpecificationをoverrideすること、Product VisionがApproved Specificationをoverrideすること、
+READMEがSpecificationをoverrideすることを意味しない。codeとApproved specificationが違う場合はimplementation gapを先に
+疑い、staleなimplementation proseへcanonical contractを合わせない。
+
+## Current Objectiveの更新
+
+[`docs/current-objective.md`](../current-objective.md)は、次の場合だけ更新対象とする。
+
+1. Humanがpriorityを変更した。
+2. Current Objectiveが完了した。
+3. completion boundaryがHuman decisionで変更された。
+4. repository realityとの明確な矛盾が判明した。
+
+細かい進捗、個別testの追加、実装率、current commitの更新ごとに変更してはならない。Current Objectiveを完了するtaskでは、
+同じ変更内でobjective更新の要否を確認する。次のobjectiveがHumanにより決まっている場合だけ更新し、未決定の候補をagentが
+勝手にobjectiveへ昇格させない。
+
 ## Testsとfixtures
 
 すべてのApproved behaviorには、規模に応じたverification planを用意する。traceabilityが

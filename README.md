@@ -2,7 +2,10 @@
 
 `masterdata` は Unity + MasterMemory を対象にした、YAML-firstのローカルファーストなマスターデータ開発システムです。CLIとTauri GUIは、同じRust application serviceとcoreを直接利用します。
 
-このリポジトリはschema-drivenなMasterMemory binary buildを行います。project discovery、設定読込、typed YAML AST、Type Systemの解決・検証、Value Object / Custom Type / Enum / Flags EnumのC#生成、Table/Key validation、Build Selection、stagedな実MasterMemory v3 builder、binary reload validation、coherent artifact-set receipt generation / validation、CLI、Tauriアプリシェルが動作します。Reference、builder cache、released binary compatibility、Unityへの最終配置は引き続き別scopeです。
+このリポジトリはschema-drivenなMasterMemory binary buildを中心に、project discovery、typed YAML AST、Type System、Table/Key
+validation、Build Selection、C#生成、.NET bridge、artifact-set receipt、CLI、Tauri app shellを同じworkflowで扱います。Reference、
+builder cache、released binary compatibility、Unityへの最終配置は別scopeです。observable contractとlifecycleは各canonical
+specification、current implementation realityはcode / tests / Gitを参照してください。
 
 ## アーキテクチャ
 
@@ -125,10 +128,13 @@ records:
     name: Potion
 ```
 
-identity/compatibilityの仕様は[互換性仕様のindex（compatibility specification index）](docs/specs/compatibility/README.md)を参照してください。table identityは現在`Implemented`、Field Identityは旧modelのretired historyとMessagePack `key` ownerへのroutingを含む`Deprecated`、Enum/Flags type semanticsとTable/Key semanticsも`Approved`です。Index identityは`Draft`として管理しており、実装未完了の領域を含みます。
+identity/compatibilityのcanonical contractとlifecycleは[互換性仕様のindex（compatibility specification index）](docs/specs/compatibility/README.md)と
+各owner specificationを参照してください。READMEはimplementation statusの一覧を保持せず、実装の現状はcode / tests / Gitから
+確認します。
 
 ## リポジトリガイド
 
+- [現在の開発目的（Current Objective）](docs/current-objective.md) — current priorityの入口。仕様や実装statusの代替ではない
 - [プロダクトビジョン（Product vision）](docs/product/vision.md)
 - [用語（Terminology）](docs/product/terminology.md)
 - [仕様index（Specification index）](docs/specs/README.md)

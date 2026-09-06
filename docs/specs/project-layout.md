@@ -105,9 +105,8 @@ path = "../unity/Assets/StreamingAssets/masterdata.bytes"
 normative semanticsは[Build pipeline仕様](build-pipeline.md)の`BUILD-ARTIFACT-*`および`PUBLISH-*`が所有する。このdocumentはproject marker、
 project metadata、およびsource rootのconfiguration boundaryを所有する。
 
-current implementationはcanonicalな`build.artifact_dir`、`build.cache`、およびoptionalな`publish.targets`を読み込み、legacyの
-`build.output`と`build.binary_output`を[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)のhard cutに従ってstructured migration
-diagnosticで拒否する。legacy configuration rejectionはbuild開始前に行われ、既存artifactを変更しない。external publish operation自体は未実装である。
+legacy configurationのhard cutとstructured migration diagnosticのdecision historyは[仕様変更0005](../spec-changes/0005-legacy-build-path-hard-cut.md)に
+記録されている。artifactとexternal publishのobservable semanticsは[Build pipeline仕様](build-pipeline.md)が所有する。
 
 `init`が生成するminimum configurationにはpublish targetを含めなくてもよい。例えば次のconfigurationだけでcanonical buildを開始できる。
 
@@ -250,35 +249,32 @@ Open Questions: configがnamed source group、ignore pattern、明示的なUnity
 サポートするか、設定されたsource rootがsymlinkをfollowするか、custom artifact/cache pathのautomatic
 Git ignoreを行うか、User Settingsのserializationとhost-local physical storageをどう定義するか、
 project-specific UI stateをどのlocal identityへ紐付けるか、empty source convention directoryをGit上で
-どう保持するか。current implementationはcycle-safetyのinternal guardとしてsymlink entryをfollowしない。
-これはproduct-levelのpermissionまたは禁止ではない。
+どう保持するか。source discoveryのsymlink policyはproduct-level decisionとして別途解決し、internal guardから
+permissionまたは禁止の意味を推測しない。
 
-## 受け入れmatrix
+## Acceptance expectations
 
-このmatrixは上記requirementに対するnon-normativeなimplementation evidenceまたは将来のacceptance planである。test numberが
-requirement definitionに見えないよう、canonical ruleの隣に置く。`implement-spec` は同じ
-observable behaviorを、このmatrixによって確認する。Approved configuration contractへ変更された
-`PROJECT-CONFIG-003`から`PROJECT-CONFIG-008`、`PROJECT-CONVENTION-001`および`PROJECT-PATH-001`は、
-canonical configuration implementationとそのplanned test evidenceで確認する。未実装のrowをpass済みとは扱わない。
+このsectionは、上記Requirementに対応するstableなobservable acceptance expectationを要約する。implementation owner、exact test
+inventory、fixture、manual pass/fail statusはこのspecificationのownerではなく、current code / tests / Gitから確認する。
 
-| Requirement（要件ID） | Observable behavior（観測可能な挙動） | Implementation owner（実装owner） | Success case（成功例） | Failure case（失敗例） | Test（テスト） | Fixture |
-| --- | --- | --- | --- | --- | --- | --- |
-| PROJECT-001 | `masterdata.toml` という名前のmarkerがprojectを識別する。 | `masterdata-core::Project` | 明示的なdirectoryがそのmarkerを解決する。 | markerのないdirectoryはprojectとして受け入れられない。 | `project_001_explicit_directory_uses_masterdata_marker` | `fixtures/minimal` |
-| PROJECT-002 | 明示的なdirectory/file pathがparent discoveryより優先される。 | `masterdata-core::Project::discover` | 内側の明示的なprojectが選択される。 | explicit pathがvalidな場合、parent projectは選択されない。 | `project_002_explicit_path_has_priority_over_parent_search` | Temporary project |
-| PROJECT-003 | searchはcurrent directoryから始まり、parentをたどる。 | `masterdata-core::find_config_upwards` | nested directoryから最も近いancestor markerが見つかる。 | searchはfilesystem rootで停止する。 | `project_003_discovers_config_from_parent_directory` | Temporary project |
-| PROJECT-004 | markerがないことがstructured diagnostic dataとして返る。 | `masterdata-core::Project::discover` | errorがdiagnostic code/kindと、任意のstructured contextを持つ。 | conditionを特定するためにstring-only errorへ依存する必要がない。 | `project_004_returns_structured_not_found_diagnostic` | Temporary directory |
-| PROJECT-005 | Unity folderはidentityを確立しない。 | `masterdata-core::Project::discover` | `Assets/` と `ProjectSettings/` だけではprojectをresolveしない。 | `masterdata.toml` がない場合はnot foundのままである。 | `project_005_unity_folders_do_not_define_identity` | Temporary directory |
-| PROJECT-006 | 宣言されたYAML `kind` と `table` がdocument semanticsを決める。 | `masterdata-core::Project::load_documents` | 1つのroot内にある複数fileが、宣言したtableを保持する。 | file pathまたはdirectory nameでdocumentを別の意味に変更できない。 | `project_006_source_directory_does_not_define_table_identity` | `fixtures/minimal` |
-| PROJECT-CONFIG-001 | project metadata fieldがwhitespace以外のvalueを含む。 | `masterdata-core::ProjectConfig::validate` | metadataが揃ったblockを受け入れる。 | 空の `id`、`name`、`version` はstructured config diagnosticを返す。 | `project_config_001_requires_non_empty_metadata` | Temporary project |
-| PROJECT-CONFIG-002 | 少なくとも1つのsource rootが設定されている。 | `masterdata-core::ProjectConfig::validate` | source rootのあるprojectを受け入れる。 | 空の `sources.roots` listはstructured config diagnosticを返す。 | `project_config_002_requires_a_source_root` | Temporary project |
-| PROJECT-CONFIG-003 | 設定されたsource root、canonical artifact path、cache pathが空でない。 | `masterdata-core::ProjectConfig::validate` | 空でないpathを受け入れる。 | 空のsource、`artifact_dir`、またはcache pathはstructured config diagnosticを返す。 | `project_config_003_rejects_empty_source_or_build_paths` | Temporary project |
-| PROJECT-CONFIG-004 | legacy `build.output` / `build.binary_output`はmigration-aware structured diagnosticで拒否され、generic unknown-key errorへ潰れない。 | `masterdata-core::Project::from_config_path` | 新configurationを受け入れる。 | 各legacy fieldを対応するdiagnostic codeで拒否する。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`; `project_config_004_reports_legacy_output_before_binary_output` | Temporary project |
-| PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | `masterdata-core::Project::from_config_path` | 旧artifactを残したままoperation開始を拒否する。 | rejection後にcanonical/legacy/external artifactが変更されない。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`（config boundary） | Temporary project |
-| PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `masterdata-core::initialize_project` | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 | `init_creates_kind_first_source_scaffold` | Temporary project |
-| PROJECT-CONVENTION-001 | recommended kind-first source organizationがsemantic identityを作らず、alternate layoutとnested dataを許容する。 | `masterdata-core::Project::load_documents` | `sources/schemas/`、`sources/types/`、`sources/data/`をorganizationとして使用できる。 | directory/file pathからTable/type/index identityを推測する。 | `project_convention_does_not_define_semantic_identity` | Temporary project |
-| PROJECT-CONFIG-007 | Project Settings、Project Tool State、User Settings / UI Stateを分離し、User Settingsがproject/build/publish semanticsを変更しない。 | future settings boundary | 同一sourceとoperationがUser Settings変更で同じsemantic/artifact/publish resultになる。 | User Settingsがvalidation、Build Selection、artifact identity、publish targetを変更する。 | `user_settings_do_not_change_project_semantics`（planned） | Temporary project |
-| PROJECT-CONFIG-008 | `init`がsource scaffoldを作り、missing-only `.gitignore`と`.masterdata` lazy creationを守る。 | `masterdata-core::initialize_project` | source directoriesとconfigを作り、missing `.gitignore`に`/.masterdata/`を含め、tool stateをeager-createしない。 | existing `.gitignore`をrewrite/appendする、またはinitが`.masterdata`を作成する。 | `init_creates_kind_first_source_scaffold`; `init_creates_default_gitignore_when_missing`; `init_preserves_existing_gitignore`; `init_does_not_eager_create_tool_state` | Temporary project |
-| PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootであり、absolute publish targetはconfigured absolute filesystem destinationとして扱う。publish targetの詳細なsafetyは`PUBLISH-PATH-*`が所有する。 | `masterdata-core::Project::info` / `masterdata-core::Project::from_config_path` / future publish adapter | project rootからrelative canonical/publish pathを解決し、absolute publish pathをabsolute locationとして扱う。 | canonical artifactがproject外へescapeする、relative pathがprocess working directory基準になる、またはpublish targetが`PUBLISH-PATH-*`のprotected path safetyを迂回する。 | `project_path_001_resolves_relative_paths_against_project_root`; `project_path_001_rejects_unsafe_canonical_artifact_paths`; `project_path_001_rejects_artifact_source_and_cache_overlap`; `project_path_001_rejects_source_symlink_alias`; `project_path_001_rejects_source_symlink_ancestor_alias`; `project_path_001_rejects_cache_symlink_alias`; `project_path_001_handles_case_alias_using_filesystem_behavior`; `project_path_001_handles_case_alias_with_missing_tails_using_filesystem_behavior`; `publish_path_resolves_relative_target_from_project_root`（planned）; `publish_path_accepts_absolute_target`（planned） | Temporary project |
+| Requirement（要件ID） | Observable behavior（観測可能な挙動） | Success case（成功例） | Failure case（失敗例） |
+| --- | --- | --- | --- |
+| PROJECT-001 | `masterdata.toml`という名前のmarkerがprojectを識別する。 | 明示的なdirectoryがそのmarkerを解決する。 | markerのないdirectoryはprojectとして受け入れられない。 |
+| PROJECT-002 | 明示的なdirectory/file pathがparent discoveryより優先される。 | 内側の明示的なprojectが選択される。 | explicit pathがvalidな場合、parent projectは選択されない。 |
+| PROJECT-003 | searchはcurrent directoryから始まり、parentをたどる。 | nested directoryから最も近いancestor markerが見つかる。 | searchはfilesystem rootで停止する。 |
+| PROJECT-004 | markerがないことがstructured diagnostic dataとして返る。 | errorがdiagnostic code/kindと、任意のstructured contextを持つ。 | conditionを特定するためにstring-only errorへ依存する必要がない。 |
+| PROJECT-005 | Unity folderはidentityを確立しない。 | `Assets/`と`ProjectSettings/`だけではprojectをresolveしない。 | `masterdata.toml`がない場合はnot foundのままである。 |
+| PROJECT-006 | 宣言されたYAML `kind`と`table`がdocument semanticsを決める。 | 1つのroot内にある複数fileが、宣言したtableを保持する。 | file pathまたはdirectory nameでdocumentを別の意味に変更できない。 |
+| PROJECT-CONFIG-001 | project metadata fieldがwhitespace以外のvalueを含む。 | metadataが揃ったblockを受け入れる。 | 空の`id`、`name`、`version`はstructured config diagnosticを返す。 |
+| PROJECT-CONFIG-002 | 少なくとも1つのsource rootが設定されている。 | source rootのあるprojectを受け入れる。 | 空の`sources.roots` listはstructured config diagnosticを返す。 |
+| PROJECT-CONFIG-003 | 設定されたsource root、canonical artifact path、cache pathが空でない。 | 空でないpathを受け入れる。 | 空のsource、`artifact_dir`、またはcache pathはstructured config diagnosticを返す。 |
+| PROJECT-CONFIG-004 | legacy `build.output` / `build.binary_output`はmigration-aware structured diagnosticで拒否され、generic unknown-key errorへ潰れない。 | 新configurationを受け入れる。 | 各legacy fieldを対応するdiagnostic codeで拒否する。 |
+| PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | 旧artifactを残したままoperation開始を拒否する。 | rejection後にcanonical/legacy/external artifactが変更されない。 |
+| PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 |
+| PROJECT-CONVENTION-001 | recommended kind-first source organizationがsemantic identityを作らず、alternate layoutとnested dataを許容する。 | `sources/schemas/`、`sources/types/`、`sources/data/`をorganizationとして使用できる。 | directory/file pathからTable/type/index identityを推測する。 |
+| PROJECT-CONFIG-007 | Project Settings、Project Tool State、User Settings / UI Stateを分離し、User Settingsがproject/build/publish semanticsを変更しない。 | 同一sourceとoperationがUser Settings変更で同じsemantic/artifact/publish resultになる。 | User Settingsがvalidation、Build Selection、artifact identity、publish targetを変更する。 |
+| PROJECT-CONFIG-008 | `init`がsource scaffoldを作り、missing-only `.gitignore`と`.masterdata` lazy creationを守る。 | source directoriesとconfigを作り、missing `.gitignore`に`/.masterdata/`を含め、tool stateをeager-createしない。 | existing `.gitignore`をrewrite/appendする、またはinitが`.masterdata`を作成する。 |
+| PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootであり、absolute publish targetはconfigured absolute filesystem destinationとして扱う。publish targetの詳細なsafetyは`PUBLISH-PATH-*`が所有する。 | project rootからrelative canonical/publish pathを解決し、absolute publish pathをabsolute locationとして扱う。 | canonical artifactがproject外へescapeする、relative pathがprocess working directory基準になる、またはpublish targetが`PUBLISH-PATH-*`のprotected path safetyを迂回する。 |
 
 すべてのrowは、path separatorがplatformによって異なっても有効でなければならない。
 symlink traversal safetyはsource-discovery documentationに Open Question として記録された

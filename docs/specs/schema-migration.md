@@ -429,30 +429,30 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 - AddFieldのschema fieldは末尾へappendし、record memberも末尾へappendする。record mapping
   orderをMessagePack key orderへ正規化しない。
 
-これらはこのApproved specificationのcontractである。ただし、下記のimplementation evidenceが
-未実施であることから、実装済みを意味しない。
+これらはこのApproved specificationのcontractである。implementation statusやexact test inventoryはこの文書のownerではなく、
+current code / tests / Gitから確認する。
 
-## Acceptance matrix（future evidence）
+## Acceptance expectations
 
-この文書はApprovedだが、以下はすべてplanned evidenceである。未実施のtestをpass済みとは
-扱わない。
+このsectionは、Migration implementationが将来満たすべきstableなobservable acceptance expectationをRequirement IDごとに
+要約する。planned / passed / pendingのstatusは保持しない。
 
-| Requirement | Planned evidence | Status |
-| --- | --- | --- |
-| MIGRATION-001, MIGRATION-011 | generated C#、binary、receiptをauthorityにせず、YAML sourceだけからmigration inputを構成するtest | pending implementation |
-| MIGRATION-002, MIGRATION-003 | Add/Rename/Dropだけをv1 semantic operationとして識別し、SQL/text edit grammarを要求しないtest | pending implementation |
-| MIGRATION-004 | 同一snapshot・command・optionsから同一plan/resultになるdeterminism test | pending implementation |
-| MIGRATION-005, MIGRATION-013 | diagnosticを生成し得るcanonical resolutionからmigration closureとoperation postconditionを確定し、closure外のunrelated diagnosticsだけでは拒否しないtest | pending implementation |
-| MIGRATION-006 | AddFieldがcanonical constant valueを検証し、schema/data末尾append、既存key維持、record存在時のexplicit initializerを要求するtest | pending implementation |
-| MIGRATION-007 | RenameFieldがMessagePack keyを維持し、Primary/Secondary Key参照をsemanticに更新するtest | pending implementation |
-| MIGRATION-008 | destructive authorizationなしのDropFieldがmutationせず、依存fieldを黙って削除しないtest | pending implementation |
-| MIGRATION-009 | deterministic plan、dry-run no mutation、affected file/record diagnosticsのtest | pending implementation |
-| MIGRATION-010 | multi-file commitがOLD / NEW / Recovery Requiredを正しく報告するtest | pending implementation |
-| MIGRATION-012 | in-memory semantic engineがnative filesystem、RPC、async runtimeなしで呼び出せるarchitecture/WASM evidence | pending implementation |
-| MIGRATION-014 | unaffected fileのbyte preservation、affected fileのpresentation preservation、deterministic source bytesのtest | pending implementation |
-| MIGRATION-015 | patched sourceの再parseとexpected transformed semantic resultの整合確認test | pending implementation |
-| MIGRATION-016 | MIGRATION-016が定義するproject config、source file set membership、closure / postcondition判断でロードしたcanonical source inputsのstale updateをcommit前に検出しmutationしないtest | pending implementation |
-| MIGRATION-017 | diagnostic-tolerantなMigration Resolvable、unclassifiable sourceのfail-closed、Build Selection非依存、project diagnostics分離のtest | pending implementation |
+| Requirement | Observable acceptance expectation |
+| --- | --- |
+| MIGRATION-001, MIGRATION-011 | Migration input authorityをcanonical YAML sourceとclosureに限定し、generated C#、binary、receiptをsource authorityやimplicit build入力にしない。 |
+| MIGRATION-002, MIGRATION-003 | v1 operationをAdd / Rename / Dropとして扱い、semantic commandとtext edit / SQL-like grammarを分離する。 |
+| MIGRATION-004 | 同一snapshot・closure・command・optionsからdeterministicなplanとtransformed semantic resultを得る。 |
+| MIGRATION-005, MIGRATION-013 | closureとoperation-specific postconditionをresolveし、unrelated diagnosticsだけでrejectせず、blocking condition・authorization・stale planなしにmutationしない。 |
+| MIGRATION-006 | AddFieldでcanonical constant valueを検証し、schema/dataの末尾append、既存key維持、record存在時のexplicit initializerを守る。 |
+| MIGRATION-007 | RenameFieldをlogical Table identityとcurrent field nameで解決し、MessagePack keyを維持し、Approvedなfield referenceをsemanticに更新する。 |
+| MIGRATION-008 | DropFieldにexplicit destructive authorizationを要求し、authorization不足や依存更新不能時にmutationせずfail closedする。 |
+| MIGRATION-009 | mutation前にdeterministic planを構成し、dry-runでsourceを変更せず、affected files / recordsとdiagnosticsを表現する。 |
+| MIGRATION-010 | multi-file commitでcomplete NEW、rollback後のcomplete OLD、rollback failure時のRecovery Requiredを区別し、silent continuationしない。 |
+| MIGRATION-012 | pure semantic transformationをfilesystem、RPC、async runtimeから分離し、複数hostが同じengineを利用できる境界を保つ。 |
+| MIGRATION-014 | unaffected fileをbyte-for-byte保持し、affected fileのcomments、quote、indentation、blank lines、unrelated textを保持し、通常serializerで全面再出力しない。 |
+| MIGRATION-015 | patch適用だけで成功にせず、patched sourceをcanonical parse / resolveし、expected transformed semantic resultとpostconditionを確認する。 |
+| MIGRATION-016 | commit直前にproject config、source file set、closure / postcondition判断に使用したsource inputsのstale updateを検出し、不一致時にmutationしない。 |
+| MIGRATION-017 | Migration Resolvableをsuccess gateとし、unrelated diagnosticsやBuild Selectionをproject-wide gateにせず、unclassifiable sourceはfail closedにする。 |
 
 ## Open Questions / Specification Gaps
 

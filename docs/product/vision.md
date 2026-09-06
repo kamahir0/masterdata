@@ -10,6 +10,27 @@ Native componentsのsetupと初回authorizationが完了したユーザーは、
 
 clone可能なrepositoryを、人間のdeveloperとAI agentの双方が理解できる状態にする。behaviorはGitで仕様化し、generated artifactは再現可能にし、errorはstructured locationを持たせ、未対応featureは黙って近似せず明示する。
 
+## Product problem / motivation
+
+このproductは単なるYAML parserではない。Excelやopaque binaryを中心としたmaster-data authoringから、YAML、Git diff、
+review、automation、AI-assisted workflowを組み合わせたmaster-data development environmentへ移行することを、主要な
+motivationの一つとする。
+
+HumanとAIは、同じcanonical source、version-controlled specification、structured diagnostics、reproducibleなworkflowを
+利用する。AI専用のhidden semanticsやAI専用のauthorityを追加せず、同じrepository artifactsを読んで、同じcontractに基づいて
+変更をreviewできる状態を目指す。
+
+## Product direction
+
+長期的には、YAMLをcanonical Source of Truthとして保ちつつ、Desktop、Web、CLIでsemantic coreとapplication semanticsを
+できるだけ共有する。Web対応のためにCLIをNative Host RPC-onlyへ統一せず、Standalone Web、Connected Web、Native Hostを
+それぞれのcapability境界として構成する。table / column-oriented GUI、schema-aware editing、source-preserving Migration、
+project layoutとsettings UXもproductとして整理するが、具体的なpublic command、config key、protocol、file formatは各owner
+specificationで承認されるまで固定しない。
+
+将来候補として、Generated C# Preview、explicit C# export、read-only binary inspect/query、formatter、SQL-like UXを検討し得る。
+これらはProduct Direction上のcandidateであり、現時点のApproved RequirementやCLI grammarではない。
+
 ## 成功条件
 
 - developerがUnityを開かずにprojectをdiscoverし、validateできる。

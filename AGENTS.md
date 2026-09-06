@@ -21,6 +21,25 @@
 - domain semanticsを変更する場合は、同じ変更で仕様書も更新する。
 - public behaviorを追加・変更したら、対応するtestを追加または更新する。
 
+## Cold-start時の標準reading order
+
+長いconversation、handoff prompt、個人の記憶をcurrent repositoryの代わりに使用してはならない（MUST NOT）。
+future developer / AI agentが作業へ復帰するときは、原則として次の順序でcurrent repositoryを読む。
+
+1. `README.md`
+2. `docs/product/vision.md`
+3. [`docs/current-objective.md`](docs/current-objective.md)
+4. `docs/specs/README.md`
+5. taskに関連する `Status: Approved` / `Status: Implemented` specification
+6. related `docs/adr/`、`docs/rfcs/`、およびrecent `Status: Applied` spec-change
+7. affected code / tests
+8. current Git `HEAD`、working tree、必要に応じてCI status
+
+taskに不要な文書を無差別に読む必要はないが、関連authorityを絞り込んだ根拠を保つこと。`docs/current-objective.md`は
+current priorityのauthorityであり、semantic authorityではない。Approved semanticsはcanonical specificationから読み、
+implementation realityはcode / tests / Gitからfreshに確認する。Approved semanticsから決定できることを会話だけで再設計せず、
+codeとApproved specificationが異なる場合は、まずimplementation gapまたはverification gapを疑う。
+
 ## アーキテクチャ規則
 
 - CLIとGUIは `masterdata-app` のapplication workflowと

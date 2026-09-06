@@ -626,7 +626,9 @@ fn portable_path(relative: &Path, source: &Path) -> Result<String> {
 fn validate_receipt_relative_path(path: &str, source: &Path) -> Result<()> {
     // WHY: Receipt paths are a platform-independent slash representation, so
     // host Path::is_absolute alone cannot recognize Windows prefixes while
-    // running on Unix.
+    // running on Unix. Every slash-delimited component must be checked before
+    // it is lowered into native PathBuf components because an intermediate
+    // Windows drive-prefix component can change push semantics.
     // IF REMOVED: a receipt could escape csharp/ after being consumed on a
     // different host, or two spellings could address the same artifact.
     // EVIDENCE: docs/specs/build-pipeline.md; Regression: artifact_receipt_rejects_unsafe_paths.
@@ -637,8 +639,11 @@ fn validate_receipt_relative_path(path: &str, source: &Path) -> Result<()> {
         || path
             .split('/')
             .any(|part| part.is_empty() || part == "." || part == "..");
-    let windows_drive_prefix =
-        path.len() >= 2 && path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes()[1] == b':';
+    let windows_drive_prefix = path.split('/').any(|component| {
+        component.len() >= 2
+            && component.as_bytes()[0].is_ascii_alphabetic()
+            && component.as_bytes()[1] == b':'
+    });
     if unsafe_path || windows_drive_prefix {
         return Err(artifact_error(
             "E-ARTIFACT-SET-CSHARP-PATH-UNSAFE",
@@ -911,6 +916,9 @@ mod tests {
             r"C:\Item.g.cs",
             "C:Item.g.cs",
             r"\\server\share\Item.g.cs",
+            "nested/C:Item.g.cs",
+            "nested/D:escape.g.cs",
+            "a/b/C:escape.g.cs",
             "nested/../../Item.g.cs",
             r"nested\Item.g.cs",
         ] {
@@ -928,6 +936,22 @@ mod tests {
                 validate_artifact_set(&root, "game.masterdata").expect_err("unsafe path spelling");
             assert_eq!(error.diagnostic().code, "E-ARTIFACT-SET-CSHARP-PATH-UNSAFE");
         }
+    }
+
+    #[test]
+    fn artifact_receipt_generation_rejects_nested_windows_prefix_component() {
+        let directory = artifact_root();
+        let root = directory.path().join("output");
+        fs::create_dir_all(root.join("csharp/nested")).expect("create nested csharp directory");
+        fs::write(
+            root.join("csharp/nested/C:escape.g.cs"),
+            "namespace Generated; public sealed class Escape {}\n",
+        )
+        .expect("write unsafe generated artifact");
+
+        let error = create_artifact_set_receipt(&root, "demo").expect_err("unsafe path rejected");
+
+        assert_eq!(error.diagnostic().code, "E-ARTIFACT-SET-CSHARP-PATH-UNSAFE");
     }
 
     #[test]

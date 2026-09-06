@@ -643,7 +643,7 @@ fn begin_alias_mutation(
     #[cfg(not(unix))]
     {
         let restore = fs::rename(&backup, source_root);
-        return Err(match restore {
+        Err(match restore {
             Ok(()) => injected_failure(
                 source_root,
                 "protected-region alias test is only available on Unix",
@@ -662,7 +662,7 @@ fn begin_alias_mutation(
                 ),
                 None,
             ),
-        });
+        })
     }
 
     #[cfg(unix)]

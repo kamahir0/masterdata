@@ -25,11 +25,11 @@ Approvedなdomain semanticsは、[Build Selection仕様](build-selection.md)、[
 implementation evidenceが揃ったことを意味しない。canonical configuration parser、CLI、canonical artifact builder、artifact-set receiptの
 generation / read-only validation runtime、external publishのPhase 2 all-target filesystem preflight、およびNative Application Servicesの
 Phase 3 target-local execution（`PUBLISH-PATH-001`から`PUBLISH-PATH-010`、`PUBLISH-EXEC-001`から`PUBLISH-EXEC-005`）は実装済みである。
-一方、standalone publish command、および`build --publish`は未実装である。
+一方、standalone CLI publishは実装済みであるが、`build --publish`は未実装である。
 
 今回のrefinementでは、project-localなcanonical build artifactsと、Unityなどの外部publish destinationsを別の層として扱う。
 このdocumentのApproved contractに対するimplementationは、canonical configuration、CLI、core build plan、canonical artifact builderへ段階的に接続されている。
-standalone CLI/GUIからのexternal publish wiringは未実装であり、影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004、0005、および0007に記録する。
+standalone CLI wiringは実装済みであり、GUI/Tauri/Native Host等のwiringは未実装である。影響するcanonical specificationのStatus変更とconfiguration contractのreconciliationは、仕様変更0004、0005、および0007に記録する。
 external publish path safety、receipt、partial executionのlifecycle recordは、それぞれ仕様変更0006、0007、および0008に記録する。
 
 ## 承認されたcanonical model

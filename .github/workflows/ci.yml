@@ -39,6 +39,9 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -59,6 +62,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -78,6 +84,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22

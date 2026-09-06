@@ -426,16 +426,6 @@ fn check_all() -> Result<()> {
     run_program(
         cargo_command(),
         [
-            OsString::from("check"),
-            OsString::from("--package"),
-            OsString::from("masterdata-gui"),
-        ],
-        &root,
-        &[],
-    )?;
-    run_program(
-        cargo_command(),
-        [
             OsString::from("test"),
             OsString::from("--package"),
             OsString::from("masterdata-gui"),

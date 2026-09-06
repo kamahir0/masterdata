@@ -57,6 +57,10 @@ main reviewerがdelegate時に固定するのは、主に次のwork package cont
 - explicit non-scope
 - affected boundaryと必要なregression evidence
 
+Approved implementation taskのdelegation promptは、特別な理由がない限り1〜3文を目安とする。repositoryからrecover可能なauthority、completion boundary、invariant、non-scope、validation手順をpromptへ長く再記述せず、target objectiveとrepositoryからrecoverできないtask固有constraintだけを渡す。長いpromptは、repositoryだけでは安全にrecoverできない情報またはHuman decisionを明示する必要がある場合に限定する。
+
+`docs/current-objective.md`がHuman-selectedかつApproved semanticsで実装可能なobjectiveを十分に特定している場合は、`Current Objectiveを実装してください。`のようなminimal delegationを標準fast pathとしてよい。implementation agentは[`implement-spec`](skills/implement-spec/SKILL.md)に従ってwork packageをrepositoryからrecoverするため、main reviewerは同じ情報をprompt generatorとして再構成しない。
+
 private helper name、internal module/function decomposition、test helper structure、non-observable allocation strategyなどの
 internal implementation choiceは、既存architectureとrepository patternの範囲でimplementation agentへ委譲してよい。main reviewerは
 private designを過剰に先回りして固定しないが、semantic risk、compatibility、data safety、architecture boundaryを委譲によって

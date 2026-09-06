@@ -70,6 +70,12 @@ enum ProtectedRegionKind {
     CriticalTree,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SymlinkPolicy<'a> {
+    Reject,
+    ProjectRelativeToRoot(&'a Path),
+}
+
 #[derive(Debug, Clone)]
 struct ProtectedRegion {
     path: ResolvedPath,
@@ -148,12 +154,8 @@ fn preflight_target(
     protected_regions: &[ProtectedRegion],
 ) -> Result<TargetAnalysis> {
     let label = format!("publish target `{}`", target.path);
-    let namespace = resolve_path(
-        &target.resolved_path,
-        &label,
-        true,
-        Some(&project.project_root),
-    )?;
+    let symlink_policy = symlink_policy_for_target(project, target);
+    let namespace = resolve_path(&target.resolved_path, &label, true, symlink_policy)?;
 
     match target.kind {
         PublishTargetKind::CSharp => validate_csharp_target_type(&namespace)?,
@@ -190,7 +192,7 @@ fn preflight_target(
 
     let plan = match target.kind {
         PublishTargetKind::CSharp => {
-            let csharp = preflight_csharp_target(&namespace, artifacts, &project.project_root)?;
+            let csharp = preflight_csharp_target(&namespace, artifacts, symlink_policy)?;
             PublishTargetPreflight {
                 kind: target.kind,
                 configured_path: target.path.clone(),
@@ -217,21 +219,48 @@ fn preflight_target(
     Ok(TargetAnalysis { namespace, plan })
 }
 
+fn symlink_policy_for_target<'a>(
+    project: &'a ProjectInfo,
+    target: &masterdata_core::PublishTargetInfo,
+) -> SymlinkPolicy<'a> {
+    let configured_path = Path::new(&target.path);
+    if !configured_path.is_absolute() && target.resolved_path.starts_with(&project.project_root) {
+        SymlinkPolicy::ProjectRelativeToRoot(&project.project_root)
+    } else {
+        SymlinkPolicy::Reject
+    }
+}
+
 fn protected_regions(project: &ProjectInfo) -> Result<Vec<ProtectedRegion>> {
     let mut regions = Vec::with_capacity(4 + project.source_roots.len());
     regions.push(ProtectedRegion {
-        path: resolve_path(&project.project_root, "project root", false, None)?,
+        path: resolve_path(
+            &project.project_root,
+            "project root",
+            false,
+            SymlinkPolicy::Reject,
+        )?,
         label: "project root".to_owned(),
         kind: ProtectedRegionKind::ProjectRoot,
     });
     regions.push(ProtectedRegion {
-        path: resolve_path(&project.config_path, "masterdata.toml", false, None)?,
+        path: resolve_path(
+            &project.config_path,
+            "masterdata.toml",
+            false,
+            SymlinkPolicy::Reject,
+        )?,
         label: "masterdata.toml".to_owned(),
         kind: ProtectedRegionKind::CriticalTree,
     });
     for source_root in &project.source_roots {
         regions.push(ProtectedRegion {
-            path: resolve_path(source_root, "configured source root", false, None)?,
+            path: resolve_path(
+                source_root,
+                "configured source root",
+                false,
+                SymlinkPolicy::Reject,
+            )?,
             label: "configured source root".to_owned(),
             kind: ProtectedRegionKind::CriticalTree,
         });
@@ -241,13 +270,13 @@ fn protected_regions(project: &ProjectInfo) -> Result<Vec<ProtectedRegion>> {
             &project.artifact_root,
             "canonical artifact root",
             false,
-            None,
+            SymlinkPolicy::Reject,
         )?,
         label: "canonical artifact root".to_owned(),
         kind: ProtectedRegionKind::CriticalTree,
     });
     regions.push(ProtectedRegion {
-        path: resolve_path(&project.cache, "build cache", false, None)?,
+        path: resolve_path(&project.cache, "build cache", false, SymlinkPolicy::Reject)?,
         label: "build cache".to_owned(),
         kind: ProtectedRegionKind::CriticalTree,
     });
@@ -303,7 +332,7 @@ fn validate_binary_target_type(path: &ResolvedPath) -> Result<()> {
 fn preflight_csharp_target(
     target_root: &ResolvedPath,
     artifacts: &ValidatedArtifactSet,
-    allowed_symlink_ancestor: &Path,
+    symlink_policy: SymlinkPolicy<'_>,
 ) -> Result<CSharpPublishPreflight> {
     let manifest_path = target_root.logical_path.join(PUBLISH_MANIFEST_FILENAME);
     let previous_managed_paths = if target_root.missing_tail.is_empty() {
@@ -312,17 +341,8 @@ fn preflight_csharp_target(
         Vec::new()
     };
 
-    let manifest_resolved = resolve_path(
-        &manifest_path,
-        "publish manifest",
-        true,
-        Some(allowed_symlink_ancestor),
-    )?;
-    let previous = resolve_manifest_paths(
-        target_root,
-        &previous_managed_paths,
-        allowed_symlink_ancestor,
-    )?;
+    let manifest_resolved = resolve_path(&manifest_path, "publish manifest", true, symlink_policy)?;
+    let previous = resolve_manifest_paths(target_root, &previous_managed_paths, symlink_policy)?;
 
     for (index, left) in previous.iter().enumerate() {
         for right in previous.iter().skip(index + 1) {
@@ -356,11 +376,7 @@ fn preflight_csharp_target(
         .iter()
         .map(|artifact| artifact.relative_path.clone())
         .collect::<Vec<_>>();
-    let current = resolve_current_paths(
-        target_root,
-        &current_generated_paths,
-        allowed_symlink_ancestor,
-    )?;
+    let current = resolve_current_paths(target_root, &current_generated_paths, symlink_policy)?;
 
     for (index, left) in current.iter().enumerate() {
         for right in current.iter().skip(index + 1) {
@@ -442,7 +458,7 @@ struct ManifestPath {
 fn resolve_manifest_paths(
     target_root: &ResolvedPath,
     paths: &[String],
-    allowed_symlink_ancestor: &Path,
+    symlink_policy: SymlinkPolicy<'_>,
 ) -> Result<Vec<ManifestPath>> {
     let mut result = Vec::with_capacity(paths.len());
     let mut seen = BTreeSet::new();
@@ -470,12 +486,7 @@ fn resolve_manifest_paths(
             .logical_path
             .join(relative_path.replace('/', std::path::MAIN_SEPARATOR_STR));
         result.push(ManifestPath {
-            resolved: resolve_path(
-                &path,
-                "managed publish path",
-                true,
-                Some(allowed_symlink_ancestor),
-            )?,
+            resolved: resolve_path(&path, "managed publish path", true, symlink_policy)?,
         });
     }
     Ok(result)
@@ -484,7 +495,7 @@ fn resolve_manifest_paths(
 fn resolve_current_paths(
     target_root: &ResolvedPath,
     paths: &[String],
-    allowed_symlink_ancestor: &Path,
+    symlink_policy: SymlinkPolicy<'_>,
 ) -> Result<Vec<ManifestPath>> {
     paths
         .iter()
@@ -494,38 +505,44 @@ fn resolve_current_paths(
                 .logical_path
                 .join(relative_path.replace('/', std::path::MAIN_SEPARATOR_STR));
             Ok(ManifestPath {
-                resolved: resolve_path(
-                    &path,
-                    "current generated C# path",
-                    true,
-                    Some(allowed_symlink_ancestor),
-                )?,
+                resolved: resolve_path(&path, "current generated C# path", true, symlink_policy)?,
             })
         })
         .collect()
 }
 
 fn ensure_previous_managed_entry(path: &ResolvedPath, manifest_path: &Path) -> Result<()> {
-    if path.missing_tail.is_empty() {
-        let metadata = fs::symlink_metadata(&path.logical_path).map_err(|error| {
-            publish_io_error(
-                &path.logical_path,
-                format!("could not inspect previous managed entry: {error}"),
-                &["PUBLISH-PATH-004", "PUBLISH-PATH-005", "PUBLISH-EXEC-001"],
-            )
-        })?;
-        if !metadata.is_file() {
-            return Err(publish_error(
-                "E-PUBLISH-MANAGED-OWNERSHIP",
-                ErrorKind::Validation,
-                &path.logical_path,
-                format!(
-                    "previous managed path is not a regular file: {}",
-                    manifest_path.display()
-                ),
-                &["PUBLISH-PATH-004", "PUBLISH-EXEC-001"],
-            ));
-        }
+    if !path.missing_tail.is_empty() {
+        return Err(publish_error(
+            "E-PUBLISH-MANAGED-OWNERSHIP",
+            ErrorKind::Validation,
+            &path.logical_path,
+            format!(
+                "previous managed path is missing: {}",
+                manifest_path.display()
+            ),
+            &["PUBLISH-PATH-004", "PUBLISH-EXEC-001"],
+        ));
+    }
+
+    let metadata = fs::symlink_metadata(&path.logical_path).map_err(|error| {
+        publish_io_error(
+            &path.logical_path,
+            format!("could not inspect previous managed entry: {error}"),
+            &["PUBLISH-PATH-004", "PUBLISH-PATH-005", "PUBLISH-EXEC-001"],
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(publish_error(
+            "E-PUBLISH-MANAGED-OWNERSHIP",
+            ErrorKind::Validation,
+            &path.logical_path,
+            format!(
+                "previous managed path is not a regular file: {}",
+                manifest_path.display()
+            ),
+            &["PUBLISH-PATH-004", "PUBLISH-EXEC-001"],
+        ));
     }
     Ok(())
 }
@@ -619,7 +636,7 @@ fn resolve_path(
     path: &Path,
     label: &str,
     reject_symlinks: bool,
-    allowed_symlink_ancestor: Option<&Path>,
+    symlink_policy: SymlinkPolicy<'_>,
 ) -> Result<ResolvedPath> {
     let mut probe = path.to_path_buf();
     let mut missing_tail = Vec::new();
@@ -674,7 +691,7 @@ fn resolve_path(
 
     missing_tail.reverse();
     if reject_symlinks {
-        validate_existing_ancestors(&existing_prefix, label, allowed_symlink_ancestor)?;
+        validate_existing_ancestors(&existing_prefix, label, symlink_policy)?;
     }
 
     let canonical_prefix = fs::canonicalize(&existing_prefix).map_err(|error| {
@@ -700,7 +717,7 @@ fn resolve_path(
 fn validate_existing_ancestors(
     path: &Path,
     label: &str,
-    allowed_symlink_ancestor: Option<&Path>,
+    symlink_policy: SymlinkPolicy<'_>,
 ) -> Result<()> {
     let mut ancestors = Vec::new();
     let mut current = path.to_path_buf();
@@ -728,17 +745,23 @@ fn validate_existing_ancestors(
                 ],
             )
         })?;
-        // WHY: macOS commonly exposes temporary/project roots through a
-        // system-level alias such as /var -> /private/var. That alias is
-        // already part of the project's canonical identity and is not a
-        // target-owned symlink.
-        // IF REMOVED: valid project-local and absolute destinations under the
-        // same canonical parent would fail on supported hosts before their
-        // target-specific symlink policy could run.
-        // EVIDENCE: docs/specs/build-pipeline.md; Regression: publish_path_accepts_absolute_target; publish_path_rejects_csharp_ancestor_symlink.
-        let allowed_system_alias = allowed_symlink_ancestor
-            .is_some_and(|project_root| is_strict_ancestor(&ancestor, project_root));
-        if metadata.file_type().is_symlink() && !allowed_system_alias {
+        // WHY: a project-relative target that remains below the established
+        // project root may reuse the root's filesystem identity for aliases
+        // already traversed before reaching that root. The target-specific
+        // namespace begins at the project root, so only strict ancestors of
+        // that root are trusted; symlinks at or below the root remain unsafe.
+        // IF REMOVED: valid project-local targets under an OS-level temporary
+        // directory alias such as macOS /var -> /private/var would fail.
+        // BOUNDARY: absolute targets and relative targets outside the project
+        // root use SymlinkPolicy::Reject and inspect their full ancestor chain.
+        // EVIDENCE: docs/specs/build-pipeline.md; Regression: publish_path_accepts_absolute_target; publish_path_rejects_csharp_ancestor_symlink; publish_path_rejects_external_csharp_target_through_project_root_symlink; publish_path_rejects_external_binary_target_through_project_root_symlink.
+        let trusted_project_root_ancestor = match symlink_policy {
+            SymlinkPolicy::ProjectRelativeToRoot(project_root) => {
+                is_strict_ancestor(&ancestor, project_root)
+            }
+            SymlinkPolicy::Reject => false,
+        };
+        if metadata.file_type().is_symlink() && !trusted_project_root_ancestor {
             return Err(publish_error(
                 "E-PUBLISH-SYMLINK-ANCESTOR",
                 ErrorKind::Validation,
@@ -747,7 +770,7 @@ fn validate_existing_ancestors(
                 &["PUBLISH-PATH-003", "PUBLISH-PATH-006", "PUBLISH-EXEC-001"],
             ));
         }
-        if ancestor != path && !metadata.is_dir() && !allowed_system_alias {
+        if ancestor != path && !metadata.is_dir() && !trusted_project_root_ancestor {
             return Err(publish_error(
                 "E-PUBLISH-TARGET-PATH-UNSAFE",
                 ErrorKind::Validation,

@@ -2,6 +2,9 @@ use std::fs;
 use std::path::Path;
 
 #[cfg(unix)]
+use std::path::PathBuf;
+
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 use masterdata_app::{
@@ -134,6 +137,36 @@ fn publish_path_rejects_csharp_ancestor_symlink() {
 
 #[cfg(unix)]
 #[test]
+fn publish_path_rejects_external_csharp_target_through_project_root_symlink() {
+    let (real_parent, alias_parent, lexical_project, _) = symlinked_project_root();
+    let real_project = real_parent.path().join("project");
+    project_with_targets_at_path(&real_project, &[("csharp", "../sibling-csharp")]);
+
+    let error = NativeApplicationService::new()
+        .preflight_publish(Some(&lexical_project), alias_parent.path())
+        .expect_err("external C# target through root ancestor symlink");
+
+    assert_eq!(error.diagnostic().code, "E-PUBLISH-SYMLINK-ANCESTOR");
+}
+
+#[cfg(unix)]
+#[test]
+fn publish_path_rejects_external_binary_target_through_project_root_symlink() {
+    let (real_parent, alias_parent, lexical_project, linked_parent) = symlinked_project_root();
+    let real_project = real_parent.path().join("project");
+    let absolute_target = linked_parent.join("sibling.bytes");
+    let absolute_target = absolute_target.to_str().expect("UTF-8 target path");
+    project_with_targets_at_path(&real_project, &[("binary", absolute_target)]);
+
+    let error = NativeApplicationService::new()
+        .preflight_publish(Some(&lexical_project), alias_parent.path())
+        .expect_err("external binary target through root ancestor symlink");
+
+    assert_eq!(error.diagnostic().code, "E-PUBLISH-SYMLINK-ANCESTOR");
+}
+
+#[cfg(unix)]
+#[test]
 fn publish_path_never_follows_unmanaged_symlink() {
     let project = project_with_targets(&[("csharp", "dist")]);
     let target = project.path().join("dist");
@@ -188,6 +221,60 @@ fn publish_path_rejects_managed_path_type_change() {
     let error = preflight(&project).expect_err("managed path type change");
 
     assert_eq!(error.diagnostic().code, "E-PUBLISH-MANAGED-OWNERSHIP");
+}
+
+#[test]
+fn publish_path_rejects_missing_previous_managed_entry_on_update_without_mutation() {
+    let project = project_with_targets(&[("csharp", "dist")]);
+    let target = project.path().join("dist");
+    fs::create_dir_all(&target).expect("target");
+    write_manifest(&target, &["Item.g.cs"]);
+    fs::write(target.join("UserNotes.txt"), b"notes").expect("unmanaged file");
+    let manifest_before = fs::read(target.join(PUBLISH_MANIFEST_FILENAME)).expect("manifest");
+    let project_entries_before = directory_entries(project.path());
+    let target_entries_before = directory_entries(&target);
+
+    let error = preflight(&project).expect_err("missing previous managed update entry");
+
+    assert_eq!(error.diagnostic().code, "E-PUBLISH-MANAGED-OWNERSHIP");
+    assert_eq!(
+        fs::read(target.join(PUBLISH_MANIFEST_FILENAME)).expect("manifest"),
+        manifest_before
+    );
+    assert_eq!(
+        fs::read(target.join("UserNotes.txt")).expect("unmanaged file"),
+        b"notes"
+    );
+    assert_eq!(directory_entries(project.path()), project_entries_before);
+    assert_eq!(directory_entries(&target), target_entries_before);
+    assert!(!target.join("Item.g.cs").exists());
+}
+
+#[test]
+fn publish_path_rejects_missing_previous_managed_entry_on_retire_without_mutation() {
+    let project = project_with_targets(&[("csharp", "dist")]);
+    let target = project.path().join("dist");
+    fs::create_dir_all(&target).expect("target");
+    write_manifest(&target, &["Stale.g.cs"]);
+    fs::write(target.join("UserNotes.txt"), b"notes").expect("unmanaged file");
+    let manifest_before = fs::read(target.join(PUBLISH_MANIFEST_FILENAME)).expect("manifest");
+    let project_entries_before = directory_entries(project.path());
+    let target_entries_before = directory_entries(&target);
+
+    let error = preflight(&project).expect_err("missing previous managed retire entry");
+
+    assert_eq!(error.diagnostic().code, "E-PUBLISH-MANAGED-OWNERSHIP");
+    assert_eq!(
+        fs::read(target.join(PUBLISH_MANIFEST_FILENAME)).expect("manifest"),
+        manifest_before
+    );
+    assert_eq!(
+        fs::read(target.join("UserNotes.txt")).expect("unmanaged file"),
+        b"notes"
+    );
+    assert_eq!(directory_entries(project.path()), project_entries_before);
+    assert_eq!(directory_entries(&target), target_entries_before);
+    assert!(!target.join("Stale.g.cs").exists());
 }
 
 #[test]
@@ -398,10 +485,8 @@ fn publish_path_resolves_relative_target_from_project_root() {
 #[test]
 fn publish_path_accepts_absolute_target() {
     let project = tempdir("absolute project");
-    let destination = project
-        .path()
-        .parent()
-        .expect("temporary parent")
+    let destination = fs::canonicalize(project.path().parent().expect("temporary parent"))
+        .expect("canonical temporary parent")
         .join("absolute-publish-target");
     let project = project_with_targets_at(
         project,
@@ -469,7 +554,12 @@ fn project_with_targets(targets: &[(&str, &str)]) -> TempDir {
 }
 
 fn project_with_targets_at(project: TempDir, targets: &[(&str, &str)]) -> TempDir {
-    fs::create_dir_all(project.path().join("sources")).expect("sources");
+    project_with_targets_at_path(project.path(), targets);
+    project
+}
+
+fn project_with_targets_at_path(project: &Path, targets: &[(&str, &str)]) {
+    fs::create_dir_all(project.join("sources")).expect("sources");
     let mut config = String::from(
         "[project]\nid = \"publish.project\"\nname = \"Publish\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
     );
@@ -479,14 +569,25 @@ fn project_with_targets_at(project: TempDir, targets: &[(&str, &str)]) -> TempDi
             toml_string(path)
         ));
     }
-    fs::write(project.path().join("masterdata.toml"), config).expect("project config");
+    fs::write(project.join("masterdata.toml"), config).expect("project config");
 
-    let artifact_root = project.path().join(".masterdata/output");
+    let artifact_root = project.join(".masterdata/output");
     fs::create_dir_all(artifact_root.join("csharp")).expect("artifact C# directory");
     fs::write(artifact_root.join("csharp/Item.g.cs"), b"generated").expect("C# artifact");
     fs::write(artifact_root.join("masterdata.bytes"), b"binary").expect("binary artifact");
     write_artifact_set_receipt(&artifact_root, "publish.project").expect("receipt");
-    project
+}
+
+#[cfg(unix)]
+fn symlinked_project_root() -> (TempDir, TempDir, PathBuf, PathBuf) {
+    let real_parent = tempdir("real publish parent");
+    let real_project = real_parent.path().join("project");
+    fs::create_dir(&real_project).expect("real project");
+    let alias_parent = tempdir("alias publish parent");
+    let linked_parent = alias_parent.path().join("linked-parent");
+    symlink(real_parent.path(), &linked_parent).expect("project root ancestor symlink");
+    let lexical_project = linked_parent.join("project");
+    (real_parent, alias_parent, lexical_project, linked_parent)
 }
 
 fn replace_csharp_artifact(project: &TempDir, filename: &str) {
@@ -510,6 +611,21 @@ fn write_manifest(target: &Path, files: &[&str]) {
 
 fn toml_string(value: &str) -> String {
     serde_json::to_string(value).expect("TOML-compatible string")
+}
+
+fn directory_entries(path: &Path) -> Vec<String> {
+    let mut entries = fs::read_dir(path)
+        .expect("directory entries")
+        .map(|entry| {
+            entry
+                .expect("directory entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries
 }
 
 fn tempdir(label: &str) -> TempDir {

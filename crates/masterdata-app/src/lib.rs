@@ -19,8 +19,13 @@ use masterdata_dotnet::{
 };
 use tempfile::TempDir;
 
+mod publish;
 mod receipt;
 
+pub use publish::{
+    BinaryPublishPreflight, CSharpPublishPreflight, PUBLISH_MANIFEST_FILENAME,
+    PublishPreflightPlan, PublishTargetPreflight, preflight_publish,
+};
 pub use receipt::{
     ARTIFACT_HASH_ALGORITHM, ARTIFACT_RECEIPT_FILENAME, ARTIFACT_SET_RECEIPT_FILENAME,
     ARTIFACT_SET_RECEIPT_VERSION, ArtifactReceiptEntry, ArtifactSetReceipt, CANONICAL_BINARY_PATH,
@@ -114,6 +119,18 @@ impl NativeApplicationService {
     ) -> Result<ValidatedArtifactSet> {
         let info = self.project.project_info(explicit_project, current_dir)?;
         receipt::validate_artifact_set(&info.artifact_root, &info.project_id)
+    }
+
+    /// Validate the receipt-valid canonical artifact set and inspect every
+    /// configured external publish target without mutating any destination.
+    pub fn preflight_publish(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+    ) -> Result<PublishPreflightPlan> {
+        let info = self.project.project_info(explicit_project, current_dir)?;
+        let artifacts = receipt::validate_artifact_set(&info.artifact_root, &info.project_id)?;
+        publish::preflight_publish(&info, artifacts)
     }
 
     pub fn plan_csharp(&self, plan: &BuildPlan) -> Result<CSharpGenerationPlan> {

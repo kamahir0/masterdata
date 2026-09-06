@@ -1,6 +1,6 @@
 # ADR 0005: MessagePack keyをfield identityから分離する
 
-Status: Proposed
+Status: Accepted
 
 ## 背景（Context）
 
@@ -14,7 +14,7 @@ atomic applicationが完了した。現在のcontractは更新済みcanonical sp
 
 ## 決定（Decision）
 
-提案するarchitectureでは、TableおよびCustom Typeのpersisted fieldの`key`をMessagePack `[Key(n)]`へ対応付ける。fieldのlogical name、
+採用したarchitectureでは、TableおよびCustom Typeのpersisted fieldの`key`をMessagePack `[Key(n)]`へ対応付ける。fieldのlogical name、
 Primary/Secondary Keyのresolved field symbol、Reference identity、schema migration identityは別のconceptとして扱う。
 具体的なobservable contractは[Table / Primary Key / Secondary Key仕様](../specs/table-and-keys.md)が所有し、既存Approved Field Identityと
 Custom Typeへのdeltaはspecification changeが所有する。

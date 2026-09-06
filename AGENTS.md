@@ -40,6 +40,49 @@ current priorityのauthorityであり、semantic authorityではない。Approve
 implementation realityはcode / tests / Gitからfreshに確認する。Approved semanticsから決定できることを会話だけで再設計せず、
 codeとApproved specificationが異なる場合は、まずimplementation gapまたはverification gapを疑う。
 
+## Implementation execution policy
+
+Approved implementation taskでは、原則として**one semantic objective = one implementation work package**とする。
+同じApproved objectiveを閉じるために必要なruntime implementation、regression test、fixture、local rationale、
+non-normative documentation correction、validation、self-review、commit / pushは、合理的な範囲で一つのpackageに含めてよい。
+別のHuman semantic decision、unrelated objective、unrelated cleanup、opportunistic refactor、future featureは同じpackageへ
+混ぜてはならない。file数や「runtimeとtestが別」といった理由だけで機械的にtaskを分割しない。
+
+main reviewerがdelegate時に固定するのは、主に次のwork package contractである。
+
+- Objective
+- authority specification / Requirement ID
+- completion boundary
+- required invariantとfailure semantics
+- explicit non-scope
+- affected boundaryと必要なregression evidence
+
+private helper name、internal module/function decomposition、test helper structure、non-observable allocation strategyなどの
+internal implementation choiceは、既存architectureとrepository patternの範囲でimplementation agentへ委譲してよい。main reviewerは
+private designを過剰に先回りして固定しないが、semantic risk、compatibility、data safety、architecture boundaryを委譲によって
+免除してはならない。
+
+implementation agentは、疑問が出るたびにHumanへ質問するのではなく、repository authority、current code、tests、nearby rationale、
+existing patternからrecoverできるinternal choiceを自分で解決する。ただし、次の3分類を混同してはならない。
+
+```text
+repoからrecoverableな事実・pattern       -> agentが解決する
+Approved authorityからobservable behaviorを安全に決められない -> Specification Gap / Human decisionとして停止・報告する
+observable behaviorに影響しないinternal choice -> agentが既存boundary内で決定する
+```
+
+少なくとも、Approved authority間の実質的な矛盾、必要なobservable behaviorの未定義、contract変更を伴うrequirement、
+compatibility / persistence / filesystem / destructive operationの安全な選択不能、またはdata loss・compatibility breakを防ぐ
+protected invariantの理由をrecoverできない場合は、効率のために推測してはならず、Human decisionまたはSpecification Gapへ戻す。
+これら以外のprivate naming、small refactor、test helper、private error plumbing、allocation strategyは通常の質問理由にしない。
+
+通常のoperational targetは**one delegation + one external final review**である。これはhard correctness shortcutではない。必要なHuman
+decisionやBlocking findingがあれば追加passを行う。implementation agentは[`implement-spec`](skills/implement-spec/SKILL.md)に従って
+final candidateまで閉じ、main reviewerは[`review-code`](skills/review-code/SKILL.md)に従ってBlocking issueを中心にreviewする。
+Non-blockingだけでcorrectness上のmerge readinessを否定せず、追加passが必要な場合も具体的なBlocking findingに限定したnarrow
+corrective passとする。Approved specification、Human Approval、Specification Gap、rationale freshness、tests/evidence、architecture
+boundary、unrelated dirty change、通常のcommit / push policyなどのsafety gateは、このexecution policyによって弱めない。
+
 ## アーキテクチャ規則
 
 - CLIとGUIは `masterdata-app` のapplication workflowと

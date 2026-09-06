@@ -15,6 +15,10 @@ description: Review implementation diffs for specification conformance, regressi
 実装で発明しない。Approved specにbehaviorが定義されているのに実装が違反する場合はbug findingとして扱う。
 Approved specからbehaviorを選択しなければならない場合は`Specification Gap`として`refine-spec`へ戻す。
 
+`review-code`はimplementation agentのself-reviewと、Human/main reviewerによるexternal final reviewの両方で使用する。
+implementation agentはfirst draftを渡す前にこのskillで自分のdiffをreviewし、Approved authorityの範囲内で直せる`Blocking` findingを
+同じtask内で解消する。external reviewへ渡す対象は、required checksとscope確認まで済んだfinal candidateである。
+
 ## 必須のinput
 
 変更範囲に応じて、次をdiff中心に読む。
@@ -110,7 +114,7 @@ testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを�
 
 - `Blocking`: mergeするとknown correctness、spec、compatibility、architecture、またはprotected invariantに
   違反する。
-- `Non-blocking`: approvalを妨げないeditorialまたはmaintainability concern。
+- `Non-blocking`: approvalを妨げないeditorialまたはmaintainability concern。これだけを理由に`Ready to merge: No`としてはならない。
 - `Rationale Gap`: non-obvious implementationがあるが、理由を安全に復元できない。
 - `Stale Rationale`: commentがcurrent implementation、failure mode、またはcurrent evidenceと一致しない。
 - `Evidence Gap`: rationaleの主張を支えるtest、spec、ADR、benchmark、またはexternal referenceが不足・破損している。
@@ -118,6 +122,35 @@ testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを�
 
 `Stale Rationale`が将来のsimplificationや削除を誤らせる場合は`Blocking`でも報告する。単なる誤字や軽微な
 editorial issueは`Non-blocking`とする。理由が不明なままcommentを書き換えて新しいreasonを発明してはならない。
+
+## Severity calibrationとmerge readiness
+
+reviewの目的は、既知のcorrectness、contract、compatibility、data safety、architecture boundary、regression、rationale/evidence
+riskをmerge前に止めることであり、reviewerの好みで実装を100点まで磨くことではない。
+
+- minor naming preference、optional refactor、minor readability suggestion、editorial cleanup、future maintainability improvementは、
+  correctness等の実質的なriskがなければ`Non-blocking`として報告する。
+- correctness、spec conformance、compatibility、data safety、architecture boundary、またはprotected invariantに実質的なriskが
+  あるものを`Non-blocking`へ格下げしてはならない。
+- `Blocking`がなく、残る指摘が`Non-blocking`だけなら、必要に応じて指摘を報告したうえで`Ready to merge: Yes`としてよい。
+- `Blocking`がある場合だけ、原則としてcorrective implementation passを要求する。
+
+## Corrective pass protocol
+
+初回external reviewで`Blocking` findingが残った場合、次のimplementation passは具体的なfindingを入力とするdiff-directed correction
+でなければならない。
+
+```text
+Base: previous implementation commit
+Input: concrete Blocking findings
+Scope: those findingsの解消
+Do not: Approved objective全体の再設計、unrelated refactor、new product semantics、optional cleanup
+```
+
+corrective agentは、blocking fix、focused tests、self-review、required validation、scope確認、commit / pushまでを閉じる。
+修正にSpecification Gap、Approved authority conflict、Human Approval、unknown destructive semantics、またはunrecoverable
+rationaleが必要な場合は、semantic decisionを発明せず、明確なGap reportを返す。corrective passを新規implementation taskと同じ
+巨大な探索・再設計へ戻してはならない。
 
 ## 必須のreview report
 
@@ -168,11 +201,15 @@ severity付きで`Blocking`、`Non-blocking`、`Rationale Gap`、`Stale Rational
 implementation completed
         -> tests / regression evidence
         -> re-scan touched rationale
-        -> review-code
-        -> fixes, if needed
+        -> review-code self-review
+        -> Blocking fixes, if safely possible
+        -> affected tests / review-code re-check
         -> cargo xtask check-rationale
         -> cargo xtask check-all
+        -> diff / scope self-review
+        -> commit / push
 ```
 
-tests passだけ、またはreferenceが存在するだけでreviewを省略してはならない。rationaleが不要になった場合も、
+tests passだけ、またはreferenceが存在するだけでreviewを省略してはならない。external reviewerに渡すのはこのself-review後の
+final candidateであり、rationaleが不要になった場合も、
 protected invariantが消えたか別のevidenceへ移ったことを確認してから削除する。

@@ -18,6 +18,11 @@ replacement specificationが必要だと報告する。targetがすでに `Imple
 このskillはspecificationをauto-approveせず、意味を変更しない。statusを `Implemented` にできるのは、acceptance
 evidenceとrepository checksが完了した後だけである。
 
+implementation agentのcompletion targetは「実装した」ではなく、**final candidate ready for external review**である。
+agentは、Approved semantic boundaryの内側でauthority recovery、implementation、regression evidence、self-review、self-fix、
+required validation、scope確認、commit / pushまでを一つのtask内で閉じる。Human/main reviewerへ渡すのは、原則としてself-review済みで
+Blocking findingを解消したfinal candidateであり、first draftではない。
+
 ## 必須の準備
 
 1. `AGENTS.md` を読む。
@@ -40,7 +45,27 @@ Approvedでないfuture Type Systemや他のfeatureを、documentが存在する
 
 ## 実装フロー（Implementation flow）
 
-### 1. Acceptance matrixを作成する
+### 1. Work packageとacceptance mappingをrecoverする
+
+task開始時のpromptが完全な形式でなくても、repositoryとtarget objectiveから次のwork package contractを内部的に整理する。
+
+- Objective
+- authority specification / Requirement ID
+- completion boundary
+- required invariantとfailure semantics
+- explicit non-scope
+- affected implementation boundary
+- required regression evidence
+- validation command
+
+これはtask-localなworking noteであり、commitするdurable documentではない。既存specificationにstableなacceptance expectationが
+ある場合は重複copyせず、small taskではcompact checklistまたはworking mappingで十分とする。巨大なpermanent acceptance matrixを
+毎回作成してはならない。
+
+同じApproved objectiveを閉じるために必要なapplication/core implementation、CLI/adapter wiring、focused refactor、tests、fixture、
+local rationale、non-normative documentation correction、validationは一つのwork packageにまとめてよい。別のsemantic objective、
+別のHuman decision、unapproved future behavior、large unrelated refactor、optional cleanupは分ける。file数やruntime/testの違い
+だけを理由に機械的な分割を行わない。
 
 各Requirement IDについて、次を記録する。
 
@@ -76,7 +101,7 @@ generated C#では、Approved behaviorの一部である場合だけsnapshot/gol
 
 ### 4. 実装して検証する
 
-acceptance matrixを満たす最小の変更を実装する。その後、関連するunit、integration、frontend、GUI、codegen、.NET bridge
+acceptance mappingを満たす最小の変更を実装する。その後、関連するunit、integration、frontend、GUI、codegen、.NET bridge
 checkを実行する。環境が対応していれば最後に `cargo xtask check-all` を実行する。checkを実行できない場合は正確な
 理由を記録し、完全なverificationを主張してはならない。
 
@@ -112,11 +137,49 @@ bug fixとregression evidenceを行う。
 4. 正確なら保持し、invariantまたは理由が変わったら更新し、理由が不要になったら削除する。
 5. `Requirement ID`、ADR/RFC、`Regression:` test name、repository-relative documentation pathなど、
    commentに明示された構造参照を`cargo xtask check-rationale`で検証する。
-6. `review-code`をfinal implementation reviewとして実行し、必要な修正後に`cargo xtask check-all`を実行する。
+6. `review-code`をexecutor自身のfinal implementation reviewとして実行し、必要な修正後に`cargo xtask check-all`を実行する。
 
 code compiles、tests passだけではrationale-sensitiveな変更の完了とはみなさない。referenceが存在しても、
 staleな理由を残してはならない。逆に、semantic freshnessを機械checkが証明したと主張してはならない。
 理由が不明な場合は新しいreasonを発明せず、`Rationale Gap`または`Specification Gap`として報告する。
+
+## Final candidate completion protocol
+
+通常のApproved implementation taskでは、次のflowを同じwork package内で完了する。
+
+```text
+authority recovery
+        -> acceptance / Requirement mapping
+        -> implementation plan
+        -> implementation
+        -> focused tests / regression evidence
+        -> rationale freshness scan
+        -> review-code self-review
+        -> Blocking findingを安全に自己修正
+        -> affected tests再実行
+        -> review-code再確認
+        -> cargo xtask check-rationale
+        -> cargo xtask check-all
+        -> diff / scope self-review
+        -> commit / push
+        -> final candidate completion report
+```
+
+`review-code`でBlocking findingが見つかり、Approved authorityの範囲内で安全に修正できる場合は、Human/main reviewerへfirst draftを
+渡さず、同じtask内で修正する。修正後は影響するtest、必要なrationale確認、`review-code`を再実行し、その後にrequired checkとscope
+確認を行う。
+
+次の場合は、Blockingを解消するためにsemantic decisionを発明してはならない。
+
+- Specification Gap
+- Approved authorityのconflict
+- Human Approvalが必要な変更
+- destructive semanticsが不明な操作
+- safetyまたはcompatibilityを守るrationaleをrecoverできない変更
+
+この場合はunfinished implementationを無理にfinal candidateとせず、既存のSpecification Gap protocolまたは明確なHuman decision
+reportへ戻す。private helper name、internal decomposition、test helper、private error plumbing、non-observable allocationなどは、
+observable behaviorを変えない限りagent自身で決定してよい。
 
 ### 5. Specificationとimplementationを照合する
 
@@ -159,11 +222,14 @@ specification gapである。
 
 次を報告する。
 
+- work package contract（Objective、authority、completion boundary、invariant、failure semantics、non-scope）
 - target specification IDとbefore/after status
 - acceptance criteriaとtest/fixture mapping
 - 変更したimplementation boundary
 - compatibility impact
+- self-reviewの結果、Blocking findingの自己修正有無、およびfinal candidateとしてexternal reviewへ渡せる状態か
 - 実行したcommandと結果（`cargo xtask check-all` を含む）
+- commit SHAとpush結果
 - 未実装boundaryまたはSpecification Gap
 
 ## 絶対に外せない安全策

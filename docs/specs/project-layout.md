@@ -33,6 +33,50 @@ identityを決めるmechanismにしてはならない（MUST NOT）。
 Source rootはscan boundaryに過ぎない。source fileのdirectoryが、そのfileのtable、type、または
 index semanticsを決めてはならない（MUST NOT）。
 
+### PROJECT-CONVENTION-001
+
+新規または既存projectのhuman-facing source organizationは、推奨 conventionとしてkind-firstの
+次のdirectory nameを使用してもよい（SHOULD）。
+
+- `sources/schemas/`
+- `sources/types/`
+- `sources/data/`
+
+このconventionのdirectory name、nested directory、またはfile pathは、Table、type、index、field
+その他のsemantic identityを決めてはならない（MUST NOT）。`sources/data/item/base.yaml`のような
+pathから`table = item`を推測してはならず（MUST NOT）、YAML document contentと既存のschema、type、
+table仕様がauthorityである。`sources/data/`以下は大量のdataを整理するため任意にnestしてもよい
+（MAY）。domain/table-first layoutをinvalidとみなしてはならず（MUST NOT）、configured source
+root内の別のorganizationも引き続きvalidである。
+
+## 推奨するproject layout
+
+次のlayoutはhuman-facingなdefault/recommended conventionである。directory nameはsemantic
+identityではなく、`masterdata.toml`のconfigured source rootがscan boundaryを定義する。
+
+```text
+my-game-master-data/
+├─ masterdata.toml
+├─ .gitignore
+├─ sources/
+│  ├─ schemas/
+│  ├─ types/
+│  └─ data/
+│     └─ ...
+└─ .masterdata/
+   ├─ output/
+   │  ├─ csharp/
+   │  ├─ masterdata.bytes
+   │  └─ .masterdata-artifact-set.json
+   └─ cache/
+```
+
+`.masterdata/generated/`および`.masterdata/generated/csharp/`はrecommendedまたはcanonical
+layoutではない。通常のC# materializationはfull buildが生成するcoherent canonical artifact
+set内の`.masterdata/output/csharp/`が担う。`generate`専用の二重materialization pathは追加
+しない。将来のGenerated C# Previewまたはexplicit ExportのUX、destination、filenameはCLI仕様の
+deferred decisionである。
+
 ## 設定の形
 
 ```toml
@@ -122,6 +166,78 @@ legacy configurationのrejectionはbuild/publish operationを開始してはな�
 legacy `build.output`または`build.binary_output`を生成してはならない（MUST NOT）。`publish.targets`は0..Nであるため、初期configurationで生成しなくてもよい（MAY）。
 publish targetがない初期projectでも、canonical buildがproject-local artifactを作成できるconfigurationを生成しなければならない（MUST）。
 
+### PROJECT-CONFIG-007
+
+Project Settings、Project Tool State、User Settings / UI Stateは、互いに異なるscopeとして扱わなければ
+ならない（MUST）。current v1のProject Settingsのcanonical configuration entrypointは
+`masterdata.toml`であり、shared、reproducible、project-scopedで、通常Git trackedである。
+project identity、source roots、build artifact/cache paths、Build Profiles、publish targets、および
+project/compiler/schema semanticsに影響するfuture optionはProject Settingsに属する。
+
+同じcanonical sourceと同じexplicit operationに対するsemantic、build、publish resultへ影響するvalueを
+User Settingsから取得してはならず（MUST NOT）、そのようなvalueはProject Settingsとして扱わなければ
+ならない（MUST）。`.masterdata/settings.toml`などのsecond semantic settings layerや、user-local
+overrideでbuild resultを変更するmechanismは導入してはならない（MUST NOT）。将来のconfig
+composition/includeは別のspecification changeで扱わなければならない。これは、将来すべての設定を常に
+1つの物理TOML fileへ置くことを要求するものではない。
+
+Project Tool Stateのdefault namespaceは`.masterdata/**`である。少なくとも`.masterdata/output/`と
+`.masterdata/cache/`を含み、project-local、tool-owned、canonical YAML source authorityではない
+derived/reconstructable stateとして扱う。`.masterdata/`をUser Settings storageとして扱ってはならない
+（MUST NOT）。`build.artifact_dir`と`build.cache`のconfigurabilityは維持し、custom pathに対する
+automatic Git ignore policyはこのrequirementで決定しない。
+
+default recommended Git policyでは、projectは次のentryを`.gitignore`に含めることが望ましい
+（SHOULD）。
+
+```gitignore
+/.masterdata/
+```
+
+通常trackedなのは`masterdata.toml`とcanonical YAML sourcesであり、defaultでは`.masterdata/**`を
+ignoreする。artifact setにおける「canonical」はbuild/publish artifact authorityを意味し、YAML source
+authorityを意味しない。`.masterdata/output/`をsource of truthへ昇格させてはならない（MUST NOT）。
+
+User Settings / UI Stateはproject source treeではなくhost/user-local storageへ置かなければならない
+（MUST）。Native/DesktopではOSまたはapplication user-data storage、Webではhost-local browser
+storageを使用してもよい（MAY）が、exact technologyはこのrequirementで固定しない。theme、language、
+recent projects、last selected table、panel sizes、column widths、sort/filter UI、expanded treeなどが
+該当する。project-specific UI stateを`project.id`またはopaque workspace/bookmark identityへ紐付ける
+mechanismは未決定であり、既存Web/Native Hostのopaque identityとraw path非公開原則を弱めてはならない。
+
+User Settings / UI Stateは、次を変更してはならない（MUST NOT）。
+
+- canonical source interpretation
+- validation result semantics
+- Build Selection semantics
+- generated C# semantics
+- binary semantics
+- canonical artifact-set identity
+- publish target configuration
+- publish semantics
+
+source自体が持つpresentation semantics、例えばschema field declaration orderはUser Settingsへ移しては
+ならず、既存のsource/domain ownerに留まる。
+
+### PROJECT-CONFIG-008
+
+新規projectの`init`はdefault scaffoldとして、`masterdata.toml`、`sources/`、
+`sources/schemas/`、`sources/types/`、`sources/data/`を作成しなければならない（MUST）。
+`masterdata.toml`のminimum configurationは`PROJECT-CONFIG-006`に従う。
+
+`.gitignore`が存在しない場合、`init`は`.gitignore`を作成し、少なくとも`/.masterdata/`を含めなければ
+ならない（MUST）。既存`.gitignore`が存在する場合、`init`はそれをrewrite、append、またはautomatic
+mergeしてはならない（MUST NOT）。既存fileに対するwarning/recommendation UXは未決定である。
+
+`init`は`.masterdata/`、`.masterdata/output/`、`.masterdata/cache/`をeager-createしてはならない
+（MUST NOT）。必要なOperationは、初めて必要とした時に、既存のpath safety contractに従ってlazy-create
+しなければならない（MUST）。例えばvalidation-only operationはartifact output directoryを作る必要がなく、
+buildは必要なoutput/cacheを作成してもよい。
+
+source convention directoryがGitで追跡されない場合に`.gitkeep`、README、placeholder YAML、その他の
+placeholderを使用するかどうかは、このrequirementでは決定しない。empty directoryの保持strategyは
+deferred decisionとして扱う。
+
 ### PROJECT-PATH-001
 
 relativeなsource pathとcanonical build artifact pathはproject rootを基準にresolveしなければならない（MUST）。canonical artifact pathは
@@ -131,16 +247,19 @@ publish target pathのbaseは、[Build pipeline仕様](build-pipeline.md)の`PUB
 `PUBLISH-PATH-001`から`PUBLISH-PATH-010`が所有する。
 
 Open Questions: configがnamed source group、ignore pattern、明示的なUnity project linkを将来
-サポートするか、および設定されたsource rootがsymlinkをfollowするか。current implementationは
-cycle-safetyのinternal guardとしてsymlink entryをfollowしない。これはproduct-levelのpermission
-または禁止ではない。
+サポートするか、設定されたsource rootがsymlinkをfollowするか、custom artifact/cache pathのautomatic
+Git ignoreを行うか、User Settingsのserializationとhost-local physical storageをどう定義するか、
+project-specific UI stateをどのlocal identityへ紐付けるか、empty source convention directoryをGit上で
+どう保持するか。current implementationはcycle-safetyのinternal guardとしてsymlink entryをfollowしない。
+これはproduct-levelのpermissionまたは禁止ではない。
 
 ## 受け入れmatrix
 
 このmatrixは上記requirementに対するnon-normativeなimplementation evidenceまたは将来のacceptance planである。test numberが
 requirement definitionに見えないよう、canonical ruleの隣に置く。`implement-spec` は同じ
 observable behaviorを、このmatrixによって確認する。Approved configuration contractへ変更された
-`PROJECT-CONFIG-003`から`PROJECT-CONFIG-006`および`PROJECT-PATH-001`は、canonical configuration implementationとそのtest evidenceで確認する。
+`PROJECT-CONFIG-003`から`PROJECT-CONFIG-008`、`PROJECT-CONVENTION-001`および`PROJECT-PATH-001`は、
+canonical configuration implementationとそのplanned test evidenceで確認する。未実装のrowをpass済みとは扱わない。
 
 | Requirement（要件ID） | Observable behavior（観測可能な挙動） | Implementation owner（実装owner） | Success case（成功例） | Failure case（失敗例） | Test（テスト） | Fixture |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -156,6 +275,9 @@ observable behaviorを、このmatrixによって確認する。Approved configu
 | PROJECT-CONFIG-004 | legacy `build.output` / `build.binary_output`はmigration-aware structured diagnosticで拒否され、generic unknown-key errorへ潰れない。 | `masterdata-core::Project::from_config_path` | 新configurationを受け入れる。 | 各legacy fieldを対応するdiagnostic codeで拒否する。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`; `project_config_004_reports_legacy_output_before_binary_output` | Temporary project |
 | PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | `masterdata-core::Project::from_config_path` | 旧artifactを残したままoperation開始を拒否する。 | rejection後にcanonical/legacy/external artifactが変更されない。 | `project_config_004_rejects_legacy_build_paths_with_migration_diagnostics`（config boundary） | Temporary project |
 | PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `masterdata-core::initialize_project` | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 | `init_creates_a_project_marker_and_source_root` | Temporary project |
+| PROJECT-CONVENTION-001 | recommended kind-first source organizationがsemantic identityを作らず、alternate layoutとnested dataを許容する。 | future init/project discovery evidence | `sources/schemas/`、`sources/types/`、`sources/data/`をorganizationとして使用できる。 | directory/file pathからTable/type/index identityを推測する。 | `project_convention_does_not_define_semantic_identity`（planned） | Temporary project |
+| PROJECT-CONFIG-007 | Project Settings、Project Tool State、User Settings / UI Stateを分離し、User Settingsがproject/build/publish semanticsを変更しない。 | future settings boundary | 同一sourceとoperationがUser Settings変更で同じsemantic/artifact/publish resultになる。 | User Settingsがvalidation、Build Selection、artifact identity、publish targetを変更する。 | `user_settings_do_not_change_project_semantics`（planned） | Temporary project |
+| PROJECT-CONFIG-008 | `init`がsource scaffoldを作り、missing-only `.gitignore`と`.masterdata` lazy creationを守る。 | future init/project tooling | source directoriesとconfigを作り、missing `.gitignore`に`/.masterdata/`を含め、tool stateをeager-createしない。 | existing `.gitignore`をrewrite/appendする、またはinitが`.masterdata`を作成する。 | `init_creates_kind_first_source_scaffold`; `init_preserves_existing_gitignore`; `init_does_not_eager_create_tool_state`（planned） | Temporary project |
 | PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootであり、absolute publish targetはconfigured absolute filesystem destinationとして扱う。publish targetの詳細なsafetyは`PUBLISH-PATH-*`が所有する。 | `masterdata-core::Project::info` / `masterdata-core::Project::from_config_path` / future publish adapter | project rootからrelative canonical/publish pathを解決し、absolute publish pathをabsolute locationとして扱う。 | canonical artifactがproject外へescapeする、relative pathがprocess working directory基準になる、またはpublish targetが`PUBLISH-PATH-*`のprotected path safetyを迂回する。 | `project_path_001_resolves_relative_paths_against_project_root`; `project_path_001_rejects_unsafe_canonical_artifact_paths`; `project_path_001_rejects_artifact_source_and_cache_overlap`; `project_path_001_rejects_source_symlink_alias`; `project_path_001_rejects_source_symlink_ancestor_alias`; `project_path_001_rejects_cache_symlink_alias`; `project_path_001_handles_case_alias_using_filesystem_behavior`; `project_path_001_handles_case_alias_with_missing_tails_using_filesystem_behavior`; `publish_path_resolves_relative_target_from_project_root`（planned）; `publish_path_accepts_absolute_target`（planned） | Temporary project |
 
 すべてのrowは、path separatorがplatformによって異なっても有効でなければならない。

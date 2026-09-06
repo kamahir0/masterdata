@@ -8,8 +8,9 @@ CLI surfaceのcurrent canonical authorityである。既存のApproved specifica
 build、artifact receipt、publish、host capabilityの意味を再定義せず、それらを参照してCLI
 surfaceへ写像することだけを所有する。
 
-適用した仕様変更は
-[0011-cli-surface-and-schema-migration](../spec-changes/0011-cli-surface-and-schema-migration.md)
+適用した仕様変更は、
+[0011-cli-surface-and-schema-migration](../spec-changes/0011-cli-surface-and-schema-migration.md)および
+[0012-project-conventions-and-generate-removal](../spec-changes/0012-project-conventions-and-generate-removal.md)
 である。
 
 ## 用語
@@ -45,21 +46,21 @@ CLIの仕様は、Operation、CLI Command、Capabilityを別conceptとして扱�
 
 ### CLI-002
 
-canonical public CLI command nameは、次の7つである。
+canonical public CLI command nameは、次の6つである。
 
 | CLI command | 主なOperation | semantic owner |
 | --- | --- | --- |
 | `init` | 新規projectの初期化 | project layout仕様 |
 | `doctor` | project/environment診断 | application/diagnostic contract（詳細は別途） |
 | `validate` | canonical sourceの検証 | build selection、schema、table/type仕様 |
-| `generate` | validation後のC# generationまで | 本CLI仕様（materializationはOpen Question） |
-| `build` | coherent canonical artifact setの生成 | build pipeline仕様 |
+| `build [--publish]` | coherent canonical artifact setの生成、およびApproved compositionによるpublish | build pipeline仕様および本CLI仕様 |
 | `publish` | 既存artifact setのexternal配布 | build pipeline仕様 |
 | `migrate` | schema-aware deterministic transformation | Schema Migration v1仕様 |
 
 この表のcommand nameはcanonical surfaceである。ただし、実装済みであることを意味せず、
-deprecation policy、argument grammar、output schemaをこの仕様で確定しない。`generate`
-の出力先と`migrate`のargument grammarはOpen Questionとして扱う。
+deprecation policy、argument grammar、output schemaをこの仕様で確定しない。
+`build --publish`は`CLI-007`のcompositionであり、`publish`および`migrate`のsemantic ownerを
+変更しない。
 
 ### CLI-003
 
@@ -72,27 +73,13 @@ artifact set、external publish target、publish manifestを変更してはな�
 このrequirementは既存のschema、type、table、Build Selection、project仕様をCLI側へ
 複製するものではない。
 
-### CLI-004
+### CLI-004 — Historical
 
-`masterdata generate`は、概念上、次の順序で実行するOperationを公開する。
-
-```text
-resolve project
-→ load canonical YAML source
-→ parse and validate
-→ semantic resolution / build selection
-→ C# generation
-→ stop
-```
-
-`generate`は既存のgenerated C#をauthorityとして使用してはならず（MUST NOT）、validation
-をskipしてはならず（MUST NOT）、raw YAMLを.NETへ渡したり、MasterMemory binaryを生成
-したり、publish targetを変更したりしてはならない（MUST NOT）。
-
-`generate`は現在のcanonical artifact setを部分的に置換または破壊してはならない
-（MUST NOT）。C#生成物をstdoutへ出すか、explicit output directoryへ出すか、tool-owned
-non-canonical areaへ出すかなど、最終的なmaterialization先はこの仕様では決めない。
-この未決定事項は「Open Questions」のOQ-Aで管理する。
+このRequirement IDは、仕様変更0011で定義されたpublic `masterdata generate` contractの
+traceabilityを保持するためのhistorical tombstoneである。仕様変更0012の適用後、`CLI-004`
+はcurrent canonical CLI behaviorを定義せず、別semanticへreassignまたは再利用してはならない
+（MUST NOT）。0011でreviewされた、source-derived validation後にC# generationで停止する
+Operationの履歴は参照可能な状態に留めるが、現行public command surfaceには含めない。
 
 ### CLI-005
 
@@ -181,7 +168,7 @@ surfaceとruntime capabilityは別に判定する。これは`RUNTIME-HOST-002`�
 
 ### CLI-011
 
-`CLI-011`は、source-derived staged operationである`validate`、`generate`、`build`に
+`CLI-011`は、source-derived staged operationである`validate`、`build`に
 適用する。これらのOperationは、source resolve、parse、semantic validation / resolution
 という前段を飛ばしてはならない（MUST NOT）。後段のartifact生成を行わず前段の境界で
 停止することは許可されるが、後段のsource-derived Operationがvalidation bypassを行って
@@ -203,8 +190,8 @@ semanticsを両立させる。
 - `project-info`は現行実装に存在するが、今回のtarget canonical public command setには
   含めない。
 - このdocs-only canonicalizationでは`project-info`を削除、rename、別namespaceへ移動しない。
-- `generate`、`publish`、`migrate`、`build --publish`は未実装であり、Implementation Gap
-  として扱う。
+- `publish`、`migrate`、`build --publish`は未実装であり、Implementation Gapとして扱う。
+- `generate`はcurrent canonical targetではないため、Implementation Gapとして扱わない。
 - `project-info`の将来のdiagnostics/info系surfaceは、この仕様では代替案を確定しない。
 
 この差分は仕様を実装済みと示すものではない。`artifact-set receipt runtime`、external
@@ -228,7 +215,7 @@ process、pairing、Web handshakeを要求しない。
 - Build ProfileのCLI syntax
 - `migrate`のargument grammar、SQL-like grammar、short options
 - CLI deprecation/versioning policy
-- `generate`のmaterialization destination
+- Generated C# Preview / explicit C# ExportのUX、destination、filename、将来CLI surface
 - `build --publish`の詳細なconsole/result serialization
 
 ## Acceptance matrix（future evidence）
@@ -241,23 +228,22 @@ pass済みとは扱わない。
 | CLI-001, CLI-010 | CLI/Tauri/Connected Webが同じOperation ownerを使い、CLI direct pathにRPCがないことを確認するarchitecture/integration evidence | pending implementation |
 | CLI-002 | canonical command surfaceと現行実装gapのCLI acceptance test | pending implementation |
 | CLI-003 | `validate`がartifact、publish target、manifestを変更しないtest | pending implementation |
-| CLI-004 | generateのvalidation順序とcanonical artifact set非破壊境界のtest（materialization決定後） | pending implementation |
+| CLI-004 | historical traceabilityを保持し、current command surfaceまたは別semanticへ再利用しないことのdocumentation review | historical tombstone |
 | CLI-005 | buildがcoherent canonical artifact setを生成し、単体ではexternal targetを変更しないtest | pending implementation |
 | CLI-006 | source変更後もreceipt-valid artifact setをpublishし、implicit build/revalidateしないtest | pending implementation |
 | CLI-007 | build失敗時のpublish未開始、publish失敗時のbuild保持、partial failure集約のtest | pending implementation |
 | CLI-008 | `-p`を受理する未承認compatibilityが存在しないことのCLI test | pending implementation |
 | CLI-009 | migrateがSchema Migration engineへ委譲され、CLIがsemantic logicを複製しないtest | pending implementation |
-| CLI-011 | source-derived validate/generate/buildが前段をskipせず、publishがsource validationを要求しないことのCLI pipeline test | pending implementation |
+| CLI-011 | source-derived validate/buildが前段をskipせず、publishがsource validationを要求しないことのCLI pipeline test | pending implementation |
 
 ## Open Questions
 
-### OQ-A: Generate materialization
+### OQ-A: Generated C# preview / explicit export
 
-`generate`が生成したC#をstdout、explicit output directory、dedicated non-canonical
-tool-owned areaのどこへmaterializeするかは未決定である。canonical full build artifact
-setのC#だけを部分更新する方式は採用できない。destination、cleanup、
-existing generated filesとの関係を発明してはならない。ユーザー向けproject directory
-layoutや`.masterdata/generated/csharp`等のrecommended layoutも、この仕様では決めない。
+将来のGenerated C# Previewまたはexplicit C# Exportを提供するか、そのdestination、filename、
+cleanup、将来のCLI surfaceは未決定である。`masterdata export`を今回追加せず、full buildの
+canonical artifact setをC#だけ部分更新する方式も採用しない。`.masterdata/generated/`を
+recommended layoutとして導入しない。
 
 ### OQ-B: CLI result contract
 
@@ -273,5 +259,6 @@ versioning/deprecation policyは未決定である。
 ## Non-goals
 
 この仕様は、CLI parser、Tauri command、Web UI、Native Host、migration engine、YAML
-rewrite、receipt runtime、external publisher、`project-info` removalを実装または確定
+rewrite、receipt runtime、external publisher、`project-info` removal、Generated C# Preview / explicit
+Export UXを実装または確定
 しない。

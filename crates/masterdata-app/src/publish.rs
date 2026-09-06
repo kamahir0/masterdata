@@ -665,6 +665,7 @@ fn begin_alias_mutation(
         });
     }
 
+    #[cfg(unix)]
     Ok(ProtectedRegionMutation {
         replaced_path: source_root.to_path_buf(),
         backup_path: backup,

@@ -24,7 +24,9 @@ mod receipt;
 
 pub use publish::{
     BinaryPublishPreflight, CSharpPublishPreflight, PUBLISH_MANIFEST_FILENAME,
-    PublishPreflightPlan, PublishTargetPreflight, preflight_publish,
+    PublishExecutionFailure, PublishExecutionReport, PublishFailureInjection, PublishFailurePoint,
+    PublishPreflightPlan, PublishTargetPreflight, PublishTargetResult, PublishTargetStatus,
+    preflight_publish,
 };
 pub use receipt::{
     ARTIFACT_HASH_ALGORITHM, ARTIFACT_RECEIPT_FILENAME, ARTIFACT_SET_RECEIPT_FILENAME,
@@ -131,6 +133,56 @@ impl NativeApplicationService {
         let info = self.project.project_info(explicit_project, current_dir)?;
         let artifacts = receipt::validate_artifact_set(&info.artifact_root, &info.project_id)?;
         publish::preflight_publish(&info, artifacts)
+    }
+
+    /// Publish the already validated canonical artifact set to every
+    /// configured target in deterministic order.
+    ///
+    /// This workflow deliberately does not load source YAML, regenerate
+    /// artifacts, or invoke the .NET boundary. The returned error retains the
+    /// complete per-target report so adapters can render partial success and
+    /// target-local failure without parsing a human-readable message.
+    pub fn publish(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+    ) -> std::result::Result<PublishExecutionReport, PublishExecutionFailure> {
+        self.publish_with_failures(explicit_project, current_dir, &[])
+    }
+
+    /// Deterministic application-layer failure seam for transaction and
+    /// continuation regression tests. Production callers should use the
+    /// publish method.
+    #[doc(hidden)]
+    pub fn publish_with_failures(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        injections: &[PublishFailureInjection],
+    ) -> std::result::Result<PublishExecutionReport, PublishExecutionFailure> {
+        let info = match self.project.project_info(explicit_project, current_dir) {
+            Ok(info) => info,
+            Err(error) => {
+                return Err(PublishExecutionFailure {
+                    report: PublishExecutionReport {
+                        targets: Vec::new(),
+                    },
+                    error,
+                });
+            }
+        };
+        let report =
+            publish::report_for_project(&info, publish::PublishTargetStatus::NotAttempted, None);
+        let artifacts = match receipt::validate_artifact_set(&info.artifact_root, &info.project_id)
+        {
+            Ok(artifacts) => artifacts,
+            Err(error) => return Err(PublishExecutionFailure { report, error }),
+        };
+        let plan = match publish::preflight_publish(&info, artifacts) {
+            Ok(plan) => plan,
+            Err(error) => return Err(PublishExecutionFailure { report, error }),
+        };
+        publish::execute_publish_plan(&info, plan, injections)
     }
 
     pub fn plan_csharp(&self, plan: &BuildPlan) -> Result<CSharpGenerationPlan> {

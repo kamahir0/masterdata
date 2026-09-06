@@ -2,10 +2,16 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::{fmt, io};
 
-use masterdata_core::{ErrorKind, MasterdataError, ProjectInfo, PublishTargetKind, Result};
+use masterdata_core::{
+    Diagnostic, ErrorKind, MasterdataError, ProjectInfo, PublishTargetInfo, PublishTargetKind,
+    Result,
+};
 use same_file::is_same_file;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tempfile::{Builder, TempDir};
 
 use crate::receipt::ValidatedArtifactSet;
 
@@ -20,6 +26,79 @@ pub struct PublishPreflightPlan {
     pub targets: Vec<PublishTargetPreflight>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishTargetStatus {
+    NotAttempted,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublishTargetResult {
+    pub index: usize,
+    pub kind: PublishTargetKind,
+    pub configured_path: String,
+    pub destination: PathBuf,
+    pub status: PublishTargetStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<Diagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublishExecutionReport {
+    pub targets: Vec<PublishTargetResult>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PublishExecutionFailure {
+    pub report: PublishExecutionReport,
+    pub error: MasterdataError,
+}
+
+impl PublishExecutionFailure {
+    pub fn report(&self) -> &PublishExecutionReport {
+        &self.report
+    }
+
+    pub fn diagnostic(&self) -> &Diagnostic {
+        self.error.diagnostic()
+    }
+}
+
+impl fmt::Display for PublishExecutionFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl std::error::Error for PublishExecutionFailure {}
+
+/// Deterministic failure points used by application-layer execution tests.
+/// The normal [`NativeApplicationService`](crate::NativeApplicationService)
+/// workflow passes no injections and has no synthetic failure behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublishFailurePoint {
+    ToctouBeforeTarget,
+    CSharpWhileStagingNew,
+    CSharpAfterManagedReplacement,
+    CSharpWhileRetiringStale,
+    CSharpBeforeManifest,
+    CSharpWhilePublishingManifest,
+    CSharpRollback,
+    BinaryBeforePublication,
+    BinaryAfterPreviousSecured,
+    BinaryWhilePublishingNew,
+    BinaryAfterPublication,
+    BinaryRollback,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishFailureInjection {
+    pub target_index: usize,
+    pub point: PublishFailurePoint,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishTargetPreflight {
     pub kind: PublishTargetKind,
@@ -32,6 +111,7 @@ pub struct PublishTargetPreflight {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CSharpPublishPreflight {
     pub manifest_path: PathBuf,
+    pub manifest_exists: bool,
     pub previous_managed_paths: Vec<String>,
     pub current_generated_paths: Vec<String>,
 }
@@ -46,6 +126,14 @@ pub struct BinaryPublishPreflight {
 struct TargetAnalysis {
     namespace: ResolvedPath,
     plan: PublishTargetPreflight,
+    csharp: Option<CSharpTargetAnalysis>,
+}
+
+#[derive(Debug, Clone)]
+struct CSharpTargetAnalysis {
+    plan: CSharpPublishPreflight,
+    previous: Vec<ManifestPath>,
+    current: Vec<ManifestPath>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +171,7 @@ struct ProtectedRegion {
     kind: ProtectedRegionKind,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PublishManifest {
     version: u32,
@@ -147,6 +235,1234 @@ pub fn preflight_publish(
     })
 }
 
+pub(crate) fn execute_publish_plan(
+    project: &ProjectInfo,
+    plan: PublishPreflightPlan,
+    injections: &[PublishFailureInjection],
+) -> std::result::Result<PublishExecutionReport, PublishExecutionFailure> {
+    let mut report = report_for_project(project, PublishTargetStatus::NotAttempted, None);
+    if project.publish_targets.len() != plan.targets.len() {
+        let error = publish_error(
+            "E-PUBLISH-EXECUTION-PLAN",
+            ErrorKind::Validation,
+            &project.project_root,
+            "publish preflight plan does not match the configured target order",
+            &["PUBLISH-EXEC-001", "PUBLISH-EXEC-002"],
+        );
+        return Err(PublishExecutionFailure { report, error });
+    }
+    if project.publish_targets.is_empty() {
+        return Ok(report);
+    }
+
+    let protected_regions = match protected_regions(project) {
+        Ok(regions) => regions,
+        Err(error) => return Err(PublishExecutionFailure { report, error }),
+    };
+
+    // WHY: report every configured target in order and continue after a
+    // target-local failure, because the approved execution contract has no
+    // cross-target transaction or global rollback.
+    // IF REMOVED: the first failure would hide later outcomes and callers
+    // could not distinguish partial success from a preflight failure.
+    // EVIDENCE: docs/specs/build-pipeline.md; Regression: execution_failure_continues_to_later_targets; publish_reports_per_target_status; successful_target_is_not_rolled_back_by_later_failure.
+    for (index, (target, expected_plan)) in project
+        .publish_targets
+        .iter()
+        .zip(plan.targets.iter())
+        .enumerate()
+    {
+        let failure = if failure_injected(
+            injections,
+            index,
+            PublishFailurePoint::ToctouBeforeTarget,
+        ) {
+            Some(publish_error(
+                "E-PUBLISH-TOCTOU",
+                ErrorKind::Validation,
+                &target.resolved_path,
+                "publish target changed between preflight and execution",
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            ))
+        } else {
+            validate_artifact_bytes(&plan.artifact_set).and_then(|()| {
+                let analysis = preflight_target(
+                    project,
+                    &plan.artifact_set,
+                    target,
+                    &protected_regions,
+                )?;
+                if analysis.plan != *expected_plan {
+                    return Err(publish_error(
+                        "E-PUBLISH-TOCTOU",
+                        ErrorKind::Validation,
+                        &target.resolved_path,
+                        "publish target ownership or namespace changed between preflight and execution",
+                        &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                    ));
+                }
+                let context = ExecutionContext {
+                    project,
+                    artifacts: &plan.artifact_set,
+                    protected_regions: &protected_regions,
+                    injections,
+                    target_index: index,
+                };
+                execute_target(&context, target, expected_plan, analysis)
+            })
+            .err()
+        };
+
+        let target_result = &mut report.targets[index];
+        match failure {
+            Some(error) => {
+                target_result.status = PublishTargetStatus::Failed;
+                target_result.failure = Some(error.diagnostic().clone());
+            }
+            None => target_result.status = PublishTargetStatus::Succeeded,
+        }
+    }
+
+    if report
+        .targets
+        .iter()
+        .any(|target| target.status == PublishTargetStatus::Failed)
+    {
+        let error = aggregate_execution_error(&report);
+        Err(PublishExecutionFailure { report, error })
+    } else {
+        Ok(report)
+    }
+}
+
+pub(crate) fn report_for_project(
+    project: &ProjectInfo,
+    status: PublishTargetStatus,
+    failure: Option<&Diagnostic>,
+) -> PublishExecutionReport {
+    PublishExecutionReport {
+        targets: project
+            .publish_targets
+            .iter()
+            .enumerate()
+            .map(|(index, target)| PublishTargetResult {
+                index,
+                kind: target.kind,
+                configured_path: target.path.clone(),
+                destination: target.resolved_path.clone(),
+                status,
+                failure: failure.cloned(),
+            })
+            .collect(),
+    }
+}
+
+fn failure_injected(
+    injections: &[PublishFailureInjection],
+    target_index: usize,
+    point: PublishFailurePoint,
+) -> bool {
+    injections
+        .iter()
+        .any(|injection| injection.target_index == target_index && injection.point == point)
+}
+
+fn aggregate_execution_error(report: &PublishExecutionReport) -> MasterdataError {
+    let failed = report
+        .targets
+        .iter()
+        .filter(|target| target.status == PublishTargetStatus::Failed)
+        .collect::<Vec<_>>();
+    let first = failed.first().and_then(|target| target.failure.as_ref());
+    let source = first
+        .and_then(|diagnostic| diagnostic.source.clone())
+        .or_else(|| failed.first().map(|target| target.destination.clone()));
+    let summary = first
+        .map(|diagnostic| {
+            format!(
+                "first failure [{}]: {}",
+                diagnostic.code, diagnostic.message
+            )
+        })
+        .unwrap_or_else(|| "one or more publish targets failed".to_owned());
+    let mut error = MasterdataError::new(
+        "E-PUBLISH-EXECUTION-FAILED",
+        ErrorKind::Io,
+        format!(
+            "publish execution failed for {} target(s); {summary}",
+            failed.len()
+        ),
+    );
+    if let Some(source) = source {
+        error = error.with_source(source);
+    }
+    for requirement in ["PUBLISH-EXEC-002", "PUBLISH-EXEC-003", "PUBLISH-EXEC-005"] {
+        error = error.with_related_requirement(requirement);
+    }
+    error
+}
+
+struct ExecutionContext<'a> {
+    project: &'a ProjectInfo,
+    artifacts: &'a ValidatedArtifactSet,
+    protected_regions: &'a [ProtectedRegion],
+    injections: &'a [PublishFailureInjection],
+    target_index: usize,
+}
+
+fn execute_target(
+    context: &ExecutionContext<'_>,
+    target: &PublishTargetInfo,
+    expected_plan: &PublishTargetPreflight,
+    analysis: TargetAnalysis,
+) -> Result<()> {
+    match target.kind {
+        PublishTargetKind::CSharp => {
+            execute_csharp_target(context, target, expected_plan, analysis)
+        }
+        PublishTargetKind::Binary => {
+            execute_binary_target(context, target, expected_plan, analysis)
+        }
+    }
+}
+
+fn validate_artifact_bytes(artifacts: &ValidatedArtifactSet) -> Result<()> {
+    for artifact in artifacts
+        .csharp
+        .iter()
+        .chain(std::iter::once(&artifacts.binary))
+    {
+        read_validated_artifact(artifact)?;
+    }
+    Ok(())
+}
+
+fn read_validated_artifact(artifact: &crate::receipt::ValidatedArtifact) -> Result<Vec<u8>> {
+    let metadata = fs::symlink_metadata(&artifact.path).map_err(|error| {
+        artifact_toctou_error(
+            &artifact.path,
+            format!("canonical artifact changed after receipt validation: {error}"),
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(artifact_toctou_error(
+            &artifact.path,
+            "canonical artifact is no longer a regular file",
+        ));
+    }
+    let bytes = fs::read(&artifact.path).map_err(|error| {
+        artifact_toctou_error(
+            &artifact.path,
+            format!("could not reread canonical artifact after receipt validation: {error}"),
+        )
+    })?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let actual_hash = format!("{:x}", hasher.finalize());
+    if actual_hash != artifact.hash {
+        return Err(artifact_toctou_error(
+            &artifact.path,
+            "canonical artifact bytes changed after receipt validation",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn artifact_toctou_error(path: &Path, message: impl Into<String>) -> MasterdataError {
+    publish_error(
+        "E-PUBLISH-ARTIFACT-TOCTOU",
+        ErrorKind::Validation,
+        path,
+        message,
+        &["ARTIFACT-SET-004", "ARTIFACT-SET-006", "PUBLISH-EXEC-002"],
+    )
+}
+
+fn ensure_directory_chain(
+    path: &Path,
+    label: &str,
+    symlink_policy: SymlinkPolicy<'_>,
+) -> Result<Vec<PathBuf>> {
+    let mut missing = Vec::new();
+    let mut probe = path.to_path_buf();
+    let existing = loop {
+        match fs::symlink_metadata(&probe) {
+            Ok(metadata)
+                if (metadata.file_type().is_symlink()
+                    && !trusted_project_root_alias(&probe, symlink_policy))
+                    || (!metadata.is_dir()
+                        && !trusted_project_root_alias(&probe, symlink_policy)) =>
+            {
+                return Err(publish_error(
+                    "E-PUBLISH-TARGET-PATH-UNSAFE",
+                    ErrorKind::Validation,
+                    &probe,
+                    format!("{label} has a non-directory component"),
+                    &["PUBLISH-PATH-002", "PUBLISH-PATH-003", "PUBLISH-EXEC-002"],
+                ));
+            }
+            Ok(_) => break probe,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                if probe.file_name().is_none() {
+                    return Err(publish_error(
+                        "E-PUBLISH-FILESYSTEM-IDENTITY",
+                        ErrorKind::Io,
+                        path,
+                        format!("could not resolve {label} before execution"),
+                        &["PUBLISH-PATH-001", "PUBLISH-PATH-002", "PUBLISH-EXEC-002"],
+                    ));
+                }
+                missing.push(probe.clone());
+                if !probe.pop() {
+                    return Err(publish_error(
+                        "E-PUBLISH-FILESYSTEM-IDENTITY",
+                        ErrorKind::Io,
+                        path,
+                        format!("could not resolve {label} before execution"),
+                        &["PUBLISH-PATH-001", "PUBLISH-PATH-002", "PUBLISH-EXEC-002"],
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(publish_io_error(
+                    &probe,
+                    format!("could not inspect {label} before execution: {error}"),
+                    &["PUBLISH-PATH-002", "PUBLISH-PATH-003", "PUBLISH-EXEC-002"],
+                ));
+            }
+        }
+    };
+
+    let _ = existing;
+    missing.reverse();
+    let mut created = Vec::with_capacity(missing.len());
+    for directory in missing {
+        match fs::create_dir(&directory) {
+            Ok(()) => {
+                let metadata = fs::symlink_metadata(&directory).map_err(|error| {
+                    publish_io_error(
+                        &directory,
+                        format!("could not verify created {label} directory: {error}"),
+                        &["PUBLISH-PATH-002", "PUBLISH-PATH-003", "PUBLISH-EXEC-002"],
+                    )
+                })?;
+                if (metadata.file_type().is_symlink()
+                    && !trusted_project_root_alias(&directory, symlink_policy))
+                    || (!metadata.is_dir()
+                        && !trusted_project_root_alias(&directory, symlink_policy))
+                {
+                    return Err(publish_error(
+                        "E-PUBLISH-TARGET-PATH-UNSAFE",
+                        ErrorKind::Validation,
+                        &directory,
+                        format!("created {label} component is not a real directory"),
+                        &["PUBLISH-PATH-002", "PUBLISH-PATH-003", "PUBLISH-EXEC-002"],
+                    ));
+                }
+                created.push(directory);
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let metadata = fs::symlink_metadata(&directory).map_err(|inspect_error| {
+                    publish_io_error(
+                        &directory,
+                        format!(
+                            "could not inspect concurrently-created {label} directory: {inspect_error}"
+                        ),
+                        &["PUBLISH-PATH-002", "PUBLISH-PATH-003", "PUBLISH-EXEC-002"],
+                    )
+                })?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(publish_error(
+                        "E-PUBLISH-TOCTOU",
+                        ErrorKind::Validation,
+                        &directory,
+                        format!("{label} changed while creating its parent directories"),
+                        &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(publish_io_error(
+                    &directory,
+                    format!("could not create {label} directory: {error}"),
+                    &["PUBLISH-PATH-002", "PUBLISH-EXEC-002"],
+                ));
+            }
+        }
+    }
+    Ok(created)
+}
+
+// WHY: parent creation must use the same narrow project-root alias rule as
+// Phase 2, otherwise a missing project-local target can fail on an OS-level
+// temporary-directory alias even though its target namespace was preflighted.
+// IF REMOVED: valid project-relative targets under the established root could
+// be rejected during Phase 3, while broad absolute/external aliases remain
+// unsafe because SymlinkPolicy::Reject does not trust them.
+// EVIDENCE: docs/specs/build-pipeline.md; Regression: publish_path_accepts_absolute_target; publish_path_rejects_external_csharp_target_through_project_root_symlink; publish_path_rejects_external_binary_target_through_project_root_symlink.
+fn trusted_project_root_alias(path: &Path, symlink_policy: SymlinkPolicy<'_>) -> bool {
+    match symlink_policy {
+        SymlinkPolicy::ProjectRelativeToRoot(project_root) => {
+            is_strict_ancestor(path, project_root)
+        }
+        SymlinkPolicy::Reject => false,
+    }
+}
+
+fn cleanup_created_directories(created: &[PathBuf]) -> Result<()> {
+    for directory in created.iter().rev() {
+        match fs::symlink_metadata(directory) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(publish_error(
+                    "E-PUBLISH-ROLLBACK-FAILED",
+                    ErrorKind::Io,
+                    directory,
+                    "a created publish directory became a symlink during rollback",
+                    &["PUBLISH-EXEC-003"],
+                ));
+            }
+            Ok(metadata) if metadata.is_dir() => match fs::remove_dir(directory) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::DirectoryNotEmpty => {}
+                Err(error) => {
+                    return Err(publish_io_error(
+                        directory,
+                        format!("could not clean an empty publish directory: {error}"),
+                        &["PUBLISH-EXEC-003"],
+                    ));
+                }
+            },
+            Ok(_) => {
+                return Err(publish_error(
+                    "E-PUBLISH-ROLLBACK-FAILED",
+                    ErrorKind::Io,
+                    directory,
+                    "a created publish directory changed type during rollback",
+                    &["PUBLISH-EXEC-003"],
+                ));
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(publish_io_error(
+                    directory,
+                    format!(
+                        "could not inspect a created publish directory during rollback: {error}"
+                    ),
+                    &["PUBLISH-EXEC-003"],
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn revalidate_target_after_directories(
+    project: &ProjectInfo,
+    artifacts: &ValidatedArtifactSet,
+    target: &PublishTargetInfo,
+    expected_plan: &PublishTargetPreflight,
+    protected_regions: &[ProtectedRegion],
+) -> Result<TargetAnalysis> {
+    let analysis = preflight_target(project, artifacts, target, protected_regions)?;
+    if analysis.plan != *expected_plan {
+        return Err(publish_error(
+            "E-PUBLISH-TOCTOU",
+            ErrorKind::Validation,
+            &target.resolved_path,
+            "publish target changed while preparing its destination",
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        ));
+    }
+    Ok(analysis)
+}
+
+fn execute_csharp_target(
+    context: &ExecutionContext<'_>,
+    target: &PublishTargetInfo,
+    expected_plan: &PublishTargetPreflight,
+    analysis: TargetAnalysis,
+) -> Result<()> {
+    let symlink_policy = symlink_policy_for_target(context.project, target);
+    let created = ensure_directory_chain(
+        &analysis.namespace.logical_path,
+        "C# publish target",
+        symlink_policy,
+    )?;
+    let refreshed = match revalidate_target_after_directories(
+        context.project,
+        context.artifacts,
+        target,
+        expected_plan,
+        context.protected_regions,
+    ) {
+        Ok(analysis) => analysis,
+        Err(error) => {
+            let cleanup = cleanup_created_directories(&created);
+            return match cleanup {
+                Ok(()) => Err(error),
+                Err(rollback) => Err(combine_target_rollback_error(error, rollback, None)),
+            };
+        }
+    };
+    let csharp = refreshed.csharp.as_ref().ok_or_else(|| {
+        publish_error(
+            "E-PUBLISH-EXECUTION-PLAN",
+            ErrorKind::Validation,
+            &target.resolved_path,
+            "C# target execution is missing its preflight analysis",
+            &["PUBLISH-EXEC-001", "PUBLISH-EXEC-002"],
+        )
+    })?;
+    let parent = refreshed.namespace.logical_path.parent().ok_or_else(|| {
+        publish_error(
+            "E-PUBLISH-TARGET-PATH-UNSAFE",
+            ErrorKind::Validation,
+            &refreshed.namespace.logical_path,
+            "C# publish target has no parent directory",
+            &["PUBLISH-PATH-001", "PUBLISH-EXEC-002"],
+        )
+    })?;
+    let workspace = Builder::new()
+        .prefix(".masterdata-publish-")
+        .tempdir_in(parent)
+        .map_err(|error| {
+            publish_io_error(
+                parent,
+                format!("could not create C# publish staging workspace: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+
+    let result = execute_csharp_transaction(
+        context.artifacts,
+        csharp,
+        workspace,
+        context.injections,
+        context.target_index,
+    );
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            if let Err(cleanup) = cleanup_created_directories(&created) {
+                return Err(combine_target_rollback_error(error, cleanup, None));
+            }
+            Err(error)
+        }
+    }
+}
+
+// WHY: C# publication stages only generated files, moves previous manifest-
+// owned files into a target-local backup, and publishes the manifest last.
+// IF REMOVED: an I/O failure after a partial replacement could leave a mixed
+// managed set or cause rollback cleanup to delete unmanaged user content.
+// EVIDENCE: docs/specs/build-pipeline.md; Regression: execution_failure_rolls_back_only_failed_target; csharp_failure_preserves_previous_managed_set; csharp_manifest_failure_rolls_back_managed_set; csharp_publish_preserves_unmanaged_files_and_meta; csharp_publish_handles_nested_generated_paths.
+fn execute_csharp_transaction(
+    artifacts: &ValidatedArtifactSet,
+    analysis: &CSharpTargetAnalysis,
+    workspace: TempDir,
+    injections: &[PublishFailureInjection],
+    target_index: usize,
+) -> Result<()> {
+    let workspace_path = workspace.path().to_path_buf();
+    let (original, state) = match run_csharp_transaction(
+        artifacts,
+        analysis,
+        &workspace_path,
+        injections,
+        target_index,
+    ) {
+        Ok(_state) => return Ok(()),
+        Err(failure) => *failure,
+    };
+
+    if failure_injected(
+        injections,
+        target_index,
+        PublishFailurePoint::CSharpRollback,
+    ) {
+        let retained = workspace.keep();
+        return Err(combine_target_rollback_error(
+            original,
+            publish_error(
+                "E-PUBLISH-ROLLBACK-FAILED",
+                ErrorKind::Io,
+                &retained,
+                "rollback failure was injected for C# publish",
+                &["PUBLISH-EXEC-003", "PUBLISH-EXEC-005"],
+            ),
+            Some(retained),
+        ));
+    }
+
+    match rollback_csharp_transaction(analysis, &state) {
+        Ok(()) => Err(original),
+        Err(rollback) => {
+            let retained = workspace.keep();
+            Err(combine_target_rollback_error(
+                original,
+                rollback,
+                Some(retained),
+            ))
+        }
+    }
+}
+
+struct CSharpTransactionState {
+    moved: Vec<(PathBuf, PathBuf)>,
+    published: Vec<(PathBuf, String)>,
+    manifest_backup: Option<PathBuf>,
+    manifest_published: Option<String>,
+    created_directories: Vec<PathBuf>,
+}
+
+fn run_csharp_transaction(
+    artifacts: &ValidatedArtifactSet,
+    analysis: &CSharpTargetAnalysis,
+    workspace: &Path,
+    injections: &[PublishFailureInjection],
+    target_index: usize,
+) -> std::result::Result<CSharpTransactionState, Box<(MasterdataError, CSharpTransactionState)>> {
+    let mut state = CSharpTransactionState {
+        moved: Vec::new(),
+        published: Vec::new(),
+        manifest_backup: None,
+        manifest_published: None,
+        created_directories: Vec::new(),
+    };
+    let result: Result<()> = (|| {
+        fs::create_dir(workspace.join("backup")).map_err(|error| {
+            publish_io_error(
+                workspace,
+                format!("could not create C# publish backup area: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        let staged_root = workspace.join("new");
+        fs::create_dir(&staged_root).map_err(|error| {
+            publish_io_error(
+                workspace,
+                format!("could not create C# publish staging area: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        let mut staged_files = Vec::with_capacity(analysis.current.len());
+
+        for current in &analysis.current {
+            let artifact = artifacts
+                .csharp
+                .iter()
+                .find(|artifact| artifact.relative_path == current.relative_path)
+                .ok_or_else(|| {
+                    publish_error(
+                        "E-PUBLISH-EXECUTION-PLAN",
+                        ErrorKind::Validation,
+                        &current.resolved.logical_path,
+                        "receipt artifact is missing from the current C# execution set",
+                        &["ARTIFACT-SET-004", "PUBLISH-EXEC-002"],
+                    )
+                })?;
+            let managed = matching_previous_entry(&analysis.previous, &current.resolved)?;
+            let bytes = read_validated_artifact(artifact)?;
+            let staged_relative = current
+                .relative_path
+                .replace('/', std::path::MAIN_SEPARATOR_STR);
+            let staged_path = staged_root.join(Path::new(&staged_relative));
+            if failure_injected(
+                injections,
+                target_index,
+                PublishFailurePoint::CSharpWhileStagingNew,
+            ) && managed.is_none()
+            {
+                return Err(injected_failure(
+                    &current.resolved.logical_path,
+                    "C# staging failure was injected before publishing a new managed file",
+                    "PUBLISH-EXEC-003",
+                ));
+            }
+            if let Some(parent) = staged_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    publish_io_error(
+                        parent,
+                        format!("could not create C# staging parent: {error}"),
+                        &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                    )
+                })?;
+            }
+            fs::write(&staged_path, bytes).map_err(|error| {
+                publish_io_error(
+                    &staged_path,
+                    format!("could not stage generated C# bytes: {error}"),
+                    &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                )
+            })?;
+            staged_files.push((
+                staged_path,
+                current.resolved.logical_path.clone(),
+                artifact.hash.clone(),
+                managed,
+            ));
+        }
+
+        let manifest_path = &analysis.plan.manifest_path;
+        let staged_manifest = workspace.join("new-manifest.json");
+        let manifest_bytes = serde_json::to_vec_pretty(&PublishManifest {
+            version: PUBLISH_MANIFEST_VERSION,
+            files: analysis.plan.current_generated_paths.clone(),
+        })
+        .map_err(|error| {
+            publish_error(
+                "E-PUBLISH-MANIFEST-WRITE",
+                ErrorKind::Io,
+                manifest_path,
+                format!("could not serialize current publish manifest: {error}"),
+                &["PUBLISH-PATH-005", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        fs::write(&staged_manifest, &manifest_bytes).map_err(|error| {
+            publish_io_error(
+                &staged_manifest,
+                format!("could not stage current publish manifest: {error}"),
+                &["PUBLISH-PATH-005", "PUBLISH-EXEC-003"],
+            )
+        })?;
+
+        for (index, (staged_path, destination, hash, managed)) in staged_files.iter().enumerate() {
+            if let Some(parent) = destination.parent() {
+                state.created_directories.extend(ensure_directory_chain(
+                    parent,
+                    "generated C# destination parent",
+                    SymlinkPolicy::Reject,
+                )?);
+            }
+            if managed.is_some() {
+                let backup = workspace.join("backup").join(format!("managed-{index}"));
+                move_managed_entry(destination, &backup)?;
+                state.moved.push((backup, destination.to_path_buf()));
+            } else {
+                ensure_destination_absent(destination, "new C# destination")?;
+            }
+            fs::rename(staged_path, destination).map_err(|error| {
+                publish_io_error(
+                    destination,
+                    format!("could not publish generated C# file: {error}"),
+                    &["PUBLISH-EXEC-003"],
+                )
+            })?;
+            state
+                .published
+                .push((destination.to_path_buf(), hash.clone()));
+            if managed.is_some()
+                && failure_injected(
+                    injections,
+                    target_index,
+                    PublishFailurePoint::CSharpAfterManagedReplacement,
+                )
+            {
+                return Err(injected_failure(
+                    destination,
+                    "C# failure was injected after replacing a managed file",
+                    "PUBLISH-EXEC-003",
+                ));
+            }
+        }
+
+        for (index, previous) in analysis.previous.iter().enumerate() {
+            if matching_previous_entry(&analysis.current, &previous.resolved)?.is_none() {
+                let backup = workspace.join("backup").join(format!("stale-{index}"));
+                move_managed_entry(&previous.resolved.logical_path, &backup)?;
+                state
+                    .moved
+                    .push((backup, previous.resolved.logical_path.clone()));
+                if failure_injected(
+                    injections,
+                    target_index,
+                    PublishFailurePoint::CSharpWhileRetiringStale,
+                ) {
+                    return Err(injected_failure(
+                        &previous.resolved.logical_path,
+                        "C# failure was injected while retiring a stale managed file",
+                        "PUBLISH-EXEC-003",
+                    ));
+                }
+            }
+        }
+
+        if failure_injected(
+            injections,
+            target_index,
+            PublishFailurePoint::CSharpBeforeManifest,
+        ) {
+            return Err(injected_failure(
+                manifest_path,
+                "C# failure was injected before manifest publication",
+                "PUBLISH-EXEC-003",
+            ));
+        }
+        let old_manifest = workspace.join("backup").join("manifest.previous");
+        if analysis.plan.manifest_exists {
+            move_managed_entry(manifest_path, &old_manifest)?;
+            state.manifest_backup = Some(old_manifest);
+        } else {
+            ensure_destination_absent(manifest_path, "new publish manifest")?;
+        }
+        if failure_injected(
+            injections,
+            target_index,
+            PublishFailurePoint::CSharpWhilePublishingManifest,
+        ) {
+            return Err(injected_failure(
+                manifest_path,
+                "C# failure was injected while publishing the manifest",
+                "PUBLISH-EXEC-003",
+            ));
+        }
+        fs::rename(&staged_manifest, manifest_path).map_err(|error| {
+            publish_io_error(
+                manifest_path,
+                format!("could not publish current C# manifest: {error}"),
+                &["PUBLISH-PATH-005", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        state.manifest_published = Some(hash_bytes(&manifest_bytes));
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => Ok(state),
+        Err(error) => Err(Box::new((error, state))),
+    }
+}
+
+fn rollback_csharp_transaction(
+    analysis: &CSharpTargetAnalysis,
+    state: &CSharpTransactionState,
+) -> Result<()> {
+    if let Some(hash) = &state.manifest_published {
+        remove_published_file(&analysis.plan.manifest_path, hash)?;
+    }
+    if let Some(backup) = &state.manifest_backup {
+        ensure_destination_absent(&analysis.plan.manifest_path, "publish manifest restore")?;
+        fs::rename(backup, &analysis.plan.manifest_path).map_err(|error| {
+            publish_io_error(
+                &analysis.plan.manifest_path,
+                format!("could not restore the previous publish manifest: {error}"),
+                &["PUBLISH-EXEC-003"],
+            )
+        })?;
+    }
+    for (path, hash) in state.published.iter().rev() {
+        remove_published_file(path, hash)?;
+    }
+    for (backup, destination) in state.moved.iter().rev() {
+        ensure_destination_absent(destination, "managed publish rollback")?;
+        fs::rename(backup, destination).map_err(|error| {
+            publish_io_error(
+                destination,
+                format!("could not restore the previous managed publish entry: {error}"),
+                &["PUBLISH-EXEC-003"],
+            )
+        })?;
+    }
+    cleanup_created_directories(&state.created_directories)?;
+    Ok(())
+}
+
+fn matching_previous_entry(entries: &[ManifestPath], path: &ResolvedPath) -> Result<Option<usize>> {
+    for (index, entry) in entries.iter().enumerate() {
+        match namespace_relation(&entry.resolved, path)? {
+            NamespaceRelation::Same => return Ok(Some(index)),
+            NamespaceRelation::Disjoint => {}
+            NamespaceRelation::LeftAncestor | NamespaceRelation::RightAncestor => {
+                return Err(publish_error(
+                    "E-PUBLISH-MANAGED-PATH-OVERLAP",
+                    ErrorKind::Validation,
+                    &path.logical_path,
+                    "publish execution encountered an overlapping managed path",
+                    &["PUBLISH-PATH-001", "PUBLISH-PATH-004", "PUBLISH-EXEC-003"],
+                ));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn move_managed_entry(source: &Path, backup: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(source).map_err(|error| {
+        publish_io_error(
+            source,
+            format!("could not inspect managed publish entry before moving it: {error}"),
+            &["PUBLISH-PATH-004", "PUBLISH-EXEC-003"],
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(publish_error(
+            "E-PUBLISH-TOCTOU",
+            ErrorKind::Validation,
+            source,
+            "managed publish entry changed from a regular file before mutation",
+            &["PUBLISH-PATH-004", "PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        ));
+    }
+    ensure_destination_absent(backup, "publish backup")?;
+    fs::rename(source, backup).map_err(|error| {
+        publish_io_error(
+            source,
+            format!("could not move the previous managed publish entry to backup: {error}"),
+            &["PUBLISH-EXEC-003"],
+        )
+    })
+}
+
+fn ensure_destination_absent(path: &Path, label: &str) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Err(publish_error(
+            "E-PUBLISH-TOCTOU",
+            ErrorKind::Validation,
+            path,
+            format!("{label} appeared or was replaced before publication"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(publish_io_error(
+            path,
+            format!("could not inspect {label}: {error}"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )),
+    }
+}
+
+fn remove_published_file(path: &Path, expected_hash: &str) -> Result<()> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        publish_error(
+            "E-PUBLISH-ROLLBACK-FAILED",
+            ErrorKind::Io,
+            path,
+            format!("could not inspect a published file during rollback: {error}"),
+            &["PUBLISH-EXEC-003"],
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(publish_error(
+            "E-PUBLISH-ROLLBACK-FAILED",
+            ErrorKind::Io,
+            path,
+            "published file changed type before rollback",
+            &["PUBLISH-EXEC-003"],
+        ));
+    }
+    let bytes = fs::read(path).map_err(|error| {
+        publish_io_error(
+            path,
+            format!("could not read a published file during rollback: {error}"),
+            &["PUBLISH-EXEC-003"],
+        )
+    })?;
+    if hash_bytes(&bytes) != expected_hash {
+        return Err(publish_error(
+            "E-PUBLISH-ROLLBACK-FAILED",
+            ErrorKind::Io,
+            path,
+            "published file changed before rollback and will not be removed",
+            &["PUBLISH-EXEC-003"],
+        ));
+    }
+    fs::remove_file(path).map_err(|error| {
+        publish_io_error(
+            path,
+            format!("could not remove a published file during rollback: {error}"),
+            &["PUBLISH-EXEC-003"],
+        )
+    })
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn injected_failure(path: &Path, message: &str, requirement: &str) -> MasterdataError {
+    publish_error(
+        "E-PUBLISH-INJECTED-FAILURE",
+        ErrorKind::Io,
+        path,
+        message,
+        &[requirement],
+    )
+}
+
+fn combine_target_rollback_error(
+    original: MasterdataError,
+    rollback: MasterdataError,
+    retained_workspace: Option<PathBuf>,
+) -> MasterdataError {
+    let source = original
+        .diagnostic()
+        .source
+        .clone()
+        .or_else(|| rollback.diagnostic().source.clone());
+    let retained = retained_workspace
+        .map(|path| format!("; rollback workspace retained at {}", path.display()))
+        .unwrap_or_default();
+    let mut error = MasterdataError::new(
+        "E-PUBLISH-ROLLBACK-FAILED",
+        ErrorKind::Io,
+        format!(
+            "publish target failed [{}]: {}; rollback failed [{}]: {}{}",
+            original.diagnostic().code,
+            original.diagnostic().message,
+            rollback.diagnostic().code,
+            rollback.diagnostic().message,
+            retained
+        ),
+    );
+    if let Some(source) = source {
+        error = error.with_source(source);
+    }
+    for requirement in ["PUBLISH-EXEC-003", "PUBLISH-EXEC-005"] {
+        error = error.with_related_requirement(requirement);
+    }
+    error
+}
+
+fn execute_binary_target(
+    context: &ExecutionContext<'_>,
+    target: &PublishTargetInfo,
+    expected_plan: &PublishTargetPreflight,
+    analysis: TargetAnalysis,
+) -> Result<()> {
+    let parent = analysis.namespace.logical_path.parent().ok_or_else(|| {
+        publish_error(
+            "E-PUBLISH-TARGET-PATH-UNSAFE",
+            ErrorKind::Validation,
+            &analysis.namespace.logical_path,
+            "binary publish target has no parent directory",
+            &["PUBLISH-PATH-001", "PUBLISH-EXEC-002"],
+        )
+    })?;
+    let symlink_policy = symlink_policy_for_target(context.project, target);
+    let created = ensure_directory_chain(parent, "binary publish target parent", symlink_policy)?;
+    let refreshed = match revalidate_target_after_directories(
+        context.project,
+        context.artifacts,
+        target,
+        expected_plan,
+        context.protected_regions,
+    ) {
+        Ok(analysis) => analysis,
+        Err(error) => {
+            let cleanup = cleanup_created_directories(&created);
+            return match cleanup {
+                Ok(()) => Err(error),
+                Err(rollback) => Err(combine_target_rollback_error(error, rollback, None)),
+            };
+        }
+    };
+    let workspace = Builder::new()
+        .prefix(".masterdata-publish-")
+        .tempdir_in(parent)
+        .map_err(|error| {
+            publish_io_error(
+                parent,
+                format!("could not create binary publish staging workspace: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+    let result = execute_binary_transaction(
+        context.artifacts,
+        &refreshed,
+        workspace,
+        context.injections,
+        context.target_index,
+    );
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            if let Err(cleanup) = cleanup_created_directories(&created) {
+                return Err(combine_target_rollback_error(error, cleanup, None));
+            }
+            Err(error)
+        }
+    }
+}
+
+struct BinaryTransactionState {
+    destination: PathBuf,
+    previous_backup: Option<PathBuf>,
+    published_hash: Option<String>,
+}
+
+// WHY: binary publication secures the previous explicit file before the
+// replacement rename and removes only a verified new file during rollback.
+// IF REMOVED: an initial or replacement failure could leave a partial binary
+// or destroy the last usable binary while touching unrelated siblings.
+// EVIDENCE: docs/specs/build-pipeline.md; Regression: binary_failure_preserves_previous_file; initial_binary_failure_does_not_publish_partial_file; binary_publish_preserves_siblings.
+fn execute_binary_transaction(
+    artifacts: &ValidatedArtifactSet,
+    analysis: &TargetAnalysis,
+    workspace: TempDir,
+    injections: &[PublishFailureInjection],
+    target_index: usize,
+) -> Result<()> {
+    let workspace_path = workspace.path().to_path_buf();
+    let (original, state) = match run_binary_transaction(
+        artifacts,
+        analysis,
+        &workspace_path,
+        injections,
+        target_index,
+    ) {
+        Ok(()) => return Ok(()),
+        Err(failure) => failure,
+    };
+
+    if failure_injected(
+        injections,
+        target_index,
+        PublishFailurePoint::BinaryRollback,
+    ) {
+        let retained = workspace.keep();
+        return Err(combine_target_rollback_error(
+            original,
+            publish_error(
+                "E-PUBLISH-ROLLBACK-FAILED",
+                ErrorKind::Io,
+                &retained,
+                "rollback failure was injected for binary publish",
+                &["PUBLISH-EXEC-003", "PUBLISH-EXEC-005"],
+            ),
+            Some(retained),
+        ));
+    }
+
+    match rollback_binary_transaction(&state) {
+        Ok(()) => Err(original),
+        Err(rollback) => {
+            let retained = workspace.keep();
+            Err(combine_target_rollback_error(
+                original,
+                rollback,
+                Some(retained),
+            ))
+        }
+    }
+}
+
+fn run_binary_transaction(
+    artifacts: &ValidatedArtifactSet,
+    analysis: &TargetAnalysis,
+    workspace: &Path,
+    injections: &[PublishFailureInjection],
+    target_index: usize,
+) -> std::result::Result<(), (MasterdataError, BinaryTransactionState)> {
+    let destination = analysis.namespace.logical_path.clone();
+    let mut state = BinaryTransactionState {
+        destination: destination.clone(),
+        previous_backup: None,
+        published_hash: None,
+    };
+    let result: Result<()> = (|| {
+        let bytes = read_validated_artifact(&artifacts.binary)?;
+        let staged = workspace.join("new-binary");
+        fs::write(&staged, bytes).map_err(|error| {
+            publish_io_error(
+                &staged,
+                format!("could not stage binary publish bytes: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        if failure_injected(
+            injections,
+            target_index,
+            PublishFailurePoint::BinaryBeforePublication,
+        ) {
+            return Err(injected_failure(
+                &destination,
+                "binary failure was injected before publication",
+                "PUBLISH-EXEC-003",
+            ));
+        }
+
+        let existing = analysis
+            .plan
+            .binary
+            .as_ref()
+            .map(|binary| binary.existing_regular_file)
+            .unwrap_or(false);
+        let backup = workspace.join("previous-binary");
+        if existing {
+            move_managed_entry(&destination, &backup)?;
+            state.previous_backup = Some(backup);
+            if failure_injected(
+                injections,
+                target_index,
+                PublishFailurePoint::BinaryAfterPreviousSecured,
+            ) {
+                return Err(injected_failure(
+                    &destination,
+                    "binary failure was injected after securing the previous file",
+                    "PUBLISH-EXEC-003",
+                ));
+            }
+        } else {
+            ensure_destination_absent(&destination, "new binary destination")?;
+        }
+
+        if failure_injected(
+            injections,
+            target_index,
+            PublishFailurePoint::BinaryWhilePublishingNew,
+        ) {
+            return Err(injected_failure(
+                &destination,
+                "binary failure was injected while publishing the new file",
+                "PUBLISH-EXEC-003",
+            ));
+        }
+        fs::rename(&staged, &destination).map_err(|error| {
+            publish_io_error(
+                &destination,
+                format!("could not publish binary artifact: {error}"),
+                &["PUBLISH-EXEC-003"],
+            )
+        })?;
+        state.published_hash = Some(artifacts.binary.hash.clone());
+        if failure_injected(
+            injections,
+            target_index,
+            PublishFailurePoint::BinaryAfterPublication,
+        ) {
+            return Err(injected_failure(
+                &destination,
+                "binary failure was injected after publication",
+                "PUBLISH-EXEC-003",
+            ));
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => Err((error, state)),
+    }
+}
+
+fn rollback_binary_transaction(state: &BinaryTransactionState) -> Result<()> {
+    if let Some(hash) = &state.published_hash {
+        remove_published_file(&state.destination, hash)?;
+    }
+    if let Some(backup) = &state.previous_backup {
+        ensure_destination_absent(&state.destination, "binary rollback")?;
+        fs::rename(backup, &state.destination).map_err(|error| {
+            publish_io_error(
+                &state.destination,
+                format!("could not restore the previous binary artifact: {error}"),
+                &["PUBLISH-EXEC-003"],
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn preflight_target(
     project: &ProjectInfo,
     artifacts: &ValidatedArtifactSet,
@@ -190,33 +1506,41 @@ fn preflight_target(
         }
     }
 
-    let plan = match target.kind {
+    let (plan, csharp) = match target.kind {
         PublishTargetKind::CSharp => {
             let csharp = preflight_csharp_target(&namespace, artifacts, symlink_policy)?;
-            PublishTargetPreflight {
+            let plan = PublishTargetPreflight {
                 kind: target.kind,
                 configured_path: target.path.clone(),
                 destination: target.resolved_path.clone(),
-                csharp: Some(csharp),
+                csharp: Some(csharp.plan.clone()),
                 binary: None,
-            }
+            };
+            (plan, Some(csharp))
         }
         PublishTargetKind::Binary => {
             let binary = BinaryPublishPreflight {
                 destination: target.resolved_path.clone(),
                 existing_regular_file: namespace.missing_tail.is_empty(),
             };
-            PublishTargetPreflight {
-                kind: target.kind,
-                configured_path: target.path.clone(),
-                destination: target.resolved_path.clone(),
-                csharp: None,
-                binary: Some(binary),
-            }
+            (
+                PublishTargetPreflight {
+                    kind: target.kind,
+                    configured_path: target.path.clone(),
+                    destination: target.resolved_path.clone(),
+                    csharp: None,
+                    binary: Some(binary),
+                },
+                None,
+            )
         }
     };
 
-    Ok(TargetAnalysis { namespace, plan })
+    Ok(TargetAnalysis {
+        namespace,
+        plan,
+        csharp,
+    })
 }
 
 fn symlink_policy_for_target<'a>(
@@ -333,12 +1657,12 @@ fn preflight_csharp_target(
     target_root: &ResolvedPath,
     artifacts: &ValidatedArtifactSet,
     symlink_policy: SymlinkPolicy<'_>,
-) -> Result<CSharpPublishPreflight> {
+) -> Result<CSharpTargetAnalysis> {
     let manifest_path = target_root.logical_path.join(PUBLISH_MANIFEST_FILENAME);
-    let previous_managed_paths = if target_root.missing_tail.is_empty() {
-        read_publish_manifest(&manifest_path)?
+    let (manifest_exists, previous_managed_paths) = if target_root.missing_tail.is_empty() {
+        read_publish_manifest_state(&manifest_path)?
     } else {
-        Vec::new()
+        (false, Vec::new())
     };
 
     let manifest_resolved = resolve_path(&manifest_path, "publish manifest", true, symlink_policy)?;
@@ -443,15 +1767,22 @@ fn preflight_csharp_target(
         }
     }
 
-    Ok(CSharpPublishPreflight {
+    let plan = CSharpPublishPreflight {
         manifest_path,
+        manifest_exists,
         previous_managed_paths,
         current_generated_paths,
+    };
+    Ok(CSharpTargetAnalysis {
+        plan,
+        previous,
+        current,
     })
 }
 
 #[derive(Debug, Clone)]
 struct ManifestPath {
+    relative_path: String,
     resolved: ResolvedPath,
 }
 
@@ -486,6 +1817,7 @@ fn resolve_manifest_paths(
             .logical_path
             .join(relative_path.replace('/', std::path::MAIN_SEPARATOR_STR));
         result.push(ManifestPath {
+            relative_path: relative_path.clone(),
             resolved: resolve_path(&path, "managed publish path", true, symlink_policy)?,
         });
     }
@@ -505,6 +1837,7 @@ fn resolve_current_paths(
                 .logical_path
                 .join(relative_path.replace('/', std::path::MAIN_SEPARATOR_STR));
             Ok(ManifestPath {
+                relative_path: relative_path.clone(),
                 resolved: resolve_path(&path, "current generated C# path", true, symlink_policy)?,
             })
         })
@@ -547,10 +1880,12 @@ fn ensure_previous_managed_entry(path: &ResolvedPath, manifest_path: &Path) -> R
     Ok(())
 }
 
-fn read_publish_manifest(path: &Path) -> Result<Vec<String>> {
+fn read_publish_manifest_state(path: &Path) -> Result<(bool, Vec<String>)> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((false, Vec::new()));
+        }
         Err(error) => {
             return Err(publish_io_error(
                 path,
@@ -600,7 +1935,7 @@ fn read_publish_manifest(path: &Path) -> Result<Vec<String>> {
     for relative_path in &manifest.files {
         validate_relative_path(relative_path, path)?;
     }
-    Ok(manifest.files)
+    Ok((true, manifest.files))
 }
 
 fn validate_relative_path(path: &str, source: &Path) -> Result<()> {

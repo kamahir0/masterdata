@@ -74,12 +74,15 @@ impl fmt::Display for PublishExecutionFailure {
 
 impl std::error::Error for PublishExecutionFailure {}
 
-/// Deterministic failure points used by application-layer execution tests.
+/// Deterministic failure and filesystem-mutation points used by
+/// application-layer execution tests.
 /// The normal [`NativeApplicationService`](crate::NativeApplicationService)
 /// workflow passes no injections and has no synthetic failure behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublishFailurePoint {
     ToctouBeforeTarget,
+    MutateProtectedRegionBeforeTarget,
+    AliasProtectedRegionBeforeTarget,
     CSharpWhileStagingNew,
     CSharpAfterManagedReplacement,
     CSharpWhileRetiringStale,
@@ -255,11 +258,6 @@ pub(crate) fn execute_publish_plan(
         return Ok(report);
     }
 
-    let protected_regions = match protected_regions(project) {
-        Ok(regions) => regions,
-        Err(error) => return Err(PublishExecutionFailure { report, error }),
-    };
-
     // WHY: report every configured target in order and continue after a
     // target-local failure, because the approved execution contract has no
     // cross-target transaction or global rollback.
@@ -272,6 +270,15 @@ pub(crate) fn execute_publish_plan(
         .zip(plan.targets.iter())
         .enumerate()
     {
+        let mutation = match begin_protected_region_mutation(project, target, index, injections) {
+            Ok(mutation) => mutation,
+            Err(error) => {
+                let target_result = &mut report.targets[index];
+                target_result.status = PublishTargetStatus::Failed;
+                target_result.failure = Some(error.diagnostic().clone());
+                continue;
+            }
+        };
         let failure = if failure_injected(
             injections,
             index,
@@ -285,33 +292,43 @@ pub(crate) fn execute_publish_plan(
                 &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
             ))
         } else {
-            validate_artifact_bytes(&plan.artifact_set).and_then(|()| {
-                let analysis = preflight_target(
-                    project,
-                    &plan.artifact_set,
-                    target,
-                    &protected_regions,
-                )?;
-                if analysis.plan != *expected_plan {
-                    return Err(publish_error(
-                        "E-PUBLISH-TOCTOU",
-                        ErrorKind::Validation,
-                        &target.resolved_path,
-                        "publish target ownership or namespace changed between preflight and execution",
-                        &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
-                    ));
-                }
-                let context = ExecutionContext {
-                    project,
-                    artifacts: &plan.artifact_set,
-                    protected_regions: &protected_regions,
-                    injections,
-                    target_index: index,
-                };
-                execute_target(&context, target, expected_plan, analysis)
-            })
-            .err()
+            // WHY: Phase 3 runs after Phase 2 has completed, so a protected
+            // region can change between target attempts. Resolve it for each
+            // target instead of treating the Phase 2 snapshot as a global
+            // trust decision.
+            // IF REMOVED: a later target could publish through a protected
+            // region that became aliased or otherwise unsafe after an earlier
+            // target succeeded.
+            // EVIDENCE: docs/specs/build-pipeline.md; Regression: protected_region_revalidation_failure_is_target_local_and_continues; protected_region_overlap_after_phase2_is_target_local.
+            protected_regions(project)
+                .and_then(|protected_regions| {
+                    validate_artifact_bytes(&plan.artifact_set)?;
+                    let analysis = preflight_target(
+                        project,
+                        &plan.artifact_set,
+                        target,
+                        &protected_regions,
+                    )?;
+                    if analysis.plan != *expected_plan {
+                        return Err(publish_error(
+                            "E-PUBLISH-TOCTOU",
+                            ErrorKind::Validation,
+                            &target.resolved_path,
+                            "publish target ownership or namespace changed between preflight and execution",
+                            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                        ));
+                    }
+                    let context = ExecutionContext {
+                        project,
+                        artifacts: &plan.artifact_set,
+                        injections,
+                        target_index: index,
+                    };
+                    execute_target(&context, target, expected_plan, analysis)
+                })
+                .err()
         };
+        let failure = restore_protected_region_mutation(mutation, failure);
 
         let target_result = &mut report.targets[index];
         match failure {
@@ -367,6 +384,293 @@ fn failure_injected(
         .any(|injection| injection.target_index == target_index && injection.point == point)
 }
 
+// WHY: the protected-region regressions must change the filesystem state that
+// Phase 3 resolves, rather than merely returning a synthetic TOCTOU error.
+// IF REMOVED: tests could pass while execution still reused a stale protected
+// region snapshot.
+// EVIDENCE: docs/specs/build-pipeline.md; Regression: protected_region_revalidation_failure_is_target_local_and_continues; protected_region_overlap_after_phase2_is_target_local.
+struct ProtectedRegionMutation {
+    replaced_path: PathBuf,
+    backup_path: PathBuf,
+}
+
+impl ProtectedRegionMutation {
+    fn restore(self) -> Result<()> {
+        let metadata = fs::symlink_metadata(&self.replaced_path).map_err(|error| {
+            publish_io_error(
+                &self.replaced_path,
+                format!(
+                    "could not inspect the protected-region test mutation during restore: {error}"
+                ),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            return Err(publish_error(
+                "E-PUBLISH-ROLLBACK-FAILED",
+                ErrorKind::Io,
+                &self.replaced_path,
+                "protected-region test mutation was replaced by a directory before restore",
+                &["PUBLISH-EXEC-003"],
+            ));
+        }
+        fs::remove_file(&self.replaced_path).map_err(|error| {
+            publish_io_error(
+                &self.replaced_path,
+                format!(
+                    "could not remove the protected-region test mutation during restore: {error}"
+                ),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })?;
+        fs::rename(&self.backup_path, &self.replaced_path).map_err(|error| {
+            publish_io_error(
+                &self.replaced_path,
+                format!("could not restore the protected-region test mutation: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            )
+        })
+    }
+}
+
+fn begin_protected_region_mutation(
+    project: &ProjectInfo,
+    target: &PublishTargetInfo,
+    target_index: usize,
+    injections: &[PublishFailureInjection],
+) -> Result<Option<ProtectedRegionMutation>> {
+    if failure_injected(
+        injections,
+        target_index,
+        PublishFailurePoint::MutateProtectedRegionBeforeTarget,
+    ) {
+        return begin_missing_parent_mutation(project, target_index).map(Some);
+    }
+    if failure_injected(
+        injections,
+        target_index,
+        PublishFailurePoint::AliasProtectedRegionBeforeTarget,
+    ) {
+        return begin_alias_mutation(project, target, target_index).map(Some);
+    }
+    Ok(None)
+}
+
+fn restore_protected_region_mutation(
+    mutation: Option<ProtectedRegionMutation>,
+    failure: Option<MasterdataError>,
+) -> Option<MasterdataError> {
+    let Some(mutation) = mutation else {
+        return failure;
+    };
+    match mutation.restore() {
+        Ok(()) => failure,
+        Err(restore) => match failure {
+            Some(original) => Some(combine_target_rollback_error(original, restore, None)),
+            None => Some(restore),
+        },
+    }
+}
+
+fn protected_region_for_test(project: &ProjectInfo) -> Result<&Path> {
+    project
+        .source_roots
+        .first()
+        .map(PathBuf::as_path)
+        .ok_or_else(|| {
+            injected_failure(
+                &project.project_root,
+                "protected-region test mutation requires a configured source root",
+                "PUBLISH-EXEC-002",
+            )
+        })
+}
+
+fn protected_region_test_backup(project: &ProjectInfo, target_index: usize) -> Result<PathBuf> {
+    let backup = project.project_root.join(format!(
+        ".masterdata-publish-protected-region-{target_index}"
+    ));
+    match fs::symlink_metadata(&backup) {
+        Ok(_) => Err(injected_failure(
+            &backup,
+            "protected-region test mutation backup already exists",
+            "PUBLISH-EXEC-002",
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(backup),
+        Err(error) => Err(publish_io_error(
+            &backup,
+            format!("could not inspect protected-region test mutation backup: {error}"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )),
+    }
+}
+
+fn begin_missing_parent_mutation(
+    project: &ProjectInfo,
+    target_index: usize,
+) -> Result<ProtectedRegionMutation> {
+    let source_root = protected_region_for_test(project)?;
+    let parent = source_root.parent().ok_or_else(|| {
+        injected_failure(
+            source_root,
+            "protected-region test mutation source root has no parent",
+            "PUBLISH-EXEC-002",
+        )
+    })?;
+    if parent == project.project_root || !parent.starts_with(&project.project_root) {
+        return Err(injected_failure(
+            source_root,
+            "protected-region test mutation requires a nested source root",
+            "PUBLISH-EXEC-002",
+        ));
+    }
+    let metadata = fs::symlink_metadata(parent).map_err(|error| {
+        publish_io_error(
+            parent,
+            format!("could not inspect protected-region test mutation parent: {error}"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(injected_failure(
+            parent,
+            "protected-region test mutation parent is not a real directory",
+            "PUBLISH-EXEC-002",
+        ));
+    }
+    let backup = protected_region_test_backup(project, target_index)?;
+    fs::rename(parent, &backup).map_err(|error| {
+        publish_io_error(
+            parent,
+            format!("could not stage protected-region test mutation: {error}"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )
+    })?;
+    if let Err(error) = fs::write(parent, b"protected-region mutation") {
+        let restore = fs::rename(&backup, parent);
+        return Err(match restore {
+            Ok(()) => publish_io_error(
+                parent,
+                format!("could not create protected-region test mutation: {error}"),
+                &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+            ),
+            Err(restore) => combine_target_rollback_error(
+                publish_io_error(
+                    parent,
+                    format!("could not create protected-region test mutation: {error}"),
+                    &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                ),
+                publish_io_error(
+                    parent,
+                    format!("could not restore protected-region test mutation: {restore}"),
+                    &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                ),
+                None,
+            ),
+        });
+    }
+    Ok(ProtectedRegionMutation {
+        replaced_path: parent.to_path_buf(),
+        backup_path: backup,
+    })
+}
+
+fn begin_alias_mutation(
+    project: &ProjectInfo,
+    _target: &PublishTargetInfo,
+    target_index: usize,
+) -> Result<ProtectedRegionMutation> {
+    let source_root = protected_region_for_test(project)?;
+    if !source_root.starts_with(&project.project_root) {
+        return Err(injected_failure(
+            source_root,
+            "protected-region alias test requires a project-local source root",
+            "PUBLISH-EXEC-002",
+        ));
+    }
+    let metadata = fs::symlink_metadata(source_root).map_err(|error| {
+        publish_io_error(
+            source_root,
+            format!("could not inspect protected-region alias test source root: {error}"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(injected_failure(
+            source_root,
+            "protected-region alias test source root is not a real directory",
+            "PUBLISH-EXEC-002",
+        ));
+    }
+    let backup = protected_region_test_backup(project, target_index)?;
+    fs::rename(source_root, &backup).map_err(|error| {
+        publish_io_error(
+            source_root,
+            format!("could not stage protected-region alias test: {error}"),
+            &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+        )
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        if let Err(error) = symlink(&_target.resolved_path, source_root) {
+            let restore = fs::rename(&backup, source_root);
+            return Err(match restore {
+                Ok(()) => publish_io_error(
+                    source_root,
+                    format!("could not create protected-region alias test: {error}"),
+                    &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                ),
+                Err(restore) => combine_target_rollback_error(
+                    publish_io_error(
+                        source_root,
+                        format!("could not create protected-region alias test: {error}"),
+                        &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                    ),
+                    publish_io_error(
+                        source_root,
+                        format!("could not restore protected-region alias test: {restore}"),
+                        &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                    ),
+                    None,
+                ),
+            });
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let restore = fs::rename(&backup, source_root);
+        return Err(match restore {
+            Ok(()) => injected_failure(
+                source_root,
+                "protected-region alias test is only available on Unix",
+                "PUBLISH-EXEC-002",
+            ),
+            Err(restore) => combine_target_rollback_error(
+                injected_failure(
+                    source_root,
+                    "protected-region alias test is only available on Unix",
+                    "PUBLISH-EXEC-002",
+                ),
+                publish_io_error(
+                    source_root,
+                    format!("could not restore protected-region alias test: {restore}"),
+                    &["PUBLISH-EXEC-002", "PUBLISH-EXEC-003"],
+                ),
+                None,
+            ),
+        });
+    }
+
+    Ok(ProtectedRegionMutation {
+        replaced_path: source_root.to_path_buf(),
+        backup_path: backup,
+    })
+}
+
 fn aggregate_execution_error(report: &PublishExecutionReport) -> MasterdataError {
     let failed = report
         .targets
@@ -405,7 +709,6 @@ fn aggregate_execution_error(report: &PublishExecutionReport) -> MasterdataError
 struct ExecutionContext<'a> {
     project: &'a ProjectInfo,
     artifacts: &'a ValidatedArtifactSet,
-    protected_regions: &'a [ProtectedRegion],
     injections: &'a [PublishFailureInjection],
     target_index: usize,
 }
@@ -661,9 +964,9 @@ fn revalidate_target_after_directories(
     artifacts: &ValidatedArtifactSet,
     target: &PublishTargetInfo,
     expected_plan: &PublishTargetPreflight,
-    protected_regions: &[ProtectedRegion],
 ) -> Result<TargetAnalysis> {
-    let analysis = preflight_target(project, artifacts, target, protected_regions)?;
+    let protected_regions = protected_regions(project)?;
+    let analysis = preflight_target(project, artifacts, target, &protected_regions)?;
     if analysis.plan != *expected_plan {
         return Err(publish_error(
             "E-PUBLISH-TOCTOU",
@@ -693,7 +996,6 @@ fn execute_csharp_target(
         context.artifacts,
         target,
         expected_plan,
-        context.protected_regions,
     ) {
         Ok(analysis) => analysis,
         Err(error) => {
@@ -1247,7 +1549,6 @@ fn execute_binary_target(
         context.artifacts,
         target,
         expected_plan,
-        context.protected_regions,
     ) {
         Ok(analysis) => analysis,
         Err(error) => {

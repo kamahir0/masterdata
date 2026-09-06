@@ -49,6 +49,96 @@ fn toctou_failure_on_one_target_does_not_skip_others() {
 }
 
 #[test]
+fn protected_region_revalidation_failure_is_target_local_and_continues() {
+    let project = project_with_artifacts_and_source_root(
+        &[
+            ("csharp", "first"),
+            ("binary", "second.bytes"),
+            ("csharp", "third"),
+        ],
+        &[("Item.g.cs", b"generated")],
+        b"binary",
+        "sources/root",
+    );
+
+    let failure = publish_failure(
+        &project,
+        &[PublishFailureInjection {
+            target_index: 1,
+            point: PublishFailurePoint::MutateProtectedRegionBeforeTarget,
+        }],
+    );
+
+    assert_status(&failure.report, 0, PublishTargetStatus::Succeeded);
+    assert_status(&failure.report, 1, PublishTargetStatus::Failed);
+    assert_status(&failure.report, 2, PublishTargetStatus::Succeeded);
+    assert_eq!(
+        failure.report.targets[1]
+            .failure
+            .as_ref()
+            .expect("protected-region failure")
+            .code,
+        "E-PUBLISH-FILESYSTEM-INSPECTION"
+    );
+    assert_eq!(
+        fs::read(project.path().join("first/Item.g.cs")).expect("first target"),
+        b"generated"
+    );
+    assert!(!project.path().join("second.bytes").exists());
+    assert_eq!(
+        fs::read(project.path().join("third/Item.g.cs")).expect("third target"),
+        b"generated"
+    );
+    assert!(project.path().join("sources/root").is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn protected_region_overlap_after_phase2_is_target_local() {
+    let project = project_with_artifacts(
+        &[
+            ("csharp", "first"),
+            ("csharp", "second"),
+            ("csharp", "third"),
+        ],
+        &[("Item.g.cs", b"generated")],
+        b"binary",
+    );
+    fs::create_dir(project.path().join("second")).expect("second target");
+
+    let failure = publish_failure(
+        &project,
+        &[PublishFailureInjection {
+            target_index: 1,
+            point: PublishFailurePoint::AliasProtectedRegionBeforeTarget,
+        }],
+    );
+
+    assert_status(&failure.report, 0, PublishTargetStatus::Succeeded);
+    assert_status(&failure.report, 1, PublishTargetStatus::Failed);
+    assert_status(&failure.report, 2, PublishTargetStatus::Succeeded);
+    assert_eq!(
+        failure.report.targets[1]
+            .failure
+            .as_ref()
+            .expect("protected-path failure")
+            .code,
+        "E-PUBLISH-PROTECTED-PATH"
+    );
+    assert_eq!(
+        fs::read(project.path().join("first/Item.g.cs")).expect("first target"),
+        b"generated"
+    );
+    assert!(!project.path().join("second/Item.g.cs").exists());
+    assert_eq!(
+        fs::read(project.path().join("third/Item.g.cs")).expect("third target"),
+        b"generated"
+    );
+    assert!(project.path().join("sources").is_dir());
+    assert!(!project.path().join("sources").is_symlink());
+}
+
+#[test]
 fn execution_failure_rolls_back_only_failed_target() {
     let project = project_with_targets(&[("csharp", "first"), ("csharp", "second")]);
     let first = project.path().join("first");
@@ -584,13 +674,26 @@ fn project_with_artifacts(
     csharp: &[(&str, &[u8])],
     binary: &[u8],
 ) -> TempDir {
+    project_with_artifacts_and_source_root(targets, csharp, binary, "sources")
+}
+
+fn project_with_artifacts_and_source_root(
+    targets: &[(&str, &str)],
+    csharp: &[(&str, &[u8])],
+    binary: &[u8],
+    source_root: &str,
+) -> TempDir {
     let project = Builder::new()
         .prefix("publish-execution-")
         .tempdir()
         .expect("project directory");
-    fs::create_dir_all(project.path().join("sources")).expect("sources");
+    fs::create_dir_all(project.path().join(source_root)).expect("sources");
     let mut config = String::from(
-        "[project]\nid = \"publish.project\"\nname = \"Publish\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
+        "[project]\nid = \"publish.project\"\nname = \"Publish\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [",
+    );
+    config.push_str(&toml_string(source_root));
+    config.push_str(
+        "]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
     );
     for (kind, path) in targets {
         config.push_str(&format!(

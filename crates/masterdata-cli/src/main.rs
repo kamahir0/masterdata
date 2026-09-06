@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use masterdata_app::{NativeApplicationService, PublishExecutionReport, PublishTargetStatus};
+use masterdata_app::{
+    BuildAndPublishFailure, BuildExecution, NativeApplicationService, PublishExecutionReport,
+    PublishTargetStatus,
+};
 use masterdata_core::{ErrorKind, InitOptions, MasterdataError, PublishTargetKind, Result};
 
 #[derive(Debug, Parser)]
@@ -61,8 +64,11 @@ struct InitArgs {
 #[derive(Debug, Args)]
 struct BuildArgs {
     /// Print validation, schema hash, and C# generation plan without writing files.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "publish")]
     dry_run: bool,
+    /// Publish the newly built canonical artifact set after a successful full build.
+    #[arg(long, conflicts_with = "dry_run")]
+    publish: bool,
 }
 
 fn main() {
@@ -174,35 +180,21 @@ fn run() -> Result<()> {
             }
         }
         Command::Build(args) => {
-            let execution = service.build(cli.project.as_deref(), &current_dir, args.dry_run)?;
-            let plan = &execution.plan;
-            let generation = &execution.generation;
-            println!(
-                "schema source content hash: {}",
-                plan.schema_source_content_hash
-            );
-            println!("C# files planned: {}", generation.files.len());
-            for file in &generation.files {
-                println!("  - {}", file.relative_path.display());
-            }
-            for note in &generation.notes {
-                println!("note: {}", note.message);
-            }
-            if args.dry_run {
-                println!("dry-run: no files written and no .NET builder invoked");
-            } else {
-                println!(
-                    "wrote {} canonical C# file(s) to {}",
-                    execution.written_files.len(),
-                    plan.csharp_output.display()
-                );
-                if let Some(binary) = &execution.binary {
-                    println!(
-                        "built canonical MasterMemory binary: {} ({} bytes)",
-                        binary.binary_path.display(),
-                        binary.binary_size
-                    );
+            if args.publish {
+                match service.build_and_publish(cli.project.as_deref(), &current_dir) {
+                    Ok(execution) => {
+                        render_build_execution(&execution.build, false);
+                        println!("{}", render_publish_report(&execution.publish, "succeeded"));
+                    }
+                    Err(failure) => {
+                        render_build_publish_failure(&failure);
+                        return Err(failure.into_error());
+                    }
                 }
+            } else {
+                let execution =
+                    service.build(cli.project.as_deref(), &current_dir, args.dry_run)?;
+                render_build_execution(&execution, args.dry_run);
             }
         }
         Command::Publish => match service.publish(cli.project.as_deref(), &current_dir) {
@@ -214,6 +206,45 @@ fn run() -> Result<()> {
         },
     }
     Ok(())
+}
+
+fn render_build_execution(execution: &BuildExecution, dry_run: bool) {
+    let plan = &execution.plan;
+    let generation = &execution.generation;
+    println!(
+        "schema source content hash: {}",
+        plan.schema_source_content_hash
+    );
+    println!("C# files planned: {}", generation.files.len());
+    for file in &generation.files {
+        println!("  - {}", file.relative_path.display());
+    }
+    for note in &generation.notes {
+        println!("note: {}", note.message);
+    }
+    if dry_run {
+        println!("dry-run: no files written and no .NET builder invoked");
+    } else {
+        println!(
+            "wrote {} canonical C# file(s) to {}",
+            execution.written_files.len(),
+            plan.csharp_output.display()
+        );
+        if let Some(binary) = &execution.binary {
+            println!(
+                "built canonical MasterMemory binary: {} ({} bytes)",
+                binary.binary_path.display(),
+                binary.binary_size
+            );
+        }
+    }
+}
+
+fn render_build_publish_failure(failure: &BuildAndPublishFailure) {
+    if let BuildAndPublishFailure::Publish { build, failure } = failure {
+        render_build_execution(build, false);
+        eprintln!("{}", render_publish_report(&failure.report, "failed"));
+    }
 }
 
 fn render_publish_report(report: &PublishExecutionReport, outcome: &str) -> String {

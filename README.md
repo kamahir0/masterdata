@@ -112,7 +112,7 @@ cargo run -p masterdata-cli -- --project fixtures/minimal validate
 cargo run -p masterdata-cli -- --project fixtures/minimal build --dry-run
 ```
 
-`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、project-localな`.masterdata/output/`へ完全なcanonical artifact set（`csharp/`、`masterdata.bytes`、`.masterdata-artifact-set.json`）をstageし、実MasterMemory builderとbinary reload validation、receipt validationが成功した後にroot単位で切り替えます。buildは外部publish targetを暗黙には更新しません。既存artifact setのread-only receipt validationもapplication serviceから利用できます。旧`build.output`と`build.binary_output`はmigration diagnosticで拒否されます。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
+`build --dry-run`はvalidationとC#生成計画を表示します。通常の`build`は、project-localな`.masterdata/output/`へ完全なcanonical artifact set（`csharp/`、`masterdata.bytes`、`.masterdata-artifact-set.json`）をstageし、実MasterMemory builderとbinary reload validation、receipt validationが成功した後にroot単位で切り替えます。`build --publish`はfull buildが成功した場合だけ、同じreceipt-valid artifact setをstandalone `publish`と同じsemanticsでexternal targetへ配布します。`build`単体は外部publish targetを暗黙には更新しません。既存artifact setのread-only receipt validationもapplication serviceから利用できます。旧`build.output`と`build.binary_output`はmigration diagnosticで拒否されます。独立したtechnical spikeは `cargo xtask mastermemory-spike` で実行できます。
 
 ## ProjectとYAMLの規約
 

@@ -185,6 +185,37 @@ impl NativeApplicationService {
         publish::execute_publish_plan(&info, plan, injections)
     }
 
+    /// Run a full canonical build and then the standalone publish workflow.
+    ///
+    /// The build publishes its complete canonical artifact root before this
+    /// method starts publish. A publish failure therefore retains the
+    /// successful canonical set and returns the complete per-target report to
+    /// the adapter without introducing a cross-operation rollback.
+    // WHY: CLI-007 composes two existing operations while preserving the
+    // build/publish ownership boundary and standalone publish semantics.
+    // IF REMOVED: adapters could accidentally publish after a failed build or
+    // roll back a successful canonical build when an external target fails.
+    // EVIDENCE: docs/specs/cli.md; docs/specs/build-pipeline.md
+    pub fn build_and_publish(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+    ) -> std::result::Result<BuildAndPublishExecution, BuildAndPublishFailure> {
+        let build = self
+            .build(explicit_project, current_dir, false)
+            .map_err(BuildAndPublishFailure::Build)?;
+        let publish = match self.publish(explicit_project, current_dir) {
+            Ok(report) => report,
+            Err(failure) => {
+                return Err(BuildAndPublishFailure::Publish {
+                    build: Box::new(build),
+                    failure,
+                });
+            }
+        };
+        Ok(BuildAndPublishExecution { build, publish })
+    }
+
     pub fn plan_csharp(&self, plan: &BuildPlan) -> Result<CSharpGenerationPlan> {
         self.generator.plan(plan)
     }
@@ -330,6 +361,30 @@ pub struct BuildExecution {
     pub generation: CSharpGenerationPlan,
     pub written_files: Vec<PathBuf>,
     pub binary: Option<MasterMemoryBuildReport>,
+}
+
+#[derive(Debug)]
+pub struct BuildAndPublishExecution {
+    pub build: BuildExecution,
+    pub publish: PublishExecutionReport,
+}
+
+#[derive(Debug)]
+pub enum BuildAndPublishFailure {
+    Build(MasterdataError),
+    Publish {
+        build: Box<BuildExecution>,
+        failure: PublishExecutionFailure,
+    },
+}
+
+impl BuildAndPublishFailure {
+    pub fn into_error(self) -> MasterdataError {
+        match self {
+            Self::Build(error) => error,
+            Self::Publish { failure, .. } => failure.error,
+        }
+    }
 }
 
 fn validate_existing_artifact_root(path: &Path) -> Result<()> {

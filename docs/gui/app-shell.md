@@ -12,7 +12,7 @@ commandはshared `masterdata-app` serviceを呼び、domain workを `masterdata-
 - tableとtypeに対するplaceholder navigation
 - projectの再読み込みaction
 - current projectのsource validation action。`validate` Tauri commandを通じてshared application serviceの既存`ValidationReport`とstructured diagnosticsを表示する。
-- placeholderのBuild control。Build commandの接続とより詳細なinteractionは将来のGUI scopeに残す。
+- current projectのfull canonical build action。`build` Tauri commandを`dryRun = false`で呼び出し、既存のbuild resultとstructured diagnosticsを表示する。external publish targetはこのactionで更新しない。
 
 計画中のlayoutは、左navigation、中央のrecord/editor area、右inspector、上部のSave/Validate/Build actionである。
 GUI errorはstructuredなdiagnostic code、kind、path、line/column、schema path、record identity、suggestion、

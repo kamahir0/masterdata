@@ -193,4 +193,35 @@ mod tests {
         assert!(report.valid, "{report:?}");
         assert!(report.tables.iter().any(|table| table == "item"));
     }
+
+    #[test]
+    fn build_command_uses_shared_build_service() {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../fixtures/minimal")
+            .canonicalize()
+            .expect("minimal fixture path");
+
+        let response = super::build(Some(project.to_string_lossy().into_owned()), true)
+            .expect("dry-run build command succeeds");
+        let value = serde_json::to_value(&response).expect("build response serializes");
+
+        assert_eq!(response.project.project_id, "fixture.minimal");
+        assert!(response.dry_run);
+        assert!(response.generated_files.is_empty());
+        assert_eq!(value["dryRun"], true);
+        assert_eq!(
+            value["artifactRoot"],
+            project
+                .join(".masterdata/output")
+                .to_string_lossy()
+                .as_ref()
+        );
+        assert_eq!(
+            value["binaryOutput"],
+            project
+                .join(".masterdata/output/masterdata.bytes")
+                .to_string_lossy()
+                .as_ref()
+        );
+    }
 }

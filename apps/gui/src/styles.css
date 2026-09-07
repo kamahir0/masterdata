@@ -128,7 +128,8 @@ h1 {
 
 .project-card,
 .error-card,
-.validation-panel {
+.validation-panel,
+.build-panel {
   max-width: 820px;
   margin-top: 22px;
   padding: 28px;
@@ -149,7 +150,8 @@ h1 {
 
 .project-heading h2,
 .error-card h2,
-.validation-heading h2 {
+.validation-heading h2,
+.build-heading h2 {
   margin: 8px 0 0;
   font-size: 25px;
   letter-spacing: -0.025em;
@@ -211,7 +213,20 @@ dd {
   background: rgba(20, 33, 40, 0.78);
 }
 
+.build-panel {
+  background: rgba(25, 32, 43, 0.82);
+}
+
 .validation-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid #304752;
+}
+
+.build-heading {
   display: flex;
   align-items: start;
   justify-content: space-between;
@@ -239,12 +254,18 @@ dd {
 }
 
 .validation-message,
-.validation-success {
+.validation-success,
+.build-message,
+.build-success {
   margin: 22px 0 0;
   color: #b7cbd1;
 }
 
 .validation-success {
+  color: #a8e1cb;
+}
+
+.build-success {
   color: #a8e1cb;
 }
 
@@ -266,6 +287,45 @@ dd {
   margin-top: 8px;
   color: #e2eef1;
   font-size: 20px;
+}
+
+.build-details {
+  display: grid;
+  gap: 15px;
+  margin: 24px 0 0;
+}
+
+.build-details div {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 16px;
+}
+
+.build-details dd {
+  overflow-wrap: anywhere;
+}
+
+.build-files {
+  margin-top: 26px;
+}
+
+.build-files h3 {
+  margin: 0 0 11px;
+  color: #c6d8e9;
+  font-size: 15px;
+}
+
+.build-files ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 19px;
+}
+
+.build-files li,
+.build-files p {
+  color: #b7cbd1;
+  font-size: 13px;
 }
 
 .validation-collections {
@@ -352,4 +412,14 @@ code {
 
 .status-pill {
   margin-top: 22px;
+}
+
+.status-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.status-stack .status-pill {
+  margin-top: 0;
 }

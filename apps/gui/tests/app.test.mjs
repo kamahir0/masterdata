@@ -18,3 +18,15 @@ test("GUI exposes validation through the shared Tauri command", async () => {
   assert.match(source, /diagnostic\.related_requirements/);
   assert.match(source, /disabled=\{state\.kind !== "loaded"/);
 });
+
+test("GUI exposes full canonical build through the shared Tauri command", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(source, /invoke<BuildResponse>\("build"/);
+  assert.match(source, /dryRun: false/);
+  assert.match(source, /type BuildResponse/);
+  assert.match(source, /BuildPanel/);
+  assert.match(source, /response\.artifactRoot/);
+  assert.match(source, /response\.csharpOutput/);
+  assert.match(source, /response\.binaryOutput/);
+  assert.match(source, /buildState\.kind === "loading"/);
+});

@@ -15,6 +15,17 @@ type ProjectInfo = {
   publish_targets: { kind: "csharp" | "binary"; path: string; resolved_path: string }[];
 };
 
+type BuildResponse = {
+  project: ProjectInfo;
+  schemaSourceContentHash: string;
+  artifactRoot: string;
+  csharpOutput: string;
+  binaryOutput: string;
+  cache: string;
+  generatedFiles: string[];
+  dryRun: boolean;
+};
+
 type Diagnostic = {
   code: string;
   kind: string;
@@ -65,6 +76,12 @@ type ValidationState =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "loaded"; report: ValidationReport }
+  | { kind: "error"; diagnostic: Diagnostic };
+
+type BuildState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "loaded"; response: BuildResponse }
   | { kind: "error"; diagnostic: Diagnostic };
 
 type DisplayDiagnostic = {
@@ -137,10 +154,12 @@ function App() {
   const [validationState, setValidationState] = useState<ValidationState>({
     kind: "idle",
   });
+  const [buildState, setBuildState] = useState<BuildState>({ kind: "idle" });
 
   const loadProject = useCallback(async () => {
     setState({ kind: "loading" });
     setValidationState({ kind: "idle" });
+    setBuildState({ kind: "idle" });
     try {
       // The Rust Tauri command resolves the project through masterdata-app
       // and masterdata-core.
@@ -178,6 +197,27 @@ function App() {
   }, [state]);
 
   const validationStatus = validationStatusLabel(validationState);
+  const buildStatus = buildStatusLabel(buildState);
+
+  const buildProject = useCallback(async () => {
+    if (state.kind !== "loaded" || buildState.kind === "loading") {
+      return;
+    }
+
+    setBuildState({ kind: "loading" });
+    try {
+      const response = await invoke<BuildResponse>("build", {
+        projectPath: state.project.project_root,
+        dryRun: false,
+      });
+      setBuildState({ kind: "loaded", response });
+    } catch (error) {
+      setBuildState({
+        kind: "error",
+        diagnostic: asApiError(error).diagnostic,
+      });
+    }
+  }, [buildState.kind, state]);
 
   return (
     <main className="shell">
@@ -197,7 +237,11 @@ function App() {
           >
             Validate
           </button>
-          <button type="button" disabled>
+          <button
+            type="button"
+            onClick={() => void buildProject()}
+            disabled={state.kind !== "loaded" || buildState.kind === "loading"}
+          >
             Build
           </button>
         </div>
@@ -228,6 +272,7 @@ function App() {
             <>
               <ProjectCard project={state.project} />
               <ValidationPanel state={validationState} />
+              <BuildPanel state={buildState} />
             </>
           )}
         </section>
@@ -235,7 +280,10 @@ function App() {
         <aside className="inspector">
           <span className="section-label">Inspector</span>
           <p className="inspector-copy">Select a table or record to inspect details.</p>
-          <div className="status-pill">{validationStatus}</div>
+          <div className="status-stack">
+            <div className="status-pill">{validationStatus}</div>
+            <div className="status-pill">{buildStatus}</div>
+          </div>
         </aside>
       </section>
     </main>
@@ -253,6 +301,96 @@ function validationStatusLabel(state: ValidationState): string {
     case "loaded":
       return state.report.valid ? "Validation passed" : "Validation failed";
   }
+}
+
+function buildStatusLabel(state: BuildState): string {
+  switch (state.kind) {
+    case "idle":
+      return "Build not run";
+    case "loading":
+      return "Building…";
+    case "error":
+      return "Build failed";
+    case "loaded":
+      return "Build complete";
+  }
+}
+
+function BuildPanel({ state }: { state: BuildState }) {
+  return (
+    <section className="build-panel" aria-live="polite">
+      <div className="build-heading">
+        <div>
+          <p className="card-kicker">Canonical build</p>
+          <h2>Build result</h2>
+        </div>
+        {state.kind === "loaded" && (
+          <span className="validation-badge is-valid">Complete</span>
+        )}
+      </div>
+
+      {state.kind === "idle" && (
+        <p className="build-message">Run a full build to create the current canonical artifact set.</p>
+      )}
+      {state.kind === "loading" && (
+        <p className="build-message">Building canonical artifacts through Rust and .NET…</p>
+      )}
+      {state.kind === "error" && (
+        <DiagnosticCard
+          heading="Build could not be completed"
+          diagnostic={normalizeDiagnostic(state.diagnostic)}
+        />
+      )}
+      {state.kind === "loaded" && <BuildResult response={state.response} />}
+    </section>
+  );
+}
+
+function BuildResult({ response }: { response: BuildResponse }) {
+  return (
+    <>
+      <p className="build-success">
+        {response.dryRun
+          ? "Dry run completed without publishing artifacts."
+          : "Canonical artifact set created successfully."}
+      </p>
+      <dl className="build-details">
+        <div>
+          <dt>Artifact root</dt>
+          <dd>{response.artifactRoot}</dd>
+        </div>
+        <div>
+          <dt>Canonical C#</dt>
+          <dd>{response.csharpOutput}</dd>
+        </div>
+        <div>
+          <dt>Canonical binary</dt>
+          <dd>{response.binaryOutput}</dd>
+        </div>
+        <div>
+          <dt>Build cache</dt>
+          <dd>{response.cache}</dd>
+        </div>
+        <div>
+          <dt>Schema source hash</dt>
+          <dd>{response.schemaSourceContentHash}</dd>
+        </div>
+      </dl>
+
+      <div className="build-files">
+        <h3>Generated C# ({response.generatedFiles.length})</h3>
+        {response.generatedFiles.length > 0 ? (
+          <ul>
+            {response.generatedFiles.map((file) => (
+              <li key={file}><code>{file}</code></li>
+            ))}
+          </ul>
+        ) : (
+          <p>No C# files were generated.</p>
+        )}
+      </div>
+    </>
+  );
 }
 
 function ValidationPanel({ state }: { state: ValidationState }) {

@@ -11,7 +11,8 @@ commandはshared `masterdata-app` serviceを呼び、domain workを `masterdata-
 - root/config/source pathを表示するproject identity card
 - tableとtypeに対するplaceholder navigation
 - projectの再読み込みaction
-- placeholderのValidateとBuild control。backend commandはshared application serviceを使い、より詳細なinteractionは将来のGUI scopeに残す。
+- current projectのsource validation action。`validate` Tauri commandを通じてshared application serviceの既存`ValidationReport`とstructured diagnosticsを表示する。
+- placeholderのBuild control。Build commandの接続とより詳細なinteractionは将来のGUI scopeに残す。
 
 計画中のlayoutは、左navigation、中央のrecord/editor area、右inspector、上部のSave/Validate/Build actionである。
 GUI errorはstructuredなdiagnostic code、kind、path、line/column、schema path、record identity、suggestion、

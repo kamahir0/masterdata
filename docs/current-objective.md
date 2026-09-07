@@ -94,7 +94,7 @@ current implementation realityとproduct priorityをfreshに確認してHumanが
 - [Type System specifications](specs/type-system/README.md) — initializerとfield typeのcanonical semantic owner
 - [Runtime hosts specification](specs/runtime-hosts.md) — pure/shared semantic engineとhost adapter boundary
 - [CLI surface specification](specs/cli.md) — `migrate` top-level Operation nameと未確定CLI grammarのboundary
-- [Applied CLI / Schema Migration specification change](spec-changes/0011-cli-and-schema-migration.md) — Human Approval済みdeltaとdeferred implementation/public decisions
+- [Applied CLI / Schema Migration specification change](spec-changes/0011-cli-surface-and-schema-migration.md) — Human Approval済みdeltaとdeferred implementation/public decisions
 - current project/document parser、semantic resolution、validation implementation / tests — reuseすべきimplementation reality
 - current `LoadedDocument` exact source retentionとsource-loading boundary — source-preserving patch planningのimplementation reality
 - [Specification workflow](contributing/specification-workflow.md) — Specification Gapとapproval lifecycle

@@ -9,6 +9,7 @@ mod config;
 pub mod diagnostics;
 mod document;
 mod error;
+mod migration;
 mod pipeline;
 mod project;
 mod table;
@@ -27,6 +28,10 @@ pub use document::{
     TypeFieldDefinition, ValueObjectDefinition, parse_yaml_document,
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
+pub use migration::{
+    AddFieldCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan, MigrationOperation,
+    MigrationPatch, MigrationPlan, MigrationValidation, dry_run_migration, plan_migration,
+};
 pub use pipeline::{
     BuildPlan, BuildStatus, SemanticBuildPreparation, compute_schema_source_content_hash,
     prepare_build_from_documents, prepare_build_with_selection, prepare_semantic_build,

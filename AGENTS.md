@@ -24,7 +24,16 @@
 ## Cold-start時の標準reading order
 
 長いconversation、handoff prompt、個人の記憶をcurrent repositoryの代わりに使用してはならない（MUST NOT）。
-future developer / AI agentが作業へ復帰するときは、原則として次の順序でcurrent repositoryを読む。
+future developer / AI agentが作業へ復帰するときは、**次のrepository freshness gateを通過した後で**、原則として次の順序でcurrent repositoryを読む。
+
+### Repository freshness gate
+
+Current Objective、Approved authority、implementation realityを読む前に、current checkoutがremote/upstreamに対してfreshか確認しなければならない（MUST）。少なくともcurrent branch、working tree、configured upstream、remote fetch結果とahead/behind/diverged状態を確認する。
+
+- working treeがcleanで、current branchがconfigured upstreamに対してstrictly behindであり、fast-forward可能な場合だけ、current branchをsafe fast-forwardしてよい。更新後はcold-start readingを最初からやり直す。
+- working treeがdirty、local/remoteがdiverged、detached HEAD、merge/rebase中、またはfast-forwardできない場合は、freshnessのためにreset、stash、rebase、force update、history rewriteを自動実行してはならない（MUST NOT）。taskを開始せず状態を報告する。
+- remote/upstreamが存在するtaskでfetchまたはupstream状態を確認できない場合、freshness未確認のlocal checkoutを`docs/current-objective.md`、Approved semantics、またはcurrent implementation realityの「最新authority」と断定してはならない（MUST NOT）。特にCurrent Objectiveの実装や「latest/current」を前提とするtaskは停止してfreshnessを確認できない旨を報告する。
+- remote/upstreamを持たない明示的なlocal-only repositoryでは、このgateはlocal `HEAD`とworking treeの整合確認に縮退してよい。remoteが存在するのにlocal-onlyと推測して省略してはならない。
 
 1. `README.md`
 2. `docs/product/vision.md`

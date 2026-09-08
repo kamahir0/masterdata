@@ -339,6 +339,30 @@ fn target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution(
 }
 
 #[test]
+fn target_table_schema_resolution_error_blocks_add_field() {
+    // Covers MIGRATION-005 and MIGRATION-017: schema/type closure semantics are
+    // still blocking even though record-level Build Selection constraints are not.
+    let snapshot = documents(&[
+        (
+            "schema.yaml",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: broken\n    type: MissingType\nprimaryKey:\n  fields: [id]\n",
+        ),
+        (
+            "data.yaml",
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    broken: value\n",
+        ),
+    ]);
+
+    let error = dry_run_migration(
+        &snapshot,
+        &add_field("item", 2, "label", "string", Some(string("ok"))),
+    )
+    .expect_err("unresolved target schema type must remain blocking");
+
+    assert_eq!(error.diagnostic.code, "E-TYPE-UNKNOWN-REFERENCE");
+}
+
+#[test]
 fn add_field_rejects_existing_record_member_with_target_name() {
     // Covers MIGRATION-006 and MIGRATION-017: a record member that directly
     // collides with the new field is operation-relevant and must fail closed.

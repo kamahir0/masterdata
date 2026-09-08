@@ -7,6 +7,7 @@ use crate::document::{
     DataDocument, FieldDefinition, LoadedDocument, ProjectDocuments, SchemaDocument, SourceDocument,
 };
 use crate::error::{Diagnostic, ErrorKind, MasterdataError, Result};
+use crate::table::{BuildSelection, resolve_tables};
 use crate::type_system::{
     FieldModifier, PrimitiveType, ResolvedField, ResolvedType, TypeReference, TypeSystem,
     build_type_system,
@@ -112,10 +113,8 @@ fn prepare_add_field(
 ) -> Result<MigrationDryRun> {
     let (closure_documents, type_system) =
         resolve_target_snapshot(documents, &command.table, &command.field)?;
-    let schema = find_target_schema(&closure_documents, &command.table)
-        .expect("target schema was resolved before building the snapshot");
 
-    validate_new_field_declaration(&schema, &command.field)?;
+    validate_candidate_table_schema(&closure_documents, &type_system, command)?;
 
     let new_field = ResolvedField {
         key: command.field.key,
@@ -274,17 +273,76 @@ fn resolve_target_snapshot(
         ));
     };
 
-    // WHY: Migration resolution stops before Build Selection and selected-dataset
-    // Table constraints. AddField needs a unique logical schema and its dependent
-    // Type System, but unrelated record-value, PK, or Unique diagnostics are not
-    // Migration success gates.
-    // IF REMOVED: calling the build-oriented `resolve_tables` here would reject a
-    // source-preserving AddField plan merely because the current target dataset has
-    // an unrelated validation error.
+    validate_table_schema_resolution(&closure_documents, &type_system, table_name)?;
+    Ok((closure_documents, type_system))
+}
+
+fn validate_table_schema_resolution(
+    documents: &ProjectDocuments,
+    type_system: &TypeSystem,
+    table_name: &str,
+) -> Result<()> {
+    // WHY: Migration must reuse Table/Key owner semantics without turning
+    // build-time selected-dataset diagnostics into a Migration success gate.
+    // Resolving only schema/type documents validates field/key structure while
+    // intentionally excluding record-value and PK/Unique dataset constraints.
+    // IF REMOVED: using the full target data set would reintroduce MIGRATION-017
+    // violations; replacing this with migration-local checks would duplicate the
+    // Table/Key semantic owner contrary to MIGRATION-005.
     // EVIDENCE: docs/specs/schema-migration.md (MIGRATION-005, MIGRATION-017)
     // Regression: target_table_duplicate_primary_key_does_not_block_add_field_resolution;
-    // target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution.
-    Ok((closure_documents, type_system))
+    // target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution;
+    // target_table_schema_resolution_error_blocks_add_field.
+    let schema_documents = ProjectDocuments {
+        files: documents
+            .files
+            .iter()
+            .filter(|loaded| !matches!(&loaded.document, SourceDocument::Data(_)))
+            .cloned()
+            .collect(),
+    };
+    let table_build = resolve_tables(
+        &schema_documents,
+        type_system,
+        &BuildSelection::unfiltered(),
+    );
+    let Some(tables) = table_build.model else {
+        return Err(first_diagnostic_error(
+            table_build.diagnostics,
+            "E-MIGRATION-RESOLUTION-CLOSURE",
+            "the AddField table/schema closure could not be resolved",
+            "MIGRATION-005",
+        ));
+    };
+    if !tables.iter().any(|table| table.identity == table_name) {
+        return Err(migration_error(
+            "E-MIGRATION-TABLE-NOT-FOUND",
+            format!("AddField target table `{table_name}` does not exist"),
+            schema_path(documents, table_name),
+            "MIGRATION-006",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_candidate_table_schema(
+    documents: &ProjectDocuments,
+    type_system: &TypeSystem,
+    command: &AddFieldCommand,
+) -> Result<()> {
+    let mut candidate = documents.clone();
+    let loaded = candidate
+        .files
+        .iter_mut()
+        .find(|loaded| {
+            matches!(&loaded.document, SourceDocument::Schema(schema) if schema.table == command.table)
+        })
+        .expect("target schema was resolved before validating AddField declaration");
+    let SourceDocument::Schema(schema) = &mut loaded.document else {
+        unreachable!("target schema lookup returned a non-schema document")
+    };
+    schema.fields.push(command.field.clone());
+    validate_table_schema_resolution(&candidate, type_system, &command.table)
 }
 
 fn expected_add_field_semantics(
@@ -410,66 +468,6 @@ fn add_named_type(pending: &mut BTreeSet<String>, type_name: &str) {
     if PrimitiveType::parse(type_name).is_none() {
         pending.insert(type_name.to_owned());
     }
-}
-
-fn validate_new_field_declaration(
-    schema: &LoadedSchema<'_>,
-    field: &FieldDefinition,
-) -> Result<()> {
-    if !is_table_field_name(&field.name)
-        || crate::type_system::is_csharp_reserved_keyword(&field.name)
-    {
-        return Err(migration_error(
-            "E-TABLE-INVALID-FIELD-NAME",
-            format!(
-                "field name `{}` is not a valid Table source name",
-                field.name
-            ),
-            Some(schema.path.to_path_buf()),
-            "SCHEMA-TABLE-003",
-        ));
-    }
-    if field.nullable && field.array {
-        return Err(migration_error(
-            "E-TABLE-INVALID-FIELD-MODIFIERS",
-            format!("field `{}` cannot be both nullable and array", field.name),
-            Some(schema.path.to_path_buf()),
-            "TYPE-FIELD-002",
-        ));
-    }
-    if schema
-        .document
-        .fields
-        .iter()
-        .any(|existing| existing.name == field.name)
-    {
-        return Err(migration_error(
-            "E-TABLE-DUPLICATE-FIELD-NAME",
-            format!(
-                "table `{}` already has field `{}`",
-                schema.document.table, field.name
-            ),
-            Some(schema.path.to_path_buf()),
-            "SCHEMA-TABLE-003",
-        ));
-    }
-    if schema
-        .document
-        .fields
-        .iter()
-        .any(|existing| existing.key == field.key)
-    {
-        return Err(migration_error(
-            "E-TABLE-DUPLICATE-FIELD-KEY",
-            format!(
-                "table `{}` already uses MessagePack key {}",
-                schema.document.table, field.key
-            ),
-            Some(schema.path.to_path_buf()),
-            "SCHEMA-KEY-001",
-        ));
-    }
-    Ok(())
 }
 
 fn canonicalize_field_value(

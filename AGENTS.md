@@ -96,6 +96,8 @@ Non-blockingだけでcorrectness上のmerge readinessを否定せず、追加pas
 corrective passとする。Approved specification、Human Approval、Specification Gap、rationale freshness、tests/evidence、architecture
 boundary、unrelated dirty change、通常のcommit / push policyなどのsafety gateは、このexecution policyによって弱めない。
 
+Current Objectiveは、implementation agentの完了報告、local check成功、commit / push、remote CI successだけを根拠に完了扱いしてはならない（MUST NOT）。main reviewerがexternal final reviewとして[`review-code`](skills/review-code/SKILL.md)を実行し、current completion boundaryとApproved authorityに照らしてBlockingがないことを確認した後にのみ、Objective completeとして次priorityの選定または`docs/current-objective.md`の更新へ進んでよい。Blockingがある場合はCurrent Objectiveを維持し、同じobjective内のnarrow corrective passへ戻す。
+
 ## アーキテクチャ規則
 
 - CLIとGUIは `masterdata-app` のapplication workflowと

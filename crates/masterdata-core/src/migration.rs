@@ -7,7 +7,6 @@ use crate::document::{
     DataDocument, FieldDefinition, LoadedDocument, ProjectDocuments, SchemaDocument, SourceDocument,
 };
 use crate::error::{Diagnostic, ErrorKind, MasterdataError, Result};
-use crate::table::{BuildSelection, ResolvedTable, resolve_tables};
 use crate::type_system::{
     FieldModifier, PrimitiveType, ResolvedField, ResolvedType, TypeReference, TypeSystem,
     build_type_system,
@@ -111,7 +110,7 @@ fn prepare_add_field(
     documents: &ProjectDocuments,
     command: &AddFieldCommand,
 ) -> Result<MigrationDryRun> {
-    let (closure_documents, type_system, before_table) =
+    let (closure_documents, type_system) =
         resolve_target_snapshot(documents, &command.table, &command.field)?;
     let schema = find_target_schema(&closure_documents, &command.table)
         .expect("target schema was resolved before building the snapshot");
@@ -167,15 +166,8 @@ fn prepare_add_field(
         })
         .transpose()?;
 
-    let mut expected_table = before_table.clone();
-    expected_table.fields.push(new_field.clone());
-    if let Some(initializer) = &initializer {
-        for record in &mut expected_table.records {
-            record
-                .fields
-                .insert(command.field.name.clone(), initializer.clone());
-        }
-    }
+    let expected_semantics =
+        expected_add_field_semantics(&closure_documents, command, initializer.as_ref())?;
 
     let mut file_plans = Vec::new();
     let schema_loaded = find_loaded_schema(&closure_documents, &command.table)
@@ -208,9 +200,9 @@ fn prepare_add_field(
     file_plans.sort_by(|left, right| left.path.cmp(&right.path));
 
     let transformed_documents = apply_file_plans(documents, &file_plans)?;
-    let (_, _post_type_system, after_table) =
+    let (transformed_closure, _post_type_system) =
         resolve_target_snapshot(&transformed_documents, &command.table, &command.field)?;
-    if after_table != expected_table {
+    if semantic_documents(&transformed_closure) != expected_semantics {
         return Err(migration_error(
             "E-MIGRATION-ADD-FIELD-POSTCONDITION",
             format!(
@@ -245,7 +237,7 @@ fn resolve_target_snapshot(
     documents: &ProjectDocuments,
     table_name: &str,
     new_field: &FieldDefinition,
-) -> Result<(ProjectDocuments, TypeSystem, ResolvedTable)> {
+) -> Result<(ProjectDocuments, TypeSystem)> {
     let schema = find_target_schema(documents, table_name).ok_or_else(|| {
         migration_error(
             "E-MIGRATION-TABLE-NOT-FOUND",
@@ -282,31 +274,65 @@ fn resolve_target_snapshot(
         ));
     };
 
-    let table_build = resolve_tables(
-        &closure_documents,
-        &type_system,
-        &BuildSelection::unfiltered(),
-    );
-    let Some(tables) = table_build.model else {
-        return Err(first_diagnostic_error(
-            table_build.diagnostics,
-            "E-MIGRATION-RESOLUTION-CLOSURE",
-            "the AddField migration resolution closure could not be resolved",
-            "MIGRATION-005",
-        ));
-    };
-    let table = tables
-        .into_iter()
-        .find(|table| table.identity == table_name)
-        .ok_or_else(|| {
-            migration_error(
-                "E-MIGRATION-TABLE-NOT-FOUND",
-                format!("AddField target table `{table_name}` does not exist"),
-                Some(schema.path.to_path_buf()),
-                "MIGRATION-006",
-            )
-        })?;
-    Ok((closure_documents, type_system, table))
+    // WHY: Migration resolution stops before Build Selection and selected-dataset
+    // Table constraints. AddField needs a unique logical schema and its dependent
+    // Type System, but unrelated record-value, PK, or Unique diagnostics are not
+    // Migration success gates.
+    // IF REMOVED: calling the build-oriented `resolve_tables` here would reject a
+    // source-preserving AddField plan merely because the current target dataset has
+    // an unrelated validation error.
+    // EVIDENCE: docs/specs/schema-migration.md (MIGRATION-005, MIGRATION-017)
+    // Regression: target_table_duplicate_primary_key_does_not_block_add_field_resolution;
+    // target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution.
+    Ok((closure_documents, type_system))
+}
+
+fn expected_add_field_semantics(
+    documents: &ProjectDocuments,
+    command: &AddFieldCommand,
+    initializer: Option<&Value>,
+) -> Result<Vec<(PathBuf, SourceDocument)>> {
+    let mut expected = Vec::with_capacity(documents.files.len());
+    for loaded in &documents.files {
+        let mut document = loaded.document.clone();
+        match &mut document {
+            SourceDocument::Schema(schema) if schema.table == command.table => {
+                schema.fields.push(command.field.clone());
+            }
+            SourceDocument::Data(data) if data.table == command.table => {
+                if let Some(initializer) = initializer {
+                    for (record_index, record) in data.records.iter_mut().enumerate() {
+                        if record.contains_key(&command.field.name) {
+                            return Err(migration_error(
+                                "E-TABLE-UNKNOWN-RECORD-FIELD",
+                                format!(
+                                    "record {record_index} already contains member `{}` while the schema does not declare it",
+                                    command.field.name
+                                ),
+                                Some(loaded.path.clone()),
+                                "MIGRATION-006",
+                            ));
+                        }
+                        record.insert(command.field.name.clone(), initializer.clone());
+                    }
+                }
+            }
+            SourceDocument::Schema(_) | SourceDocument::Data(_) | SourceDocument::Type(_) => {}
+        }
+        expected.push((loaded.path.clone(), document));
+    }
+    expected.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(expected)
+}
+
+fn semantic_documents(documents: &ProjectDocuments) -> Vec<(PathBuf, SourceDocument)> {
+    let mut semantics = documents
+        .files
+        .iter()
+        .map(|loaded| (loaded.path.clone(), loaded.document.clone()))
+        .collect::<Vec<_>>();
+    semantics.sort_by(|left, right| left.0.cmp(&right.0));
+    semantics
 }
 
 fn build_resolution_closure(
@@ -320,7 +346,8 @@ fn build_resolution_closure(
     // IF REMOVED: an invalid unrelated Table or type would prevent a safe
     // target transformation even though it cannot affect the patch.
     // EVIDENCE: docs/specs/schema-migration.md; docs/spec-changes/0011-cli-surface-and-schema-migration.md
-    // Regression: unrelated_invalid_type_does_not_block_add_field_resolution.
+    // Regression: unrelated_invalid_type_does_not_block_add_field_resolution;
+    // target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution.
     let mut included = Vec::<LoadedDocument>::new();
     for loaded in &documents.files {
         let include = match &loaded.document {

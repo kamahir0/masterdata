@@ -276,6 +276,88 @@ fn unrelated_invalid_type_does_not_block_add_field_resolution() {
 }
 
 #[test]
+fn target_table_duplicate_primary_key_does_not_block_add_field_resolution() {
+    // Covers MIGRATION-005 and MIGRATION-017: Build Selection constraints are
+    // not Migration success gates when the AddField transformation is resolvable.
+    let snapshot = documents(&[
+        (
+            "schema.yaml",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+        ),
+        (
+            "data.yaml",
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n  - id: 1\n",
+        ),
+    ]);
+
+    let result = dry_run_migration(
+        &snapshot,
+        &add_field("item", 1, "label", "string", Some(string("ok"))),
+    )
+    .expect("duplicate PK values are unrelated to AddField planning");
+
+    assert_eq!(result.plan.affected_record_count, 2);
+    let data = result
+        .transformed_documents
+        .files
+        .iter()
+        .find(|loaded| matches!(&loaded.document, SourceDocument::Data(_)))
+        .expect("transformed data");
+    assert_eq!(data.source.matches("    label: \"ok\"\n").count(), 2);
+}
+
+#[test]
+fn target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution() {
+    // Covers MIGRATION-005 and MIGRATION-017: an existing value diagnostic on
+    // another field remains outside the AddField success gate when the source
+    // can still be parsed, located, patched, and postcondition-checked safely.
+    let snapshot = documents(&[
+        (
+            "schema.yaml",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: amount\n    type: int\nprimaryKey:\n  fields: [id]\n",
+        ),
+        (
+            "data.yaml",
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    amount: \"not-an-int\"\n",
+        ),
+    ]);
+
+    let result = dry_run_migration(
+        &snapshot,
+        &add_field("item", 2, "label", "string", Some(string("ok"))),
+    )
+    .expect("unrelated target record value diagnostics must not block AddField");
+
+    let data = result
+        .transformed_documents
+        .files
+        .iter()
+        .find(|loaded| matches!(&loaded.document, SourceDocument::Data(_)))
+        .expect("transformed data");
+    assert!(data.source.contains("    amount: \"not-an-int\"\n"));
+    assert!(data.source.contains("    label: \"ok\"\n"));
+}
+
+#[test]
+fn add_field_rejects_existing_record_member_with_target_name() {
+    // Covers MIGRATION-006 and MIGRATION-017: a record member that directly
+    // collides with the new field is operation-relevant and must fail closed.
+    let schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n";
+    let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    label: legacy\n";
+    let snapshot = documents(&[("schema.yaml", schema), ("data.yaml", data)]);
+    let original_snapshot = snapshot.clone();
+
+    let error = dry_run_migration(
+        &snapshot,
+        &add_field("item", 1, "label", "string", Some(string("ok"))),
+    )
+    .expect_err("existing member with the target name must fail closed");
+
+    assert_eq!(error.diagnostic.code, "E-TABLE-UNKNOWN-RECORD-FIELD");
+    assert_eq!(snapshot, original_snapshot);
+}
+
+#[test]
 fn add_field_rejects_key_collision_without_source_change() {
     // Covers MIGRATION-006 and SCHEMA-KEY-001.
     let schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n";

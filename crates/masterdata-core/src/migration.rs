@@ -569,6 +569,7 @@ fn plan_schema_patch(
     // EVIDENCE: docs/specs/schema-migration.md; docs/adr/0001-yaml-is-source-of-truth.md
     // Regression: migration_add_field_plan_is_deterministic_and_source_preserving.
     let lines = source_lines(source);
+    let literal_scalar_content = literal_block_scalar_content_lines(&lines);
     let Some(fields_line) = find_top_level_key(&lines, "fields") else {
         let insertion = append_at_end(
             source,
@@ -620,6 +621,7 @@ fn plan_schema_patch(
             sequence.items[sequence.items.len() - 1],
             region_end,
             sequence.indent,
+            &literal_scalar_content,
         ),
         source.len(),
     );
@@ -647,6 +649,7 @@ fn plan_data_patches(
     initializer: &Value,
 ) -> Result<Vec<MigrationPatch>> {
     let lines = source_lines(source);
+    let literal_scalar_content = literal_block_scalar_content_lines(&lines);
     let Some(records_line) = find_top_level_key(&lines, "records") else {
         return Err(migration_error(
             "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
@@ -697,6 +700,7 @@ fn plan_data_patches(
                 sequence.items[index],
                 next_boundary,
                 sequence.indent,
+                &literal_scalar_content,
             ),
             source.len(),
         );
@@ -1259,10 +1263,15 @@ fn sequence_append_boundary(
     item: usize,
     boundary: usize,
     sequence_indent: usize,
+    literal_scalar_content: &[bool],
 ) -> usize {
     let mut index = item + 1;
     while index < boundary {
         let line = lines[index].text;
+        if literal_scalar_content[index] {
+            index += 1;
+            continue;
+        }
         if is_ignorable_line(line) {
             let next_significant = ((index + 1)..boundary)
                 .find(|candidate| !is_ignorable_line(lines[*candidate].text));
@@ -1280,6 +1289,36 @@ fn sequence_append_boundary(
         index += 1;
     }
     boundary
+}
+
+fn literal_block_scalar_content_lines(lines: &[SourceLine<'_>]) -> Vec<bool> {
+    // WHY: A `#...` line indented inside a bare literal block scalar is scalar
+    // data, so it must not be mistaken for a comment that marks an AddField
+    // append boundary.
+    // IF REMOVED: AddField can insert a record member into the scalar body,
+    // corrupting the transformed semantic snapshot or its source placement.
+    // EVIDENCE: docs/specs/yaml-subset.md (YAML-SUBSET-015); docs/specs/schema-migration.md (MIGRATION-006, MIGRATION-014, MIGRATION-015)
+    // Regression: add_field_appends_after_literal_block_scalar_hash_content.
+    let mut content_lines = vec![false; lines.len()];
+    let mut parent_indent = None;
+    for (index, line) in lines.iter().enumerate() {
+        if let Some(indent) = parent_indent {
+            if line.text.trim().is_empty() || yaml_indent(line.text) > indent {
+                content_lines[index] = true;
+                continue;
+            }
+            parent_indent = None;
+        }
+
+        let code = strip_yaml_comment(line.text);
+        if code.trim().is_empty() {
+            continue;
+        }
+        if mapping_entry(code).is_some_and(|entry| entry.raw_value.trim() == "|") {
+            parent_indent = Some(yaml_indent(line.text));
+        }
+    }
+    content_lines
 }
 
 fn mapping_entry(line: &str) -> Option<ParsedMappingEntry<'_>> {

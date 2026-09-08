@@ -161,6 +161,66 @@ records:
 }
 
 #[test]
+fn add_field_appends_after_literal_block_scalar_hash_content() {
+    // Covers MIGRATION-006, MIGRATION-014, and MIGRATION-015: `#...` inside
+    // a valid literal block scalar is record data, not a comment or boundary.
+    let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 1
+    name: note
+    type: string
+
+primaryKey:
+  fields: [id]
+"#;
+    let data = r#"kind: data
+table: item
+records:
+  - id: 1
+    note: |
+      # literal content, not a comment
+"#;
+    let snapshot = documents(&[("schema.yaml", schema), ("data.yaml", data)]);
+
+    let result = dry_run_migration(
+        &snapshot,
+        &add_field("item", 2, "label", "string", Some(string("ok"))),
+    )
+    .expect("AddField must preserve literal block scalar content");
+
+    let transformed_data = result
+        .transformed_documents
+        .files
+        .iter()
+        .find(|loaded| matches!(&loaded.document, SourceDocument::Data(_)))
+        .expect("transformed data");
+    assert_eq!(
+        transformed_data.source,
+        r#"kind: data
+table: item
+records:
+  - id: 1
+    note: |
+      # literal content, not a comment
+    label: "ok"
+"#
+    );
+
+    let SourceDocument::Data(data) = &transformed_data.document else {
+        panic!("expected transformed data document");
+    };
+    assert_eq!(
+        data.records[0].get("note"),
+        Some(&string("# literal content, not a comment\n"))
+    );
+    assert_eq!(data.records[0].get("label"), Some(&string("ok")));
+}
+
+#[test]
 fn add_field_requires_explicit_initializer_when_records_exist() {
     // Covers MIGRATION-006 initializer semantics.
     let snapshot = documents(&[

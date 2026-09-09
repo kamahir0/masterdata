@@ -1342,8 +1342,7 @@ fn bare_literal_block_scalar_header_indent(line: &str) -> Option<usize> {
     }
 
     let mapping_value = mapping_entry(code).is_some_and(|entry| entry.raw_value.trim() == "|");
-    let sequence_value =
-        sequence_item_parts(code).is_some_and(|(_, value)| value.trim() == "|");
+    let sequence_value = sequence_item_parts(code).is_some_and(|(_, value)| value.trim() == "|");
     (mapping_value || sequence_value).then(|| yaml_indent(line))
 }
 

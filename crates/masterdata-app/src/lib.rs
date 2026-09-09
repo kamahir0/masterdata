@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 
 use masterdata_codegen_csharp::{CSharpGenerationPlan, CSharpGenerator};
 use masterdata_core::{
-    BuildPlan, BuildSelection, ErrorKind, InitOptions, MasterdataError, NativeProjectService,
-    ProjectInfo, Result, ValidationReport,
+    BuildPlan, BuildSelection, ErrorKind, InitOptions, MasterdataError, MigrationCommand,
+    MigrationCommitFailure, MigrationCommitFailureInjection, MigrationCommitReport,
+    MigrationDryRun, NativeProjectService, ProjectDocuments, ProjectInfo, Result, ValidationReport,
 };
 use masterdata_dotnet::{
     BridgeSmokeReport, DotnetBridge, MasterMemoryBuildReport, MasterMemoryBuildRequest,
@@ -109,6 +110,54 @@ impl NativeApplicationService {
     ) -> Result<BuildPlan> {
         self.project
             .prepare_build_with_selection(explicit_project, current_dir, selection)
+    }
+
+    pub fn prepare_migration(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        command: &MigrationCommand,
+    ) -> Result<MigrationDryRun> {
+        self.project
+            .prepare_migration(explicit_project, current_dir, command)
+    }
+
+    /// Commit a prepared AddField source transformation through the shared
+    /// Native Application Service. This does not build or publish artifacts.
+    pub fn commit_migration(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        command: &MigrationCommand,
+    ) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
+        self.project
+            .commit_migration(explicit_project, current_dir, command)
+    }
+
+    #[doc(hidden)]
+    pub fn commit_migration_with_failures(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        command: &MigrationCommand,
+        injections: &[MigrationCommitFailureInjection],
+    ) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
+        self.project.commit_migration_with_failures(
+            explicit_project,
+            current_dir,
+            command,
+            injections,
+        )
+    }
+
+    pub fn commit_migration_snapshot(
+        &self,
+        project: &masterdata_core::Project,
+        source_snapshot: &ProjectDocuments,
+        dry_run: &MigrationDryRun,
+    ) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
+        self.project
+            .commit_migration_snapshot(project, source_snapshot, dry_run)
     }
 
     /// Validate the existing canonical artifact set using only project

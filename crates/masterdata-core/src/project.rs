@@ -18,6 +18,12 @@ pub struct Project {
     root: PathBuf,
     config_path: PathBuf,
     config: ProjectConfig,
+    // WHY: MIGRATION-016 compares the exact configuration bytes at commit
+    // time; the parsed TOML model would discard formatting-only edits.
+    // IF REMOVED: a stale migration plan could use an old source-root or
+    // migration-relevant configuration snapshot after the file was edited.
+    // EVIDENCE: docs/specs/schema-migration.md; Regression: stale_project_config_rejects_without_mutation.
+    config_source: Vec<u8>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -136,6 +142,7 @@ impl Project {
             root,
             config_path,
             config,
+            config_source: content.into_bytes(),
         })
     }
 
@@ -145,6 +152,10 @@ impl Project {
 
     pub fn config_path(&self) -> &Path {
         &self.config_path
+    }
+
+    pub(crate) fn config_source(&self) -> &[u8] {
+        &self.config_source
     }
 
     pub fn config(&self) -> &ProjectConfig {

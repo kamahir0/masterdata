@@ -64,6 +64,10 @@ pub struct MigrationPlan {
     pub target_table: String,
     pub field: FieldDefinition,
     pub initializer: Option<Value>,
+    /// Canonical source files whose exact bytes were used for resolution and
+    /// postcondition planning. The complete source-file set is checked
+    /// separately by the commit boundary.
+    pub source_inputs: Vec<PathBuf>,
     pub destructive: bool,
     pub affected_files: Vec<MigrationFilePlan>,
     pub affected_record_count: usize,
@@ -201,6 +205,12 @@ fn prepare_add_field(
     let transformed_documents = apply_file_plans(documents, &file_plans)?;
     let (transformed_closure, _post_type_system) =
         resolve_target_snapshot(&transformed_documents, &command.table, &command.field)?;
+    let source_inputs = closure_documents
+        .files
+        .iter()
+        .chain(transformed_closure.files.iter())
+        .map(|loaded| loaded.path.clone())
+        .collect::<BTreeSet<_>>();
     if semantic_documents(&transformed_closure) != expected_semantics {
         return Err(migration_error(
             "E-MIGRATION-ADD-FIELD-POSTCONDITION",
@@ -218,6 +228,7 @@ fn prepare_add_field(
         target_table: command.table.clone(),
         field: command.field.clone(),
         initializer,
+        source_inputs: source_inputs.into_iter().collect(),
         destructive: false,
         affected_files: file_plans,
         affected_record_count,

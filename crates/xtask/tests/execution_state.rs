@@ -85,6 +85,15 @@ fn development_state_is_well_formed_and_discoverable() {
         other => panic!("unknown development stage: {other}"),
     }
 
+    assert!(
+        !state.contains("Next actor:"),
+        "Development State must not persist actor routing"
+    );
+    assert!(
+        !state.contains("Recommended lane:"),
+        "Development State must not persist split-mode lane routing"
+    );
+
     assert_file_exists(&root, "docs/execution-workflow.md");
     let agents = fs::read_to_string(root.join("AGENTS.md")).expect("read AGENTS.md");
     assert!(agents.contains("docs/execution-state.md"));
@@ -111,6 +120,12 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "### `implementation-ready`",
         "### `verification-ready`",
         "### `correction-ready`",
+        "## Split-mode routing projection",
+        "実装側を動かすのは`implementation-ready`と`correction-ready`、それ以外は本流側",
+        "現在: <Stage>",
+        "次のactivity: <Stageから導出したactivity>",
+        "2-agent運用: <本流側 | 実装側>",
+        "HumanへStage名だけを返してlaneを推測させてはならない",
         "## Pre-action freshness gate",
         "## Post-action report verification",
         "current owner branchのremote HEAD",

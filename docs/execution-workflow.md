@@ -216,6 +216,35 @@ Humanから「進めて」等の短い指示を受けたagentはPre-action fresh
 
 agentがdelegation capabilityを持たない場合、stageに対応するactivityを自分で安全に実行できるなら、そのこと自体を理由にHumanへhandoff作業を要求しない。
 
+## Split-mode routing projection
+
+Development Stateはactor-neutralなauthorityのまま維持し、`mainline` / `implementation`等のagent laneを保存しない。2-agent運用で「次にどちらを動かすか」は、freshな`Stage`から導出するHuman向けprojectionであり、durable stateやassigneeではない。
+
+標準の2-agent split modeでは次のroutingを使用する。
+
+| Development Stage | 次のactivity | 2-agent運用で推奨するlane |
+| --- | --- | --- |
+| `designing` | design / specificationを進める | 本流側 |
+| `decision-required` | Human decisionを整理・提示し、回答後にcanonical authorityへ反映する | 本流側 |
+| `implementation-ready` | Current Objectiveを実装してcandidate化する | 実装側 |
+| `verification-ready` | recorded Candidateをfinal verificationする | 本流側 |
+| `correction-ready` | recorded Blockingだけを修正して新candidate化する | 実装側 |
+| `objective-complete` | 次priority候補を比較・推薦しHuman decisionへ戻る | 本流側 |
+
+したがって標準split modeでは、**実装側を動かすのは`implementation-ready`と`correction-ready`、それ以外は本流側**と一目で判断できる。このmappingはcost / capabilityを分離した運用のdefault projectionであり、single-agent運用では無視して同じagentがStageに対応するactivityを継続してよい。
+
+Humanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合、およびrepository activity後のstatus / completion reportでは、agentはfreshなDevelopment Stateから少なくとも次を明示する。
+
+```text
+現在: <Stage>
+次のactivity: <Stageから導出したactivity>
+2-agent運用: <本流側 | 実装側>
+```
+
+`decision-required`ではこれに加えて具体的なHuman decisionを提示する。`Candidate`、Blocking、CI等の重要なcurrent contextは必要に応じて併記してよいが、HumanへStage名だけを返してlaneを推測させてはならない。
+
+このprojectionを`docs/execution-state.md`へ`Next actor`、`Recommended lane`、agent名等として永続化してはならない（MUST NOT）。Stage semanticsがroutingの唯一のsourceであり、agent topologyをDevelopment Stateへ逆流させない。
+
 ## Post-action report verification
 
 repository write、stage transition、final verification、candidate作成を行ったagentは、Humanへのcompletion / status reportを書く直前に、action開始前に読んだstateやconversation中の記憶を再利用してはならない（MUST NOT）。

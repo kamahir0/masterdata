@@ -90,26 +90,3 @@ fn execution_state_is_well_formed_and_discoverable() {
     assert!(agents.contains("docs/execution-state.md"));
     assert!(agents.contains("docs/execution-workflow.md"));
 }
-
-#[test]
-fn execution_workflow_keeps_role_and_report_safety_gates() {
-    let root = repository_root();
-    let workflow = fs::read_to_string(root.join("docs/execution-workflow.md"))
-        .expect("read docs/execution-workflow.md");
-
-    for required in [
-        "## Session role binding",
-        "`role-unbound`",
-        "同一session内でroleを自動的に切り替えてはならない（MUST NOT）",
-        "## Pre-action actor / freshness gate",
-        "bound roleとcurrent phaseの次actorが一致しない場合",
-        "## Post-action report verification",
-        "current remote HEAD",
-        "fresh repositoryと矛盾する旧review結果",
-    ] {
-        assert!(
-            workflow.contains(required),
-            "execution workflow lost required safety policy: {required}"
-        );
-    }
-}

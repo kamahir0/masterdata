@@ -1292,33 +1292,59 @@ fn sequence_append_boundary(
 }
 
 fn literal_block_scalar_content_lines(lines: &[SourceLine<'_>]) -> Vec<bool> {
-    // WHY: A `#...` line indented inside a bare literal block scalar is scalar
-    // data, so it must not be mistaken for a comment that marks an AddField
-    // append boundary.
-    // IF REMOVED: AddField can insert a record member into the scalar body,
-    // corrupting the transformed semantic snapshot or its source placement.
-    // EVIDENCE: docs/specs/yaml-subset.md (YAML-SUBSET-015); docs/specs/schema-migration.md (MIGRATION-006, MIGRATION-014, MIGRATION-015)
-    // Regression: add_field_appends_after_literal_block_scalar_hash_content.
+    // WHY: Under the supported block collections, a bare literal scalar starts
+    // either as a mapping value (`key: |`, including `- key: |`) or directly as
+    // a sequence value (`- |`). The first non-empty body line fixes the scalar
+    // content indentation; only lines at or beyond that indentation (plus blank
+    // lines) belong to the scalar. `#...` inside that region is data, while a
+    // shallower `#...` line is outer source presentation.
+    // IF REMOVED: AddField can insert a record member into a valid scalar body,
+    // or move a trailing outer comment across the appended record member.
+    // EVIDENCE: docs/specs/yaml-subset.md (YAML-SUBSET-007, YAML-SUBSET-015); docs/specs/schema-migration.md (MIGRATION-006, MIGRATION-014, MIGRATION-015)
+    // Regression: add_field_appends_after_literal_block_scalar_hash_content;
+    // add_field_appends_after_sequence_literal_block_scalar_hash_content;
+    // add_field_keeps_shallower_comment_outside_sequence_literal_scalar.
     let mut content_lines = vec![false; lines.len()];
-    let mut parent_indent = None;
+    let mut active_scalar: Option<(usize, Option<usize>)> = None;
     for (index, line) in lines.iter().enumerate() {
-        if let Some(indent) = parent_indent {
-            if line.text.trim().is_empty() || yaml_indent(line.text) > indent {
+        if let Some((header_indent, content_indent)) = active_scalar {
+            if line.text.trim().is_empty() {
                 content_lines[index] = true;
                 continue;
             }
-            parent_indent = None;
+
+            let indent = yaml_indent(line.text);
+            match content_indent {
+                Some(content_indent) if indent >= content_indent => {
+                    content_lines[index] = true;
+                    continue;
+                }
+                None if indent > header_indent => {
+                    content_lines[index] = true;
+                    active_scalar = Some((header_indent, Some(indent)));
+                    continue;
+                }
+                _ => active_scalar = None,
+            }
         }
 
-        let code = strip_yaml_comment(line.text);
-        if code.trim().is_empty() {
-            continue;
-        }
-        if mapping_entry(code).is_some_and(|entry| entry.raw_value.trim() == "|") {
-            parent_indent = Some(yaml_indent(line.text));
+        if let Some(header_indent) = bare_literal_block_scalar_header_indent(line.text) {
+            active_scalar = Some((header_indent, None));
         }
     }
     content_lines
+}
+
+fn bare_literal_block_scalar_header_indent(line: &str) -> Option<usize> {
+    let code = strip_yaml_comment(line);
+    if code.trim().is_empty() {
+        return None;
+    }
+
+    let mapping_value = mapping_entry(code).is_some_and(|entry| entry.raw_value.trim() == "|");
+    let sequence_value =
+        sequence_item_parts(code).is_some_and(|(_, value)| value.trim() == "|");
+    (mapping_value || sequence_value).then(|| yaml_indent(line))
 }
 
 fn mapping_entry(line: &str) -> Option<ParsedMappingEntry<'_>> {

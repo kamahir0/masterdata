@@ -19,6 +19,7 @@ use masterdata_dotnet::{
 };
 use tempfile::TempDir;
 
+pub mod migration;
 mod publish;
 mod receipt;
 

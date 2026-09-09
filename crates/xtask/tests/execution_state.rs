@@ -39,50 +39,50 @@ fn is_commit_sha(value: &str) -> bool {
 fn assert_file_exists(root: &Path, relative: &str) {
     assert!(
         root.join(relative).is_file(),
-        "required execution workflow file is missing: {relative}"
+        "required development workflow file is missing: {relative}"
     );
 }
 
 #[test]
-fn execution_state_is_well_formed_and_discoverable() {
+fn development_state_is_well_formed_and_discoverable() {
     let root = repository_root();
     let state_path = root.join("docs/execution-state.md");
     let state = fs::read_to_string(&state_path).expect("read docs/execution-state.md");
 
-    assert_eq!(state.lines().next(), Some("# Execution State"));
-    let phase = field(&state, "Phase");
+    assert_eq!(state.lines().next(), Some("# Development State"));
+    let stage = field(&state, "Stage");
     let candidate = field(&state, "Candidate");
     let blocking = section(&state, "Blocking findings");
     let human_decision = section(&state, "Human decision needed");
 
-    match phase {
-        "implementation-required" => {
+    match stage {
+        "designing" | "implementation-ready" => {
             assert_eq!(candidate, "none");
             assert_eq!(blocking, "None.");
             assert_eq!(human_decision, "None.");
         }
-        "review-required" | "objective-complete" => {
+        "verification-ready" | "objective-complete" => {
             assert!(
                 is_commit_sha(candidate),
-                "{phase} requires an exact candidate SHA"
+                "{stage} requires an exact candidate SHA"
             );
             assert_eq!(blocking, "None.");
             assert_eq!(human_decision, "None.");
         }
-        "corrective-required" => {
+        "correction-ready" => {
             assert!(
                 is_commit_sha(candidate),
-                "corrective-required requires the reviewed candidate SHA"
+                "correction-ready requires the reviewed candidate SHA"
             );
             assert_ne!(blocking, "None.");
             assert_eq!(human_decision, "None.");
         }
-        "human-decision-required" => {
+        "decision-required" => {
             assert!(candidate == "none" || is_commit_sha(candidate));
             assert_eq!(blocking, "None.");
             assert_ne!(human_decision, "None.");
         }
-        other => panic!("unknown execution phase: {other}"),
+        other => panic!("unknown development stage: {other}"),
     }
 
     assert_file_exists(&root, "docs/execution-workflow.md");
@@ -92,27 +92,40 @@ fn execution_state_is_well_formed_and_discoverable() {
 }
 
 #[test]
-fn execution_workflow_keeps_fixed_role_and_report_safety_gates() {
+fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
     let root = repository_root();
     let workflow = fs::read_to_string(root.join("docs/execution-workflow.md"))
         .expect("read docs/execution-workflow.md");
 
     for required in [
-        "## Session role authority",
-        "session roleを `docs/execution-state.md` のphase",
-        "推論してはならない（MUST NOT）",
-        "`role-unbound`",
-        "### Role-aware launcher contract",
-        "Humanがrepositoryのcurrent phaseを読み、本流と実装のどちらを起動すべきか判断することを通常操作として要求してはならない",
-        "## Pre-action actor / freshness gate",
-        "fixed roleとcurrent phaseの次actorが一致しない場合",
+        "## Core principle: state describes work, not agent identity",
+        "同じHuman-triggered agentがdesign / implementation / verification / correctionを連続して行ってよい",
+        "delegationはexecution strategy",
+        "## Implementation readiness gate",
+        "Humanが実装開始時期を手作業で見抜くことを前提にしない",
+        "### `implementation-ready`",
+        "### `verification-ready`",
+        "### `correction-ready`",
+        "## Pre-action freshness gate",
         "## Post-action report verification",
         "current remote HEAD",
         "fresh repositoryと矛盾する旧review結果",
     ] {
         assert!(
             workflow.contains(required),
-            "execution workflow lost required safety policy: {required}"
+            "development workflow lost required policy: {required}"
+        );
+    }
+
+    for forbidden in [
+        "role-aware launcher",
+        "role-unbound",
+        "fixed `main-reviewer`",
+        "fixed `implementation-agent`",
+    ] {
+        assert!(
+            !workflow.contains(forbidden),
+            "development workflow still encodes fixed agent topology: {forbidden}"
         );
     }
 }

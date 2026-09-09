@@ -7,32 +7,29 @@ description: Review implementation diffs for specification conformance, regressi
 
 ## 目的と責務
 
-このskillは、実装diffが既存のauthorityとevidenceに照らして安全かを確認する、final implementation reviewである。
-`review-spec`が「仕様は正しいか、approval可能か」を確認するのに対し、`review-code`は「実装diffはその仕様に
-適合し、regressionとrationaleの鮮度が保たれているか」を確認する。
+このskillは、実装diffが既存のauthorityとevidenceに照らして安全かを確認するimplementation reviewである。
+`review-spec`が「仕様は正しいか、approval可能か」を確認するのに対し、`review-code`は「実装diffはその仕様に適合し、regressionとrationaleの鮮度が保たれているか」を確認する。
 
-`review-code`はcanonical specificationを変更しない。Open Questionを解決せず、未定義のobservable behaviorを
-実装で発明しない。Approved specにbehaviorが定義されているのに実装が違反する場合はbug findingとして扱う。
-Approved specからbehaviorを選択しなければならない場合は`Specification Gap`として`refine-spec`へ戻す。
+`review-code`はcanonical specificationを変更しない。Open Questionを解決せず、未定義のobservable behaviorを実装で発明しない。Approved specにbehaviorが定義されているのに実装が違反する場合はbug findingとして扱う。Approved specからbehaviorを選択しなければならない場合は`Specification Gap`として`refine-spec`へ戻す。
 
-`review-code`はimplementation agentのself-reviewと、Human/main reviewerによるexternal final reviewの両方で使用する。
-implementation agentはfirst draftを渡す前にこのskillで自分のdiffをreviewし、Approved authorityの範囲内で直せる`Blocking` findingを
-同じtask内で解消する。external reviewへ渡す対象は、required checksとscope確認まで済んだfinal candidateである。
+`review-code`はimplementation中のself-reviewと、Development Stateが`verification-ready`になったfinal verificationの両方で使用する。self-reviewではfirst draftをfinal candidateへ閉じるため、Approved authorityの範囲内で直せる`Blocking` findingを同じtask内で解消する。
+
+final verificationは特定の`main-reviewer` roleを要求しない。同じagentが行う場合はfreshness gate後にDevelopment Stateのexact Candidate SHAを読み、implementation中の私的な意図やconversation上の自己評価をevidenceにせず、確定済みCandidate diffを別passとしてreviewする。risk / capability上有益なら別agentへdelegateしてよい。
 
 ## 必須のinput
 
 変更範囲に応じて、次をdiff中心に読む。
 
 - changed filesとimplementation diff
+- `verification-ready` / `correction-ready`の場合はDevelopment Stateに記録されたexact Candidate SHA
 - 関連する`Approved` / `Implemented` specificationとRequirement ID
+- Current Objectiveのcompletion boundary / non-scope
 - 関連test、fixture、goldenまたはbenchmark
 - touched codeのnearby rationale comment
 - 参照されたADR、RFC、issue/reference、external/platform constraint
 - 必要なarchitecture boundary（core、application、CLI、GUI、codegen、.NET adapter）
 
-repository全体を無制限に探索しない。変更から合理的にdiscoverableな関連範囲を確認する。ただし、
-unusual codeの削除・簡略化・移動では、nearby rationale、Requirement ID、regression test、ADR/RFC、benchmark、
-platform/library/toolchain constraintを検索してから判断する。
+repository全体を無制限に探索しない。変更から合理的にdiscoverableな関連範囲を確認する。ただし、unusual codeの削除・簡略化・移動では、nearby rationale、Requirement ID、regression test、ADR/RFC、benchmark、platform/library/toolchain constraintを検索してから判断する。
 
 ## Rationale-sensitiveな変更
 
@@ -48,9 +45,7 @@ platform/library/toolchain constraintを検索してから判断する。
 - optimizationまたはworkaroundの変更
 - simplify、deduplicate、replace、ordering、timing、filesystem、concurrencyの変更
 
-whitespace、formatting、mechanical renameなど意味的に無関係な変更を自動的にblockしてはならない（MUST NOT）。
-すべてのbranch、clone、allocationにcommentを要求してはならない。対象は、straightforwardな実装から意図的に
-外れ、理由を失うと将来の変更判断を誤らせるcodeである。
+whitespace、formatting、mechanical renameなど意味的に無関係な変更を自動的にblockしてはならない（MUST NOT）。すべてのbranch、clone、allocationにcommentを要求してはならない。対象は、straightforwardな実装から意図的に外れ、理由を失うと将来の変更判断を誤らせるcodeである。
 
 再検証結果は次のいずれかにする。
 
@@ -58,18 +53,17 @@ whitespace、formatting、mechanical renameなど意味的に無関係な変更�
 - `Invariant/reason changed`: protected invariantまたは理由を更新し、evidenceも更新・再確認する。
 - `Reason no longer applies`: invariantが消えた、または別のevidenceで保護されていることを確認して削除する。
 
-testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを証明し、Commentはimplementation shapeがなぜ
-存在するかを説明する。参照先のtestが通っていても、古い理由を残してはならない（MUST NOT）。
+testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを証明し、Commentはimplementation shapeがなぜ存在するかを説明する。参照先のtestが通っていても、古い理由を残してはならない（MUST NOT）。
 
 ## Review checklist
 
 ### Specification conformance
 
 - implementationが関連する`Approved` / `Implemented` behaviorに適合しているか。
-- `Draft` / `Proposed` spec、conversation、current code behaviorを未承認のimplementation authorityとして
-  扱っていないか。
+- `Draft` / `Proposed` spec、conversation、current code behaviorを未承認のimplementation authorityとして扱っていないか。
 - Requirement ID referenceが実際に対象behaviorを指し、Diagnostic Codeと混同されていないか。
 - Approved specで答えられないobservable behaviorを勝手に選択していないか。
+- Current Objectiveのcompletion boundaryを満たし、explicit non-scopeへscope creepしていないか。
 
 ### Regression and evidence
 
@@ -93,8 +87,7 @@ testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを�
 
 - local commentをproduct specificationの代わりにしていないか。
 - local rationaleを新しいproduct requirementへ自動昇格していないか。
-- Specはobservable behavior、ADRはcross-cutting architecture、Testはregression evidence、Commentはlocal
-  implementation rationaleというowner分離を守っているか。
+- Specはobservable behavior、ADRはcross-cutting architecture、Testはregression evidence、Commentはlocal implementation rationaleというowner分離を守っているか。
 - core、application、CLI、GUI、codegen、.NET adapterのboundaryを越えてdomain semanticsを重複させていないか。
 
 ## 構造参照checkとの分離
@@ -106,39 +99,31 @@ testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを�
 - `Regression: test_identifier`がsource内のcomment外に存在すること
 - `docs/...`として明示されたrepository-relative documentation pathが存在すること
 
-このcheckは自由記述commentの意味、WHYの正しさ、failure modeの鮮度、workaroundの必要性、benchmarkの妥当性を
-判定しない。独自の`@rationale`等のcomment parser DSLを導入しない。構造参照が曖昧なら自動checkを拡張せず、
-このskillのreview findingとして扱う。
+このcheckは自由記述commentの意味、WHYの正しさ、failure modeの鮮度、workaroundの必要性、benchmarkの妥当性を判定しない。独自の`@rationale`等のcomment parser DSLを導入しない。構造参照が曖昧なら自動checkを拡張せず、このskillのreview findingとして扱う。
 
 ## Finding classification
 
-- `Blocking`: mergeするとknown correctness、spec、compatibility、architecture、またはprotected invariantに
-  違反する。
+- `Blocking`: mergeするとknown correctness、spec、compatibility、architecture、またはprotected invariantに違反する。
 - `Non-blocking`: approvalを妨げないeditorialまたはmaintainability concern。これだけを理由に`Ready to merge: No`としてはならない。
 - `Rationale Gap`: non-obvious implementationがあるが、理由を安全に復元できない。
 - `Stale Rationale`: commentがcurrent implementation、failure mode、またはcurrent evidenceと一致しない。
 - `Evidence Gap`: rationaleの主張を支えるtest、spec、ADR、benchmark、またはexternal referenceが不足・破損している。
 - `Specification Gap`: implementationに必要なobservable behaviorをApproved specから選べない。
 
-`Stale Rationale`が将来のsimplificationや削除を誤らせる場合は`Blocking`でも報告する。単なる誤字や軽微な
-editorial issueは`Non-blocking`とする。理由が不明なままcommentを書き換えて新しいreasonを発明してはならない。
+`Stale Rationale`が将来のsimplificationや削除を誤らせる場合は`Blocking`でも報告する。単なる誤字や軽微なeditorial issueは`Non-blocking`とする。理由が不明なままcommentを書き換えて新しいreasonを発明してはならない。
 
 ## Severity calibrationとmerge readiness
 
-reviewの目的は、既知のcorrectness、contract、compatibility、data safety、architecture boundary、regression、rationale/evidence
-riskをmerge前に止めることであり、reviewerの好みで実装を100点まで磨くことではない。
+reviewの目的は、既知のcorrectness、contract、compatibility、data safety、architecture boundary、regression、rationale/evidence riskをmerge前に止めることであり、reviewerの好みで実装を100点まで磨くことではない。
 
-- minor naming preference、optional refactor、minor readability suggestion、editorial cleanup、future maintainability improvementは、
-  correctness等の実質的なriskがなければ`Non-blocking`として報告する。
-- correctness、spec conformance、compatibility、data safety、architecture boundary、またはprotected invariantに実質的なriskが
-  あるものを`Non-blocking`へ格下げしてはならない。
+- minor naming preference、optional refactor、minor readability suggestion、editorial cleanup、future maintainability improvementは、correctness等の実質的なriskがなければ`Non-blocking`として報告する。
+- correctness、spec conformance、compatibility、data safety、architecture boundary、またはprotected invariantに実質的なriskがあるものを`Non-blocking`へ格下げしてはならない。
 - `Blocking`がなく、残る指摘が`Non-blocking`だけなら、必要に応じて指摘を報告したうえで`Ready to merge: Yes`としてよい。
 - `Blocking`がある場合だけ、原則としてcorrective implementation passを要求する。
 
 ## Corrective pass protocol
 
-初回external reviewで`Blocking` findingが残った場合、次のimplementation passは具体的なfindingを入力とするdiff-directed correction
-でなければならない。
+final verificationで`Blocking` findingが残った場合、次のimplementation passは具体的なfindingを入力とするdiff-directed correctionでなければならない。
 
 ```text
 Base: previous implementation commit
@@ -147,10 +132,17 @@ Scope: those findingsの解消
 Do not: Approved objective全体の再設計、unrelated refactor、new product semantics、optional cleanup
 ```
 
-corrective agentは、blocking fix、focused tests、self-review、required validation、scope確認、commit / pushまでを閉じる。
-修正にSpecification Gap、Approved authority conflict、Human Approval、unknown destructive semantics、またはunrecoverable
-rationaleが必要な場合は、semantic decisionを発明せず、明確なGap reportを返す。corrective passを新規implementation taskと同じ
-巨大な探索・再設計へ戻してはならない。
+correction activityを実行するagentは、blocking fix、focused tests、self-review、required validation、scope確認、commit / pushまでを閉じる。修正にSpecification Gap、Approved authority conflict、Human Approval、unknown destructive semantics、またはunrecoverable rationaleが必要な場合は、semantic decisionを発明せず、明確なGap reportを返す。corrective passを新規implementation taskと同じ巨大な探索・再設計へ戻してはならない。
+
+## Final verificationとDevelopment State
+
+Development Stateが`verification-ready`の場合、このskillのVerdictに応じて次のstageへ遷移する。
+
+- `Blocking`なし -> `objective-complete`
+- Approved authorityの範囲内で修正可能な`Blocking`あり -> `correction-ready`へ遷移し、concrete findingsをdurably記録する
+- new semantic / product / compatibility decisionまたはHuman Approvalが必要 -> `decision-required`へ遷移し、必要なdecisionだけを記録する
+
+self-reviewとしてこのskillを使っている途中は、final candidateになる前の一時findingをDevelopment Stateへ逐次記録する必要はない。Approved authority内で安全に直せるBlockingは同じimplementation work package内で修正する。
 
 ## 必須のreview report
 
@@ -185,17 +177,15 @@ boundary violationの有無。
 
 ### Findings
 
-severity付きで`Blocking`、`Non-blocking`、`Rationale Gap`、`Stale Rationale`、`Evidence Gap`、
-`Specification Gap`を分類する。空なら`None identified`と書く。
+severity付きで`Blocking`、`Non-blocking`、`Rationale Gap`、`Stale Rationale`、`Evidence Gap`、`Specification Gap`を分類する。空なら`None identified`と書く。
 
 ### Verdict
 
-`Ready to merge: Yes` または `Ready to merge: No`。ただしこのskillはspec statusを変更せず、semantic gapを
-自動修正しない。
+`Ready to merge: Yes` または `Ready to merge: No`。ただしこのskillはspec statusを変更せず、semantic gapを自動修正しない。
 
 ## 通常のcompletion flow
 
-`implement-spec`またはApproved specに対するbug fixでは、次の順で実行する。
+`implement-spec`またはApproved specに対するbug fixでは、implementation中のself-reviewを次の順で実行する。
 
 ```text
 implementation completed
@@ -208,8 +198,7 @@ implementation completed
         -> cargo xtask check-all
         -> diff / scope self-review
         -> commit / push
+        -> Development State: verification-ready
 ```
 
-tests passだけ、またはreferenceが存在するだけでreviewを省略してはならない。external reviewerに渡すのはこのself-review後の
-final candidateであり、rationaleが不要になった場合も、
-protected invariantが消えたか別のevidenceへ移ったことを確認してから削除する。
+tests passだけ、またはreferenceが存在するだけでreviewを省略してはならない。verification-readyへ渡すのはこのself-review後のfinal candidateであり、rationaleが不要になった場合も、protected invariantが消えたか別のevidenceへ移ったことを確認してから削除する。

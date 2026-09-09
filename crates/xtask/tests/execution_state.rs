@@ -49,7 +49,7 @@ fn execution_state_is_well_formed_and_discoverable() {
     let state_path = root.join("docs/execution-state.md");
     let state = fs::read_to_string(&state_path).expect("read docs/execution-state.md");
 
-    assert!(state.starts_with("# Execution State\n"));
+    assert_eq!(state.lines().next(), Some("# Execution State"));
     let phase = field(&state, "Phase");
     let candidate = field(&state, "Candidate");
     let blocking = section(&state, "Blocking findings");

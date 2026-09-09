@@ -27,7 +27,7 @@ staging、backup、journal、temporary file、rename strategy等の具体的mech
 
 ## Why now
 
-直前のObjectiveでAddField plan / dry-runはexternal final reviewを通過し、source-preserving patchとsemantic round-tripのcorrectness boundaryが閉じた。
+直前のObjectiveでAddField plan / dry-runはfinal verificationを通過し、source-preserving patchとsemantic round-tripのcorrectness boundaryが閉じた。
 ここからauthoring operationを実用的なsource mutationへ進める際の主要riskは、semantic transformationそのものではなく、plan作成後の外部更新と
 multi-file write failureによってcanonical source setをpartial / stale stateへ壊すことである。
 
@@ -49,7 +49,7 @@ multi-file write failureによってcanonical source setをpartial / stale state
 - source commit成功後にcanonical build、publish、generated C# / binary / artifact receipt更新を暗黙に開始しない。
 - filesystem mutation / transaction coordinationをpure semantic transformation / planningから分離し、Migration semanticsをstorage layerやfrontendへ複製しない。
 - stale preflight、successful multi-file commit、write failure + rollback success、rollback failure + `Recovery Required`をfocused regression / fault-injection evidenceで固定する。
-- required checksとexternal final `review-code`で、data safety、spec conformance、rationale freshness、architecture boundaryにBlockingがないことを確認する。
+- required checksとfinal `review-code` verificationで、data safety、spec conformance、rationale freshness、architecture boundaryにBlockingがないことを確認する。
 - Approved authorityから決められないobservable recovery behaviorやpublic surfaceが必要になった場合は、implementation convenienceで補完せずSpecification Gapとして停止する。
 
 ## Explicit non-scope

@@ -16,7 +16,7 @@ Humanは初期編集対象をRequired Primitiveの非key field、Save / dirty管
 
 HumanはroutineなGUI interaction detailについて、使い勝手・データ安全性・互換性を大きく左右する選択だけ確認し、それ以外は既存方針と一般的UX慣習に従って仕様refinement側で決定し、実使用後に調整する方針を選択した。
 
-現在、[GUI app shell](gui/app-shell.md)、[Workspace Explorer](gui/explorer/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Source Record Edit](specs/source-edit.md)を`Status: Proposed`まで整理した。review-spec観点では、現在のinitial existing-record authoring contractについてBlocking issueを認めていない。実装前にHuman Approvalを行い、Approved authorityとして確定する必要がある。
+2026-09-10にHumanが[GUI app shell](gui/app-shell.md)、[Workspace Explorer](gui/explorer/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Source Record Edit](specs/source-edit.md)のinitial existing-record authoring specification packageを承認した。4仕様は`Status: Approved`であり、review-spec観点でもBlocking issueはない。initial sliceについて必要なobservable behavior、failure semantics、non-scopeがApproved authorityから回収できるため、Current Objectiveはimplementation-readyである。
 
 ## Why now
 
@@ -41,7 +41,7 @@ AddField source commit safetyはcandidate `d18fb43e896921e7ec2ec618c9b71640e9d02
 
 ## Explicit non-scope
 
-現時点のpriorityに次は含めない。初期対応範囲の詳細はRFCとProposed仕様を参照する。
+現時点のpriorityに次は含めない。初期対応範囲の詳細はRFCとApproved仕様を参照する。
 
 - Explorerからの新規folder / Table / record / Value Object / Enum等の作成、rename、delete、move。これらは将来のauthoring modelとして維持する。
 - recordの追加・削除、schema編集、RenameField / DropField、MasterReference設計。
@@ -64,10 +64,10 @@ RenameField / DropFieldは[Schema Migration仕様](specs/schema-migration.md)に
 
 - [Product vision](product/vision.md)
 - [GUI仕様index](gui/README.md)
-- [GUI app shell（Proposed）](gui/app-shell.md)
-- [Workspace Explorer（Proposed）](gui/explorer/spec.md)
-- [Data Editor（Proposed）](gui/data-editor/spec.md)
-- [Source Record Edit（Proposed）](specs/source-edit.md)
+- [GUI app shell（Approved）](gui/app-shell.md)
+- [Workspace Explorer（Approved）](gui/explorer/spec.md)
+- [Data Editor（Approved）](gui/data-editor/spec.md)
+- [Source Record Edit（Approved）](specs/source-edit.md)
 - [最初のrecord authoring RFC（Draft）](rfcs/0005-first-record-authoring-experience.md) — Human-selected product choicesとdecision history
 - [YAML subset](specs/yaml-subset.md)、[Table / Key](specs/table-and-keys.md)、[Primitive Types](specs/type-system/primitives.md)
 - [Build Selection](specs/build-selection.md)、[Runtime hosts](specs/runtime-hosts.md)、[Schema Migration](specs/schema-migration.md)

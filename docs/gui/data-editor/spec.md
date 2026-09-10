@@ -42,6 +42,10 @@ cleanなsource data fileが外部editor等によって変更された場合、GU
 
 dirtyなsource data fileが外部変更された場合、GUIはlocal dirty bufferを保持したままconflict状態へ遷移する。外部変更を理由にdirty bufferを自動破棄してはならず、local bufferでdisk内容を自動上書きしてもならない。
 
+### GUI-DATA-STATE-006
+
+複数source data fileは同時にdirtyであってよい。file / record / Table間のnavigationだけを理由にdirty bufferを破棄、保存、または確認dialog表示してはならない。
+
 ## 操作（Interactions）
 
 ### GUI-DATA-EDIT-001
@@ -55,6 +59,18 @@ Saveは現在のsource data fileに対する明示操作である。Saveによ�
 ### GUI-DATA-SAVE-002
 
 validation resultの有無はSave可否のgateにしない。domain validation上invalidな値でも、filesystem / path safety / external modification等のoperation-level preconditionを満たす限りSave操作自体を禁止しない。
+
+### GUI-DATA-SAVE-003
+
+Project切替、Project Reload、window close等、現在保持しているdirty bufferを失う操作を開始する場合、GUIは少なくとも `Save All` / `Don't Save` / `Cancel` を選択できる確認を提示する。
+
+- `Save All`: dirtyな各fileの保存を試行し、すべて安全に保存できた場合だけ元の操作を続行する。conflictまたはSave failureがある場合は元の操作を完了せず、未保存bufferを保持してrecoveryを提示する。
+- `Don't Save`: dirty bufferを破棄して元の操作を続行する。破棄を伴うことを利用者が認識できなければならない。
+- `Cancel`: 元の操作を中止し、dirty bufferをそのまま保持する。
+
+### GUI-DATA-SAVE-004
+
+file / record / Table間の通常navigationでは保存確認を表示せず、対象fileのdirty bufferを保持したまま別のselectionへ移動できなければならない。
 
 ### GUI-DATA-DIFF-001
 
@@ -149,7 +165,6 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 - long / ulongを含むexact scalar transportと入力中representation。
 - dirty cellを元値へ戻した場合のfile dirty判定。
 - source preservation、file Save atomicity、保存結果不明時のrecovery。
-- dirty中のfile / project切替、Reload、window close behavior。
 - validation表示の場所（cell、row、panel等）とdiff surfaceの具体的layout。
 - loading / saving中のselection、editing、shortcut、focus behavior。
 - programmable viewのexpression / code model、aggregate semantics、sandbox、evaluation timing、performance budget。

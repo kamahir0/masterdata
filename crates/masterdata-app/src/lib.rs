@@ -20,9 +20,11 @@ use masterdata_dotnet::{
 };
 use tempfile::TempDir;
 
+mod authoring;
 mod publish;
 mod receipt;
 
+pub use authoring::*;
 pub use publish::{
     BinaryPublishPreflight, CSharpPublishPreflight, PUBLISH_MANIFEST_FILENAME,
     PublishExecutionFailure, PublishExecutionReport, PublishFailureInjection, PublishFailurePoint,
@@ -63,9 +65,6 @@ impl NativeApplicationService {
         }
     }
 
-    /// Construct the shared workflow with an explicit bridge. This is useful
-    /// for failure-path tests and keeps process invocation out of CLI/GUI
-    /// adapters.
     pub fn with_dotnet(dotnet: DotnetBridge) -> Self {
         Self {
             project: NativeProjectService::new(),
@@ -122,8 +121,6 @@ impl NativeApplicationService {
             .prepare_migration(explicit_project, current_dir, command)
     }
 
-    /// Commit a prepared AddField source transformation through the shared
-    /// Native Application Service. This does not build or publish artifacts.
     pub fn commit_migration(
         &self,
         explicit_project: Option<&Path>,
@@ -160,9 +157,6 @@ impl NativeApplicationService {
             .commit_migration_snapshot(project, source_snapshot, dry_run)
     }
 
-    /// Validate the existing canonical artifact set using only project
-    /// configuration and receipt/artifact bytes. This is the application
-    /// boundary intended for a future standalone publisher.
     pub fn validate_artifact_set(
         &self,
         explicit_project: Option<&Path>,
@@ -172,8 +166,6 @@ impl NativeApplicationService {
         receipt::validate_artifact_set(&info.artifact_root, &info.project_id)
     }
 
-    /// Validate the receipt-valid canonical artifact set and inspect every
-    /// configured external publish target without mutating any destination.
     pub fn preflight_publish(
         &self,
         explicit_project: Option<&Path>,
@@ -184,13 +176,6 @@ impl NativeApplicationService {
         publish::preflight_publish(&info, artifacts)
     }
 
-    /// Publish the already validated canonical artifact set to every
-    /// configured target in deterministic order.
-    ///
-    /// This workflow deliberately does not load source YAML, regenerate
-    /// artifacts, or invoke the .NET boundary. The returned error retains the
-    /// complete per-target report so adapters can render partial success and
-    /// target-local failure without parsing a human-readable message.
     pub fn publish(
         &self,
         explicit_project: Option<&Path>,
@@ -199,9 +184,6 @@ impl NativeApplicationService {
         self.publish_with_failures(explicit_project, current_dir, &[])
     }
 
-    /// Deterministic application-layer failure seam for transaction and
-    /// continuation regression tests. Production callers should use the
-    /// publish method.
     #[doc(hidden)]
     pub fn publish_with_failures(
         &self,
@@ -213,17 +195,13 @@ impl NativeApplicationService {
             Ok(info) => info,
             Err(error) => {
                 return Err(PublishExecutionFailure {
-                    report: PublishExecutionReport {
-                        targets: Vec::new(),
-                    },
+                    report: PublishExecutionReport { targets: Vec::new() },
                     error,
                 });
             }
         };
-        let report =
-            publish::report_for_project(&info, publish::PublishTargetStatus::NotAttempted, None);
-        let artifacts = match receipt::validate_artifact_set(&info.artifact_root, &info.project_id)
-        {
+        let report = publish::report_for_project(&info, publish::PublishTargetStatus::NotAttempted, None);
+        let artifacts = match receipt::validate_artifact_set(&info.artifact_root, &info.project_id) {
             Ok(artifacts) => artifacts,
             Err(error) => return Err(PublishExecutionFailure { report, error }),
         };
@@ -234,17 +212,6 @@ impl NativeApplicationService {
         publish::execute_publish_plan(&info, plan, injections)
     }
 
-    /// Run a full canonical build and then the standalone publish workflow.
-    ///
-    /// The build publishes its complete canonical artifact root before this
-    /// method starts publish. A publish failure therefore retains the
-    /// successful canonical set and returns the complete per-target report to
-    /// the adapter without introducing a cross-operation rollback.
-    // WHY: CLI-007 composes two existing operations while preserving the
-    // build/publish ownership boundary and standalone publish semantics.
-    // IF REMOVED: adapters could accidentally publish after a failed build or
-    // roll back a successful canonical build when an external target fails.
-    // EVIDENCE: docs/specs/cli.md; docs/specs/build-pipeline.md
     pub fn build_and_publish(
         &self,
         explicit_project: Option<&Path>,
@@ -269,8 +236,6 @@ impl NativeApplicationService {
         self.generator.plan(plan)
     }
 
-    /// Run the shared build workflow. dry_run stops after planning so that
-    /// adapters can inspect the same result without writing or invoking .NET.
     pub fn build(
         &self,
         explicit_project: Option<&Path>,
@@ -299,10 +264,7 @@ impl NativeApplicationService {
         } else {
             let final_artifact_root = &plan.artifact_root;
             let artifact_parent = final_artifact_root.parent().ok_or_else(|| {
-                canonical_publish_error(
-                    final_artifact_root,
-                    "canonical artifact root has no parent directory",
-                )
+                canonical_publish_error(final_artifact_root, "canonical artifact root has no parent directory")
             })?;
             validate_existing_artifact_root(final_artifact_root)?;
             fs::create_dir_all(artifact_parent).map_err(|error| {
@@ -313,14 +275,6 @@ impl NativeApplicationService {
                 )
                 .with_source(artifact_parent.to_path_buf())
             })?;
-
-            // WHY: The complete canonical root is staged beside its final
-            // parent. This keeps C# and binary artifacts in one tool-owned set
-            // and lets publication switch the set after all .NET validation
-            // has succeeded.
-            // IF REMOVED: a failed build could expose a new C# set with an old
-            // binary, or leave stale canonical C# files behind.
-            // EVIDENCE: docs/specs/build-pipeline.md; Regression: canonical_publication_replaces_complete_artifact_root.
             let workspace = TempDir::new_in(artifact_parent).map_err(|error| {
                 MasterdataError::new(
                     "E-BUILD-CANONICAL-STAGING",
@@ -329,18 +283,11 @@ impl NativeApplicationService {
                 )
                 .with_source(artifact_parent.to_path_buf())
             })?;
-            // The repository-owned .NET project consumes Generated/**/*.g.cs;
-            // this directory is still outside the final canonical root until
-            // the complete artifact set is assembled below.
             let staged_csharp = workspace.path().join("Generated");
             self.generator.write_to(&generation, &staged_csharp)?;
             let staged_binary = workspace.path().join("masterdata.bytes");
-            let request =
-                MasterMemoryBuildRequest::from_plan(&plan, &generation, staged_binary.clone())?;
-            let mut report =
-                self.dotnet
-                    .build_mastermemory(&request, &staged_csharp, workspace.path())?;
-
+            let request = MasterMemoryBuildRequest::from_plan(&plan, &generation, staged_binary.clone())?;
+            let mut report = self.dotnet.build_mastermemory(&request, &staged_csharp, workspace.path())?;
             let staged_root = workspace.path().join("output");
             fs::create_dir(&staged_root).map_err(|error| {
                 MasterdataError::new(
@@ -374,7 +321,6 @@ impl NativeApplicationService {
                 &plan.project.project_id,
                 receipt::write_artifact_set_receipt,
             )?;
-
             report.binary_path = plan.binary_output.clone();
             let written_files = generation
                 .files
@@ -400,8 +346,6 @@ impl NativeApplicationService {
     }
 }
 
-/// Compatibility name for existing CLI, Tauri, test, and repository-tool
-/// consumers. The implementation authority is `NativeApplicationService`.
 pub type ApplicationService = NativeApplicationService;
 
 #[derive(Debug, Clone)]
@@ -438,140 +382,61 @@ impl BuildAndPublishFailure {
 
 fn validate_existing_artifact_root(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(canonical_publish_error(
-            path,
-            "canonical artifact root is a symlink",
-        )),
-        Ok(metadata) if !metadata.file_type().is_dir() => Err(canonical_publish_error(
-            path,
-            "canonical artifact root is not a directory",
-        )),
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(canonical_publish_error(path, "canonical artifact root is a symlink")),
+        Ok(metadata) if !metadata.file_type().is_dir() => Err(canonical_publish_error(path, "canonical artifact root is not a directory")),
         Ok(_) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(canonical_publish_error(
-            path,
-            format!("could not inspect canonical artifact root: {error}"),
-        )),
+        Err(error) => Err(canonical_publish_error(path, format!("could not inspect canonical artifact root: {error}"))),
     }
 }
 
 fn validate_staged_artifact_root(path: &Path) -> Result<()> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
-        canonical_publish_error(
-            path,
-            format!("could not inspect staged canonical artifact root: {error}"),
-        )
-    })?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| canonical_publish_error(path, format!("could not inspect staged canonical artifact root: {error}")))?;
     if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
-        return Err(canonical_publish_error(
-            path,
-            "staged canonical artifact root is not a real directory",
-        ));
+        return Err(canonical_publish_error(path, "staged canonical artifact root is not a real directory"));
     }
-
     let csharp = path.join("csharp");
-    let csharp_metadata = fs::symlink_metadata(&csharp).map_err(|error| {
-        canonical_publish_error(
-            &csharp,
-            format!("staged canonical C# output is missing: {error}"),
-        )
-    })?;
+    let csharp_metadata = fs::symlink_metadata(&csharp).map_err(|error| canonical_publish_error(&csharp, format!("staged canonical C# output is missing: {error}")))?;
     if csharp_metadata.file_type().is_symlink() || !csharp_metadata.file_type().is_dir() {
-        return Err(canonical_publish_error(
-            &csharp,
-            "staged canonical C# output is not a real directory",
-        ));
+        return Err(canonical_publish_error(&csharp, "staged canonical C# output is not a real directory"));
     }
-
     let binary = path.join("masterdata.bytes");
-    let binary_metadata = fs::symlink_metadata(&binary).map_err(|error| {
-        canonical_publish_error(
-            &binary,
-            format!("staged canonical binary is missing: {error}"),
-        )
-    })?;
+    let binary_metadata = fs::symlink_metadata(&binary).map_err(|error| canonical_publish_error(&binary, format!("staged canonical binary is missing: {error}")))?;
     if binary_metadata.file_type().is_symlink() || !binary_metadata.file_type().is_file() {
-        return Err(canonical_publish_error(
-            &binary,
-            "staged canonical binary is not a regular file",
-        ));
+        return Err(canonical_publish_error(&binary, "staged canonical binary is not a regular file"));
     }
     Ok(())
 }
 
-fn publish_staged_artifact_set<F>(
-    staged_root: &Path,
-    final_artifact_root: &Path,
-    project_id: &str,
-    write_receipt: F,
-) -> Result<()>
+fn publish_staged_artifact_set<F>(staged_root: &Path, final_artifact_root: &Path, project_id: &str, write_receipt: F) -> Result<()>
 where
     F: Fn(&Path, &str) -> Result<receipt::ArtifactSetReceipt>,
 {
     validate_staged_artifact_root(staged_root)?;
-    // WHY: Receipt creation and validation happen inside the same staged root
-    // before the whole-root publication switch.
-    // IF REMOVED: a receipt could describe bytes that were never published
-    // together, or a receipt-only write could mutate the previous set.
-    // EVIDENCE: docs/specs/build-pipeline.md; Regression: full_build_writes_matching_artifact_receipt.
     write_receipt(staged_root, project_id)?;
     receipt::validate_artifact_set(staged_root, project_id)?;
     publish_canonical_artifact_root(staged_root, final_artifact_root)
 }
 
-// WHY: Both canonical artifacts are switched as one complete, tool-owned
-// directory after .NET build/reload validation. The previous directory is
-// moved to a same-filesystem temporary sibling until the switch succeeds.
-// IF REMOVED: a normal rename failure could leave a new binary with an old or
-// stale C# set, or destroy the last usable canonical set.
-// EVIDENCE: docs/specs/build-pipeline.md; Regression: canonical_publication_failure_preserves_previous_root.
 fn publish_canonical_artifact_root(staged: &Path, final_path: &Path) -> Result<()> {
     validate_staged_artifact_root(staged)?;
     validate_existing_artifact_root(final_path)?;
-    let parent = final_path.parent().ok_or_else(|| {
-        canonical_publish_error(
-            final_path,
-            "canonical artifact root has no parent directory",
-        )
-    })?;
-    let backup_root = TempDir::new_in(parent).map_err(|error| {
-        canonical_publish_error(
-            parent,
-            format!("could not create canonical artifact rollback area: {error}"),
-        )
-    })?;
+    let parent = final_path.parent().ok_or_else(|| canonical_publish_error(final_path, "canonical artifact root has no parent directory"))?;
+    let backup_root = TempDir::new_in(parent).map_err(|error| canonical_publish_error(parent, format!("could not create canonical artifact rollback area: {error}")))?;
     let previous = backup_root.path().join("previous");
     let had_previous = match fs::symlink_metadata(final_path) {
         Ok(_) => {
-            fs::rename(final_path, &previous).map_err(|error| {
-                canonical_publish_error(
-                    final_path,
-                    format!("could not stage previous canonical artifacts: {error}"),
-                )
-            })?;
+            fs::rename(final_path, &previous).map_err(|error| canonical_publish_error(final_path, format!("could not stage previous canonical artifacts: {error}")))?;
             true
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-        Err(error) => {
-            return Err(canonical_publish_error(
-                final_path,
-                format!("could not inspect canonical artifact root: {error}"),
-            ));
-        }
+        Err(error) => return Err(canonical_publish_error(final_path, format!("could not inspect canonical artifact root: {error}"))),
     };
-
     if let Err(error) = fs::rename(staged, final_path) {
-        let publication_error = canonical_publish_error(
-            final_path,
-            format!("could not publish canonical artifact root: {error}"),
-        );
+        let publication_error = canonical_publish_error(final_path, format!("could not publish canonical artifact root: {error}"));
         if had_previous && let Err(restore_error) = fs::rename(&previous, final_path) {
             let retained = backup_root.keep();
-            return Err(combine_publication_errors(
-                publication_error,
-                format!("could not restore previous canonical artifacts: {restore_error}"),
-                &retained,
-            ));
+            return Err(combine_publication_errors(publication_error, format!("could not restore previous canonical artifacts: {restore_error}"), &retained));
         }
         return Err(publication_error);
     }
@@ -579,15 +444,10 @@ fn publish_canonical_artifact_root(staged: &Path, final_path: &Path) -> Result<(
 }
 
 fn canonical_publish_error(path: &Path, message: impl Into<String>) -> MasterdataError {
-    MasterdataError::new("E-BUILD-CANONICAL-PUBLISH", ErrorKind::Io, message)
-        .with_source(path.to_path_buf())
+    MasterdataError::new("E-BUILD-CANONICAL-PUBLISH", ErrorKind::Io, message).with_source(path.to_path_buf())
 }
 
-fn combine_publication_errors(
-    original: MasterdataError,
-    rollback_message: String,
-    rollback_area: &Path,
-) -> MasterdataError {
+fn combine_publication_errors(original: MasterdataError, rollback_message: String, rollback_area: &Path) -> MasterdataError {
     MasterdataError::new(
         "E-BUILD-ARTIFACT-ROLLBACK",
         ErrorKind::Io,
@@ -605,14 +465,9 @@ fn combine_publication_errors(
 #[cfg(test)]
 mod tests {
     use std::fs;
-
     use masterdata_core::{ErrorKind, MasterdataError};
     use tempfile::tempdir;
-
-    use super::{
-        publish_canonical_artifact_root, publish_staged_artifact_set,
-        validate_existing_artifact_root,
-    };
+    use super::{publish_canonical_artifact_root, publish_staged_artifact_set, validate_existing_artifact_root};
 
     fn staged_root(root: &std::path::Path, marker: &[u8]) -> std::path::PathBuf {
         let staged = root.join("staged");
@@ -630,18 +485,10 @@ mod tests {
         fs::write(final_root.join("csharp/Old.g.cs"), b"OLD").expect("old C# file");
         fs::write(final_root.join("masterdata.bytes"), b"OLD").expect("old binary");
         let staged = staged_root(directory.path(), b"NEW");
-
         publish_canonical_artifact_root(&staged, &final_root).expect("publication");
-
         assert!(!final_root.join("csharp/Old.g.cs").exists());
-        assert_eq!(
-            fs::read(final_root.join("csharp/Item.g.cs")).unwrap(),
-            b"NEW"
-        );
-        assert_eq!(
-            fs::read(final_root.join("masterdata.bytes")).unwrap(),
-            b"NEW"
-        );
+        assert_eq!(fs::read(final_root.join("csharp/Item.g.cs")).unwrap(), b"NEW");
+        assert_eq!(fs::read(final_root.join("masterdata.bytes")).unwrap(), b"NEW");
     }
 
     #[test]
@@ -652,19 +499,10 @@ mod tests {
         fs::write(final_root.join("csharp/Old.g.cs"), b"OLD").expect("old C# file");
         fs::write(final_root.join("masterdata.bytes"), b"OLD").expect("old binary");
         let missing_staged = directory.path().join("missing-staged");
-
-        let error = publish_canonical_artifact_root(&missing_staged, &final_root)
-            .expect_err("missing staged root");
-
+        let error = publish_canonical_artifact_root(&missing_staged, &final_root).expect_err("missing staged root");
         assert_eq!(error.diagnostic().code, "E-BUILD-CANONICAL-PUBLISH");
-        assert_eq!(
-            fs::read(final_root.join("csharp/Old.g.cs")).unwrap(),
-            b"OLD"
-        );
-        assert_eq!(
-            fs::read(final_root.join("masterdata.bytes")).unwrap(),
-            b"OLD"
-        );
+        assert_eq!(fs::read(final_root.join("csharp/Old.g.cs")).unwrap(), b"OLD");
+        assert_eq!(fs::read(final_root.join("masterdata.bytes")).unwrap(), b"OLD");
     }
 
     #[test]
@@ -672,9 +510,7 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let final_root = directory.path().join("output");
         fs::write(&final_root, b"not a directory").expect("file root");
-
         let error = validate_existing_artifact_root(&final_root).expect_err("file root");
-
         assert_eq!(error.diagnostic().code, "E-BUILD-CANONICAL-PUBLISH");
     }
 
@@ -688,33 +524,20 @@ mod tests {
         super::receipt::write_artifact_set_receipt(&final_root, "fixture").expect("old receipt");
         let before = snapshot_directory(&final_root);
         let staged = staged_root(directory.path(), b"NEW");
-
         let error = publish_staged_artifact_set(&staged, &final_root, "fixture", |_root, _id| {
-            Err(MasterdataError::new(
-                "E-TEST-RECEIPT-GENERATION",
-                ErrorKind::Io,
-                "injected receipt generation failure",
-            ))
-        })
-        .expect_err("receipt generation failure");
-
+            Err(MasterdataError::new("E-TEST-RECEIPT-GENERATION", ErrorKind::Io, "injected receipt generation failure"))
+        }).expect_err("receipt generation failure");
         assert_eq!(error.diagnostic().code, "E-TEST-RECEIPT-GENERATION");
         assert_eq!(snapshot_directory(&final_root), before);
     }
 
-    fn snapshot_directory(
-        root: &std::path::Path,
-    ) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    fn snapshot_directory(root: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
         let mut snapshot = std::collections::BTreeMap::new();
         snapshot_directory_recursive(root, root, &mut snapshot);
         snapshot
     }
 
-    fn snapshot_directory_recursive(
-        root: &std::path::Path,
-        directory: &std::path::Path,
-        snapshot: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>,
-    ) {
+    fn snapshot_directory_recursive(root: &std::path::Path, directory: &std::path::Path, snapshot: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>) {
         for entry in fs::read_dir(directory).expect("snapshot entry") {
             let entry = entry.expect("snapshot directory entry");
             let path = entry.path();
@@ -722,10 +545,7 @@ mod tests {
                 snapshot_directory_recursive(root, &path, snapshot);
             } else {
                 let relative = path.strip_prefix(root).expect("snapshot relative path");
-                snapshot.insert(
-                    relative.to_path_buf(),
-                    fs::read(path).expect("snapshot file"),
-                );
+                snapshot.insert(relative.to_path_buf(), fs::read(path).expect("snapshot file"));
             }
         }
     }

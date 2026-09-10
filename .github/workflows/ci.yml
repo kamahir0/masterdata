@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
@@ -50,6 +52,18 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
+      - name: Restore minimal application lib diff
+        shell: python
+        run: |
+          import subprocess
+          from pathlib import Path
+          content = subprocess.check_output(
+              ["git", "show", "origin/main:crates/masterdata-app/src/lib.rs"],
+              text=True,
+          )
+          content = content.replace("mod publish;", "mod authoring;\nmod publish;", 1)
+          content = content.replace("pub use publish::{", "pub use authoring::*;\npub use publish::{", 1)
+          Path("crates/masterdata-app/src/lib.rs").write_text(content)
       - name: Format Rust for artifact handoff
         run: cargo fmt --all
       - uses: actions/upload-artifact@v4

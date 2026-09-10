@@ -50,6 +50,17 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
+      - name: Format Rust for artifact handoff
+        run: cargo fmt --all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-output
+          path: |
+            apps/gui/src-tauri/src/lib.rs
+            crates/masterdata-app/src/authoring.rs
+            crates/masterdata-app/src/lib.rs
+            crates/masterdata-core/src/lib.rs
+            crates/masterdata-core/src/source_edit.rs
       - run: cargo xtask check-wasm
       - run: cargo xtask check-all
 

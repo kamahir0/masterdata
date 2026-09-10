@@ -47,3 +47,43 @@ test("GUI keeps 64-bit primitive edits as text at the frontend boundary", () => 
   assert.match(source, /<input[\s\S]*value=\{value\}/);
   assert.doesNotMatch(source, /parseInt\(|parseFloat\(|Number\(value\)|valueAsNumber/);
 });
+
+
+test("Explorer is a hierarchical keyboard tree with observable file states", () => {
+  assert.match(source, /role="tree"/);
+  assert.match(source, /role="treeitem"/);
+  assert.match(source, /aria-expanded=\{expanded\}/);
+  assert.match(source, /ArrowRight/);
+  assert.match(source, /ArrowLeft/);
+  assert.match(source, /save outcome unknown/);
+  assert.match(source, /loadingPaths/);
+});
+
+test("background clean-file reload does not steal Explorer selection", () => {
+  const start = source.indexOf("const openDataFile = useCallback");
+  const end = source.indexOf("const loadWorkspace = useCallback", start);
+  const openDataFile = source.slice(start, end);
+  assert.doesNotMatch(openDataFile, /setActivePath\(/);
+  assert.match(source, /void openDataFile\(root, path, true\)/);
+});
+
+test("shared preview collapses semantic no-op edits back to clean", () => {
+  assert.match(source, /edits: preview\.changed \? latest\.edits : \{\}/);
+});
+
+test("Problems navigation survives asynchronous file opening", () => {
+  assert.match(source, /pendingCellFocus/);
+  assert.match(source, /\[activePath, editors, loadingPaths\]/);
+});
+
+test("save failure and unknown outcome expose explicit recovery", () => {
+  assert.match(source, /Recheck Source/);
+  assert.match(source, /Previous save outcome is unknown/);
+  assert.match(source, /editor\.saveStatus === "outcome_unknown"/);
+});
+
+test("Problems identifies buffer, saved-source, and operation snapshots", () => {
+  assert.match(source, /origin: "Buffer"/);
+  assert.match(source, /origin: "Saved source"/);
+  assert.match(source, /origin: "Operation"/);
+});

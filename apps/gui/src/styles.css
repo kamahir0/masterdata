@@ -100,11 +100,17 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .pane-message { padding: 15px 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .source-tree { padding: 5px 0 20px; }
-.tree-root-label {
-  display: flex; gap: 5px; align-items: center; height: 28px; padding: 0 10px;
-  color: #b6c0cd; font-size: 11px; font-weight: 650; letter-spacing: .02em;
+.tree-root-label, .tree-folder {
+  display: flex; gap: 5px; align-items: center; width: 100%; min-height: 0;
+  border: 0; border-radius: 0; background: transparent; text-align: left;
 }
-.tree-root-label span { color: #78869a; }
+.tree-root-label {
+  height: 28px; padding: 0 10px; color: #b6c0cd;
+  font-size: 11px; font-weight: 650; letter-spacing: .02em;
+}
+.tree-folder { height: 27px; padding-top: 0; padding-right: 8px; padding-bottom: 0; color: #9caabd; font-size: 11px; }
+.tree-root-label:hover:not(:disabled), .tree-folder:hover:not(:disabled) { border: 0; background: #17202b; }
+.folder-chevron { flex: 0 0 12px; color: #78869a; text-align: center; }
 .tree-file {
   display: flex; align-items: center; gap: 7px; width: 100%; height: 27px;
   padding-top: 0; padding-right: 8px; padding-bottom: 0;
@@ -120,6 +126,9 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .file-kind.invalid, .file-kind.unavailable { color: var(--danger); }
 .dirty-dot { margin-left: auto; color: #dce3f2; font-size: 8px; }
 .conflict-badge { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; color: #24180a; background: var(--warning); font-size: 9px; font-weight: 800; }
+.file-state-badge { display: grid; place-items: center; min-width: 15px; height: 15px; border-radius: 4px; color: #aeb9c7; background: #293544; font-size: 9px; font-weight: 700; }
+.file-state-badge.error { color: #ffd4d8; background: #5a2e37; }
+.file-state-badge.warning { color: #2b1c09; background: var(--warning); }
 
 .editor-area { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; background: #0d131a; }
 .workspace-error-strip {
@@ -157,6 +166,9 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .conflict-strip strong { color: #efc778; font-size: 11px; }
 .conflict-strip span { color: #bea879; font-size: 10px; }
 .conflict-strip > div:last-child { display: flex; gap: 5px; }
+.save-recovery-strip { border-color: #6a3f49; background: #301e24; }
+.save-recovery-strip strong { color: #f0aeb5; }
+.save-recovery-strip span { color: #c39198; }
 
 .grid-scroll { min-height: 0; overflow: auto; background: #0c1218; }
 .record-grid { min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 11px; }

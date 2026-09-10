@@ -162,7 +162,9 @@ type EditorState = {
   previewError: ApiDiagnostic | null;
   revision: number;
   saving: boolean;
+  loadError: ApiDiagnostic | null;
   conflict: SourceContentState | null;
+  saveStatus: SourceSaveReport["status"] | null;
   saveDiagnostic: Diagnostic | null;
   view: "grid" | "diff" | "compare";
 };
@@ -216,7 +218,9 @@ function editorFromSnapshot(snapshot: DataFileSnapshot): EditorState {
     previewError: null,
     revision: 0,
     saving: false,
+    loadError: null,
     conflict: null,
+    saveStatus: null,
     saveDiagnostic: null,
     view: "grid",
   };
@@ -267,10 +271,13 @@ function App() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [pendingActionBusy, setPendingActionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());
   const previewTimers = useRef(new Map<string, number>());
   const editorsRef = useRef(editors);
   const workspaceStateRef = useRef(workspaceState);
+  const workspaceGeneration = useRef(0);
   const cellFocusStart = useRef(new Map<string, string>());
+  const pendingCellFocus = useRef<string | null>(null);
 
   useEffect(() => {
     editorsRef.current = editors;
@@ -280,12 +287,31 @@ function App() {
     workspaceStateRef.current = workspaceState;
   }, [workspaceState]);
 
+  useEffect(() => {
+    const key = pendingCellFocus.current;
+    if (!key || !activePath || loadingPaths.has(activePath)) return;
+    const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);
+    if (cell) {
+      cell.focus();
+      pendingCellFocus.current = null;
+    }
+  }, [activePath, editors, loadingPaths]);
+
   const workspace = workspaceState.kind === "ready"
     ? workspaceState.workspace
-    : workspaceState.previous;
+    : workspaceState.kind === "error"
+      ? workspaceState.previous
+      : null;
   const projectRoot = workspace?.project.project_root ?? null;
   const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
   const activeEditor = activePath ? editors[activePath] ?? null : null;
+  const activeLoading = activePath ? loadingPaths.has(activePath) : false;
+  const activeLoadDiagnostic = activeEditor?.loadError
+    ?? (!activeEditor && workspaceState.kind === "error" && activePath
+      && workspaceState.diagnostic.source
+      && normalizePath(workspaceState.diagnostic.source).endsWith(normalizePath(activePath))
+      ? workspaceState.diagnostic
+      : null);
   const dirtyCount = Object.values(editors).filter(editorIsDirty).length;
 
   const showNotice = useCallback((message: string) => {
@@ -294,27 +320,65 @@ function App() {
   }, []);
 
   const openDataFile = useCallback(async (root: string, path: string, force = false) => {
-    setActivePath(path);
-    if (!force && editorsRef.current[path]) {
+    const existing = editorsRef.current[path];
+    if (!force && existing && !existing.loadError) {
       return;
     }
+    const generation = workspaceGeneration.current;
+    setLoadingPaths((current) => {
+      const next = new Set(current);
+      next.add(path);
+      return next;
+    });
     try {
       const snapshot = await invoke<DataFileSnapshot>("open_data_file", {
         projectPath: root,
         relativePath: path,
       });
+      if (workspaceGeneration.current !== generation) return;
       setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));
     } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
       const diagnostic = asApiError(error).diagnostic;
+      setEditors((current) => {
+        const currentEditor = current[path];
+        if (!currentEditor) return current;
+        if (editorIsDirty(currentEditor)) {
+          return {
+            ...current,
+            [path]: {
+              ...currentEditor,
+              saveDiagnostic: apiDiagnosticToDiagnostic(diagnostic),
+            },
+          };
+        }
+        return {
+          ...current,
+          [path]: { ...currentEditor, loadError: diagnostic },
+        };
+      });
       setWorkspaceState((current) => ({
         kind: "error",
         diagnostic,
         previous: current.kind === "ready" ? current.workspace : current.previous,
       }));
+    } finally {
+      if (workspaceGeneration.current === generation) {
+        setLoadingPaths((current) => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
+      }
     }
   }, []);
 
   const loadWorkspace = useCallback(async (requestedProject: string | null) => {
+    const generation = workspaceGeneration.current + 1;
+    workspaceGeneration.current = generation;
+    for (const timer of previewTimers.current.values()) window.clearTimeout(timer);
+    previewTimers.current.clear();
+    setLoadingPaths(new Set());
     const previous = workspaceStateRef.current.kind === "ready"
       ? workspaceStateRef.current.workspace
       : workspaceStateRef.current.previous;
@@ -325,6 +389,7 @@ function App() {
       const next = await invoke<AuthoringWorkspace>("authoring_workspace", {
         projectPath: requestedProject,
       });
+      if (workspaceGeneration.current !== generation) return;
       setWorkspaceState({ kind: "ready", workspace: next });
       setProjectPathInput(next.project.project_root);
       setEditors({});
@@ -334,6 +399,7 @@ function App() {
         await openDataFile(next.project.project_root, first.path, true);
       }
     } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
       setWorkspaceState({
         kind: "error",
         diagnostic: asApiError(error).diagnostic,
@@ -352,6 +418,7 @@ function App() {
       window.clearTimeout(existing);
     }
     const revision = editor.revision;
+    const generation = workspaceGeneration.current;
     const timer = window.setTimeout(async () => {
       previewTimers.current.delete(path);
       try {
@@ -361,6 +428,7 @@ function App() {
           baseSource: editor.snapshot.baseSource,
           edits: Object.values(editor.edits),
         });
+        if (workspaceGeneration.current !== generation) return;
         setEditors((current) => {
           const latest = current[path];
           if (!latest || latest.revision !== revision) {
@@ -370,6 +438,7 @@ function App() {
             ...current,
             [path]: {
               ...latest,
+              edits: preview.changed ? latest.edits : {},
               preview,
               previewState: "current",
               previewError: null,
@@ -377,6 +446,7 @@ function App() {
           };
         });
       } catch (error) {
+        if (workspaceGeneration.current !== generation) return;
         const diagnostic = asApiError(error).diagnostic;
         setEditors((current) => {
           const latest = current[path];
@@ -427,6 +497,11 @@ function App() {
     const root = state.kind === "ready" ? state.workspace.project.project_root : state.previous?.project.project_root;
     const editor = editorsRef.current[path];
     if (!root || !editor || !editorIsDirty(editor)) return true;
+    if (editor.saveStatus === "outcome_unknown" && !overwriteExpectedIdentity) {
+      showNotice("Recheck the source before saving again because the previous save outcome is unknown.");
+      return false;
+    }
+    const generation = workspaceGeneration.current;
 
     setEditors((current) => current[path]
       ? { ...current, [path]: { ...current[path], saving: true, saveDiagnostic: null } }
@@ -440,6 +515,7 @@ function App() {
         edits: Object.values(editor.edits),
         overwriteExpectedIdentity: overwriteExpectedIdentity ?? null,
       });
+      if (workspaceGeneration.current !== generation) return false;
       if (report.status === "success" && report.snapshot) {
         setEditors((current) => ({
           ...current,
@@ -457,6 +533,7 @@ function App() {
             ...latest,
             saving: false,
             conflict: report.status === "conflict" ? report.current : latest.conflict,
+            saveStatus: report.status,
             saveDiagnostic: report.diagnostic,
             view: report.status === "conflict" ? "compare" : latest.view,
           },
@@ -464,6 +541,7 @@ function App() {
       });
       return false;
     } catch (error) {
+      if (workspaceGeneration.current !== generation) return false;
       const diagnostic = asApiError(error).diagnostic;
       setEditors((current) => current[path]
         ? {
@@ -471,6 +549,7 @@ function App() {
             [path]: {
               ...current[path],
               saving: false,
+              saveStatus: "failure",
               saveDiagnostic: {
                 code: diagnostic.code,
                 kind: diagnostic.kind,
@@ -556,25 +635,35 @@ function App() {
       const state = workspaceStateRef.current;
       const root = state.kind === "ready" ? state.workspace.project.project_root : null;
       if (!root) return;
+      const generation = workspaceGeneration.current;
       for (const [path, editor] of Object.entries(editorsRef.current)) {
         if (editor.saving) continue;
         void invoke<SourceContentState>("source_content", {
           projectPath: root,
           relativePath: path,
         }).then((current) => {
+          if (workspaceGeneration.current !== generation) return;
           const latest = editorsRef.current[path];
           if (!latest || latest.saving) return;
           if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
-            if (latest.conflict) {
+            if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {
               setEditors((all) => all[path]
-                ? { ...all, [path]: { ...all[path], conflict: null } }
+                ? {
+                    ...all,
+                    [path]: {
+                      ...all[path],
+                      conflict: null,
+                      loadError: null,
+                      saveStatus: all[path].saveStatus === "conflict" ? null : all[path].saveStatus,
+                    },
+                  }
                 : all);
             }
             return;
           }
           if (editorIsDirty(latest)) {
             setEditors((all) => all[path]
-              ? { ...all, [path]: { ...all[path], conflict: current } }
+              ? { ...all, [path]: { ...all[path], conflict: current, saveStatus: "conflict", loadError: null } }
               : all);
           } else {
             void openDataFile(root, path, true);
@@ -589,12 +678,15 @@ function App() {
 
   const validateDisk = useCallback(async () => {
     if (!workspace?.capabilities.validate || !projectRoot) return;
+    const generation = workspaceGeneration.current;
     setManualValidation({ kind: "loading" });
     try {
       const report = await invoke<ValidationReport>("validate", { projectPath: projectRoot });
+      if (workspaceGeneration.current !== generation) return;
       setManualValidation({ kind: "done", value: report });
       setProblemsOpen(true);
     } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
       setManualValidation({ kind: "error", diagnostic: asApiError(error).diagnostic });
     }
   }, [projectRoot, workspace]);
@@ -604,15 +696,18 @@ function App() {
     if (dirtyCount > 0) {
       showNotice("Build uses saved source only; unsaved changes are not included.");
     }
+    const generation = workspaceGeneration.current;
     setBuildState({ kind: "loading" });
     try {
       const response = await invoke<BuildResponse>("build", {
         projectPath: projectRoot,
         dryRun: false,
       });
+      if (workspaceGeneration.current !== generation) return;
       setBuildState({ kind: "done", value: response });
       showNotice("Build complete");
     } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
       setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });
       setProblemsOpen(true);
     }
@@ -637,6 +732,63 @@ function App() {
     await saveFile(path, editor.conflict.contentIdentity);
   }, [saveFile]);
 
+  const recheckSource = useCallback(async (path: string) => {
+    const state = workspaceStateRef.current;
+    const root = state.kind === "ready" ? state.workspace.project.project_root : state.previous?.project.project_root;
+    const editor = editorsRef.current[path];
+    if (!root || !editor) return;
+    const generation = workspaceGeneration.current;
+    try {
+      const current = await invoke<SourceContentState>("source_content", {
+        projectPath: root,
+        relativePath: path,
+      });
+      if (workspaceGeneration.current !== generation) return;
+      const latest = editorsRef.current[path];
+      if (!latest) return;
+      if (latest.previewState === "current"
+        && current.contentIdentity === latest.preview.candidateContentIdentity) {
+        await openDataFile(root, path, true);
+        showNotice("Saved source content confirmed.");
+        return;
+      }
+      if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
+        setEditors((all) => all[path]
+          ? {
+              ...all,
+              [path]: {
+                ...all[path],
+                loadError: null,
+                conflict: null,
+                saveStatus: null,
+                saveDiagnostic: null,
+              },
+            }
+          : all);
+        showNotice("Source state confirmed. Local changes are still unsaved.");
+        return;
+      }
+      setEditors((all) => all[path]
+        ? {
+            ...all,
+            [path]: {
+              ...all[path],
+              loadError: null,
+              conflict: current,
+              saveStatus: "conflict",
+              view: "compare",
+            },
+          }
+        : all);
+    } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
+      const diagnostic = apiDiagnosticToDiagnostic(asApiError(error).diagnostic);
+      setEditors((all) => all[path]
+        ? { ...all, [path]: { ...all[path], saveDiagnostic: diagnostic } }
+        : all);
+    }
+  }, [openDataFile, showNotice]);
+
   const switchView = useCallback((path: string, view: EditorState["view"]) => {
     setEditors((current) => current[path]
       ? { ...current, [path]: { ...current[path], view } }
@@ -650,14 +802,23 @@ function App() {
       ? workspace.files.find((candidate) => source.endsWith(normalizePath(candidate.path)))
       : null;
     if (!file) return;
-    selectFile(file);
-    if (file.kind !== "data") return;
     const record = diagnosticRecordIndex(diagnostic);
     const field = diagnosticField(diagnostic);
-    if (record === null || !field) return;
-    window.setTimeout(() => {
-      document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(cellKey(record, field))}"]`)?.focus();
-    }, 120);
+    if (file.kind === "data" && record !== null && field) {
+      pendingCellFocus.current = cellKey(record, field);
+    }
+    selectFile(file);
+    if (pendingCellFocus.current) {
+      window.requestAnimationFrame(() => {
+        const key = pendingCellFocus.current;
+        if (!key) return;
+        const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);
+        if (cell) {
+          cell.focus();
+          pendingCellFocus.current = null;
+        }
+      });
+    }
   }, [selectFile, workspace]);
 
   const activeDiagnostics = activeEditor?.previewState === "current"
@@ -669,7 +830,11 @@ function App() {
     ...(buildState.kind === "error" ? [apiDiagnosticToDiagnostic(buildState.diagnostic)] : []),
     ...(manualValidation.kind === "error" ? [apiDiagnosticToDiagnostic(manualValidation.diagnostic)] : []),
   ];
-  const problems = [...activeDiagnostics, ...manualDiagnostics, ...operationDiagnostics];
+  const problems = [
+    ...activeDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Buffer" })),
+    ...manualDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Saved source" })),
+    ...operationDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Operation" })),
+  ];
 
   return (
     <main className="app-shell">
@@ -697,7 +862,7 @@ function App() {
         </div>
         <div className="command-bar">
           <button type="button" onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</button>
-          <button type="button" onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || !workspace?.capabilities.workspaceWrite}>
+          <button type="button" onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
             {activeEditor?.saving ? "Saving…" : "Save"}
           </button>
           <button type="button" onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
@@ -730,6 +895,7 @@ function App() {
               workspace={workspace}
               activePath={activePath}
               editors={editors}
+              loadingPaths={loadingPaths}
               onSelect={selectFile}
             />
           )}
@@ -751,15 +917,26 @@ function App() {
           {activeFile && activeFile.kind !== "data" && (
             <SourcePlaceholder file={activeFile} />
           )}
-          {activeFile?.kind === "data" && !activeEditor && (
+          {activeFile?.kind === "data" && activeLoading && (
+            <EmptyEditor title={`Loading ${sourceName(activeFile.path)}…`} copy="Refreshing records through the shared application service." />
+          )}
+          {activeFile?.kind === "data" && !activeLoading && activeLoadDiagnostic && (
+            <section className="placeholder-editor">
+              <h2>{sourceName(activeFile.path)} is unavailable</h2>
+              <p>The previous clean snapshot is not editable until the source can be loaded safely.</p>
+              <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(activeLoadDiagnostic)} />
+            </section>
+          )}
+          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && !activeEditor && (
             <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading records through the shared application service." />
           )}
-          {activeFile?.kind === "data" && activeEditor && (
+          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor
               file={activeFile}
               editor={activeEditor}
               onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
               onSave={() => void saveFile(activeFile.path)}
+              onRecheckSource={() => void recheckSource(activeFile.path)}
               onSwitchView={(view) => switchView(activeFile.path, view)}
               onReloadConflict={() => void reloadConflict(activeFile.path)}
               onOverwriteConflict={() => void overwriteConflict(activeFile.path)}
@@ -783,12 +960,12 @@ function App() {
                 {problems.length === 0 ? (
                   <div className="no-problems">No diagnostics for the current buffer.</div>
                 ) : (
-                  problems.map((diagnostic, index) => (
-                    <button className="problem-row" type="button" key={`${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>
+                  problems.map(({ diagnostic, origin }, index) => (
+                    <button className="problem-row" type="button" key={`${origin}-${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>
                       <span className="problem-icon">!</span>
                       <strong>{diagnostic.code}</strong>
                       <span>{diagnostic.message}</span>
-                      <small>{formatDiagnosticLocation(diagnostic)}</small>
+                      <small>{origin} · {formatDiagnosticLocation(diagnostic)}</small>
                     </button>
                   ))
                 )}
@@ -835,54 +1012,214 @@ function App() {
   );
 }
 
+type SourceTreeFolder = {
+  kind: "folder";
+  name: string;
+  key: string;
+  depth: number;
+  children: SourceTreeNode[];
+};
+
+type SourceTreeFile = {
+  kind: "file";
+  name: string;
+  key: string;
+  depth: number;
+  file: WorkspaceSourceFile;
+};
+
+type SourceTreeNode = SourceTreeFolder | SourceTreeFile;
+
 function SourceTree({
   workspace,
   activePath,
   editors,
+  loadingPaths,
   onSelect,
 }: {
   workspace: AuthoringWorkspace;
   activePath: string | null;
   editors: Record<string, EditorState>;
+  loadingPaths: Set<string>;
   onSelect: (file: WorkspaceSourceFile) => void;
 }) {
-  const groups = useMemo(() => {
-    const result = new Map<string, WorkspaceSourceFile[]>();
-    for (const root of workspace.sourceRoots) result.set(root, []);
-    for (const file of workspace.files) {
-      const items = result.get(file.sourceRoot) ?? [];
-      items.push(file);
-      result.set(file.sourceRoot, items);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const groups = useMemo(() => workspace.sourceRoots.map((root) => {
+    const children: SourceTreeNode[] = [];
+    for (const file of workspace.files.filter((candidate) => candidate.sourceRoot === root)) {
+      const relative = file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
+      const parts = relative.split("/").filter(Boolean);
+      let level = children;
+      let prefix = root;
+      for (const [index, segment] of parts.slice(0, -1).entries()) {
+        prefix = `${prefix}/${segment}`;
+        let folder = level.find(
+          (node): node is SourceTreeFolder => node.kind === "folder" && node.name === segment,
+        );
+        if (!folder) {
+          folder = { kind: "folder", name: segment, key: prefix, depth: index + 1, children: [] };
+          level.push(folder);
+        }
+        level = folder.children;
+      }
+      level.push({
+        kind: "file",
+        name: parts.at(-1) ?? file.path,
+        key: file.path,
+        depth: Math.max(1, parts.length),
+        file,
+      });
     }
-    return [...result.entries()];
-  }, [workspace]);
+    const sortNodes = (nodes: SourceTreeNode[]) => {
+      nodes.sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === "folder" ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
+      for (const node of nodes) if (node.kind === "folder") sortNodes(node.children);
+    };
+    sortNodes(children);
+    return { root, children };
+  }), [workspace]);
 
-  return <div className="source-tree">
-    {groups.map(([root, files]) => (
-      <div className="source-root" key={root}>
-        <div className="tree-root-label"><span>▾</span>{root}</div>
-        {files.map((file) => {
-          const relative = file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
-          const depth = Math.max(0, relative.split("/").length - 1);
-          const editor = editors[file.path];
-          return (
-            <button
-              key={file.path}
-              type="button"
-              className={`tree-file ${activePath === file.path ? "active" : ""}`}
-              style={{ paddingLeft: `${20 + depth * 14}px` }}
-              onClick={() => onSelect(file)}
-              title={file.path}
-            >
-              <span className={`file-kind ${file.kind}`}>{file.kind === "data" ? "▦" : file.kind === "schema" ? "T" : file.kind === "type" ? "◇" : "!"}</span>
-              <span className="tree-file-name">{sourceName(file.path)}</span>
-              {editorIsDirtySafe(editor) && <span className="dirty-dot" title="Unsaved changes">●</span>}
-              {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}
-            </button>
-          );
-        })}
-      </div>
-    ))}
+  const toggleFolder = (key: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleTreeKey = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    folderKey?: string,
+    expanded = false,
+  ) => {
+    const tree = event.currentTarget.closest('[role="tree"]');
+    if (!tree) return;
+    const items = Array.from(tree.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'));
+    const index = items.indexOf(event.currentTarget);
+    const depth = Number(event.currentTarget.dataset.depth ?? "0");
+    const focusAt = (next: number) => items[Math.max(0, Math.min(items.length - 1, next))]?.focus();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusAt(index + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      focusAt(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      focusAt(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      focusAt(items.length - 1);
+    } else if (event.key === "ArrowRight" && folderKey) {
+      event.preventDefault();
+      if (!expanded) toggleFolder(folderKey);
+      else if (Number(items[index + 1]?.dataset.depth ?? depth) > depth) focusAt(index + 1);
+    } else if (event.key === "ArrowLeft") {
+      if (folderKey && expanded) {
+        event.preventDefault();
+        toggleFolder(folderKey);
+      } else {
+        for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+          if (Number(items[cursor].dataset.depth ?? "0") < depth) {
+            event.preventDefault();
+            items[cursor].focus();
+            break;
+          }
+        }
+      }
+    } else if ((event.key === "Enter" || event.key === " ") && folderKey) {
+      event.preventDefault();
+      toggleFolder(folderKey);
+    }
+  };
+
+  const renderNode = (node: SourceTreeNode): React.ReactNode => {
+    if (node.kind === "folder") {
+      const expanded = !collapsed.has(node.key);
+      return (
+        <div key={node.key}>
+          <button
+            type="button"
+            role="treeitem"
+            data-depth={node.depth}
+            aria-expanded={expanded}
+            className="tree-folder"
+            style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+            onClick={() => toggleFolder(node.key)}
+            onKeyDown={(event) => handleTreeKey(event, node.key, expanded)}
+          >
+            <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+            <span>{node.name}</span>
+          </button>
+          {expanded && <div role="group">{node.children.map(renderNode)}</div>}
+        </div>
+      );
+    }
+
+    const editor = editors[node.file.path];
+    const dirty = editorIsDirtySafe(editor);
+    const loading = loadingPaths.has(node.file.path);
+    const stateLabels = [
+      loading ? "loading" : null,
+      editor?.saving ? "saving" : null,
+      dirty ? "unsaved changes" : null,
+      editor?.loadError ? "source unavailable" : null,
+      editor?.saveStatus === "failure" ? "save failed" : null,
+      editor?.saveStatus === "outcome_unknown" ? "save outcome unknown" : null,
+      editor?.conflict ? "external change conflict" : null,
+    ].filter(Boolean);
+    return (
+      <button
+        key={node.key}
+        type="button"
+        role="treeitem"
+        data-depth={node.depth}
+        aria-selected={activePath === node.file.path}
+        aria-label={`${node.file.path}${stateLabels.length ? `, ${stateLabels.join(", ")}` : ""}`}
+        className={`tree-file ${activePath === node.file.path ? "active" : ""}`}
+        style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+        onClick={() => onSelect(node.file)}
+        onKeyDown={handleTreeKey}
+        title={node.file.path}
+      >
+        <span className={`file-kind ${node.file.kind}`}>{node.file.kind === "data" ? "▦" : node.file.kind === "schema" ? "T" : node.file.kind === "type" ? "◇" : "!"}</span>
+        <span className="tree-file-name">{node.name}</span>
+        {dirty && <span className="dirty-dot" title="Unsaved changes">●</span>}
+        {loading && <span className="file-state-badge" title="Loading">…</span>}
+        {editor?.saving && <span className="file-state-badge" title="Saving">↻</span>}
+        {editor?.loadError && <span className="file-state-badge error" title="Source unavailable">×</span>}
+        {editor?.saveStatus === "failure" && <span className="file-state-badge error" title="Save failed">×</span>}
+        {editor?.saveStatus === "outcome_unknown" && <span className="file-state-badge warning" title="Save outcome unknown">?</span>}
+        {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}
+      </button>
+    );
+  };
+
+  return <div className="source-tree" role="tree" aria-label="Project source files">
+    {groups.map(({ root, children }) => {
+      const key = `root:${root}`;
+      const expanded = !collapsed.has(key);
+      return (
+        <div className="source-root" key={root}>
+          <button
+            type="button"
+            role="treeitem"
+            data-depth="0"
+            aria-expanded={expanded}
+            className="tree-root-label"
+            onClick={() => toggleFolder(key)}
+            onKeyDown={(event) => handleTreeKey(event, key, expanded)}
+          >
+            <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+            {root}
+          </button>
+          {expanded && <div role="group">{children.map(renderNode)}</div>}
+        </div>
+      );
+    })}
     {workspace.files.length === 0 && <div className="pane-message">No YAML source documents.</div>}
   </div>;
 }
@@ -896,6 +1233,7 @@ function DataEditor({
   editor,
   onCellChange,
   onSave,
+  onRecheckSource,
   onSwitchView,
   onReloadConflict,
   onOverwriteConflict,
@@ -905,6 +1243,7 @@ function DataEditor({
   editor: EditorState;
   onCellChange: (recordIndex: number, field: string, value: string) => void;
   onSave: () => void;
+  onRecheckSource: () => void;
   onSwitchView: (view: EditorState["view"]) => void;
   onReloadConflict: () => void;
   onOverwriteConflict: () => void;
@@ -912,6 +1251,19 @@ function DataEditor({
 }) {
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
+  const lastFocusedCell = useRef<string | null>(null);
+
+  useEffect(() => {
+    lastFocusedCell.current = null;
+  }, [file.path]);
+
+  useEffect(() => {
+    if (editor.view !== "grid" || !lastFocusedCell.current) return;
+    const key = lastFocusedCell.current;
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();
+    });
+  }, [editor.view]);
 
   return (
     <section className="data-editor">
@@ -928,9 +1280,22 @@ function DataEditor({
         </div>
         <div className="editor-actions">
           <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
-          <button type="button" onClick={onSave} disabled={!dirty || editor.saving}>{editor.saving ? "Saving…" : "Save"}</button>
+          <button type="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</button>
         </div>
       </header>
+
+      {(editor.saveStatus === "failure" || editor.saveStatus === "outcome_unknown") && (
+        <div className="conflict-strip save-recovery-strip">
+          <div>
+            <strong>{editor.saveStatus === "outcome_unknown" ? "Previous save outcome is unknown." : "Save failed."}</strong>
+            <span>Local changes are preserved. Recheck the workspace source before continuing recovery.</span>
+          </div>
+          <div>
+            <button type="button" onClick={onRecheckSource}>Recheck Source</button>
+            {editor.saveStatus === "failure" && <button type="button" onClick={onSave}>Retry Save</button>}
+          </div>
+        </div>
+      )}
 
       {editor.conflict && (
         <div className="conflict-strip">
@@ -982,7 +1347,10 @@ function DataEditor({
                             aria-label={`record ${row.recordIndex + 1} ${column.name}`}
                             value={value}
                             readOnly={!column.editable || editor.saving}
-                            onFocus={() => cellFocusStart.current.set(key, value)}
+                            onFocus={() => {
+                              cellFocusStart.current.set(key, value);
+                              lastFocusedCell.current = key;
+                            }}
                             onChange={(event) => onCellChange(row.recordIndex, column.name, event.target.value)}
                             onKeyDown={(event) => handleGridKey(event, row.recordIndex, columnIndex, editor.snapshot, () => {
                               const initial = cellFocusStart.current.get(key);

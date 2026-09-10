@@ -64,9 +64,10 @@ pub struct MigrationPlan {
     pub target_table: String,
     pub field: FieldDefinition,
     pub initializer: Option<Value>,
-    /// Canonical source files whose exact bytes were used for resolution and
-    /// postcondition planning. The complete source-file set is checked
-    /// separately by the commit boundary.
+    /// Canonical source paths whose exact bytes were available to resolution,
+    /// closure determination, and postcondition planning. Closure discovery
+    /// classifies every source document, so every snapshot path is retained for
+    /// commit preflight; the bytes are supplied by the source snapshot.
     pub source_inputs: Vec<PathBuf>,
     pub destructive: bool,
     pub affected_files: Vec<MigrationFilePlan>,
@@ -205,10 +206,9 @@ fn prepare_add_field(
     let transformed_documents = apply_file_plans(documents, &file_plans)?;
     let (transformed_closure, _post_type_system) =
         resolve_target_snapshot(&transformed_documents, &command.table, &command.field)?;
-    let source_inputs = closure_documents
+    let source_inputs = documents
         .files
         .iter()
-        .chain(transformed_closure.files.iter())
         .map(|loaded| loaded.path.clone())
         .collect::<BTreeSet<_>>();
     if semantic_documents(&transformed_closure) != expected_semantics {

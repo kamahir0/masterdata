@@ -131,14 +131,17 @@ pub fn commit_migration_with_failures(
     };
 
     // WHY: MIGRATION-016 requires the config, source-set membership, and every
-    // source input used by resolution to match the exact snapshot immediately
-    // before canonical mutation begins.
-    // IF REMOVED: a plan could overwrite a concurrent edit even when the
-    // affected file itself was not the edited closure input.
+    // source input used by resolution or closure determination to match the
+    // exact snapshot immediately before canonical mutation begins.
+    // IF REMOVED: a plan could overwrite a concurrent edit that changes an
+    // excluded source document into a target-table or type-closure input.
     // EVIDENCE: docs/specs/schema-migration.md; docs/spec-changes/0011-cli-surface-and-schema-migration.md
     // Regression: stale_source_snapshot_rejects_without_mutation;
     // stale_project_config_rejects_without_mutation;
-    // stale_source_membership_rejects_without_mutation.
+    // stale_source_membership_rejects_without_mutation;
+    // closure_candidate_source_change_rejects_without_mutation;
+    // closure_candidate_schema_change_rejects_without_mutation;
+    // closure_candidate_type_change_rejects_without_mutation.
     if let Err(error) =
         preflight_source_snapshot(project, source_snapshot, &dry_run.plan.source_inputs)
     {

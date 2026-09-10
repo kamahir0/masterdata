@@ -30,6 +30,41 @@ table: other
 records: []
 "#;
 
+const UNRELATED_SCHEMA_SOURCE: &str = r#"kind: schema
+table: other
+fields:
+  - key: 0
+    name: id
+    type: int
+primaryKey:
+  fields: [id]
+"#;
+
+const UNRELATED_TYPE_SOURCE: &str = r#"kind: type
+name: other
+valueObject:
+  underlying: int
+"#;
+
+const ITEM_WITH_REWARD_SCHEMA_SOURCE: &str = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 2
+    name: reward
+    type: Reward
+primaryKey:
+  fields: [id]
+"#;
+
+const REWARD_TYPE_SOURCE: &str = r#"kind: type
+name: Reward
+valueObject:
+  underlying: int
+"#;
+
 struct PreparedMigration {
     directory: TempDir,
     project: Project,
@@ -54,6 +89,19 @@ fn add_field_command() -> MigrationCommand {
 }
 
 fn prepared_migration(include_unrelated: bool) -> PreparedMigration {
+    let extra_sources = if include_unrelated {
+        vec![("other-data.yaml", UNRELATED_SOURCE)]
+    } else {
+        Vec::new()
+    };
+    prepared_migration_with_sources(SCHEMA_SOURCE, &extra_sources, &add_field_command())
+}
+
+fn prepared_migration_with_sources(
+    schema_source: &str,
+    extra_sources: &[(&str, &str)],
+    command: &MigrationCommand,
+) -> PreparedMigration {
     let directory = tempdir().expect("temporary project directory");
     let source_root = directory.path().join("sources");
     fs::create_dir_all(&source_root).expect("source root");
@@ -65,15 +113,15 @@ fn prepared_migration(include_unrelated: bool) -> PreparedMigration {
 
     let schema_path = source_root.join("item-schema.yaml");
     let data_path = source_root.join("item-data.yaml");
-    fs::write(&schema_path, SCHEMA_SOURCE).expect("schema source");
+    fs::write(&schema_path, schema_source).expect("schema source");
     fs::write(&data_path, DATA_SOURCE).expect("data source");
-    if include_unrelated {
-        fs::write(source_root.join("other-data.yaml"), UNRELATED_SOURCE).expect("unrelated source");
+    for (name, source) in extra_sources {
+        fs::write(source_root.join(name), source).expect("extra source");
     }
 
     let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
     let snapshot = project.load_documents().expect("source snapshot");
-    let dry_run = dry_run_migration(&snapshot, &add_field_command()).expect("migration dry-run");
+    let dry_run = dry_run_migration(&snapshot, command).expect("migration dry-run");
     PreparedMigration {
         directory,
         project,
@@ -199,31 +247,122 @@ fn stale_source_membership_rejects_without_mutation() {
 }
 
 #[test]
-fn unrelated_source_change_does_not_block_commit() {
+fn closure_candidate_source_change_rejects_without_mutation() {
     let prepared = prepared_migration(true);
     let unrelated_path = prepared.project.root().join("sources/other-data.yaml");
-    let changed_unrelated = b"kind: data\ntable: other\nrecords:\n  - id: 99\n";
-    fs::write(&unrelated_path, changed_unrelated).expect("unrelated source edit");
+    let original_schema = fs::read(&prepared.schema_path).expect("original schema");
+    let original_data = fs::read(&prepared.data_path).expect("original data");
+    let changed_source = b"kind: data\ntable: item\nrecords:\n  - id: 99\n";
+    fs::write(&unrelated_path, changed_source).expect("closure candidate source edit");
 
     assert_eq!(
         prepared.dry_run.plan.source_inputs,
-        vec![prepared.data_path.clone(), prepared.schema_path.clone()]
+        vec![
+            prepared.data_path.clone(),
+            prepared.schema_path.clone(),
+            unrelated_path.clone(),
+        ]
     );
-    let report =
+    let failure =
         masterdata_core::commit_migration(&prepared.project, &prepared.snapshot, &prepared.dry_run)
-            .expect("unrelated source changes are outside the closure");
+            .expect_err("closure candidate source changes must be rejected as stale");
 
-    assert_report_state(&report, MigrationCommitState::Success);
+    assert_report_state(&failure.report, MigrationCommitState::NotStarted);
+    assert_eq!(failure.error.diagnostic().code, "E-MIGRATION-PATCH-INVALID");
     assert_eq!(
         fs::read(unrelated_path).expect("unrelated source"),
-        changed_unrelated
+        changed_source
     );
     assert_eq!(
-        fs::read(&prepared.schema_path).expect("committed schema"),
-        source_bytes(
-            &prepared.dry_run.transformed_documents,
-            &prepared.schema_path
-        )
+        fs::read(&prepared.schema_path).expect("schema unchanged"),
+        original_schema
+    );
+    assert_eq!(
+        fs::read(&prepared.data_path).expect("data unchanged"),
+        original_data
+    );
+}
+
+#[test]
+fn closure_candidate_schema_change_rejects_without_mutation() {
+    let prepared = prepared_migration_with_sources(
+        SCHEMA_SOURCE,
+        &[("other-schema.yaml", UNRELATED_SCHEMA_SOURCE)],
+        &add_field_command(),
+    );
+    let candidate_path = prepared.project.root().join("sources/other-schema.yaml");
+    let original_schema = fs::read(&prepared.schema_path).expect("original schema");
+    let original_data = fs::read(&prepared.data_path).expect("original data");
+    let changed_source = b"kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n";
+    fs::write(&candidate_path, changed_source).expect("closure candidate schema edit");
+
+    assert!(
+        prepared
+            .dry_run
+            .plan
+            .source_inputs
+            .contains(&candidate_path)
+    );
+    let failure =
+        masterdata_core::commit_migration(&prepared.project, &prepared.snapshot, &prepared.dry_run)
+            .expect_err("closure candidate schema changes must be rejected as stale");
+
+    assert_report_state(&failure.report, MigrationCommitState::NotStarted);
+    assert_eq!(failure.error.diagnostic().code, "E-MIGRATION-PATCH-INVALID");
+    assert_eq!(
+        fs::read(&candidate_path).expect("changed schema"),
+        changed_source
+    );
+    assert_eq!(
+        fs::read(&prepared.schema_path).expect("schema unchanged"),
+        original_schema
+    );
+    assert_eq!(
+        fs::read(&prepared.data_path).expect("data unchanged"),
+        original_data
+    );
+}
+
+#[test]
+fn closure_candidate_type_change_rejects_without_mutation() {
+    let prepared = prepared_migration_with_sources(
+        ITEM_WITH_REWARD_SCHEMA_SOURCE,
+        &[
+            ("other-type.yaml", UNRELATED_TYPE_SOURCE),
+            ("reward-type.yaml", REWARD_TYPE_SOURCE),
+        ],
+        &add_field_command(),
+    );
+    let candidate_path = prepared.project.root().join("sources/other-type.yaml");
+    let original_schema = fs::read(&prepared.schema_path).expect("original schema");
+    let original_data = fs::read(&prepared.data_path).expect("original data");
+    let changed_source = b"kind: type\nname: Reward\nvalueObject:\n  underlying: int\n";
+    fs::write(&candidate_path, changed_source).expect("closure candidate type edit");
+
+    assert!(
+        prepared
+            .dry_run
+            .plan
+            .source_inputs
+            .contains(&candidate_path)
+    );
+    let failure =
+        masterdata_core::commit_migration(&prepared.project, &prepared.snapshot, &prepared.dry_run)
+            .expect_err("closure candidate type changes must be rejected as stale");
+
+    assert_report_state(&failure.report, MigrationCommitState::NotStarted);
+    assert_eq!(failure.error.diagnostic().code, "E-MIGRATION-PATCH-INVALID");
+    assert_eq!(
+        fs::read(&candidate_path).expect("changed type"),
+        changed_source
+    );
+    assert_eq!(
+        fs::read(&prepared.schema_path).expect("schema unchanged"),
+        original_schema
+    );
+    assert_eq!(
+        fs::read(&prepared.data_path).expect("data unchanged"),
+        original_data
     );
 }
 

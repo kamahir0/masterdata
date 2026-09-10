@@ -9,21 +9,24 @@ YAMLを手書きせずにマスターデータを編集し、Gitで変更を確�
 Build / PublishやMigration内部処理を増やすだけでは、この体験は完成しない。
 
 2026-09-10のHumanとの議論では、AddField source commit safetyのfinal verification後に、
-「GUIでレコードを編集・保存し、差分と検証結果を確認できる体験」を具体化する推薦に対し、
-Humanが「進めて」と指示した。これを次priorityの選択として記録する。
-以下の初期対応範囲、保存方式、validation policyまで承認されたとは扱わない。
-本RFCは比較・相談用であり、implementation authorityではない。
+「GUIでレコードを編集・保存し、差分と検証結果を確認できる体験」を次priorityとして具体化することが選択された。
+続く比較に対してHumanは、初期編集範囲はRequired Primitiveの非key field、保存単位はVS Codeのようなfile単位、
+validation結果は保存可否を妨げない方針を選択した。
+
+これらはproduct choiceとして本RFCに記録する。canonical GUI / source-edit contractの詳細、Human Approval、
+implementation authorityをこのRFC単体で与えるものではない。
 
 ## 根拠と分類（Source Evidence and Classification）
 
 | 分類 | 内容 |
 | --- | --- |
 | Decision | 次priorityを既存recordのGUI編集・保存体験の具体化へ進める。 |
-| Requirement | GUIから値を変更・保存し、差分と検証結果を確認できるようにしたい。exact behaviorと強度は仕様化時に確定する。 |
+| Decision | 初期編集対象はRequired Primitiveの非key fieldとし、その他のfieldは初期版ではread-onlyとする。 |
+| Decision | dirty / Saveの単位はsource data fileとし、VS Codeに近い明示Save体験を採る。 |
+| Decision | validation resultは表示するが、validation errorの有無をSave可否のgateにしない。 |
+| Requirement | GUIから値を変更・保存し、差分と検証結果を確認できるようにする。exact behaviorはcanonical仕様化時に確定する。 |
 | Constraint | YAML正本、shared semantics、Tauriからapplication serviceへの委譲は既存Approved authorityに従う。 |
-| Proposal | 初期版は既存recordの非key・Required Primitive fieldに絞る。未承認。 |
-| Proposal | 明示Save、変更箇所中心のsource preservation、stale拒否を採る。未承認。 |
-| Open Question | 対応型、保存単位、validation errorの保存可否、dirty stateの扱いなど下記の選択。 |
+| Open Question | source preservation、external change、dirty navigation、exact scalar transport、I/O failure等の詳細contract。 |
 
 ## 課題（Problem）
 
@@ -36,89 +39,84 @@ Migrationはschema変更の意味を所有する。通常のrecord値編集をAd
 
 ## 目標（Goals）
 
-最初の到達点の候補は次の一連の操作である。
+最初の到達点は次の一連の操作を目指す。
 
 1. Desktopで既存Projectを選んで開く。
 2. logical Tableを選び、複数data fileに分かれた既存recordsを確認する。
-3. recordを選び、対応するfieldの値を変更する。
-4. 保存予定のsource差分とvalidation resultを確認し、明示Saveする。
-5. 開き直して変更を確認でき、Git diffでも意図した変更を追える。
+3. recordを選び、対応するRequired Primitiveの非key fieldを変更する。
+4. source差分とvalidation resultを確認する。
+5. dirtyなsource data fileを明示Saveする。
+6. 開き直して変更を確認でき、Git diffでも意図した変更を追える。
 
-これはacceptance scenarioの案であり、全項目の詳細がApprovedという意味ではない。
 既存のValidate / Buildへ接続できることを保ち、Unityへの最終反映は後続の製品受け入れ候補とする。
 
 ## 非目標（Non-Goals）
 
-以下は初期版から外す提案であり、製品の将来要望の撤回ではない。
+以下は初期版から外す。将来要望の撤回ではない。
 
 - recordの追加・削除、schema編集、RenameField / DropField、MasterReference設計。
-- spreadsheet同等のcell range操作、一括paste、複数record同時編集、履歴を持つUndo/Redo。
+- Enum / Value Object / Nullable / Array / Custom Typeの編集、Primary / Secondary Key構成fieldの編集。
+- spreadsheet同等のcell range操作、一括paste、履歴を持つUndo/Redo。
 - Build Profileの設定・選択、タグ編集、GUI Publish、Git commit/push操作。
 - Standalone / Connected Web、Native Host、installer、全hostの同時完成。
 - formatter、全ファイルの再serialize、generated C# / binaryの編集。
 
-## 選択肢（Options）
+## 選択された方針（Selected Product Choices）
 
-### OQ-A: 最初に編集できる範囲
+### A: 最初に編集できる範囲
 
-| 案 | 利点 | 費用・制約 |
-| --- | --- | --- |
-| A（推奨）: Required Primitiveの非key fieldだけ | 保存・競合・差分確認を含む一連の体験を先に閉じられる | Enum / Value Object / Nullable / Array / Custom Typeは当初read-only |
-| B: Primitive + Enum / Value Object / Nullable | 普通のゲームマスターへの適用範囲が広い | 型別editor、null入力、表示・wire representationの検証が増える |
-| C: 全型とkey変更を同時に扱う | 型の制約が少ない | identity変更、nested editor、複合validationまで同時に決める必要がある |
+Required Primitiveの非key fieldだけを編集可能とする。
+Primitiveは[Primitive Types](../specs/type-system/primitives.md)の全8種類。
+Primary / Secondary Keyの構成field、およびEnum / Value Object / Nullable / Array / Custom Typeは初期版ではread-onlyとする。
+複合型を持つTable全体を隠さず、対応fieldだけを編集可能にする。
 
-AでいうPrimitiveは[Primitive Types](../specs/type-system/primitives.md)の全8種類。
-Primary / Secondary Keyの構成fieldは初期版ではread-onlyとする提案。
-複合型を持つTable全体を隠すのではなく、非対応fieldをread-onlyで保持・表示する案とする。
 数値の値域は既存ownerに従う。特にlong / ulongをfrontendの数値変換で丸めることは許されず、
-exact representationは共有境界の設計課題として残す。
+exact representationはshared boundaryで仕様化する。
 
-### OQ-B: 保存と差分
+### B: file単位のdirty / Save
 
-推奨案は「一度に1 recordを編集し、明示Save、保存前のsource差分表示」である。
-1 recordに対する複数field変更はまとめて保存し、変更対象data fileだけを更新する。
-未変更fileはbyte-for-byte保持。変更fileでもrecord順、member順、コメント、改行、indentation等の
-無関係なtextを保持し、変更valueのquote/styleは意味を正しく表すために必要な範囲で変更を認める案。
-source locationを安全に特定できない場合は全fileの再serializeへfallbackせず保存不可を示す案。
+Save単位はrecordやTableではなく、source data fileとする。
+GUI上ではVS Codeに近い形でfileごとにdirty stateを持ち、利用者が明示Saveする。
+同じfileに属する複数record / fieldの変更は、そのfileの1回のSaveでまとめて永続化される。
+別fileのdirty stateは独立して保持する。
 
-代替はautosave、またはTable全体の一括Save。これらは保存タイミング・複数file failure・dirty管理の範囲が広がる。
-Gitそのものの起動やstage/commitは不要とし、UI内のsource diffはGitがないprojectでも表示する提案。
-このpreservation policyはGUIに固有のdomain logicではなく、採用後にshared source-edit仕様へrouteする。
+source diffはSave可否のgateではなく、変更内容を確認するsurfaceとして提供する。
+Gitの有無に依存せず、UI内で保存予定または未保存のsource差分を確認できることを目指す。
 
-### OQ-C: validation・未保存変更・競合
+未変更fileはbyte-for-byte保持する。変更fileでもrecord順、member順、コメント、改行、indentation等の
+無関係なtextをできる限り保持し、変更valueのquote/styleは意味を正しく表すために必要な範囲だけ変更する。
+source locationを安全に特定できない場合のbehaviorはcanonical source-edit仕様で決める。
 
-推奨する最初のbehavior packageは以下。
+### C: validationはSaveを妨げない
 
-- 編集中のbufferに対する検証と、保存済みsourceに対する検証結果を区別する。
-- 変更値が型・YAML表現としてinvalidならSaveを止め、入力は保持する。
-- unfiltered validationのproject errorを表示するが、保存対象の値編集と無関係な既存errorだけでSaveを止めない。
-  保存可能条件はMigration仕様を流用せず、source-editのpreconditionとして別途定義する。
-- planで読んだsource/configが保存直前に変わっていたら保存を止める。外部変更を上書き・自動mergeしない。
-  未保存入力を保持し、reloadで破棄するか、画面に留まるかを選べる。
-- dirty状態のrecord/Table/project切替、Reload、window closeでは「保存／破棄／キャンセル」を明示する。
-  保存失敗なら切替・closeを完了しない。操作不能なSaveを選ばせない。
-- Buildは保存済みsourceだけを使うため、初期版ではdirty中は開始できない。暗黙Saveはしない。
-- 通常I/O failure時の保存結果と元データの保持をshared serviceで扱う。
-  crash/power lossまでの保証を、この小さなGUI taskの中で追加しない。
+validation resultは編集体験の重要なfeedbackとして表示するが、validation errorの有無をSave可否のgateにしない。
+編集値がdomain validation上invalidでも、保存操作そのものを禁止しない。
+既存project errorもSave禁止条件にはしない。
 
-代替は「project validation errorが1件でもあれば保存禁止」または「invalidな編集値も保存可能」。
-前者は無関係な不備の修正作業まで妨げ、後者はinvalid sourceのauthoring契約を広げるため、初期版には推奨しない。
+このdecisionは「writeが必ず成功する」という意味ではない。filesystem I/O failure、permission、path safety、
+external modificationとの競合など、永続化を安全に完了できない物理的・整合性上のケースはsource-edit contractで扱う。
+validationと保存成功／失敗を混同しない。
+
+Buildは保存済みsourceを入力とする。dirty中のBuild開始可否、暗黙Saveの有無、external change時のcompare / reload / overwrite等は
+GUI / source-edit仕様で明示する。
 
 ## トレードオフ（Trade-offs）
 
-Aと明示Saveを採れば、利用者が操作できる最小の閉じた体験を先に作れる。
-単なるread-only viewerだけでObjectiveを閉じず、同じimplementation work packageに保存・error path・操作testを含める。
-一方、型対応の狭さは明示し、非対応値を空文字やdefaultへ変換して保存しない。
+Required Primitiveに範囲を絞ることで、型editorの拡張より先に「編集 → 差分確認 → file Save → reopen」という
+利用者価値を閉じられる。一方で初期版の編集可能範囲は狭いので、非対応fieldをread-onlyとして明示する必要がある。
 
-厳密なsource preservationはformatterより実装費用がかかるが、YAML + Gitと外部編集との共存に直結する。
-見た目を先に整えるだけで保存のcontractを後付けする進め方は避ける。
+file単位SaveはYAMLというsource正本と外部editorのmental modelに一致しやすいが、record単位Saveよりdirty管理と
+複数record変更の表示が重要になる。厳密なsource preservationはformatterより実装費用がかかるが、YAML + Gitと外部編集との共存に直結する。
+
+validation non-blockingにより、GUIはvalidatorではなくeditorとしてsourceを保存できる。一方、invalid sourceを保存可能にするため、
+validation feedbackを見失わないUIと、保存済みsource / 編集中bufferの状態区別が必要になる。
 
 ## 提案（Proposal）
 
-まずOQ-A〜Cのproduct choicesをHumanが選び、その結果を次のownerへ分けてDraft化する。
+選択済みproduct choicesを次のownerへ分けてDraft化する。
 
-- `docs/gui/`の新しいrecord editor仕様: navigation、selection、dirty、差分表示、focus、keyboard、error state。
-- `docs/specs/`の新しいsource-edit仕様: record値変更、snapshotとsource provenance、保存precondition、失敗結果、preservation。
+- `docs/gui/`のrecord editor仕様: navigation、file selection、dirty表示、Save、差分表示、validation表示、focus、keyboard、error state。
+- `docs/specs/`のsource-edit仕様: record値変更、snapshotとsource provenance、file単位commit、保存結果、preservation、external change / I/O failure。
 - 既存Approved ownerの意味を変更する必要がある場合だけ`docs/spec-changes/`へdeltaを隔離する。
 
 [Table / Key](../specs/table-and-keys.md)のschema field order、複数fileのlogical Table、
@@ -135,26 +133,27 @@ GUI Saveの具体的contractは新規で、現行Migrationの仕様や成功条�
 
 ## 未解決事項（Open Questions）
 
-最初にHumanが選ぶのはOQ-A（型と操作範囲）、OQ-B（保存・preservation）、OQ-C（errorとdirty policy）。
-その後、採用範囲に応じて下記をcanonical Draftで閉じる。以下は未承認のため実装時に推測しない。
+OQ-A〜Cのproduct choice自体はHuman decisionで解決済み。
+以下はcanonical Draftで閉じる。既存Approved authorityからrecoverできる事項はHumanへ逐次質問せず整理する。
 
 - project pickerの入力方法、開けないproject、empty table、schemaをresolveできない状態の操作。
-- record表示順、重複PKを含むsource recordの識別・表示、非対応値・literal block stringの表示と編集範囲。
-- exact scalar transport、文字列・数値の入力中状態、変更を元の値へ戻した場合のdirty判定。
-- Save preconditionとunrelated errorの分類、検証snapshot、file identity/path safety、通常I/O failureの結果。
+- record表示順、重複PKを含むsource recordの識別・表示、非対応値・literal block stringの表示範囲。
+- exact scalar transport、文字列・数値の入力中状態、変更を元の値へ戻した場合のfile dirty判定。
+- file単位Saveのsource provenance、preservation、atomicity、通常I/O failureの結果。
+- external modification時のcompare / reload / overwrite policyと、dirty buffer保護。
 - 差分の表示単位、保存結果が不明な場合の再試行、reload後の入力復元の範囲。
+- dirty fileがある状態でのrecord / Table / project切替、Build、Reload、window closeのbehavior。
 - loading/saving中の操作、keyboard/focus、accessibility、shortcut、product textの言語。
-
-この一覧を全てHumanへの逐次質問にはしない。既存Approved authorityからrecoverできる事項は整理し、
-新しいobservable choiceだけを比較可能な案として提示する。
 
 ## 受け入れ候補（Acceptance and Implementation Impact）
 
-仕様化後に次を実際のUI操作・shared service testsで確認する案。source内の文字列検査だけで完了扱いにしない。
+仕様化後に次を実際のUI操作・shared service testsで確認する。source内の文字列検査だけで完了扱いにしない。
 
-- project選択 → Table → record → 値変更 → source diff → Save → reopenで変更を確認する。
+- project選択 → Table → record → 値変更 → source diff / validation確認 → file Save → reopenで変更を確認する。
+- 同一file内の複数変更が一度のSaveで永続化され、別fileのdirty stateが独立する。
 - split data files、同一PKの別source record、非対応field、64-bit整数の精度を確認する。
-- 値invalid、external edit、I/O failure、dirty中のnavigationでsourceと入力を保護する。
+- domain validation上invalidな値でもSave操作が禁止されず、保存後もvalidation resultを確認できる。
+- external edit、I/O failure、dirty中のnavigationでsourceと入力を承認済みcontractに従って扱う。
 - 未変更text/fileを保持し、Saveだけでbuild/publishを開始しない。
 - 既存CLIのvalidationとGUIの保存済みsource validationが同じdomain resultを返す。
 
@@ -166,15 +165,17 @@ GUI Saveの具体的contractは新規で、現行Migrationの仕様や成功条�
 ### Affected Specifications
 
 GUI app shell（Draft）、YAML subset（ApprovedのGUI save Open Question）、Table / KeyとRuntime hosts（Approved）。
-既存normative requirementの変更はない。
+既存normative requirementの変更は現時点で確定していない。
 
 ### Confirmed Decisions
 
-GUI編集・保存体験を次priorityとして具体化すること。OQ-A〜Cの具体案は未決定。
+- 初期編集対象はRequired Primitiveの非key field。
+- Save / dirty管理はsource data file単位。
+- validation errorはSave禁止条件にしない。
 
 ### New Requirements
 
-None identified。新規normative IDは選択後のcanonical Draftで割り当てる。
+canonical GUI / source-edit Draftでnormative requirementとIDを割り当てる。
 
 ### Changed Requirements
 
@@ -182,7 +183,7 @@ None identified。
 
 ### Open Questions
 
-上記OQ-A〜Cと採用後の詳細事項。
+上記の保存・競合・dirty・exact representation等の詳細事項。
 
 ### Potential ADRs
 
@@ -190,7 +191,7 @@ None identified。
 
 ### Compatibility Impact
 
-上記互換性節を参照。既存contract変更なし。
+上記互換性節を参照。既存contract変更はcanonical reviewで確認する。
 
 ### Implementation Impact
 
@@ -198,12 +199,13 @@ None identified。
 
 ## レビュー（Review）
 
-`review-spec`でintentと既存authorityを別passで照合した。
+OQ-A〜CのHuman decisionは確定したが、canonical GUI / source-edit仕様はまだDraft化・review・Human Approvalされていない。
+そのため本RFCだけを根拠にimplementation-readyとは判定しない。
 
 ### Blocking Issues
 
-OQ-A〜Cおよび保存の詳細contractが未決定。実装仕様としての承認・implementation-ready判定は不可。
-比較用Draftとしては未確定を明示しており、既存Approved semanticsへの混入はない。
+implementationに対しては、file単位Saveのobservable contract、source preservation、external modification、dirty lifecycle、
+I/O failure、exact scalar transport等のcanonical仕様化とHuman Approvalが未完了。
 
 ### Non-blocking Issues
 
@@ -211,22 +213,28 @@ None identified。
 
 ### Questions
 
-OQ-A〜Cについて推奨案を採るか。選択後の詳細仕様も別途reviewとHuman Approvalが必要。
+OQ-A〜Cのproduct-level質問は解決済み。追加Human decisionが必要なobservable choiceを仕様refinementで発見した場合だけ提示する。
 
 ### Approved as Proposed
 
-No。比較用Draftであり、未決定事項を保持している。Human Approvalや実装開始を代替しない。
+No。Human product decisionsは記録済みだが、RFCはimplementation authorityではない。
 
 | 観点 | 評価 |
 | --- | --- |
-| Intent fidelity / Normative strength | priority決定と未承認の提案を区別。新規MUST等は追加していない。 |
+| Intent fidelity / Normative strength | Human decisionを記録し、未承認の詳細contractと区別している。 |
 | Internal / Cross-spec consistency | shared semanticsとsource正本を参照し、Migrationを値編集のauthorityにしていない。 |
-| Terminology / Backward compatibility | 既存用語を使用。新しいrecord identityやformatを定義していない。 |
-| Testability / Unresolved ambiguity | 操作による受け入れ候補を列挙。詳細の未決定をOpenとして保持。 |
-| Implementation leakage / Unrequested behavior | library/APIを固定せず、追加案を採用済みと扱っていない。 |
+| Terminology / Backward compatibility | file単位Saveをproduct choiceとして追加。既存formatやdomain identityは変更していない。 |
+| Testability / Unresolved ambiguity | file Saveとvalidation non-blockingの受け入れ候補を追加し、詳細未決定をOpenとして保持。 |
+| Implementation leakage / Unrequested behavior | library/APIを固定せず、external conflict等を未承認のまま推測していない。 |
 
 実装diffがないためimplementation rationale reviewは対象外。
 
 ## 決定（Decision）
 
-比較案の採用は未決定。RFCはDraftのままとする。
+2026-09-10にHumanが以下を選択した。
+
+1. 初期編集対象はRequired Primitiveの非key field。
+2. Save / dirty管理はVS Codeに近いsource data file単位。
+3. validation resultはSave可否を妨げない。
+
+RFCはDraftのままとし、次にGUI / shared source-editのcanonical Draftへ具体化する。

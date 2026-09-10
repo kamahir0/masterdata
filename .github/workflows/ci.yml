@@ -74,16 +74,16 @@ jobs:
               '''  editors: Record<string, EditorState>;\n  loadingPaths: Set<string>;\n  fileOpenErrors: Record<string, ApiDiagnostic>;\n  onSelect: (file: WorkspaceSourceFile) => void;\n''',
           )
           once(
-              '''          const dirty = editorIsDirtySafe(editor);\n          const loading = loadingPaths.has(node.file.path);\n          const stateLabels = [\n''',
-              '''          const dirty = editorIsDirtySafe(editor);\n          const loading = loadingPaths.has(node.file.path);\n          const unavailable = Boolean(editor?.loadError || fileOpenErrors[node.file.path]);\n          const stateLabels = [\n''',
+              '''    const dirty = editorIsDirtySafe(editor);\n    const loading = loadingPaths.has(node.file.path);\n    const stateLabels = [\n''',
+              '''    const dirty = editorIsDirtySafe(editor);\n    const loading = loadingPaths.has(node.file.path);\n    const unavailable = Boolean(editor?.loadError || fileOpenErrors[node.file.path]);\n    const stateLabels = [\n''',
           )
           once(
-              '''            editor?.loadError ? "source unavailable" : null,\n''',
-              '''            unavailable ? "source unavailable" : null,\n''',
+              '''      editor?.loadError ? "source unavailable" : null,\n''',
+              '''      unavailable ? "source unavailable" : null,\n''',
           )
           once(
-              '''              {editor?.loadError && <span className="file-state-badge error" title="Source unavailable">×</span>}\n''',
-              '''              {unavailable && <span className="file-state-badge error" title="Source unavailable">×</span>}\n''',
+              '''        {editor?.loadError && <span className="file-state-badge error" title="Source unavailable">×</span>}\n''',
+              '''        {unavailable && <span className="file-state-badge error" title="Source unavailable">×</span>}\n''',
           )
           path.write_text(text)
 

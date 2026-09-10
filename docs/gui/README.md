@@ -8,6 +8,12 @@ GUI specでは `masterdata-core` のsemanticsを重複させず、behaviorを記
 validation、focus、keyboardとmouse interaction、loading、empty/error/disabled state、unsaved change、build-in-progress
 behaviorを扱ってよい。shared domain operationに対するadapter boundaryはTauri commandである。
 
+## Surface index
+
+- [GUI app shell](app-shell.md) — Desktop shellとshared application boundary（Draft）
+- [Workspace Explorer](explorer/spec.md) — 左ペインのfile / folder navigationとtyped editor selection（Draft）
+- [Data Editor](data-editor/spec.md) — record data YAMLのspreadsheet型editorとfile単位dirty / Save（Draft）
+
 新しいsurface specificationは [_template.md](_template.md) から始める。大きなsurfaceでは、visual artifactを
 specificationの隣に置く。
 
@@ -22,10 +28,9 @@ docs/gui/table-editor/
 specに列挙するすべてのimageは、`Normative`（review済みvisualがacceptance contractの一部で、対象stateとviewportを
 記述する）または `Reference-only`（behaviorを追加しないdesign aid）のいずれかにlabelしなければならない（MUST）。
 reference imageがwritten normative requirementを上書きすることはない。imageを変更した場合は、影響するGUI
-Requirement IDをreviewし、compatibility/acceptance noteを必要に応じて更新する。このtaskではTable Editorのimageも
-behaviorも追加しない。
+Requirement IDをreviewし、compatibility/acceptance noteを必要に応じて更新する。
 
 各canonical GUI ruleは、1つのsurface specificationに1つだけ置く。observableなlayout、state、selection、editing、
 keyboard、focus、validation、loading、empty/error/disabled、unsaved-change、build-progress behaviorには、
-`GUI-TABLE-SEL-001` のようなRequirement IDを使用する。shared domain meaningは `masterdata-core` に残し、GUI specは
+`GUI-DATA-EDIT-001` のようなRequirement IDを使用する。shared domain meaningは `masterdata-core` に残し、GUI specは
 userのobservableなadapter behaviorとTauriとのboundaryだけを記述する。

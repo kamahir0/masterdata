@@ -2,93 +2,59 @@
 
 ## Role
 
-この文書は、現在のdevelopment priorityを記録する唯一のownerである。
-
-この文書はSpecificationではなく、product/domainのobservable semanticsのauthorityでもない。
-Approved semanticsはcanonicalな[仕様](specs/README.md)を参照し、implementation realityはcurrent code、tests、
-Git historyをfreshに確認する。ここに書かれたpriorityだけを根拠に、未承認のbehavior、CLI grammar、config key、
-protocol、file formatを実装してはならない。
+この文書はHuman-selectedなcurrent priorityとwork package boundaryの唯一のownerである。
+Approved behaviorは[仕様index](specs/README.md)の各canonical specification、現在のStageは
+[Development State](execution-state.md)、implementation realityはcode / tests / Gitで確認する。
+この文書は未承認のproduct behaviorのimplementation authorityではない。
 
 ## Objective
 
-現在のHuman priorityは、**AddField source commit safety vertical sliceを完成させる**ことである。
+現在のHuman priorityは、**GUIで既存recordを編集・保存し、差分と検証結果を確認できる最初の体験を完成させる**ことである。
+2026-09-10に、AddField source commit safetyの完了後、この体験の具体化へ進む推薦にHumanが「進めて」と指示した。
+これをpriority選択として記録する。対応型、保存・validation policy等の承認ではない。
 
-AddFieldのsemantic command受理、deterministic Migration Plan / dry-run、source-preserving transformation、patched sourceの
-canonical reparse / postcondition verificationまでのvertical sliceは完了した。次はApprovedな[Schema Migration v1仕様](specs/schema-migration.md)のうち、
-`MIGRATION-016`のlost-update preflightと`MIGRATION-010`のmulti-file commit / rollback / `Recovery Required` boundaryを、
-実際のcanonical YAML filesystem mutationまで含む閉じたwork packageとして実装する。
-
-このobjectiveでは、既に検証済みのexact source snapshotとtransformed sourceをauthority boundaryとして扱い、commit直前にsource inputsが
-staleでないことを確認してからmutationを開始する。複数fileへのcommit途中でfailureした場合は、complete NEW、rollback後のcomplete OLD、
-rollback failure時の`Recovery Required`を明確に区別し、partial successを成功として扱わない。
-
-staging、backup、journal、temporary file、rename strategy等の具体的mechanismはinternal implementation choiceであり、Approved specificationが
-固定していないpublic recovery surface、CLI grammar、serialized transaction formatをこのobjectiveの都合で新しいcontractとして確定してはならない。
+まず[最初のGUIレコード編集・保存体験RFC](rfcs/0005-first-record-authoring-experience.md)で範囲とtrade-offを比較し、
+必要なGUI / shared source-edit contractを仕様化・review・Human Approvalへ進める。
+readiness gateを満たしたら同じObjectiveの実装へ進み、UI操作と保存結果まで検証する。
+現時点ではimplementation-readyではなく、詳細scopeはRFCで未決定として保持する。
 
 ## Why now
 
-直前のObjectiveでAddField plan / dry-runはfinal verificationを通過し、source-preserving patchとsemantic round-tripのcorrectness boundaryが閉じた。
-ここからauthoring operationを実用的なsource mutationへ進める際の主要riskは、semantic transformationそのものではなく、plan作成後の外部更新と
-multi-file write failureによってcanonical source setをpartial / stale stateへ壊すことである。
-
-そのため`RenameField`や`DropField`へoperation coverageを広げる前に、AddFieldでsafe commit boundaryを実証する。これにより後続Migration operationが
-同じcommit safety primitiveを再利用でき、semantic operation追加とfilesystem transaction riskを分離したまま進められる。
+AddField source commit safetyはcandidate `d18fb43e896921e7ec2ec618c9b71640e9d02545`のfinal verificationを経て完了した。
+安全性基盤を積み上げるだけでは、YAMLを手書きせずに編集するという製品の動機は実現しない。
+そのためMigration operationを増やす前に、既存の共有validation / build基盤を利用者の編集体験へ接続する。
 
 ## Completion boundary
 
-次のApproved contractを満たすimplementationとevidenceをもってcompletionとする。
-
-- AddField plan / dry-runで検証済みのexact source snapshotとtransformed sourceを、frontend-independentなcommit pathから安全にcommitできる。
-- mutation開始直前に、project config、source file set、およびMigration closure / postcondition判断に使用したsource inputsについてstale updateを検出する。
-- preflightで不一致を検出した場合はcanonical sourceへintentional mutationを開始せず、stale planとして失敗する。
-- preflight成功後に対象source filesへdeterministicなtransformed bytesをcommitし、成功時はcomplete NEW migrated source setだけを残す。
-- multi-file commit途中で通常のI/O failureが発生した場合、可能な範囲でrollbackし、rollback成功時はcomplete OLD source setを利用可能な状態へ戻す。
-- commit failureに加えてrollbackも失敗した場合は`Recovery Required`として成功扱いせず、それ以上のintentional mutationを停止する。
-- `Recovery Required`時は、recoveryに必要なstaged / backup / journal相当の情報を可能な範囲で保持し、affected filesの状態をstructuredに報告できるboundaryを持つ。
-- staging、backup、journal、atomic rename等のmechanismはApproved observable contractを満たすinternal choiceとして実装し、mechanism自体をpublic contractへ昇格させない。
-- source commit成功後にcanonical build、publish、generated C# / binary / artifact receipt更新を暗黙に開始しない。
-- filesystem mutation / transaction coordinationをpure semantic transformation / planningから分離し、Migration semanticsをstorage layerやfrontendへ複製しない。
-- stale preflight、successful multi-file commit、write failure + rollback success、rollback failure + `Recovery Required`をfocused regression / fault-injection evidenceで固定する。
-- required checksとfinal `review-code` verificationで、data safety、spec conformance、rationale freshness、architecture boundaryにBlockingがないことを確認する。
-- Approved authorityから決められないobservable recovery behaviorやpublic surfaceが必要になった場合は、implementation convenienceで補完せずSpecification Gapとして停止する。
+- 初期の編集対象と操作、保存・競合・validation・dirty policyを明確にし、各canonical ownerへ仕様化する。
+- source正本、型・Table・Build Selection、shared application / host boundaryを既存Approved authorityから参照する。
+- 必要なHuman decision、Specification Gap、review、Human Approvalを閉じた後に実装する。
+- 選定された範囲で、Projectを開く → Table / recordを選ぶ → 値を変更 → 差分・検証結果を確認 → 保存 → 開き直して確認、を通す。
+- 成功だけでなく、invalid input、外部変更、保存失敗、未保存変更の保護を承認されたcontractに従って検証する。
+- 関連tests、required checks、final verificationでBlockingがないことを確認する。read-only viewerや仕様作成だけでこのObjectiveを完了扱いにしない。
 
 ## Explicit non-scope
 
-このobjectiveは、次を今回のpriorityに含めない。
+現時点のpriorityに次は含めない。初期対応型等の未選定scopeはRFCを参照する。
 
-- `RenameField` implementation
-- `DropField` implementationとdestructive execution authorization
-- concrete `masterdata migrate ...` CLI grammar、SQL-like language、CLI wiring
-- Migration Command / Plan / Result / recovery stateのpublic JSON schema、stdout / stderr、exit code contract
-- Tauri / GUI / Web / AI adapterへのMigration wiring
-- crash / OS crash / power lossまで含むglobal filesystem transaction atomicityの保証
-- public recovery command、backup directory layout、journal file format等の新しいobservable contract
-- formatter operation、record standard formatting order、`$tags` placement、schema formatter
-- implicit build、publish、generated C# / binary / artifact receiptの更新
-- ChangeFieldType、record-level UPDATE / INSERT / DELETE、binary mutation / query
-- new Requirement ID、new public Diagnostic Code、またはApproved Migration semanticsの変更
-- unrelated refactor、GUI design-system刷新、table / record editor全体の実装
+- RenameField / DropField、MasterReference、Build Profileの別機能開発。
+- Standalone / Connected WebとNative Hostの実装、distribution全体。
+- GUI Publish、Unity integration全体の同時完成、Git commit/push UI。
+- workflow control-planeの再設計、固定agent role / launcher追加。
+- Approved semanticsの無承認変更、未確定public API / syntax / formatの実装による先取り。
 
 ## Next candidate
 
-次のHuman priority候補は、**RenameField plan / dry-run vertical slice**である。
-
-AddFieldでsemantic planningとsource commit safetyの両boundaryが閉じた後、既存のMigration engine / commit safety primitiveを再利用して
-`RenameField`のlogical Table / current field name resolution、resolved dependency更新、MessagePack key維持、source-preserving rewrite、
-semantic round-tripまでを別work packageとして閉じることを候補とする。
-
-その後に`DropField`とdestructive execution authorizationへ進むことを候補とするが、この順序は自動昇格ではなく、各Objective完了時に
-current implementation realityとproduct priorityをfreshに確認してHumanが選定する。
+このObjective完了後、対応型・編集操作の拡張、Build Profile / Publishへの接続、Unityを含む一連の利用確認を候補として比較する。
+RenameField / DropFieldは[Schema Migration仕様](specs/schema-migration.md)に残る後続機能であり、撤回していない。
+いずれも自動昇格せず、current realityとproduct valueを確認してHumanが次priorityを選ぶ。
 
 ## Relevant authorities
 
-- [Product vision](product/vision.md) — local-first authoring systemとshared semanticsの方向性
-- [Specification index](specs/README.md) — specification lifecycleとnormative authority
-- [Schema Migration v1 specification](specs/schema-migration.md) — `MIGRATION-001`〜`MIGRATION-017`、特に`MIGRATION-005`、`MIGRATION-009`〜`MIGRATION-016`
-- [YAML subset specification](specs/yaml-subset.md) — canonical YAML source semantics
-- [Runtime hosts specification](specs/runtime-hosts.md) — pure/shared semantic engineとhost adapter boundary
-- [CLI surface specification](specs/cli.md) — `migrate` top-level Operation nameと未確定CLI grammarのboundary
-- [Applied CLI / Schema Migration specification change](spec-changes/0011-cli-surface-and-schema-migration.md) — Human Approval済みdeltaとdeferred implementation/public decisions
-- current AddField Migration Plan / transformed source / exact source retention implementationとtests — reuseすべきimplementation reality
-- current project loading / filesystem boundaryとfile provenance implementation — stale preflight / commit integrationでfreshに確認すべきimplementation reality
-- [Specification workflow](contributing/specification-workflow.md) — Specification Gapとapproval lifecycle
+- [Product vision](product/vision.md)
+- [GUI仕様index](gui/README.md)、[GUI app shell（Draft）](gui/app-shell.md)
+- [最初のrecord authoring RFC（Draft）](rfcs/0005-first-record-authoring-experience.md) — 未承認の比較案とOpen Questions
+- [YAML subset](specs/yaml-subset.md)、[Table / Key](specs/table-and-keys.md)、[Type System](specs/type-system/README.md)
+- [Build Selection](specs/build-selection.md)、[Runtime hosts](specs/runtime-hosts.md)
+- [YAML正本ADR](adr/0001-yaml-is-source-of-truth.md)、[shared core ADR](adr/0002-rust-core-shared-by-cli-and-gui.md)、[host capability ADR](adr/0006-host-capability-composition.md)
+- [Specification workflow](contributing/specification-workflow.md)、[Development workflow](execution-workflow.md)

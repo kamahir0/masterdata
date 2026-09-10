@@ -192,7 +192,11 @@ fn build(
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
     let execution = NativeApplicationService::new()
-        .build(configured_path.as_deref().map(Path::new), &current_dir, dry_run)
+        .build(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            dry_run,
+        )
         .map_err(ApiError::from)?;
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
@@ -294,11 +298,8 @@ mod tests {
         let workspace = super::authoring_workspace(project_path.clone()).expect("workspace");
         assert!(workspace.files.iter().any(|file| file.kind == "data"));
 
-        let snapshot = super::open_data_file(
-            project_path,
-            "sources/items-a.yaml".to_owned(),
-        )
-        .expect("data snapshot");
+        let snapshot = super::open_data_file(project_path, "sources/items-a.yaml".to_owned())
+            .expect("data snapshot");
         assert_eq!(snapshot.table, "item");
         assert!(!snapshot.rows.is_empty());
     }

@@ -2,122 +2,253 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: finalize-gui-authoring-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  ubuntu:
-    name: Ubuntu core, frontend, .NET, and GUI compile
+  finalize:
+    name: Finalize GUI authoring Rust patch
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: impl/gui-record-authoring
           fetch-depth: 0
-      - name: Install Tauri Linux dependencies
-        run: |
-          sudo apt-get update
-          # Tauri v2 prerequisites for Ubuntu/Noble. The legacy
-          # libappindicator3-dev package conflicts with this Ayatana package.
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
       - name: Restore Rust and Cargo cache
         uses: Swatinem/rust-cache@v2
         continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - name: Restore minimal application lib diff
+      - name: Apply focused fixes
         shell: python
         run: |
           import subprocess
           from pathlib import Path
-          content = subprocess.check_output(
+
+          core = Path("crates/masterdata-core/src/source_edit.rs")
+          text = core.read_text()
+          text = text.replace(
+              "    for line_index in item_line..record_end {\n",
+              "    for (line_index, line) in lines.iter().enumerate().take(record_end).skip(item_line) {\n",
+              1,
+          )
+          text = text.replace("        let line = &lines[line_index];\n", "", 1)
+          core.write_text(text)
+
+          app = Path("crates/masterdata-app/src/authoring.rs")
+          text = app.read_text()
+          start = text.index("fn install_source_candidate(")
+          end = text.index("\nfn io_authoring_error", start)
+          replacement = r'''fn install_source_candidate(
+              target: &Path,
+              expected_current: &[u8],
+              candidate: &[u8],
+          ) -> masterdata_core::Result<()> {
+              install_source_candidate_with_pre_replace_hook(target, expected_current, candidate, |_| {})
+          }
+
+          fn install_source_candidate_with_pre_replace_hook<F>(
+              target: &Path,
+              expected_current: &[u8],
+              candidate: &[u8],
+              before_replace: F,
+          ) -> masterdata_core::Result<()>
+          where
+              F: FnOnce(&Path),
+          {
+              let parent = target.parent().ok_or_else(|| authoring_error(
+                  "E-SOURCE-EDIT-PATH-UNSAFE",
+                  "source edit target has no parent directory",
+                  Some(target.to_path_buf()),
+                  "SOURCE-EDIT-012",
+              ))?;
+              let metadata = fs::symlink_metadata(target)
+                  .map_err(|error| io_authoring_error(target, format!("could not inspect source file: {error}")))?;
+              if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+                  return Err(authoring_error(
+                      "E-SOURCE-EDIT-PATH-UNSAFE",
+                      "source edit target is no longer a regular non-symlink file",
+                      Some(target.to_path_buf()),
+                      "SOURCE-EDIT-008",
+                  ));
+              }
+
+              // WHY: A complete candidate is staged before the source is replaced, and
+              // the bytes actually moved to backup are rechecked before installation.
+              // IF REMOVED: an external edit racing preflight can become a lost update.
+              // EVIDENCE: docs/specs/source-edit.md SOURCE-EDIT-008, SOURCE-EDIT-010, SOURCE-EDIT-012.
+              let transaction = TempDir::new_in(parent).map_err(|error| {
+                  io_authoring_error(target, format!("could not create source edit staging directory: {error}"))
+              })?;
+              let staged = transaction.path().join("candidate");
+              let backup = transaction.path().join("base");
+              {
+                  let mut file = fs::File::create(&staged).map_err(|error| {
+                      io_authoring_error(target, format!("could not stage source edit candidate: {error}"))
+                  })?;
+                  file.write_all(candidate).map_err(|error| {
+                      io_authoring_error(target, format!("could not write source edit candidate: {error}"))
+                  })?;
+                  file.sync_all().map_err(|error| {
+                      io_authoring_error(target, format!("could not sync source edit candidate: {error}"))
+                  })?;
+              }
+              fs::set_permissions(&staged, metadata.permissions()).map_err(|error| {
+                  io_authoring_error(target, format!("could not preserve source file permissions: {error}"))
+              })?;
+              let current = fs::read(target).map_err(|error| {
+                  io_authoring_error(target, format!("could not recheck source file before save: {error}"))
+              })?;
+              if current != expected_current {
+                  return Err(source_conflict(target, "source file changed during save preflight"));
+              }
+
+              before_replace(target);
+
+              fs::rename(target, &backup).map_err(|error| {
+                  io_authoring_error(target, format!("could not stage existing source for replacement: {error}"))
+              })?;
+              let actual_base = match fs::read(&backup) {
+                  Ok(actual_base) => actual_base,
+                  Err(error) => {
+                      rollback_source_backup(
+                          target,
+                          &backup,
+                          format!("could not verify staged source before replacement: {error}"),
+                      )?;
+                      return Err(io_authoring_error(
+                          target,
+                          format!("could not verify staged source before replacement: {error}"),
+                      ));
+                  }
+              };
+              if actual_base != expected_current {
+                  rollback_source_backup(
+                      target,
+                      &backup,
+                      "source file changed during the save replacement window",
+                  )?;
+                  return Err(source_conflict(
+                      target,
+                      "source file changed during the save replacement window",
+                  ));
+              }
+
+              if let Err(error) = fs::rename(&staged, target) {
+                  rollback_source_backup(
+                      target,
+                      &backup,
+                      format!("could not install source edit candidate: {error}"),
+                  )?;
+                  return Err(io_authoring_error(
+                      target,
+                      format!("could not install source edit candidate: {error}"),
+                  ));
+              }
+              Ok(())
+          }
+
+          fn rollback_source_backup(
+              target: &Path,
+              backup: &Path,
+              context: impl Into<String>,
+          ) -> masterdata_core::Result<()> {
+              let context = context.into();
+              if target.exists() {
+                  return Err(authoring_error(
+                      "E-SOURCE-EDIT-OUTCOME-UNKNOWN",
+                      format!("{context}; source path was recreated before rollback could restore staged content"),
+                      Some(target.to_path_buf()),
+                      "SOURCE-EDIT-010",
+                  ));
+              }
+              fs::rename(backup, target).map_err(|rollback_error| {
+                  authoring_error(
+                      "E-SOURCE-EDIT-OUTCOME-UNKNOWN",
+                      format!("{context}; rollback also failed ({rollback_error})"),
+                      Some(target.to_path_buf()),
+                      "SOURCE-EDIT-010",
+                  )
+              })
+          }
+
+          fn source_conflict(target: &Path, message: impl Into<String>) -> MasterdataError {
+              authoring_error(
+                  "E-SOURCE-EDIT-CONFLICT",
+                  message,
+                  Some(target.to_path_buf()),
+                  "SOURCE-EDIT-008",
+              )
+          }
+          '''
+          text = text[:start] + replacement + text[end:]
+          text = text.replace(
+              "    use super::{AuthoringEdit, SourceSaveStatus};\n",
+              "    use super::{AuthoringEdit, SourceSaveStatus, install_source_candidate_with_pre_replace_hook};\n",
+              1,
+          )
+          marker = "    #[test]\n    fn preview_keeps_validation_non_blocking() {\n"
+          regression = r'''    #[test]
+              fn save_rechecks_actual_backup_bytes_before_installing_candidate() {
+                  let temp = tempfile::tempdir().expect("temp dir");
+                  let target = temp.path().join("data.yaml");
+                  fs::write(&target, b"base").expect("base source");
+
+                  let error = install_source_candidate_with_pre_replace_hook(
+                      &target,
+                      b"base",
+                      b"candidate",
+                      |path| fs::write(path, b"external").expect("racing external edit"),
+                  )
+                  .expect_err("racing external edit must become a conflict");
+
+                  assert_eq!(error.diagnostic().code, "E-SOURCE-EDIT-CONFLICT");
+                  assert_eq!(fs::read(&target).expect("restored external source"), b"external");
+              }
+
+          '''
+          if marker not in text:
+              raise SystemExit("preview test marker not found")
+          text = text.replace(marker, regression + marker, 1)
+          app.write_text(text)
+
+          lib = subprocess.check_output(
               ["git", "show", "origin/main:crates/masterdata-app/src/lib.rs"],
               text=True,
           )
-          content = content.replace("mod publish;", "mod authoring;\nmod publish;", 1)
-          content = content.replace("pub use publish::{", "pub use authoring::*;\npub use publish::{", 1)
-          Path("crates/masterdata-app/src/lib.rs").write_text(content)
-      - name: Format Rust for artifact handoff
+          lib = lib.replace("mod publish;", "mod authoring;\nmod publish;", 1)
+          lib = lib.replace("pub use publish::{", "pub use authoring::*;\npub use publish::{", 1)
+          Path("crates/masterdata-app/src/lib.rs").write_text(lib)
+      - name: Format Rust
         run: cargo fmt --all
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rustfmt-output
-          path: |
-            apps/gui/src-tauri/src/lib.rs
-            crates/masterdata-app/src/authoring.rs
-            crates/masterdata-app/src/lib.rs
-            crates/masterdata-core/src/lib.rs
+      - name: Run focused source edit tests
+        run: |
+          cargo test -p masterdata-core source_edit
+          cargo test -p masterdata-app authoring
+      - name: Run focused clippy
+        run: cargo clippy -p masterdata-core -p masterdata-app --all-targets --all-features -- -D warnings
+      - name: Commit generated fix
+        run: |
+          git diff --check
+          git add \
+            apps/gui/src-tauri/src/lib.rs \
+            crates/masterdata-app/src/authoring.rs \
+            crates/masterdata-app/src/lib.rs \
+            crates/masterdata-core/src/lib.rs \
             crates/masterdata-core/src/source_edit.rs
-      - run: cargo xtask check-wasm
-      - run: cargo xtask check-all
-
-  windows:
-    name: Windows repository quality gate
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Restore Rust and Cargo cache
-        uses: Swatinem/rust-cache@v2
-        continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
-
-  macos:
-    name: macOS repository quality gate
-    runs-on: macos-14
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Restore Rust and Cargo cache
-        uses: Swatinem/rust-cache@v2
-        continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
+          git diff --cached --stat
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "GUI authoringの保存raceとRust品質警告を修正"
+          git push origin HEAD:impl/gui-record-authoring

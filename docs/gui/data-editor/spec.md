@@ -46,6 +46,10 @@ dirtyなsource data fileが外部変更された場合、GUIはlocal dirty buffe
 
 複数source data fileは同時にdirtyであってよい。file / record / Table間のnavigationだけを理由にdirty bufferを破棄、保存、または確認dialog表示してはならない。
 
+### GUI-DATA-STATE-007
+
+dirty stateは「一度編集したか」ではなく、現在のlocal bufferと最後に保存・読込された基準snapshotとの差分有無で決定する。利用者が変更したcellを含む全変更を基準snapshotと同一の内容へ戻した場合、そのsource data fileは自動的にcleanへ戻らなければならない。
+
 ## 操作（Interactions）
 
 ### GUI-DATA-EDIT-001
@@ -163,7 +167,6 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 
 - row identityと、同一PKを持ち得るsource recordの選択・表示方法。
 - long / ulongを含むexact scalar transportと入力中representation。
-- dirty cellを元値へ戻した場合のfile dirty判定。
 - source preservation、file Save atomicity、保存結果不明時のrecovery。
 - validation表示の場所（cell、row、panel等）とdiff surfaceの具体的layout。
 - loading / saving中のselection、editing、shortcut、focus behavior。

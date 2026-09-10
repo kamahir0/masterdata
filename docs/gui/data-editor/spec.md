@@ -101,6 +101,24 @@ None.
 
 これらはExplorer + typed editorsという全体構造の将来拡張を妨げない。
 
+## 将来拡張方向: Programmable View / Computed Columns
+
+Human-requestedな将来product directionとして、Data Editorはschema由来の固定field列だけでなく、authoringを補助するvirtual / annotation列を追加できる方向を保持する。これは現Current Objectiveのimplementation scopeではなく、runtime language、保存format、security modelを現時点で固定するものでもない。
+
+将来的なcolumn modelとして、少なくとも次を区別できる設計を検討する。
+
+- Source column: Table schemaのfieldに対応し、record YAMLへ保存される列。
+- Computed / View column: source recordを書き換えず、式またはprogrammable logicから導出される仮想列。
+- Annotation column: コメント、確認状態、作業メモ等、runtime master dataとは分離されたauthoring補助列。
+
+Computed / View columnでは、Excel関数に近いexpressionまたはより自由なprogrammable logicにより、current recordだけでなく複数recordを参照した計算を可能にする方向とする。例として、複数recordを`groupId`でgroupingし、各recordの`weight`をgroup内合計で割って確率を表示するようなaggregate計算を想定する。
+
+同じprogrammable evaluation基盤から、cell / row / recordのpresentationを導出できる方向も保持する。条件付き書式の固定UIに限定せず、background color、text color、emphasis等を計算結果やrecord集合に応じて決定できることを目指す。
+
+JavaScript等の任意code executionを採用するか、expression languageを採用するか、両者を段階的に提供するかは未決定とする。sandbox、performance、determinism、Desktop/Web共通実行、依存関係、保存・共有formatを比較して別途仕様化する。
+
+annotation / computed / presentation情報をTable schemaやMasterMemory runtime dataへ暗黙に混入させない。どの情報をproject sourceとして共有・Git管理するか、user-local view stateとするかも後続仕様で決定する。
+
 ## 未解決事項（Open Questions）
 
 - row identityと、同一PKを持ち得るsource recordの選択・表示方法。
@@ -111,3 +129,5 @@ None.
 - dirty中のfile / project切替、Reload、Build、window close behavior。
 - validation表示の場所（cell、row、panel等）とdiff surfaceの具体的layout。
 - loading / saving中のselection、editing、shortcut、focus behavior。
+- programmable viewのexpression / code model、aggregate semantics、sandbox、evaluation timing、performance budget。
+- computed / annotation / presentation definitionのproject-shared / user-local persistence boundary。

@@ -1,6 +1,6 @@
 # Source Record Edit仕様
 
-Status: Draft
+Status: Proposed
 
 Domain: Source Editing
 
@@ -75,9 +75,9 @@ exact content identityのmechanismはbytes比較、cryptographic hash、host sna
 
 ### SOURCE-EDIT-009
 
-Conflictに対するexplicit Overwriteは通常Saveと区別されたauthorizationでなければならない（MUST）。Overwriteを行う前に、applicationは現在のexternal source identityを取得し、利用者が比較・認識した対象からさらに変更されていないことを確認しなければならない（MUST）。
+Conflictに対するexplicit Overwriteは通常Saveと区別されたauthorizationでなければならない（MUST）。Overwriteを行う前に、applicationはconflict UIが対象としているcurrent external source identityを取得し、その後さらに変更されていないことを確認しなければならない（MUST）。
 
-Overwriteは明示的に確認されたcurrent external contentをSave candidateで置き換えてよい（MAY）が、未知または再度staleになったexternal stateを黙って上書きしてはならない（MUST NOT）。Reloadはlocal buffer破棄を伴う別workflowであり、通常Save successとして扱ってはならない（MUST NOT）。
+Overwriteは明示的に対象とされたcurrent external contentをSave candidateで置き換えてよい（MAY）が、未知または再度staleになったexternal stateを黙って上書きしてはならない（MUST NOT）。利用者がOverwrite前に必ずCompare viewを開くことまでは要求しない。Reloadはlocal buffer破棄を伴う別workflowであり、通常Save successとして扱ってはならない（MUST NOT）。
 
 ### SOURCE-EDIT-010
 
@@ -133,7 +133,7 @@ fixtureを使用する場合、既存fixture sourceを通常GUI/CLI executionで
 
 既存YAML syntax、Table identity、Field semantics、MessagePack key、generated C#、binary formatを変更しない。source-preserving editは既存source textとGit workflowとの互換性を守るための新しいauthoring contractである。
 
-本仕様はsource file pathを新しいdomain identityへ昇格させず、source provenanceとしてのみ使用する。wire/API serialized shapeを固定しないため、このDraft単体ではpublic protocol compatibilityを追加しない。
+本仕様はsource file pathを新しいdomain identityへ昇格させず、source provenanceとしてのみ使用する。wire/API serialized shapeを固定しないため、このproposal単体ではpublic protocol compatibilityを追加しない。
 
 ## 例
 

@@ -34,6 +34,14 @@ cell変更によりsource data fileが未保存状態になった場合、その
 
 同一file内の複数record / field変更は同じdirty bufferに属し、1回のfile Saveでまとめて永続化する。別source fileのdirty stateは独立する。
 
+### GUI-DATA-STATE-004
+
+cleanなsource data fileが外部editor等によって変更された場合、GUIはdisk上の最新内容へ自動Reloadする。利用者の未保存bufferが存在しない状態で、古いsnapshotを表示し続けてはならない。
+
+### GUI-DATA-STATE-005
+
+dirtyなsource data fileが外部変更された場合、GUIはlocal dirty bufferを保持したままconflict状態へ遷移する。外部変更を理由にdirty bufferを自動破棄してはならず、local bufferでdisk内容を自動上書きしてもならない。
+
 ## 操作（Interactions）
 
 ### GUI-DATA-EDIT-001
@@ -60,6 +68,14 @@ source data fileがdirtyでもBuildの開始を禁止しない。Buildは保存�
 
 Build開始時にdirty fileが存在する場合、未保存変更がBuildへ含まれないことを利用者が認識できる表示を行う。Buildを理由にSaveまたはSave Allを暗黙実行してはならない。
 
+### GUI-DATA-CONFLICT-001
+
+conflict状態のfileに通常Saveを実行した場合、外部変更を暗黙に上書きせず保存を停止し、少なくともCompare / Reload / Overwriteを選択できるrecovery pathを提示する。
+
+- Compare: local dirty bufferとdisk上の外部変更を比較できる。
+- Reload: local dirty bufferを破棄し、disk上の内容を読み直す。破棄を伴うことを利用者が認識できる必要がある。
+- Overwrite: 明示操作としてlocal dirty bufferをdiskへ書き込み、外部変更を置き換える。通常Saveと同じ暗黙動作にしてはならない。
+
 ## キーボード（Keyboard）
 
 ### GUI-DATA-KEY-001
@@ -84,11 +100,11 @@ validation resultは編集体験のfeedbackとして表示するが、Save禁止
 
 ### GUI-DATA-ERR-001
 
-filesystem I/O failure、permission、path safety、external modificationとの競合等により安全に永続化できない場合はSave operation failureとして扱う。validation errorとは区別する。
+filesystem I/O failure、permission、path safety、external modificationとの競合等により安全に永続化できない場合はSave operation failureまたはconflictとして扱う。validation errorとは区別する。
 
 ### GUI-DATA-ERR-002
 
-Save failure時に未保存入力を失わないことを目標とし、reload / compare / overwrite等のexact recovery semanticsはcanonical source-edit仕様と合わせて確定する。
+Save failure時に未保存入力を失ってはならない。通常I/O failureや保存結果不明時のexact recovery semanticsはcanonical source-edit仕様と合わせて確定する。
 
 ## アクセシビリティ（Accessibility）
 
@@ -133,7 +149,6 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 - long / ulongを含むexact scalar transportと入力中representation。
 - dirty cellを元値へ戻した場合のfile dirty判定。
 - source preservation、file Save atomicity、保存結果不明時のrecovery。
-- external modification時のcompare / reload / overwrite behavior。
 - dirty中のfile / project切替、Reload、window close behavior。
 - validation表示の場所（cell、row、panel等）とdiff surfaceの具体的layout。
 - loading / saving中のselection、editing、shortcut、focus behavior。

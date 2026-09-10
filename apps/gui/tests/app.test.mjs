@@ -87,3 +87,13 @@ test("Problems identifies buffer, saved-source, and operation snapshots", () => 
   assert.match(source, /origin: "Saved source"/);
   assert.match(source, /origin: "Operation"/);
 });
+
+
+test("clean-file reload failures stay file-scoped and keep project polling alive", () => {
+  const start = source.indexOf("const openDataFile = useCallback");
+  const end = source.indexOf("const loadWorkspace = useCallback", start);
+  const openDataFile = source.slice(start, end);
+  assert.match(openDataFile, /setFileOpenErrors/);
+  assert.doesNotMatch(openDataFile, /setWorkspaceState/);
+  assert.match(source, /fileOpenErrors=\{fileOpenErrors\}/);
+});

@@ -272,6 +272,7 @@ function App() {
   const [pendingActionBusy, setPendingActionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());
+  const [fileOpenErrors, setFileOpenErrors] = useState<Record<string, ApiDiagnostic>>({});
   const previewTimers = useRef(new Map<string, number>());
   const editorsRef = useRef(editors);
   const workspaceStateRef = useRef(workspaceState);
@@ -306,12 +307,9 @@ function App() {
   const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
   const activeEditor = activePath ? editors[activePath] ?? null : null;
   const activeLoading = activePath ? loadingPaths.has(activePath) : false;
-  const activeLoadDiagnostic = activeEditor?.loadError
-    ?? (!activeEditor && workspaceState.kind === "error" && activePath
-      && workspaceState.diagnostic.source
-      && normalizePath(workspaceState.diagnostic.source).endsWith(normalizePath(activePath))
-      ? workspaceState.diagnostic
-      : null);
+  const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
+    ? null
+    : activeEditor?.loadError ?? (activePath ? fileOpenErrors[activePath] ?? null : null);
   const dirtyCount = Object.values(editors).filter(editorIsDirty).length;
 
   const showNotice = useCallback((message: string) => {
@@ -336,10 +334,17 @@ function App() {
         relativePath: path,
       });
       if (workspaceGeneration.current !== generation) return;
+      setFileOpenErrors((current) => {
+        if (!(path in current)) return current;
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
       setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
       const diagnostic = asApiError(error).diagnostic;
+      setFileOpenErrors((current) => ({ ...current, [path]: diagnostic }));
       setEditors((current) => {
         const currentEditor = current[path];
         if (!currentEditor) return current;
@@ -357,11 +362,6 @@ function App() {
           [path]: { ...currentEditor, loadError: diagnostic },
         };
       });
-      setWorkspaceState((current) => ({
-        kind: "error",
-        diagnostic,
-        previous: current.kind === "ready" ? current.workspace : current.previous,
-      }));
     } finally {
       if (workspaceGeneration.current === generation) {
         setLoadingPaths((current) => {
@@ -379,6 +379,7 @@ function App() {
     for (const timer of previewTimers.current.values()) window.clearTimeout(timer);
     previewTimers.current.clear();
     setLoadingPaths(new Set());
+    setFileOpenErrors({});
     const previous = workspaceStateRef.current.kind === "ready"
       ? workspaceStateRef.current.workspace
       : workspaceStateRef.current.previous;
@@ -647,6 +648,14 @@ function App() {
           if (!latest || latest.saving) return;
           if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
             if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {
+              if (latest.loadError) {
+                setFileOpenErrors((all) => {
+                  if (!(path in all)) return all;
+                  const next = { ...all };
+                  delete next[path];
+                  return next;
+                });
+              }
               setEditors((all) => all[path]
                 ? {
                     ...all,
@@ -896,6 +905,7 @@ function App() {
               activePath={activePath}
               editors={editors}
               loadingPaths={loadingPaths}
+              fileOpenErrors={fileOpenErrors}
               onSelect={selectFile}
             />
           )}
@@ -1035,12 +1045,14 @@ function SourceTree({
   activePath,
   editors,
   loadingPaths,
+  fileOpenErrors,
   onSelect,
 }: {
   workspace: AuthoringWorkspace;
   activePath: string | null;
   editors: Record<string, EditorState>;
   loadingPaths: Set<string>;
+  fileOpenErrors: Record<string, ApiDiagnostic>;
   onSelect: (file: WorkspaceSourceFile) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -1162,11 +1174,12 @@ function SourceTree({
     const editor = editors[node.file.path];
     const dirty = editorIsDirtySafe(editor);
     const loading = loadingPaths.has(node.file.path);
+    const unavailable = Boolean(editor?.loadError || fileOpenErrors[node.file.path]);
     const stateLabels = [
       loading ? "loading" : null,
       editor?.saving ? "saving" : null,
       dirty ? "unsaved changes" : null,
-      editor?.loadError ? "source unavailable" : null,
+      unavailable ? "source unavailable" : null,
       editor?.saveStatus === "failure" ? "save failed" : null,
       editor?.saveStatus === "outcome_unknown" ? "save outcome unknown" : null,
       editor?.conflict ? "external change conflict" : null,
@@ -1190,7 +1203,7 @@ function SourceTree({
         {dirty && <span className="dirty-dot" title="Unsaved changes">●</span>}
         {loading && <span className="file-state-badge" title="Loading">…</span>}
         {editor?.saving && <span className="file-state-badge" title="Saving">↻</span>}
-        {editor?.loadError && <span className="file-state-badge error" title="Source unavailable">×</span>}
+        {unavailable && <span className="file-state-badge error" title="Source unavailable">×</span>}
         {editor?.saveStatus === "failure" && <span className="file-state-badge error" title="Save failed">×</span>}
         {editor?.saveStatus === "outcome_unknown" && <span className="file-state-badge warning" title="Save outcome unknown">?</span>}
         {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}

@@ -13,6 +13,7 @@ mod migration;
 mod migration_commit;
 mod pipeline;
 mod project;
+mod source_edit;
 mod table;
 mod type_system;
 mod validation;
@@ -45,6 +46,9 @@ pub use pipeline::{
 pub use project::{
     InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, PublishTargetInfo,
     initialize_project,
+};
+pub use source_edit::{
+    RecordValueEdit, SourceEditDryRun, SourceEditPlan, dry_run_source_edit, source_content_identity,
 };
 pub use table::{
     BuildSelection, ResolvedPrimaryKey, ResolvedRecord, ResolvedSecondaryKey, ResolvedTable,

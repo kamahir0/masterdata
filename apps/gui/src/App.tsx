@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type ProjectInfo = {
   project_root: string;
@@ -12,7 +13,123 @@ type ProjectInfo = {
   csharp_output: string;
   binary_output: string;
   cache: string;
-  publish_targets: { kind: "csharp" | "binary"; path: string; resolved_path: string }[];
+};
+
+type Diagnostic = {
+  code: string;
+  kind: string;
+  message: string;
+  source?: string | null;
+  line?: number | null;
+  column?: number | null;
+  schema_path?: string | null;
+  record_identity?: string | null;
+  suggestion?: string | null;
+  related_requirements?: string[];
+};
+
+type ApiDiagnostic = {
+  code: string;
+  kind: string;
+  message: string;
+  source: string | null;
+  line: number | null;
+  column: number | null;
+  schemaPath: string | null;
+  recordIdentity: string | null;
+  suggestion: string | null;
+  relatedRequirements: string[];
+};
+
+type ApiError = { diagnostic: ApiDiagnostic };
+
+type AuthoringCapabilities = {
+  workspaceRead: boolean;
+  workspaceWrite: boolean;
+  validate: boolean;
+  build: boolean;
+};
+
+type WorkspaceSourceFile = {
+  path: string;
+  sourceRoot: string;
+  kind: string;
+  table: string | null;
+  typeName: string | null;
+  diagnostic: Diagnostic | null;
+};
+
+type AuthoringWorkspace = {
+  project: ProjectInfo;
+  sourceRoots: string[];
+  files: WorkspaceSourceFile[];
+  capabilities: AuthoringCapabilities;
+};
+
+type DataEditorColumn = {
+  name: string;
+  typeName: string;
+  editable: boolean;
+  keyField: boolean;
+};
+
+type DataEditorCell = {
+  field: string;
+  text: string;
+  editable: boolean;
+};
+
+type DataEditorRow = {
+  recordIndex: number;
+  cells: DataEditorCell[];
+};
+
+type ValidationReport = {
+  valid: boolean;
+  files_scanned: number;
+  schema_documents: number;
+  data_documents: number;
+  type_documents: number;
+  tables: string[];
+  types: string[];
+  diagnostics: Diagnostic[];
+};
+
+type DataFileSnapshot = {
+  path: string;
+  table: string;
+  baseSource: string;
+  baseContentIdentity: string;
+  columns: DataEditorColumn[];
+  rows: DataEditorRow[];
+  validation: ValidationReport;
+};
+
+type AuthoringEdit = {
+  recordIndex: number;
+  field: string;
+  value: string;
+};
+
+type SourceEditPreview = {
+  candidateSource: string;
+  candidateContentIdentity: string;
+  changed: boolean;
+  validation: ValidationReport;
+};
+
+type SourceContentState = {
+  path: string;
+  contentIdentity: string;
+  source: string;
+};
+
+type SourceSaveReport = {
+  status: "success" | "conflict" | "failure" | "outcome_unknown";
+  path: string;
+  snapshot: DataFileSnapshot | null;
+  current: SourceContentState | null;
+  diagnostic: Diagnostic | null;
 };
 
 type BuildResponse = {
@@ -26,76 +143,36 @@ type BuildResponse = {
   dryRun: boolean;
 };
 
-type Diagnostic = {
-  code: string;
-  kind: string;
-  message: string;
-  source: string | null;
-  line: number | null;
-  column: number | null;
-  schemaPath: string | null;
-  recordIdentity: string | null;
-  suggestion: string | null;
-  relatedRequirements: string[];
-};
+type WorkspaceState =
+  | { kind: "loading"; previous: AuthoringWorkspace | null }
+  | { kind: "ready"; workspace: AuthoringWorkspace }
+  | { kind: "error"; diagnostic: ApiDiagnostic; previous: AuthoringWorkspace | null };
 
-type ApiError = { diagnostic: Diagnostic };
-
-// Keep the shared ValidationReport serialization at the Tauri boundary so the
-// GUI does not invent a second validation result schema.
-type ValidationDiagnostic = {
-  code: string;
-  kind: string;
-  message: string;
-  source?: string | null;
-  line?: number | null;
-  column?: number | null;
-  schema_path?: string | null;
-  record_identity?: string | null;
-  suggestion?: string | null;
-  related_requirements?: string[];
-};
-
-type ValidationReport = {
-  valid: boolean;
-  files_scanned: number;
-  schema_documents: number;
-  data_documents: number;
-  type_documents: number;
-  tables: string[];
-  types: string[];
-  diagnostics: ValidationDiagnostic[];
-};
-
-type LoadState =
-  | { kind: "loading" }
-  | { kind: "loaded"; project: ProjectInfo }
-  | { kind: "error"; diagnostic: Diagnostic };
-
-type ValidationState =
+type OperationState<T> =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "loaded"; report: ValidationReport }
-  | { kind: "error"; diagnostic: Diagnostic };
+  | { kind: "done"; value: T }
+  | { kind: "error"; diagnostic: ApiDiagnostic };
 
-type BuildState =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "loaded"; response: BuildResponse }
-  | { kind: "error"; diagnostic: Diagnostic };
-
-type DisplayDiagnostic = {
-  code: string;
-  kind: string;
-  message: string;
-  source: string | null;
-  line: number | null;
-  column: number | null;
-  schemaPath: string | null;
-  recordIdentity: string | null;
-  suggestion: string | null;
-  relatedRequirements: string[];
+type EditorState = {
+  snapshot: DataFileSnapshot;
+  edits: Record<string, AuthoringEdit>;
+  preview: SourceEditPreview;
+  previewState: "current" | "pending" | "unavailable";
+  previewError: ApiDiagnostic | null;
+  revision: number;
+  saving: boolean;
+  loadError: ApiDiagnostic | null;
+  conflict: SourceContentState | null;
+  saveStatus: SourceSaveReport["status"] | null;
+  saveDiagnostic: Diagnostic | null;
+  view: "grid" | "diff" | "compare";
 };
+
+type PendingAction =
+  | { kind: "reload" }
+  | { kind: "open"; projectPath: string }
+  | { kind: "close" };
 
 function asApiError(error: unknown): ApiError {
   if (
@@ -123,445 +200,1346 @@ function asApiError(error: unknown): ApiError {
   };
 }
 
-function normalizeDiagnostic(
-  diagnostic: Diagnostic | ValidationDiagnostic,
-): DisplayDiagnostic {
-  // Command errors use the existing camelCase DTO; reports preserve the core
-  // diagnostic field names. Normalize only for presentation.
-  const usesCamelCaseFields = "schemaPath" in diagnostic;
+function cellKey(recordIndex: number, field: string): string {
+  return `${recordIndex}:${field}`;
+}
+
+function editorFromSnapshot(snapshot: DataFileSnapshot): EditorState {
   return {
-    code: diagnostic.code,
-    kind: diagnostic.kind,
-    message: diagnostic.message,
-    source: diagnostic.source ?? null,
-    line: diagnostic.line ?? null,
-    column: diagnostic.column ?? null,
-    schemaPath: usesCamelCaseFields
-      ? diagnostic.schemaPath ?? null
-      : diagnostic.schema_path ?? null,
-    recordIdentity: usesCamelCaseFields
-      ? diagnostic.recordIdentity ?? null
-      : diagnostic.record_identity ?? null,
-    suggestion: diagnostic.suggestion ?? null,
-    relatedRequirements: usesCamelCaseFields
-      ? diagnostic.relatedRequirements ?? []
-      : diagnostic.related_requirements ?? [],
+    snapshot,
+    edits: {},
+    preview: {
+      candidateSource: snapshot.baseSource,
+      candidateContentIdentity: snapshot.baseContentIdentity,
+      changed: false,
+      validation: snapshot.validation,
+    },
+    previewState: "current",
+    previewError: null,
+    revision: 0,
+    saving: false,
+    loadError: null,
+    conflict: null,
+    saveStatus: null,
+    saveDiagnostic: null,
+    view: "grid",
   };
 }
 
-function App() {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [validationState, setValidationState] = useState<ValidationState>({
-    kind: "idle",
-  });
-  const [buildState, setBuildState] = useState<BuildState>({ kind: "idle" });
+function baseCellText(snapshot: DataFileSnapshot, recordIndex: number, field: string): string {
+  return snapshot.rows
+    .find((row) => row.recordIndex === recordIndex)
+    ?.cells.find((cell) => cell.field === field)?.text ?? "";
+}
 
-  const loadProject = useCallback(async () => {
-    setState({ kind: "loading" });
-    setValidationState({ kind: "idle" });
-    setBuildState({ kind: "idle" });
+function currentCellText(editor: EditorState, recordIndex: number, field: string): string {
+  return editor.edits[cellKey(recordIndex, field)]?.value ?? baseCellText(editor.snapshot, recordIndex, field);
+}
+
+function editorIsDirty(editor: EditorState): boolean {
+  return Object.keys(editor.edits).length > 0;
+}
+
+function sourceName(path: string): string {
+  return path.split("/").at(-1) ?? path;
+}
+
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+function diagnosticRecordIndex(diagnostic: Diagnostic): number | null {
+  const match = diagnostic.record_identity?.match(/^record\[(\d+)]$/);
+  return match ? Number(match[1]) : null;
+}
+
+function diagnosticField(diagnostic: Diagnostic): string | null {
+  return diagnostic.message.match(/field `([^`]+)`/)?.[1] ?? null;
+}
+
+function App() {
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
+    kind: "loading",
+    previous: null,
+  });
+  const [projectPathInput, setProjectPathInput] = useState("");
+  const [activePath, setActivePath] = useState<string | null>(null);
+  const [editors, setEditors] = useState<Record<string, EditorState>>({});
+  const [manualValidation, setManualValidation] = useState<OperationState<ValidationReport>>({ kind: "idle" });
+  const [buildState, setBuildState] = useState<OperationState<BuildResponse>>({ kind: "idle" });
+  const [problemsOpen, setProblemsOpen] = useState(true);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingActionBusy, setPendingActionBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());
+  const [fileOpenErrors, setFileOpenErrors] = useState<Record<string, ApiDiagnostic>>({});
+  const previewTimers = useRef(new Map<string, number>());
+  const editorsRef = useRef(editors);
+  const workspaceStateRef = useRef(workspaceState);
+  const workspaceGeneration = useRef(0);
+  const cellFocusStart = useRef(new Map<string, string>());
+  const pendingCellFocus = useRef<string | null>(null);
+
+  useEffect(() => {
+    editorsRef.current = editors;
+  }, [editors]);
+
+  useEffect(() => {
+    workspaceStateRef.current = workspaceState;
+  }, [workspaceState]);
+
+  useEffect(() => {
+    const key = pendingCellFocus.current;
+    if (!key || !activePath || loadingPaths.has(activePath)) return;
+    const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);
+    if (cell) {
+      cell.focus();
+      pendingCellFocus.current = null;
+    }
+  }, [activePath, editors, loadingPaths]);
+
+  const workspace = workspaceState.kind === "ready"
+    ? workspaceState.workspace
+    : workspaceState.kind === "error"
+      ? workspaceState.previous
+      : null;
+  const projectRoot = workspace?.project.project_root ?? null;
+  const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
+  const activeEditor = activePath ? editors[activePath] ?? null : null;
+  const activeLoading = activePath ? loadingPaths.has(activePath) : false;
+  const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
+    ? null
+    : activeEditor?.loadError ?? (activePath ? fileOpenErrors[activePath] ?? null : null);
+  const dirtyCount = Object.values(editors).filter(editorIsDirty).length;
+
+  const showNotice = useCallback((message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(null), 2600);
+  }, []);
+
+  const openDataFile = useCallback(async (root: string, path: string, force = false) => {
+    const existing = editorsRef.current[path];
+    if (!force && existing && !existing.loadError) {
+      return;
+    }
+    const generation = workspaceGeneration.current;
+    setLoadingPaths((current) => {
+      const next = new Set(current);
+      next.add(path);
+      return next;
+    });
     try {
-      // The Rust Tauri command resolves the project through masterdata-app
-      // and masterdata-core.
-      // The frontend does not inspect the filesystem or invoke the CLI.
-      const project = await invoke<ProjectInfo>("project_info", {
-        projectPath: null,
+      const snapshot = await invoke<DataFileSnapshot>("open_data_file", {
+        projectPath: root,
+        relativePath: path,
       });
-      setState({ kind: "loaded", project });
+      if (workspaceGeneration.current !== generation) return;
+      setFileOpenErrors((current) => {
+        if (!(path in current)) return current;
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
+      setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));
     } catch (error) {
-      setState({ kind: "error", diagnostic: asApiError(error).diagnostic });
+      if (workspaceGeneration.current !== generation) return;
+      const diagnostic = asApiError(error).diagnostic;
+      setFileOpenErrors((current) => ({ ...current, [path]: diagnostic }));
+      setEditors((current) => {
+        const currentEditor = current[path];
+        if (!currentEditor) return current;
+        if (editorIsDirty(currentEditor)) {
+          return {
+            ...current,
+            [path]: {
+              ...currentEditor,
+              saveDiagnostic: apiDiagnosticToDiagnostic(diagnostic),
+            },
+          };
+        }
+        return {
+          ...current,
+          [path]: { ...currentEditor, loadError: diagnostic },
+        };
+      });
+    } finally {
+      if (workspaceGeneration.current === generation) {
+        setLoadingPaths((current) => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
+      }
     }
   }, []);
 
-  useEffect(() => {
-    void loadProject();
-  }, [loadProject]);
-
-  const validateProject = useCallback(async () => {
-    if (state.kind !== "loaded") {
-      return;
-    }
-
-    setValidationState({ kind: "loading" });
+  const loadWorkspace = useCallback(async (requestedProject: string | null) => {
+    const generation = workspaceGeneration.current + 1;
+    workspaceGeneration.current = generation;
+    for (const timer of previewTimers.current.values()) window.clearTimeout(timer);
+    previewTimers.current.clear();
+    setLoadingPaths(new Set());
+    setFileOpenErrors({});
+    const previous = workspaceStateRef.current.kind === "ready"
+      ? workspaceStateRef.current.workspace
+      : workspaceStateRef.current.previous;
+    setWorkspaceState({ kind: "loading", previous });
+    setManualValidation({ kind: "idle" });
+    setBuildState({ kind: "idle" });
     try {
-      const report = await invoke<ValidationReport>("validate", {
-        projectPath: state.project.project_root,
+      const next = await invoke<AuthoringWorkspace>("authoring_workspace", {
+        projectPath: requestedProject,
       });
-      setValidationState({ kind: "loaded", report });
+      if (workspaceGeneration.current !== generation) return;
+      setWorkspaceState({ kind: "ready", workspace: next });
+      setProjectPathInput(next.project.project_root);
+      setEditors({});
+      const first = next.files.find((file) => file.kind === "data") ?? next.files[0] ?? null;
+      setActivePath(first?.path ?? null);
+      if (first?.kind === "data") {
+        await openDataFile(next.project.project_root, first.path, true);
+      }
     } catch (error) {
-      setValidationState({
+      if (workspaceGeneration.current !== generation) return;
+      setWorkspaceState({
         kind: "error",
         diagnostic: asApiError(error).diagnostic,
+        previous,
       });
     }
-  }, [state]);
+  }, [openDataFile]);
 
-  const validationStatus = validationStatusLabel(validationState);
-  const buildStatus = buildStatusLabel(buildState);
+  useEffect(() => {
+    void loadWorkspace(null);
+  }, [loadWorkspace]);
 
-  const buildProject = useCallback(async () => {
-    if (state.kind !== "loaded" || buildState.kind === "loading") {
+  const schedulePreview = useCallback((root: string, path: string, editor: EditorState) => {
+    const existing = previewTimers.current.get(path);
+    if (existing !== undefined) {
+      window.clearTimeout(existing);
+    }
+    const revision = editor.revision;
+    const generation = workspaceGeneration.current;
+    const timer = window.setTimeout(async () => {
+      previewTimers.current.delete(path);
+      try {
+        const preview = await invoke<SourceEditPreview>("preview_data_file", {
+          projectPath: root,
+          relativePath: path,
+          baseSource: editor.snapshot.baseSource,
+          edits: Object.values(editor.edits),
+        });
+        if (workspaceGeneration.current !== generation) return;
+        setEditors((current) => {
+          const latest = current[path];
+          if (!latest || latest.revision !== revision) {
+            return current;
+          }
+          return {
+            ...current,
+            [path]: {
+              ...latest,
+              edits: preview.changed ? latest.edits : {},
+              preview,
+              previewState: "current",
+              previewError: null,
+            },
+          };
+        });
+      } catch (error) {
+        if (workspaceGeneration.current !== generation) return;
+        const diagnostic = asApiError(error).diagnostic;
+        setEditors((current) => {
+          const latest = current[path];
+          if (!latest || latest.revision !== revision) {
+            return current;
+          }
+          return {
+            ...current,
+            [path]: {
+              ...latest,
+              previewState: "unavailable",
+              previewError: diagnostic,
+            },
+          };
+        });
+      }
+    }, 320);
+    previewTimers.current.set(path, timer);
+  }, []);
+
+  const updateCell = useCallback((path: string, recordIndex: number, field: string, value: string) => {
+    if (!projectRoot) return;
+    setEditors((current) => {
+      const editor = current[path];
+      if (!editor || editor.saving) return current;
+      const nextEdits = { ...editor.edits };
+      const key = cellKey(recordIndex, field);
+      if (value === baseCellText(editor.snapshot, recordIndex, field)) {
+        delete nextEdits[key];
+      } else {
+        nextEdits[key] = { recordIndex, field, value };
+      }
+      const next: EditorState = {
+        ...editor,
+        edits: nextEdits,
+        revision: editor.revision + 1,
+        previewState: "pending",
+        previewError: null,
+        saveDiagnostic: null,
+      };
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const saveFile = useCallback(async (path: string, overwriteExpectedIdentity?: string): Promise<boolean> => {
+    const state = workspaceStateRef.current;
+    const root = state.kind === "ready" ? state.workspace.project.project_root : state.previous?.project.project_root;
+    const editor = editorsRef.current[path];
+    if (!root || !editor || !editorIsDirty(editor)) return true;
+    if (editor.saveStatus === "outcome_unknown" && !overwriteExpectedIdentity) {
+      showNotice("Recheck the source before saving again because the previous save outcome is unknown.");
+      return false;
+    }
+    const generation = workspaceGeneration.current;
+
+    setEditors((current) => current[path]
+      ? { ...current, [path]: { ...current[path], saving: true, saveDiagnostic: null } }
+      : current);
+    try {
+      const report = await invoke<SourceSaveReport>("save_data_file", {
+        projectPath: root,
+        relativePath: path,
+        baseSource: editor.snapshot.baseSource,
+        baseContentIdentity: editor.snapshot.baseContentIdentity,
+        edits: Object.values(editor.edits),
+        overwriteExpectedIdentity: overwriteExpectedIdentity ?? null,
+      });
+      if (workspaceGeneration.current !== generation) return false;
+      if (report.status === "success" && report.snapshot) {
+        setEditors((current) => ({
+          ...current,
+          [path]: { ...editorFromSnapshot(report.snapshot!), view: current[path]?.view ?? "grid" },
+        }));
+        showNotice(`${sourceName(path)} saved`);
+        return true;
+      }
+      setEditors((current) => {
+        const latest = current[path];
+        if (!latest) return current;
+        return {
+          ...current,
+          [path]: {
+            ...latest,
+            saving: false,
+            conflict: report.status === "conflict" ? report.current : latest.conflict,
+            saveStatus: report.status,
+            saveDiagnostic: report.diagnostic,
+            view: report.status === "conflict" ? "compare" : latest.view,
+          },
+        };
+      });
+      return false;
+    } catch (error) {
+      if (workspaceGeneration.current !== generation) return false;
+      const diagnostic = asApiError(error).diagnostic;
+      setEditors((current) => current[path]
+        ? {
+            ...current,
+            [path]: {
+              ...current[path],
+              saving: false,
+              saveStatus: "failure",
+              saveDiagnostic: {
+                code: diagnostic.code,
+                kind: diagnostic.kind,
+                message: diagnostic.message,
+                source: diagnostic.source,
+                line: diagnostic.line,
+                column: diagnostic.column,
+                schema_path: diagnostic.schemaPath,
+                record_identity: diagnostic.recordIdentity,
+                suggestion: diagnostic.suggestion,
+                related_requirements: diagnostic.relatedRequirements,
+              },
+            },
+          }
+        : current);
+      return false;
+    }
+  }, [showNotice]);
+
+  const saveAll = useCallback(async (): Promise<boolean> => {
+    const paths = Object.entries(editorsRef.current)
+      .filter(([, editor]) => editorIsDirty(editor))
+      .map(([path]) => path);
+    let allSaved = true;
+    for (const path of paths) {
+      if (!(await saveFile(path))) {
+        allSaved = false;
+      }
+    }
+    return allSaved;
+  }, [saveFile]);
+
+  const performAction = useCallback(async (action: PendingAction) => {
+    setPendingAction(null);
+    if (action.kind === "close") {
+      await getCurrentWindow().destroy();
       return;
     }
+    if (action.kind === "reload") {
+      const root = workspaceStateRef.current.kind === "ready"
+        ? workspaceStateRef.current.workspace.project.project_root
+        : workspaceStateRef.current.previous?.project.project_root ?? null;
+      if (root) await loadWorkspace(root);
+      return;
+    }
+    await loadWorkspace(action.projectPath);
+  }, [loadWorkspace]);
 
+  const requestAction = useCallback((action: PendingAction) => {
+    const hasDirty = Object.values(editorsRef.current).some(editorIsDirty);
+    if (hasDirty) {
+      setPendingAction(action);
+    } else {
+      void performAction(action);
+    }
+  }, [performAction]);
+
+  useEffect(() => {
+    const listener = getCurrentWindow().onCloseRequested((event) => {
+      if (Object.values(editorsRef.current).some(editorIsDirty)) {
+        event.preventDefault();
+        setPendingAction({ kind: "close" });
+      }
+    });
+    return () => {
+      void listener.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (activePath) void saveFile(activePath);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activePath, saveFile]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const state = workspaceStateRef.current;
+      const root = state.kind === "ready" ? state.workspace.project.project_root : null;
+      if (!root) return;
+      const generation = workspaceGeneration.current;
+      for (const [path, editor] of Object.entries(editorsRef.current)) {
+        if (editor.saving) continue;
+        void invoke<SourceContentState>("source_content", {
+          projectPath: root,
+          relativePath: path,
+        }).then((current) => {
+          if (workspaceGeneration.current !== generation) return;
+          const latest = editorsRef.current[path];
+          if (!latest || latest.saving) return;
+          if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
+            if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {
+              if (latest.loadError) {
+                setFileOpenErrors((all) => {
+                  if (!(path in all)) return all;
+                  const next = { ...all };
+                  delete next[path];
+                  return next;
+                });
+              }
+              setEditors((all) => all[path]
+                ? {
+                    ...all,
+                    [path]: {
+                      ...all[path],
+                      conflict: null,
+                      loadError: null,
+                      saveStatus: all[path].saveStatus === "conflict" ? null : all[path].saveStatus,
+                    },
+                  }
+                : all);
+            }
+            return;
+          }
+          if (editorIsDirty(latest)) {
+            setEditors((all) => all[path]
+              ? { ...all, [path]: { ...all[path], conflict: current, saveStatus: "conflict", loadError: null } }
+              : all);
+          } else {
+            void openDataFile(root, path, true);
+          }
+        }).catch(() => {
+          // A transient polling failure must not discard an editor buffer.
+        });
+      }
+    }, 1600);
+    return () => window.clearInterval(timer);
+  }, [openDataFile]);
+
+  const validateDisk = useCallback(async () => {
+    if (!workspace?.capabilities.validate || !projectRoot) return;
+    const generation = workspaceGeneration.current;
+    setManualValidation({ kind: "loading" });
+    try {
+      const report = await invoke<ValidationReport>("validate", { projectPath: projectRoot });
+      if (workspaceGeneration.current !== generation) return;
+      setManualValidation({ kind: "done", value: report });
+      setProblemsOpen(true);
+    } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
+      setManualValidation({ kind: "error", diagnostic: asApiError(error).diagnostic });
+    }
+  }, [projectRoot, workspace]);
+
+  const runBuild = useCallback(async () => {
+    if (!workspace?.capabilities.build || !projectRoot || buildState.kind === "loading") return;
+    if (dirtyCount > 0) {
+      showNotice("Build uses saved source only; unsaved changes are not included.");
+    }
+    const generation = workspaceGeneration.current;
     setBuildState({ kind: "loading" });
     try {
       const response = await invoke<BuildResponse>("build", {
-        projectPath: state.project.project_root,
+        projectPath: projectRoot,
         dryRun: false,
       });
-      setBuildState({ kind: "loaded", response });
+      if (workspaceGeneration.current !== generation) return;
+      setBuildState({ kind: "done", value: response });
+      showNotice("Build complete");
     } catch (error) {
-      setBuildState({
-        kind: "error",
-        diagnostic: asApiError(error).diagnostic,
+      if (workspaceGeneration.current !== generation) return;
+      setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });
+      setProblemsOpen(true);
+    }
+  }, [buildState.kind, dirtyCount, projectRoot, showNotice, workspace]);
+
+  const selectFile = useCallback((file: WorkspaceSourceFile) => {
+    setActivePath(file.path);
+    if (file.kind === "data" && projectRoot) {
+      void openDataFile(projectRoot, file.path);
+    }
+  }, [openDataFile, projectRoot]);
+
+  const reloadConflict = useCallback(async (path: string) => {
+    if (!projectRoot) return;
+    if (!window.confirm(`Discard local changes in ${sourceName(path)} and reload the external version?`)) return;
+    await openDataFile(projectRoot, path, true);
+  }, [openDataFile, projectRoot]);
+
+  const overwriteConflict = useCallback(async (path: string) => {
+    const editor = editorsRef.current[path];
+    if (!editor?.conflict) return;
+    await saveFile(path, editor.conflict.contentIdentity);
+  }, [saveFile]);
+
+  const recheckSource = useCallback(async (path: string) => {
+    const state = workspaceStateRef.current;
+    const root = state.kind === "ready" ? state.workspace.project.project_root : state.previous?.project.project_root;
+    const editor = editorsRef.current[path];
+    if (!root || !editor) return;
+    const generation = workspaceGeneration.current;
+    try {
+      const current = await invoke<SourceContentState>("source_content", {
+        projectPath: root,
+        relativePath: path,
+      });
+      if (workspaceGeneration.current !== generation) return;
+      const latest = editorsRef.current[path];
+      if (!latest) return;
+      if (latest.previewState === "current"
+        && current.contentIdentity === latest.preview.candidateContentIdentity) {
+        await openDataFile(root, path, true);
+        showNotice("Saved source content confirmed.");
+        return;
+      }
+      if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
+        setEditors((all) => all[path]
+          ? {
+              ...all,
+              [path]: {
+                ...all[path],
+                loadError: null,
+                conflict: null,
+                saveStatus: null,
+                saveDiagnostic: null,
+              },
+            }
+          : all);
+        showNotice("Source state confirmed. Local changes are still unsaved.");
+        return;
+      }
+      setEditors((all) => all[path]
+        ? {
+            ...all,
+            [path]: {
+              ...all[path],
+              loadError: null,
+              conflict: current,
+              saveStatus: "conflict",
+              view: "compare",
+            },
+          }
+        : all);
+    } catch (error) {
+      if (workspaceGeneration.current !== generation) return;
+      const diagnostic = apiDiagnosticToDiagnostic(asApiError(error).diagnostic);
+      setEditors((all) => all[path]
+        ? { ...all, [path]: { ...all[path], saveDiagnostic: diagnostic } }
+        : all);
+    }
+  }, [openDataFile, showNotice]);
+
+  const switchView = useCallback((path: string, view: EditorState["view"]) => {
+    setEditors((current) => current[path]
+      ? { ...current, [path]: { ...current[path], view } }
+      : current);
+  }, []);
+
+  const focusDiagnostic = useCallback(async (diagnostic: Diagnostic) => {
+    if (!workspace) return;
+    const source = diagnostic.source ? normalizePath(diagnostic.source) : null;
+    const file = source
+      ? workspace.files.find((candidate) => source.endsWith(normalizePath(candidate.path)))
+      : null;
+    if (!file) return;
+    const record = diagnosticRecordIndex(diagnostic);
+    const field = diagnosticField(diagnostic);
+    if (file.kind === "data" && record !== null && field) {
+      pendingCellFocus.current = cellKey(record, field);
+    }
+    selectFile(file);
+    if (pendingCellFocus.current) {
+      window.requestAnimationFrame(() => {
+        const key = pendingCellFocus.current;
+        if (!key) return;
+        const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);
+        if (cell) {
+          cell.focus();
+          pendingCellFocus.current = null;
+        }
       });
     }
-  }, [buildState.kind, state]);
+  }, [selectFile, workspace]);
+
+  const activeDiagnostics = activeEditor?.previewState === "current"
+    ? activeEditor.preview.validation.diagnostics
+    : [];
+  const manualDiagnostics = manualValidation.kind === "done" ? manualValidation.value.diagnostics : [];
+  const operationDiagnostics = [
+    ...(activeEditor?.saveDiagnostic ? [activeEditor.saveDiagnostic] : []),
+    ...(buildState.kind === "error" ? [apiDiagnosticToDiagnostic(buildState.diagnostic)] : []),
+    ...(manualValidation.kind === "error" ? [apiDiagnosticToDiagnostic(manualValidation.diagnostic)] : []),
+  ];
+  const problems = [
+    ...activeDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Buffer" })),
+    ...manualDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Saved source" })),
+    ...operationDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Operation" })),
+  ];
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">LOCAL-FIRST MASTER DATA</p>
-          <h1>masterdata</h1>
+    <main className="app-shell">
+      <header className="titlebar">
+        <div className="brand-block">
+          <div className="brand-mark">M</div>
+          <div>
+            <strong>masterdata</strong>
+            <span>{workspace?.project.name ?? "No project"}</span>
+          </div>
         </div>
-        <div className="actions">
-          <button type="button" onClick={() => void loadProject()}>
-            Reload project
-          </button>
+        <div className="project-open">
+          <input
+            aria-label="Project path"
+            value={projectPathInput}
+            onChange={(event) => setProjectPathInput(event.target.value)}
+            placeholder="Project folder path"
+          />
           <button
             type="button"
-            onClick={() => void validateProject()}
-            disabled={state.kind !== "loaded" || validationState.kind === "loading"}
+            onClick={() => projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
           >
-            Validate
+            Open Project
           </button>
-          <button
-            type="button"
-            onClick={() => void buildProject()}
-            disabled={state.kind !== "loaded" || buildState.kind === "loading"}
-          >
-            Build
+        </div>
+        <div className="command-bar">
+          <button type="button" onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</button>
+          <button type="button" onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
+            {activeEditor?.saving ? "Saving…" : "Save"}
+          </button>
+          <button type="button" onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
+            {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
+          </button>
+          <button className="primary" type="button" onClick={() => void runBuild()} disabled={!workspace?.capabilities.build || buildState.kind === "loading"}>
+            {buildState.kind === "loading" ? "Building…" : "Build"}
           </button>
         </div>
       </header>
 
-      <section className="workspace" aria-label="masterdata workspace">
-        <aside className="sidebar">
-          <span className="section-label">Navigation</span>
-          <div className="nav-item active">Project overview</div>
-          <div className="nav-item muted">Tables (coming soon)</div>
-          <div className="nav-item muted">Types (coming soon)</div>
+      {dirtyCount > 0 && (
+        <div className="unsaved-build-note">
+          {dirtyCount} unsaved file{dirtyCount === 1 ? "" : "s"}. Build uses saved source only.
+        </div>
+      )}
+
+      <section className="workspace-layout">
+        <aside className="explorer" aria-label="Workspace Explorer">
+          <div className="pane-heading">
+            <span>EXPLORER</span>
+            <small>{workspace?.project.project_id ?? "project not open"}</small>
+          </div>
+          {workspaceState.kind === "loading" && !workspace && <div className="pane-message">Opening project…</div>}
+          {workspaceState.kind === "error" && !workspace && (
+            <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(workspaceState.diagnostic)} />
+          )}
+          {workspace && (
+            <SourceTree
+              workspace={workspace}
+              activePath={activePath}
+              editors={editors}
+              loadingPaths={loadingPaths}
+              fileOpenErrors={fileOpenErrors}
+              onSelect={selectFile}
+            />
+          )}
         </aside>
 
-        <section className="content">
-          <span className="section-label">Current project</span>
-          {state.kind === "loading" && <p className="message">Loading project through Rust application service…</p>}
-          {state.kind === "error" && (
-            <div className="error-card">
-              <h2>Project could not be opened</h2>
-              <p>{state.diagnostic.message}</p>
-              <code>{state.diagnostic.code}</code>
-              {state.diagnostic.source && <p>{state.diagnostic.source}</p>}
-              {state.diagnostic.suggestion && <p>{state.diagnostic.suggestion}</p>}
-              <p className="hint">Run <code>cargo xtask dev-reset</code> and start the GUI again.</p>
+        <section className="editor-area">
+          {workspaceState.kind === "error" && workspace && (
+            <div className="workspace-error-strip">
+              <strong>{workspaceState.diagnostic.code}</strong>
+              <span>{workspaceState.diagnostic.message}</span>
             </div>
           )}
-          {state.kind === "loaded" && (
-            <>
-              <ProjectCard project={state.project} />
-              <ValidationPanel state={validationState} />
-              <BuildPanel state={buildState} />
-            </>
+          {!workspace && workspaceState.kind !== "loading" && (
+            <EmptyEditor title="Open a Masterdata project" copy="Enter a project folder path above. Project semantics are resolved by the shared Rust application service." />
           )}
-        </section>
+          {workspace && !activeFile && (
+            <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
+          )}
+          {activeFile && activeFile.kind !== "data" && (
+            <SourcePlaceholder file={activeFile} />
+          )}
+          {activeFile?.kind === "data" && activeLoading && (
+            <EmptyEditor title={`Loading ${sourceName(activeFile.path)}…`} copy="Refreshing records through the shared application service." />
+          )}
+          {activeFile?.kind === "data" && !activeLoading && activeLoadDiagnostic && (
+            <section className="placeholder-editor">
+              <h2>{sourceName(activeFile.path)} is unavailable</h2>
+              <p>The previous clean snapshot is not editable until the source can be loaded safely.</p>
+              <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(activeLoadDiagnostic)} />
+            </section>
+          )}
+          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && !activeEditor && (
+            <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading records through the shared application service." />
+          )}
+          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
+            <DataEditor
+              file={activeFile}
+              editor={activeEditor}
+              onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
+              onSave={() => void saveFile(activeFile.path)}
+              onRecheckSource={() => void recheckSource(activeFile.path)}
+              onSwitchView={(view) => switchView(activeFile.path, view)}
+              onReloadConflict={() => void reloadConflict(activeFile.path)}
+              onOverwriteConflict={() => void overwriteConflict(activeFile.path)}
+              cellFocusStart={cellFocusStart}
+            />
+          )}
 
-        <aside className="inspector">
-          <span className="section-label">Inspector</span>
-          <p className="inspector-copy">Select a table or record to inspect details.</p>
-          <div className="status-stack">
-            <div className="status-pill">{validationStatus}</div>
-            <div className="status-pill">{buildStatus}</div>
-          </div>
-        </aside>
+          <section className={`problems-panel ${problemsOpen ? "open" : "collapsed"}`}>
+            <button className="problems-header" type="button" onClick={() => setProblemsOpen((value) => !value)}>
+              <span>PROBLEMS <b>{problems.length}</b></span>
+              <span className="problem-snapshot">
+                {activeEditor?.previewState === "pending" && "Buffer validation pending"}
+                {activeEditor?.previewState === "unavailable" && "Buffer validation unavailable"}
+                {activeEditor?.previewState === "current" && (activeEditor.preview.validation.valid ? "Buffer valid" : "Buffer has diagnostics")}
+                {manualValidation.kind === "done" && ` · Disk ${manualValidation.value.valid ? "valid" : "invalid"}`}
+              </span>
+            </button>
+            {problemsOpen && (
+              <div className="problems-body">
+                {activeEditor?.previewError && <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(activeEditor.previewError)} />}
+                {problems.length === 0 ? (
+                  <div className="no-problems">No diagnostics for the current buffer.</div>
+                ) : (
+                  problems.map(({ diagnostic, origin }, index) => (
+                    <button className="problem-row" type="button" key={`${origin}-${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>
+                      <span className="problem-icon">!</span>
+                      <strong>{diagnostic.code}</strong>
+                      <span>{diagnostic.message}</span>
+                      <small>{origin} · {formatDiagnosticLocation(diagnostic)}</small>
+                    </button>
+                  ))
+                )}
+                {buildState.kind === "done" && (
+                  <div className="build-result-line">Build complete · {buildState.value.generatedFiles.length} generated C# files · saved sources only</div>
+                )}
+              </div>
+            )}
+          </section>
+        </section>
       </section>
+
+      <footer className="statusbar">
+        <span>{activePath ?? "No source selected"}</span>
+        <span>{activeEditor ? `${activeEditor.snapshot.rows.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
+        <span>{dirtyCount > 0 ? `${dirtyCount} dirty` : "Saved"}</span>
+      </footer>
+
+      {pendingAction && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="save-all-dialog" role="dialog" aria-modal="true" aria-labelledby="save-all-title">
+            <span className="dialog-kicker">UNSAVED CHANGES</span>
+            <h2 id="save-all-title">Save changes before continuing?</h2>
+            <p>{dirtyCount} source file{dirtyCount === 1 ? " has" : "s have"} unsaved changes. The requested action would discard the current buffers.</p>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setPendingAction(null)} disabled={pendingActionBusy}>Cancel</button>
+              <button type="button" onClick={() => void performAction(pendingAction)} disabled={pendingActionBusy}>Don't Save</button>
+              <button className="primary" type="button" disabled={pendingActionBusy} onClick={async () => {
+                setPendingActionBusy(true);
+                const action = pendingAction;
+                const ok = await saveAll();
+                setPendingActionBusy(false);
+                if (ok) await performAction(action);
+              }}>
+                {pendingActionBusy ? "Saving…" : "Save All"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {notice && <div className="toast">{notice}</div>}
     </main>
   );
 }
 
-function validationStatusLabel(state: ValidationState): string {
-  switch (state.kind) {
-    case "idle":
-      return "Validation not run";
-    case "loading":
-      return "Validating…";
-    case "error":
-      return "Validation unavailable";
-    case "loaded":
-      return state.report.valid ? "Validation passed" : "Validation failed";
-  }
-}
+type SourceTreeFolder = {
+  kind: "folder";
+  name: string;
+  key: string;
+  depth: number;
+  children: SourceTreeNode[];
+};
 
-function buildStatusLabel(state: BuildState): string {
-  switch (state.kind) {
-    case "idle":
-      return "Build not run";
-    case "loading":
-      return "Building…";
-    case "error":
-      return "Build failed";
-    case "loaded":
-      return "Build complete";
-  }
-}
+type SourceTreeFile = {
+  kind: "file";
+  name: string;
+  key: string;
+  depth: number;
+  file: WorkspaceSourceFile;
+};
 
-function BuildPanel({ state }: { state: BuildState }) {
-  return (
-    <section className="build-panel" aria-live="polite">
-      <div className="build-heading">
-        <div>
-          <p className="card-kicker">Canonical build</p>
-          <h2>Build result</h2>
-        </div>
-        {state.kind === "loaded" && (
-          <span className="validation-badge is-valid">Complete</span>
-        )}
-      </div>
+type SourceTreeNode = SourceTreeFolder | SourceTreeFile;
 
-      {state.kind === "idle" && (
-        <p className="build-message">Run a full build to create the current canonical artifact set.</p>
-      )}
-      {state.kind === "loading" && (
-        <p className="build-message">Building canonical artifacts through Rust and .NET…</p>
-      )}
-      {state.kind === "error" && (
-        <DiagnosticCard
-          heading="Build could not be completed"
-          diagnostic={normalizeDiagnostic(state.diagnostic)}
-        />
-      )}
-      {state.kind === "loaded" && <BuildResult response={state.response} />}
-    </section>
-  );
-}
-
-function BuildResult({ response }: { response: BuildResponse }) {
-  return (
-    <>
-      <p className="build-success">
-        {response.dryRun
-          ? "Dry run completed without publishing artifacts."
-          : "Canonical artifact set created successfully."}
-      </p>
-      <dl className="build-details">
-        <div>
-          <dt>Artifact root</dt>
-          <dd>{response.artifactRoot}</dd>
-        </div>
-        <div>
-          <dt>Canonical C#</dt>
-          <dd>{response.csharpOutput}</dd>
-        </div>
-        <div>
-          <dt>Canonical binary</dt>
-          <dd>{response.binaryOutput}</dd>
-        </div>
-        <div>
-          <dt>Build cache</dt>
-          <dd>{response.cache}</dd>
-        </div>
-        <div>
-          <dt>Schema source hash</dt>
-          <dd>{response.schemaSourceContentHash}</dd>
-        </div>
-      </dl>
-
-      <div className="build-files">
-        <h3>Generated C# ({response.generatedFiles.length})</h3>
-        {response.generatedFiles.length > 0 ? (
-          <ul>
-            {response.generatedFiles.map((file) => (
-              <li key={file}><code>{file}</code></li>
-            ))}
-          </ul>
-        ) : (
-          <p>No C# files were generated.</p>
-        )}
-      </div>
-    </>
-  );
-}
-
-function ValidationPanel({ state }: { state: ValidationState }) {
-  return (
-    <section className="validation-panel" aria-live="polite">
-      <div className="validation-heading">
-        <div>
-          <p className="card-kicker">Source validation</p>
-          <h2>Validation result</h2>
-        </div>
-        {state.kind === "loaded" && (
-          <span className={`validation-badge ${state.report.valid ? "is-valid" : "is-invalid"}`}>
-            {state.report.valid ? "Valid" : "Needs attention"}
-          </span>
-        )}
-      </div>
-
-      {state.kind === "idle" && (
-        <p className="validation-message">Run validation to inspect the current project sources.</p>
-      )}
-      {state.kind === "loading" && (
-        <p className="validation-message">Validating current project sources through Rust…</p>
-      )}
-      {state.kind === "error" && (
-        <DiagnosticCard
-          heading="Validation could not be completed"
-          diagnostic={normalizeDiagnostic(state.diagnostic)}
-        />
-      )}
-      {state.kind === "loaded" && <ValidationResult report={state.report} />}
-    </section>
-  );
-}
-
-function ValidationResult({ report }: { report: ValidationReport }) {
-  return (
-    <>
-      <dl className="validation-summary">
-        <div>
-          <dt>Files scanned</dt>
-          <dd>{report.files_scanned}</dd>
-        </div>
-        <div>
-          <dt>Schemas</dt>
-          <dd>{report.schema_documents}</dd>
-        </div>
-        <div>
-          <dt>Types</dt>
-          <dd>{report.type_documents}</dd>
-        </div>
-        <div>
-          <dt>Data documents</dt>
-          <dd>{report.data_documents}</dd>
-        </div>
-      </dl>
-
-      <div className="validation-collections">
-        <div>
-          <span className="collection-label">Tables</span>
-          <span>{report.tables.length > 0 ? report.tables.join(", ") : "None"}</span>
-        </div>
-        <div>
-          <span className="collection-label">Types</span>
-          <span>{report.types.length > 0 ? report.types.join(", ") : "None"}</span>
-        </div>
-      </div>
-
-      {report.diagnostics.length === 0 ? (
-        <p className="validation-success">No diagnostics. The project sources are valid.</p>
-      ) : (
-        <div>
-          <h3 className="diagnostics-heading">Diagnostics ({report.diagnostics.length})</h3>
-          <ol className="diagnostic-list">
-            {report.diagnostics.map((diagnostic, index) => (
-              <li key={`${diagnostic.code}-${index}`}>
-                <DiagnosticCard diagnostic={normalizeDiagnostic(diagnostic)} />
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-    </>
-  );
-}
-
-function DiagnosticCard({
-  heading,
-  diagnostic,
+function SourceTree({
+  workspace,
+  activePath,
+  editors,
+  loadingPaths,
+  fileOpenErrors,
+  onSelect,
 }: {
-  heading?: string;
-  diagnostic: DisplayDiagnostic;
+  workspace: AuthoringWorkspace;
+  activePath: string | null;
+  editors: Record<string, EditorState>;
+  loadingPaths: Set<string>;
+  fileOpenErrors: Record<string, ApiDiagnostic>;
+  onSelect: (file: WorkspaceSourceFile) => void;
 }) {
-  const location = formatDiagnosticLocation(diagnostic);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const groups = useMemo(() => workspace.sourceRoots.map((root) => {
+    const children: SourceTreeNode[] = [];
+    for (const file of workspace.files.filter((candidate) => candidate.sourceRoot === root)) {
+      const relative = file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
+      const parts = relative.split("/").filter(Boolean);
+      let level = children;
+      let prefix = root;
+      for (const [index, segment] of parts.slice(0, -1).entries()) {
+        prefix = `${prefix}/${segment}`;
+        let folder = level.find(
+          (node): node is SourceTreeFolder => node.kind === "folder" && node.name === segment,
+        );
+        if (!folder) {
+          folder = { kind: "folder", name: segment, key: prefix, depth: index + 1, children: [] };
+          level.push(folder);
+        }
+        level = folder.children;
+      }
+      level.push({
+        kind: "file",
+        name: parts.at(-1) ?? file.path,
+        key: file.path,
+        depth: Math.max(1, parts.length),
+        file,
+      });
+    }
+    const sortNodes = (nodes: SourceTreeNode[]) => {
+      nodes.sort((left, right) => {
+        if (left.kind !== right.kind) return left.kind === "folder" ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
+      for (const node of nodes) if (node.kind === "folder") sortNodes(node.children);
+    };
+    sortNodes(children);
+    return { root, children };
+  }), [workspace]);
+
+  const toggleFolder = (key: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleTreeKey = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    folderKey?: string,
+    expanded = false,
+  ) => {
+    const tree = event.currentTarget.closest('[role="tree"]');
+    if (!tree) return;
+    const items = Array.from(tree.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'));
+    const index = items.indexOf(event.currentTarget);
+    const depth = Number(event.currentTarget.dataset.depth ?? "0");
+    const focusAt = (next: number) => items[Math.max(0, Math.min(items.length - 1, next))]?.focus();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusAt(index + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      focusAt(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      focusAt(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      focusAt(items.length - 1);
+    } else if (event.key === "ArrowRight" && folderKey) {
+      event.preventDefault();
+      if (!expanded) toggleFolder(folderKey);
+      else if (Number(items[index + 1]?.dataset.depth ?? depth) > depth) focusAt(index + 1);
+    } else if (event.key === "ArrowLeft") {
+      if (folderKey && expanded) {
+        event.preventDefault();
+        toggleFolder(folderKey);
+      } else {
+        for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+          if (Number(items[cursor].dataset.depth ?? "0") < depth) {
+            event.preventDefault();
+            items[cursor].focus();
+            break;
+          }
+        }
+      }
+    } else if ((event.key === "Enter" || event.key === " ") && folderKey) {
+      event.preventDefault();
+      toggleFolder(folderKey);
+    }
+  };
+
+  const renderNode = (node: SourceTreeNode): React.ReactNode => {
+    if (node.kind === "folder") {
+      const expanded = !collapsed.has(node.key);
+      return (
+        <div key={node.key}>
+          <button
+            type="button"
+            role="treeitem"
+            data-depth={node.depth}
+            aria-expanded={expanded}
+            className="tree-folder"
+            style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+            onClick={() => toggleFolder(node.key)}
+            onKeyDown={(event) => handleTreeKey(event, node.key, expanded)}
+          >
+            <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+            <span>{node.name}</span>
+          </button>
+          {expanded && <div role="group">{node.children.map(renderNode)}</div>}
+        </div>
+      );
+    }
+
+    const editor = editors[node.file.path];
+    const dirty = editorIsDirtySafe(editor);
+    const loading = loadingPaths.has(node.file.path);
+    const unavailable = Boolean(editor?.loadError || fileOpenErrors[node.file.path]);
+    const stateLabels = [
+      loading ? "loading" : null,
+      editor?.saving ? "saving" : null,
+      dirty ? "unsaved changes" : null,
+      unavailable ? "source unavailable" : null,
+      editor?.saveStatus === "failure" ? "save failed" : null,
+      editor?.saveStatus === "outcome_unknown" ? "save outcome unknown" : null,
+      editor?.conflict ? "external change conflict" : null,
+    ].filter(Boolean);
+    return (
+      <button
+        key={node.key}
+        type="button"
+        role="treeitem"
+        data-depth={node.depth}
+        aria-selected={activePath === node.file.path}
+        aria-label={`${node.file.path}${stateLabels.length ? `, ${stateLabels.join(", ")}` : ""}`}
+        className={`tree-file ${activePath === node.file.path ? "active" : ""}`}
+        style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+        onClick={() => onSelect(node.file)}
+        onKeyDown={handleTreeKey}
+        title={node.file.path}
+      >
+        <span className={`file-kind ${node.file.kind}`}>{node.file.kind === "data" ? "▦" : node.file.kind === "schema" ? "T" : node.file.kind === "type" ? "◇" : "!"}</span>
+        <span className="tree-file-name">{node.name}</span>
+        {dirty && <span className="dirty-dot" title="Unsaved changes">●</span>}
+        {loading && <span className="file-state-badge" title="Loading">…</span>}
+        {editor?.saving && <span className="file-state-badge" title="Saving">↻</span>}
+        {unavailable && <span className="file-state-badge error" title="Source unavailable">×</span>}
+        {editor?.saveStatus === "failure" && <span className="file-state-badge error" title="Save failed">×</span>}
+        {editor?.saveStatus === "outcome_unknown" && <span className="file-state-badge warning" title="Save outcome unknown">?</span>}
+        {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}
+      </button>
+    );
+  };
+
+  return <div className="source-tree" role="tree" aria-label="Project source files">
+    {groups.map(({ root, children }) => {
+      const key = `root:${root}`;
+      const expanded = !collapsed.has(key);
+      return (
+        <div className="source-root" key={root}>
+          <button
+            type="button"
+            role="treeitem"
+            data-depth="0"
+            aria-expanded={expanded}
+            className="tree-root-label"
+            onClick={() => toggleFolder(key)}
+            onKeyDown={(event) => handleTreeKey(event, key, expanded)}
+          >
+            <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+            {root}
+          </button>
+          {expanded && <div role="group">{children.map(renderNode)}</div>}
+        </div>
+      );
+    })}
+    {workspace.files.length === 0 && <div className="pane-message">No YAML source documents.</div>}
+  </div>;
+}
+
+function editorIsDirtySafe(editor: EditorState | undefined): boolean {
+  return editor ? editorIsDirty(editor) : false;
+}
+
+function DataEditor({
+  file,
+  editor,
+  onCellChange,
+  onSave,
+  onRecheckSource,
+  onSwitchView,
+  onReloadConflict,
+  onOverwriteConflict,
+  cellFocusStart,
+}: {
+  file: WorkspaceSourceFile;
+  editor: EditorState;
+  onCellChange: (recordIndex: number, field: string, value: string) => void;
+  onSave: () => void;
+  onRecheckSource: () => void;
+  onSwitchView: (view: EditorState["view"]) => void;
+  onReloadConflict: () => void;
+  onOverwriteConflict: () => void;
+  cellFocusStart: React.MutableRefObject<Map<string, string>>;
+}) {
+  const dirty = editorIsDirty(editor);
+  const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
+  const lastFocusedCell = useRef<string | null>(null);
+
+  useEffect(() => {
+    lastFocusedCell.current = null;
+  }, [file.path]);
+
+  useEffect(() => {
+    if (editor.view !== "grid" || !lastFocusedCell.current) return;
+    const key = lastFocusedCell.current;
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();
+    });
+  }, [editor.view]);
 
   return (
-    <article className="diagnostic-card">
-      {heading && <h3>{heading}</h3>}
-      <div className="diagnostic-title">
-        <code>{diagnostic.code}</code>
-        <span>{diagnostic.kind}</span>
-      </div>
-      <p>{diagnostic.message}</p>
-      {location && <p className="diagnostic-location">{location}</p>}
-      {diagnostic.schemaPath && <p>Schema path: <code>{diagnostic.schemaPath}</code></p>}
-      {diagnostic.recordIdentity && <p>Record: <code>{diagnostic.recordIdentity}</code></p>}
-      {diagnostic.suggestion && <p>Suggestion: {diagnostic.suggestion}</p>}
-      {diagnostic.relatedRequirements.length > 0 && (
-        <p>Requirements: {diagnostic.relatedRequirements.join(", ")}</p>
+    <section className="data-editor">
+      <header className="editor-tabs">
+        <div className="document-tab">
+          <span className="file-kind data">▦</span>
+          <strong>{sourceName(file.path)}</strong>
+          {dirty && <span className="tab-dirty">●</span>}
+        </div>
+        <div className="view-tabs" role="tablist">
+          <button className={editor.view === "grid" ? "selected" : ""} type="button" onClick={() => onSwitchView("grid")}>Data</button>
+          <button className={editor.view === "diff" ? "selected" : ""} type="button" onClick={() => onSwitchView("diff")}>Diff</button>
+          {editor.conflict && <button className={editor.view === "compare" ? "selected conflict" : "conflict"} type="button" onClick={() => onSwitchView("compare")}>Conflict</button>}
+        </div>
+        <div className="editor-actions">
+          <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
+          <button type="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</button>
+        </div>
+      </header>
+
+      {(editor.saveStatus === "failure" || editor.saveStatus === "outcome_unknown") && (
+        <div className="conflict-strip save-recovery-strip">
+          <div>
+            <strong>{editor.saveStatus === "outcome_unknown" ? "Previous save outcome is unknown." : "Save failed."}</strong>
+            <span>Local changes are preserved. Recheck the workspace source before continuing recovery.</span>
+          </div>
+          <div>
+            <button type="button" onClick={onRecheckSource}>Recheck Source</button>
+            {editor.saveStatus === "failure" && <button type="button" onClick={onSave}>Retry Save</button>}
+          </div>
+        </div>
       )}
-    </article>
+
+      {editor.conflict && (
+        <div className="conflict-strip">
+          <div>
+            <strong>File changed outside masterdata.</strong>
+            <span>Your unsaved buffer is preserved. Normal Save will not overwrite the external version.</span>
+          </div>
+          <div>
+            <button type="button" onClick={() => onSwitchView("compare")}>Compare</button>
+            <button type="button" onClick={onReloadConflict}>Reload</button>
+            <button className="danger" type="button" onClick={onOverwriteConflict}>Overwrite</button>
+          </div>
+        </div>
+      )}
+
+      {editor.view === "grid" && (
+        <div className="grid-scroll">
+          <table className="record-grid">
+            <thead>
+              <tr>
+                <th className="row-number">#</th>
+                {editor.snapshot.columns.map((column) => (
+                  <th key={column.name}>
+                    <div className="column-heading">
+                      <strong>{column.name}</strong>
+                      <span>{column.typeName}</span>
+                      {column.keyField && <em>KEY</em>}
+                      {!column.editable && !column.keyField && <em>READ ONLY</em>}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {editor.snapshot.rows.map((row) => (
+                <tr key={row.recordIndex}>
+                  <th className="row-number">{row.recordIndex + 1}</th>
+                  {editor.snapshot.columns.map((column, columnIndex) => {
+                    const value = currentCellText(editor, row.recordIndex, column.name);
+                    const key = cellKey(row.recordIndex, column.name);
+                    const hasDiagnostic = diagnostics.some((diagnostic) =>
+                      diagnosticRecordIndex(diagnostic) === row.recordIndex && diagnosticField(diagnostic) === column.name);
+                    const changed = key in editor.edits;
+                    return (
+                      <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""}`}>
+                        <div className="cell-wrap">
+                          <input
+                            data-cell={key}
+                            aria-label={`record ${row.recordIndex + 1} ${column.name}`}
+                            value={value}
+                            readOnly={!column.editable || editor.saving}
+                            onFocus={() => {
+                              cellFocusStart.current.set(key, value);
+                              lastFocusedCell.current = key;
+                            }}
+                            onChange={(event) => onCellChange(row.recordIndex, column.name, event.target.value)}
+                            onKeyDown={(event) => handleGridKey(event, row.recordIndex, columnIndex, editor.snapshot, () => {
+                              const initial = cellFocusStart.current.get(key);
+                              if (initial !== undefined) onCellChange(row.recordIndex, column.name, initial);
+                            })}
+                          />
+                          {hasDiagnostic && <span className="cell-error" title="Validation diagnostic">!</span>}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {editor.snapshot.rows.length === 0 && <div className="empty-grid">This data file has no records.</div>}
+        </div>
+      )}
+
+      {editor.view === "diff" && (
+        <DiffView
+          title="Unsaved source diff"
+          leftLabel="Saved base"
+          rightLabel="Local buffer"
+          left={editor.snapshot.baseSource}
+          right={editor.preview.candidateSource}
+          pending={editor.previewState !== "current"}
+        />
+      )}
+
+      {editor.view === "compare" && editor.conflict && (
+        <DiffView
+          title="External change conflict"
+          leftLabel="External source"
+          rightLabel="Local save candidate"
+          left={editor.conflict.source}
+          right={editor.preview.candidateSource}
+          pending={editor.previewState !== "current"}
+        />
+      )}
+    </section>
   );
 }
 
-function formatDiagnosticLocation(diagnostic: DisplayDiagnostic): string | null {
-  const position = [diagnostic.line, diagnostic.column]
-    .filter((value): value is number => value !== null)
-    .join(":");
+function validationLabel(editor: EditorState): string {
+  if (editor.previewState === "pending") return "Validating buffer…";
+  if (editor.previewState === "unavailable") return "Validation unavailable";
+  return editor.preview.validation.valid ? "Buffer valid" : `${editor.preview.validation.diagnostics.length} problems`;
+}
 
-  if (!diagnostic.source) {
-    return position || null;
+function handleGridKey(
+  event: React.KeyboardEvent<HTMLInputElement>,
+  rowIndex: number,
+  columnIndex: number,
+  snapshot: DataFileSnapshot,
+  cancel: () => void,
+) {
+  const input = event.currentTarget;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancel();
+    input.blur();
+    return;
   }
-
-  return position ? `${diagnostic.source}:${position}` : diagnostic.source;
+  if (event.key === "F2") {
+    event.preventDefault();
+    input.select();
+    return;
+  }
+  let nextRow = rowIndex;
+  let nextColumn = columnIndex;
+  if (event.key === "ArrowUp") nextRow -= 1;
+  else if (event.key === "ArrowDown" || event.key === "Enter") nextRow += 1;
+  else if (event.key === "ArrowLeft" && input.selectionStart === 0) nextColumn -= 1;
+  else if (event.key === "ArrowRight" && input.selectionStart === input.value.length) nextColumn += 1;
+  else return;
+  if (nextRow < 0 || nextRow >= snapshot.rows.length || nextColumn < 0 || nextColumn >= snapshot.columns.length) return;
+  event.preventDefault();
+  const next = cellKey(snapshot.rows[nextRow].recordIndex, snapshot.columns[nextColumn].name);
+  document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(next)}"]`)?.focus();
 }
 
-function ProjectCard({ project }: { project: ProjectInfo }) {
+function DiffView({
+  title,
+  leftLabel,
+  rightLabel,
+  left,
+  right,
+  pending,
+}: {
+  title: string;
+  leftLabel: string;
+  rightLabel: string;
+  left: string;
+  right: string;
+  pending: boolean;
+}) {
+  const leftLines = left.split("\n");
+  const rightLines = right.split("\n");
+  const count = Math.max(leftLines.length, rightLines.length);
   return (
-    <article className="project-card">
-      <div className="project-heading">
-        <div>
-          <p className="card-kicker">Project identity</p>
-          <h2>{project.name}</h2>
+    <section className="diff-view">
+      <header>
+        <div><span className="dialog-kicker">SOURCE DIFF</span><h2>{title}</h2></div>
+        {pending && <span className="diff-pending">Refreshing shared source preview…</span>}
+      </header>
+      {!pending && (
+        <div className="diff-grid">
+          <div className="diff-column"><strong>{leftLabel}</strong></div>
+          <div className="diff-column"><strong>{rightLabel}</strong></div>
+          {Array.from({ length: count }, (_, index) => {
+            const a = leftLines[index] ?? "";
+            const b = rightLines[index] ?? "";
+            const changed = a !== b;
+            return [
+              <pre key={`a-${index}`} className={changed ? "changed" : ""}><span>{index + 1}</span>{a}</pre>,
+              <pre key={`b-${index}`} className={changed ? "changed" : ""}><span>{index + 1}</span>{b}</pre>,
+            ];
+          })}
         </div>
-        <span className="version">v{project.version}</span>
-      </div>
-      <dl className="details">
-        <div>
-          <dt>Project ID</dt>
-          <dd>{project.project_id}</dd>
-        </div>
-        <div>
-          <dt>Root</dt>
-          <dd>{project.project_root}</dd>
-        </div>
-        <div>
-          <dt>Config</dt>
-          <dd>{project.config_path}</dd>
-        </div>
-        <div>
-          <dt>Source roots</dt>
-          <dd>{project.source_roots.join(", ")}</dd>
-        </div>
-        <div>
-          <dt>Canonical artifacts</dt>
-          <dd>{project.artifact_root}</dd>
-        </div>
-        <div>
-          <dt>Canonical C#</dt>
-          <dd>{project.csharp_output}</dd>
-        </div>
-        <div>
-          <dt>Canonical binary</dt>
-          <dd>{project.binary_output}</dd>
-        </div>
-        <div>
-          <dt>Build cache</dt>
-          <dd>{project.cache}</dd>
-        </div>
-      </dl>
-    </article>
+      )}
+    </section>
   );
+}
+
+function SourcePlaceholder({ file }: { file: WorkspaceSourceFile }) {
+  return (
+    <section className="placeholder-editor">
+      <span className={`large-kind ${file.kind}`}>{file.kind === "schema" ? "T" : file.kind === "type" ? "◇" : "!"}</span>
+      <h2>{sourceName(file.path)}</h2>
+      <p><code>{file.kind}</code> typed editor is not part of the current existing-record authoring slice.</p>
+      <dl>
+        <div><dt>Path</dt><dd>{file.path}</dd></div>
+        {file.table && <div><dt>Table</dt><dd>{file.table}</dd></div>}
+        {file.typeName && <div><dt>Type</dt><dd>{file.typeName}</dd></div>}
+      </dl>
+      {file.diagnostic && <DiagnosticBanner diagnostic={file.diagnostic} />}
+    </section>
+  );
+}
+
+function EmptyEditor({ title, copy }: { title: string; copy: string }) {
+  return <section className="empty-editor"><div className="empty-symbol">▦</div><h2>{title}</h2><p>{copy}</p></section>;
+}
+
+function DiagnosticBanner({ diagnostic }: { diagnostic: Diagnostic }) {
+  return (
+    <div className="diagnostic-banner">
+      <strong>{diagnostic.code}</strong>
+      <span>{diagnostic.message}</span>
+      {diagnostic.suggestion && <small>{diagnostic.suggestion}</small>}
+    </div>
+  );
+}
+
+function apiDiagnosticToDiagnostic(diagnostic: ApiDiagnostic): Diagnostic {
+  return {
+    code: diagnostic.code,
+    kind: diagnostic.kind,
+    message: diagnostic.message,
+    source: diagnostic.source,
+    line: diagnostic.line,
+    column: diagnostic.column,
+    schema_path: diagnostic.schemaPath,
+    record_identity: diagnostic.recordIdentity,
+    suggestion: diagnostic.suggestion,
+    related_requirements: diagnostic.relatedRequirements,
+  };
+}
+
+function formatDiagnosticLocation(diagnostic: Diagnostic): string {
+  const parts = [];
+  if (diagnostic.source) parts.push(normalizePath(diagnostic.source).split("/").slice(-3).join("/"));
+  if (diagnostic.record_identity) parts.push(diagnostic.record_identity);
+  if (diagnostic.line != null) parts.push(`L${diagnostic.line}${diagnostic.column != null ? `:${diagnostic.column}` : ""}`);
+  return parts.join(" · ");
 }
 
 export default App;

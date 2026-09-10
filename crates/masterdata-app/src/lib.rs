@@ -20,9 +20,11 @@ use masterdata_dotnet::{
 };
 use tempfile::TempDir;
 
+mod authoring;
 mod publish;
 mod receipt;
 
+pub use authoring::*;
 pub use publish::{
     BinaryPublishPreflight, CSharpPublishPreflight, PUBLISH_MANIFEST_FILENAME,
     PublishExecutionFailure, PublishExecutionReport, PublishFailureInjection, PublishFailurePoint,

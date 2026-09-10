@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use masterdata_app::NativeApplicationService;
+use masterdata_app::{
+    AuthoringEdit, AuthoringWorkspace, DataFileSnapshot, NativeApplicationService,
+    SourceContentState, SourceEditPreview, SourceSaveReport,
+};
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
 
@@ -59,23 +62,112 @@ fn current_directory() -> std::result::Result<PathBuf, ApiError> {
     })
 }
 
+fn configured_project_path(project_path: Option<String>) -> Option<String> {
+    project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok())
+}
+
 #[tauri::command(rename_all = "camelCase")]
 fn project_info(project_path: Option<String>) -> std::result::Result<ProjectInfo, ApiError> {
     let current_dir = current_directory()?;
-    let configured_path = project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok());
-    let explicit_path = configured_path.as_deref().map(Path::new);
+    let configured_path = configured_project_path(project_path);
     NativeApplicationService::new()
-        .project_info(explicit_path, &current_dir)
+        .project_info(configured_path.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn authoring_workspace(
+    project_path: Option<String>,
+) -> std::result::Result<AuthoringWorkspace, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .authoring_workspace(configured_path.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn open_data_file(
+    project_path: Option<String>,
+    relative_path: String,
+) -> std::result::Result<DataFileSnapshot, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .open_data_file(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn preview_data_file(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    edits: Vec<AuthoringEdit>,
+) -> std::result::Result<SourceEditPreview, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .preview_data_file(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &edits,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn source_content(
+    project_path: Option<String>,
+    relative_path: String,
+) -> std::result::Result<SourceContentState, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .source_content(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn save_data_file(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    base_content_identity: String,
+    edits: Vec<AuthoringEdit>,
+    overwrite_expected_identity: Option<String>,
+) -> std::result::Result<SourceSaveReport, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .save_data_file(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &base_content_identity,
+            &edits,
+            overwrite_expected_identity.as_deref(),
+        )
         .map_err(ApiError::from)
 }
 
 #[tauri::command(rename_all = "camelCase")]
 fn validate(project_path: Option<String>) -> std::result::Result<ValidationReport, ApiError> {
     let current_dir = current_directory()?;
-    let configured_path = project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok());
-    let explicit_path = configured_path.as_deref().map(Path::new);
+    let configured_path = configured_project_path(project_path);
     NativeApplicationService::new()
-        .validate(explicit_path, &current_dir)
+        .validate(configured_path.as_deref().map(Path::new), &current_dir)
         .map_err(ApiError::from)
 }
 
@@ -98,10 +190,13 @@ fn build(
     dry_run: bool,
 ) -> std::result::Result<BuildResponse, ApiError> {
     let current_dir = current_directory()?;
-    let configured_path = project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok());
-    let explicit_path = configured_path.as_deref().map(Path::new);
+    let configured_path = configured_project_path(project_path);
     let execution = NativeApplicationService::new()
-        .build(explicit_path, &current_dir, dry_run)
+        .build(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            dry_run,
+        )
         .map_err(ApiError::from)?;
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
@@ -117,7 +212,16 @@ fn build(
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![project_info, validate, build])
+        .invoke_handler(tauri::generate_handler![
+            project_info,
+            authoring_workspace,
+            open_data_file,
+            preview_data_file,
+            source_content,
+            save_data_file,
+            validate,
+            build
+        ])
         .run(tauri::generate_context!())
         .expect("error while running masterdata GUI");
 }
@@ -128,6 +232,13 @@ mod tests {
 
     use super::DiagnosticDto;
     use masterdata_core::{Diagnostic, ErrorKind, ValidationReport};
+
+    fn minimal_project() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../fixtures/minimal")
+            .canonicalize()
+            .expect("minimal fixture path")
+    }
 
     #[test]
     fn diagnostic_dto_preserves_structured_fields() {
@@ -181,26 +292,30 @@ mod tests {
     }
 
     #[test]
-    fn validate_command_uses_shared_validation_service() {
-        let project = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../fixtures/minimal")
-            .canonicalize()
-            .expect("minimal fixture path");
+    fn authoring_commands_delegate_to_shared_service() {
+        let project = minimal_project();
+        let project_path = Some(project.to_string_lossy().into_owned());
+        let workspace = super::authoring_workspace(project_path.clone()).expect("workspace");
+        assert!(workspace.files.iter().any(|file| file.kind == "data"));
 
+        let snapshot = super::open_data_file(project_path, "sources/items-a.yaml".to_owned())
+            .expect("data snapshot");
+        assert_eq!(snapshot.table, "item");
+        assert!(!snapshot.rows.is_empty());
+    }
+
+    #[test]
+    fn validate_command_uses_shared_validation_service() {
+        let project = minimal_project();
         let report = super::validate(Some(project.to_string_lossy().into_owned()))
             .expect("validation command succeeds");
-
         assert!(report.valid, "{report:?}");
         assert!(report.tables.iter().any(|table| table == "item"));
     }
 
     #[test]
     fn build_command_uses_shared_build_service() {
-        let project = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../fixtures/minimal")
-            .canonicalize()
-            .expect("minimal fixture path");
-
+        let project = minimal_project();
         let response = super::build(Some(project.to_string_lossy().into_owned()), true)
             .expect("dry-run build command succeeds");
         let value = serde_json::to_value(&response).expect("build response serializes");

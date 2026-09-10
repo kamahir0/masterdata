@@ -1,6 +1,6 @@
 # Source Record Edit仕様
 
-Status: Proposed
+Status: Approved
 
 Domain: Source Editing
 

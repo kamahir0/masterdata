@@ -2,114 +2,97 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  finalize:
-    name: Finalize file reload recovery
+  ubuntu:
+    name: Ubuntu core, frontend, .NET, and GUI compile
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          # Tauri v2 prerequisites for Ubuntu/Noble. The legacy
+          # libappindicator3-dev package conflicts with this Ayatana package.
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          ref: impl/gui-record-authoring
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
       - run: npm ci
-      - name: Apply file-scoped reload error fix
-        shell: python
-        run: |
-          from pathlib import Path
-          path = Path("apps/gui/src/App.tsx")
-          text = path.read_text()
+      - run: cargo xtask check-wasm
+      - run: cargo xtask check-all
 
-          def once(old, new):
-              global text
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected one match for {old[:80]!r}, got {text.count(old)}")
-              text = text.replace(old, new, 1)
+  windows:
+    name: Windows repository quality gate
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+      - run: npm ci
+      - run: cargo xtask check-all
 
-          once(
-              '  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());\n',
-              '  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());\n  const [fileOpenErrors, setFileOpenErrors] = useState<Record<string, ApiDiagnostic>>({});\n',
-          )
-          once(
-              '''  const activeLoadDiagnostic = activeEditor?.loadError\n    ?? (!activeEditor && workspaceState.kind === "error" && activePath\n      && workspaceState.diagnostic.source\n      && normalizePath(workspaceState.diagnostic.source).endsWith(normalizePath(activePath))\n      ? workspaceState.diagnostic\n      : null);\n''',
-              '''  const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)\n    ? null\n    : activeEditor?.loadError ?? (activePath ? fileOpenErrors[activePath] ?? null : null);\n''',
-          )
-          once(
-              '''      if (workspaceGeneration.current !== generation) return;\n      setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));\n''',
-              '''      if (workspaceGeneration.current !== generation) return;\n      setFileOpenErrors((current) => {\n        if (!(path in current)) return current;\n        const next = { ...current };\n        delete next[path];\n        return next;\n      });\n      setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));\n''',
-          )
-          once(
-              '''      const diagnostic = asApiError(error).diagnostic;\n      setEditors((current) => {\n''',
-              '''      const diagnostic = asApiError(error).diagnostic;\n      setFileOpenErrors((current) => ({ ...current, [path]: diagnostic }));\n      setEditors((current) => {\n''',
-          )
-          once(
-              '''      setWorkspaceState((current) => ({\n        kind: "error",\n        diagnostic,\n        previous: current.kind === "ready" ? current.workspace : current.previous,\n      }));\n''',
-              '',
-          )
-          once(
-              '''    setLoadingPaths(new Set());\n    const previous = workspaceStateRef.current.kind === "ready"\n''',
-              '''    setLoadingPaths(new Set());\n    setFileOpenErrors({});\n    const previous = workspaceStateRef.current.kind === "ready"\n''',
-          )
-          once(
-              '''            if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {\n              setEditors((all) => all[path]\n''',
-              '''            if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {\n              if (latest.loadError) {\n                setFileOpenErrors((all) => {\n                  if (!(path in all)) return all;\n                  const next = { ...all };\n                  delete next[path];\n                  return next;\n                });\n              }\n              setEditors((all) => all[path]\n''',
-          )
-          once(
-              '''              editors={editors}\n              loadingPaths={loadingPaths}\n              onSelect={selectFile}\n''',
-              '''              editors={editors}\n              loadingPaths={loadingPaths}\n              fileOpenErrors={fileOpenErrors}\n              onSelect={selectFile}\n''',
-          )
-          once(
-              '''  editors,\n  loadingPaths,\n  onSelect,\n''',
-              '''  editors,\n  loadingPaths,\n  fileOpenErrors,\n  onSelect,\n''',
-          )
-          once(
-              '''  editors: Record<string, EditorState>;\n  loadingPaths: Set<string>;\n  onSelect: (file: WorkspaceSourceFile) => void;\n''',
-              '''  editors: Record<string, EditorState>;\n  loadingPaths: Set<string>;\n  fileOpenErrors: Record<string, ApiDiagnostic>;\n  onSelect: (file: WorkspaceSourceFile) => void;\n''',
-          )
-          once(
-              '''    const dirty = editorIsDirtySafe(editor);\n    const loading = loadingPaths.has(node.file.path);\n    const stateLabels = [\n''',
-              '''    const dirty = editorIsDirtySafe(editor);\n    const loading = loadingPaths.has(node.file.path);\n    const unavailable = Boolean(editor?.loadError || fileOpenErrors[node.file.path]);\n    const stateLabels = [\n''',
-          )
-          once(
-              '''      editor?.loadError ? "source unavailable" : null,\n''',
-              '''      unavailable ? "source unavailable" : null,\n''',
-          )
-          once(
-              '''        {editor?.loadError && <span className="file-state-badge error" title="Source unavailable">×</span>}\n''',
-              '''        {unavailable && <span className="file-state-badge error" title="Source unavailable">×</span>}\n''',
-          )
-          path.write_text(text)
-
-          tests_path = Path("apps/gui/tests/app.test.mjs")
-          tests = tests_path.read_text()
-          tests += r'''
-
-          test("clean-file reload failures stay file-scoped and keep project polling alive", () => {
-            const start = source.indexOf("const openDataFile = useCallback");
-            const end = source.indexOf("const loadWorkspace = useCallback", start);
-            const openDataFile = source.slice(start, end);
-            assert.match(openDataFile, /setFileOpenErrors/);
-            assert.doesNotMatch(openDataFile, /setWorkspaceState/);
-            assert.match(source, /fileOpenErrors=\{fileOpenErrors\}/);
-          });
-          '''
-          tests_path.write_text(tests)
-      - name: Verify frontend
-        run: |
-          npm --prefix apps/gui test
-          npm --prefix apps/gui run build
-          git diff --check
-      - name: Commit verified fix
-        run: |
-          git add apps/gui/src/App.tsx apps/gui/tests/app.test.mjs
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "external reload errorをfile単位で保持"
-          git push origin HEAD:impl/gui-record-authoring
+  macos:
+    name: macOS repository quality gate
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+      - run: npm ci
+      - run: cargo xtask check-all

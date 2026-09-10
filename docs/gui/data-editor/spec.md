@@ -20,6 +20,14 @@ fieldの表示順は既存schema/domain authorityに従い、GUI独自の列順�
 
 同じlogical Tableが複数source data fileへ分割されていても、初期sliceのgridは選択中fileに属するrecordだけを表示する。将来のTable横断viewは別surfaceとして追加できる。
 
+### GUI-DATA-LAYOUT-004
+
+validation diagnosticsの一覧は、main gridの編集を妨げない下部 `Problems` panelで表示できなければならない。Problems panelはmodal dialogとして編集を占有してはならず、開閉可能な補助surfaceとして扱う。
+
+### GUI-DATA-LAYOUT-005
+
+source diffはmain gridとは別のfile単位 `Diff` view / editorとして表示する。Diffを確認するためにdirty bufferを保存または破棄する必要があってはならず、Diff表示自体をSaveやvalidationのgateとして扱ってはならない。
+
 ## 状態（States）
 
 ### GUI-DATA-STATE-001
@@ -80,6 +88,10 @@ file / record / Table間の通常navigationでは保存確認を表示せず、�
 
 利用者は未保存変更または保存予定変更に対応するsource diffを確認できなければならない。diffはvalidationやSaveの許可条件ではなく、変更内容を確認するためのsurfaceである。
 
+### GUI-DATA-DIFF-002
+
+Diff viewは選択中source data fileの基準snapshotと現在のlocal bufferとの差分をfile単位で表示する。Diff viewとgridの間を移動してもdirty bufferを保持し、可能な範囲でgrid selection / focus contextを復元する。
+
 ### GUI-DATA-BUILD-001
 
 source data fileがdirtyでもBuildの開始を禁止しない。Buildは保存済みsourceだけを入力とし、dirty bufferの未保存変更を暗黙に含めてはならない。
@@ -104,7 +116,7 @@ file Saveにはplatform標準のSave操作（例: Cmd/Ctrl+S）を利用でき�
 
 ## フォーカス（Focus）
 
-selected cell、editing cell、validation detail、diff surface間のfocus transitionは後続reviewで定義する。mouse操作だけを唯一の編集経路にしない。
+selected cell、editing cell、Problems panel、Diff view間はkeyboardでも移動可能でなければならない。Problems entryから対応cellへ移動した場合はそのcellをselection/focus対象にし、Diff viewからgridへ戻る場合は可能な範囲で直前のselection/focus contextを復元する。exact shortcutは後続reviewで確定する。
 
 ## 検証（Validation）
 
@@ -114,7 +126,15 @@ validation resultは編集体験のfeedbackとして表示するが、Save禁止
 
 ### GUI-DATA-VAL-002
 
-編集中bufferの状態と保存済みsourceに対するvalidation resultを利用者が混同しない表示にする。exact timing、cell/row/file/projectへのdiagnostic mappingは後続reviewで確定する。
+編集中bufferの状態と保存済みsourceに対するvalidation resultを利用者が混同しない表示にする。validationの対象snapshot / timingは後続source-edit contractとreviewで確定する。
+
+### GUI-DATA-VAL-003
+
+cellへ対応づけられるdiagnosticが存在する場合、該当cellはgrid内でvalidation状態を識別できるinline marker / decorationを持つ。状態伝達を背景色・文字色など色だけに依存させてはならない。
+
+### GUI-DATA-VAL-004
+
+Problems panelはdiagnosticsを一覧表示し、cellへ対応づけ可能なentryを選択した場合は該当file / record / fieldのcellへ移動できなければならない。cellへ一意に対応づけられないfile / project level diagnosticもProblems panelから失ってはならない。
 
 ## エラー（Errors）
 
@@ -128,7 +148,7 @@ Save failure時に未保存入力を失ってはならない。通常I/O failure
 
 ## アクセシビリティ（Accessibility）
 
-gridのrow / column / cell関係、editable/read-only、selected/editing、validation状態を視覚表現だけに依存させない。exact ARIA/grid semanticsとkeyboard behaviorは後続reviewで確定する。
+gridのrow / column / cell関係、editable/read-only、selected/editing、validation状態を視覚表現だけに依存させない。Problems entryと対応cellの関係もscreen readerで認識可能にする方向とし、exact ARIA/grid semanticsとkeyboard behaviorは後続reviewで確定する。
 
 ## 参照artifact（Reference Artifacts）
 
@@ -168,7 +188,7 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 - row identityと、同一PKを持ち得るsource recordの選択・表示方法。
 - long / ulongを含むexact scalar transportと入力中representation。
 - source preservation、file Save atomicity、保存結果不明時のrecovery。
-- validation表示の場所（cell、row、panel等）とdiff surfaceの具体的layout。
+- validationをどのsnapshotに対していつ再実行するか、保存済みsource resultとの切替表示。
 - loading / saving中のselection、editing、shortcut、focus behavior。
 - programmable viewのexpression / code model、aggregate semantics、sandbox、evaluation timing、performance budget。
 - computed / annotation / presentation definitionのproject-shared / user-local persistence boundary。

@@ -1,6 +1,6 @@
 # GUI app shell（GUIアプリシェル）
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 

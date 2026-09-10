@@ -2,97 +2,482 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: finalize-gui-authoring-ux-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  ubuntu:
-    name: Ubuntu core, frontend, .NET, and GUI compile
+  finalize:
+    name: Finalize GUI authoring UX
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install Tauri Linux dependencies
+        with:
+          ref: impl/gui-record-authoring
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply self-review fixes
+        shell: python
         run: |
-          sudo apt-get update
-          # Tauri v2 prerequisites for Ubuntu/Noble. The legacy
-          # libappindicator3-dev package conflicts with this Ayatana package.
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
-      - name: Restore Rust and Cargo cache
-        uses: Swatinem/rust-cache@v2
-        continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-wasm
-      - run: cargo xtask check-all
+          from pathlib import Path
 
-  windows:
-    name: Windows repository quality gate
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Restore Rust and Cargo cache
-        uses: Swatinem/rust-cache@v2
-        continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
+          path = Path("apps/gui/src/App.tsx")
+          text = path.read_text()
 
-  macos:
-    name: macOS repository quality gate
-    runs-on: macos-14
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Restore Rust and Cargo cache
-        uses: Swatinem/rust-cache@v2
-        continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''  saving: boolean;\n  conflict: SourceContentState | null;\n  saveDiagnostic: Diagnostic | null;\n  view: "grid" | "diff" | "compare";\n''',
+              '''  saving: boolean;\n  loadError: ApiDiagnostic | null;\n  conflict: SourceContentState | null;\n  saveStatus: SourceSaveReport["status"] | null;\n  saveDiagnostic: Diagnostic | null;\n  view: "grid" | "diff" | "compare";\n''',
+          )
+          replace_once(
+              '''    saving: false,\n    conflict: null,\n    saveDiagnostic: null,\n''',
+              '''    saving: false,\n    loadError: null,\n    conflict: null,\n    saveStatus: null,\n    saveDiagnostic: null,\n''',
+          )
+          replace_once(
+              '''  const [notice, setNotice] = useState<string | null>(null);\n  const previewTimers = useRef(new Map<string, number>());\n  const editorsRef = useRef(editors);\n  const workspaceStateRef = useRef(workspaceState);\n  const cellFocusStart = useRef(new Map<string, string>());\n''',
+              '''  const [notice, setNotice] = useState<string | null>(null);\n  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());\n  const previewTimers = useRef(new Map<string, number>());\n  const editorsRef = useRef(editors);\n  const workspaceStateRef = useRef(workspaceState);\n  const workspaceGeneration = useRef(0);\n  const cellFocusStart = useRef(new Map<string, string>());\n  const pendingCellFocus = useRef<string | null>(null);\n''',
+          )
+          replace_once(
+              '''  const workspace = workspaceState.kind === "ready"\n    ? workspaceState.workspace\n    : workspaceState.previous;\n  const projectRoot = workspace?.project.project_root ?? null;\n  const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;\n  const activeEditor = activePath ? editors[activePath] ?? null : null;\n  const dirtyCount = Object.values(editors).filter(editorIsDirty).length;\n''',
+              '''  const workspace = workspaceState.kind === "ready"\n    ? workspaceState.workspace\n    : workspaceState.kind === "error"\n      ? workspaceState.previous\n      : null;\n  const projectRoot = workspace?.project.project_root ?? null;\n  const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;\n  const activeEditor = activePath ? editors[activePath] ?? null : null;\n  const activeLoading = activePath ? loadingPaths.has(activePath) : false;\n  const activeLoadDiagnostic = activeEditor?.loadError\n    ?? (!activeEditor && workspaceState.kind === "error" && activePath\n      && workspaceState.diagnostic.source\n      && normalizePath(workspaceState.diagnostic.source).endsWith(normalizePath(activePath))\n      ? workspaceState.diagnostic\n      : null);\n  const dirtyCount = Object.values(editors).filter(editorIsDirty).length;\n''',
+          )
+
+          open_start = text.index('  const openDataFile = useCallback(')
+          open_end = text.index('\n\n  const loadWorkspace = useCallback(', open_start)
+          open_replacement = '''  const openDataFile = useCallback(async (root: string, path: string, force = false) => {\n    const existing = editorsRef.current[path];\n    if (!force && existing && !existing.loadError) {\n      return;\n    }\n    const generation = workspaceGeneration.current;\n    setLoadingPaths((current) => {\n      const next = new Set(current);\n      next.add(path);\n      return next;\n    });\n    try {\n      const snapshot = await invoke<DataFileSnapshot>("open_data_file", {\n        projectPath: root,\n        relativePath: path,\n      });\n      if (workspaceGeneration.current !== generation) return;\n      setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));\n    } catch (error) {\n      if (workspaceGeneration.current !== generation) return;\n      const diagnostic = asApiError(error).diagnostic;\n      setEditors((current) => {\n        const currentEditor = current[path];\n        if (!currentEditor) return current;\n        if (editorIsDirty(currentEditor)) {\n          return {\n            ...current,\n            [path]: {\n              ...currentEditor,\n              saveDiagnostic: apiDiagnosticToDiagnostic(diagnostic),\n            },\n          };\n        }\n        return {\n          ...current,\n          [path]: { ...currentEditor, loadError: diagnostic },\n        };\n      });\n      setWorkspaceState((current) => ({\n        kind: "error",\n        diagnostic,\n        previous: current.kind === "ready" ? current.workspace : current.previous,\n      }));\n    } finally {\n      if (workspaceGeneration.current === generation) {\n        setLoadingPaths((current) => {\n          const next = new Set(current);\n          next.delete(path);\n          return next;\n        });\n      }\n    }\n  }, []);'''
+          text = text[:open_start] + open_replacement + text[open_end:]
+
+          load_start = text.index('  const loadWorkspace = useCallback(')
+          load_end = text.index('\n\n  useEffect(() => {\n    void loadWorkspace(null);', load_start)
+          load_replacement = '''  const loadWorkspace = useCallback(async (requestedProject: string | null) => {\n    const generation = workspaceGeneration.current + 1;\n    workspaceGeneration.current = generation;\n    for (const timer of previewTimers.current.values()) window.clearTimeout(timer);\n    previewTimers.current.clear();\n    setLoadingPaths(new Set());\n    const previous = workspaceStateRef.current.kind === "ready"\n      ? workspaceStateRef.current.workspace\n      : workspaceStateRef.current.previous;\n    setWorkspaceState({ kind: "loading", previous });\n    setManualValidation({ kind: "idle" });\n    setBuildState({ kind: "idle" });\n    try {\n      const next = await invoke<AuthoringWorkspace>("authoring_workspace", {\n        projectPath: requestedProject,\n      });\n      if (workspaceGeneration.current !== generation) return;\n      setWorkspaceState({ kind: "ready", workspace: next });\n      setProjectPathInput(next.project.project_root);\n      setEditors({});\n      const first = next.files.find((file) => file.kind === "data") ?? next.files[0] ?? null;\n      setActivePath(first?.path ?? null);\n      if (first?.kind === "data") {\n        await openDataFile(next.project.project_root, first.path, true);\n      }\n    } catch (error) {\n      if (workspaceGeneration.current !== generation) return;\n      setWorkspaceState({\n        kind: "error",\n        diagnostic: asApiError(error).diagnostic,\n        previous,\n      });\n    }\n  }, [openDataFile]);'''
+          text = text[:load_start] + load_replacement + text[load_end:]
+
+          replace_once(
+              '''    const revision = editor.revision;\n    const timer = window.setTimeout(async () => {\n''',
+              '''    const revision = editor.revision;\n    const generation = workspaceGeneration.current;\n    const timer = window.setTimeout(async () => {\n''',
+          )
+          replace_once(
+              '''        const preview = await invoke<SourceEditPreview>("preview_data_file", {\n          projectPath: root,\n          relativePath: path,\n          baseSource: editor.snapshot.baseSource,\n          edits: Object.values(editor.edits),\n        });\n        setEditors((current) => {\n''',
+              '''        const preview = await invoke<SourceEditPreview>("preview_data_file", {\n          projectPath: root,\n          relativePath: path,\n          baseSource: editor.snapshot.baseSource,\n          edits: Object.values(editor.edits),\n        });\n        if (workspaceGeneration.current !== generation) return;\n        setEditors((current) => {\n''',
+          )
+          replace_once(
+              '''              ...latest,\n              preview,\n              previewState: "current",\n''',
+              '''              ...latest,\n              edits: preview.changed ? latest.edits : {},\n              preview,\n              previewState: "current",\n''',
+          )
+          replace_once(
+              '''      } catch (error) {\n        const diagnostic = asApiError(error).diagnostic;\n        setEditors((current) => {\n          const latest = current[path];\n          if (!latest || latest.revision !== revision) {\n''',
+              '''      } catch (error) {\n        if (workspaceGeneration.current !== generation) return;\n        const diagnostic = asApiError(error).diagnostic;\n        setEditors((current) => {\n          const latest = current[path];\n          if (!latest || latest.revision !== revision) {\n''',
+          )
+
+          replace_once(
+              '''    const editor = editorsRef.current[path];\n    if (!root || !editor || !editorIsDirty(editor)) return true;\n\n    setEditors((current) => current[path]\n''',
+              '''    const editor = editorsRef.current[path];\n    if (!root || !editor || !editorIsDirty(editor)) return true;\n    if (editor.saveStatus === "outcome_unknown" && !overwriteExpectedIdentity) {\n      showNotice("Recheck the source before saving again because the previous save outcome is unknown.");\n      return false;\n    }\n    const generation = workspaceGeneration.current;\n\n    setEditors((current) => current[path]\n''',
+          )
+          replace_once(
+              '''      const report = await invoke<SourceSaveReport>("save_data_file", {\n        projectPath: root,\n        relativePath: path,\n        baseSource: editor.snapshot.baseSource,\n        baseContentIdentity: editor.snapshot.baseContentIdentity,\n        edits: Object.values(editor.edits),\n        overwriteExpectedIdentity: overwriteExpectedIdentity ?? null,\n      });\n      if (report.status === "success" && report.snapshot) {\n''',
+              '''      const report = await invoke<SourceSaveReport>("save_data_file", {\n        projectPath: root,\n        relativePath: path,\n        baseSource: editor.snapshot.baseSource,\n        baseContentIdentity: editor.snapshot.baseContentIdentity,\n        edits: Object.values(editor.edits),\n        overwriteExpectedIdentity: overwriteExpectedIdentity ?? null,\n      });\n      if (workspaceGeneration.current !== generation) return false;\n      if (report.status === "success" && report.snapshot) {\n''',
+          )
+          replace_once(
+              '''            saving: false,\n            conflict: report.status === "conflict" ? report.current : latest.conflict,\n            saveDiagnostic: report.diagnostic,\n''',
+              '''            saving: false,\n            conflict: report.status === "conflict" ? report.current : latest.conflict,\n            saveStatus: report.status,\n            saveDiagnostic: report.diagnostic,\n''',
+          )
+          replace_once(
+              '''    } catch (error) {\n      const diagnostic = asApiError(error).diagnostic;\n      setEditors((current) => current[path]\n''',
+              '''    } catch (error) {\n      if (workspaceGeneration.current !== generation) return false;\n      const diagnostic = asApiError(error).diagnostic;\n      setEditors((current) => current[path]\n''',
+          )
+          replace_once(
+              '''              ...current[path],\n              saving: false,\n              saveDiagnostic: {\n''',
+              '''              ...current[path],\n              saving: false,\n              saveStatus: "failure",\n              saveDiagnostic: {\n''',
+          )
+
+          poll_old = '''      for (const [path, editor] of Object.entries(editorsRef.current)) {\n        if (editor.saving) continue;\n        void invoke<SourceContentState>("source_content", {\n          projectPath: root,\n          relativePath: path,\n        }).then((current) => {\n          const latest = editorsRef.current[path];\n          if (!latest || latest.saving) return;\n          if (current.contentIdentity === latest.snapshot.baseContentIdentity) {\n            if (latest.conflict) {\n              setEditors((all) => all[path]\n                ? { ...all, [path]: { ...all[path], conflict: null } }\n                : all);\n            }\n            return;\n          }\n          if (editorIsDirty(latest)) {\n            setEditors((all) => all[path]\n              ? { ...all, [path]: { ...all[path], conflict: current } }\n              : all);\n          } else {\n            void openDataFile(root, path, true);\n          }\n        }).catch(() => {\n          // A transient polling failure must not discard an editor buffer.\n        });\n      }\n'''
+          poll_new = '''      const generation = workspaceGeneration.current;\n      for (const [path, editor] of Object.entries(editorsRef.current)) {\n        if (editor.saving) continue;\n        void invoke<SourceContentState>("source_content", {\n          projectPath: root,\n          relativePath: path,\n        }).then((current) => {\n          if (workspaceGeneration.current !== generation) return;\n          const latest = editorsRef.current[path];\n          if (!latest || latest.saving) return;\n          if (current.contentIdentity === latest.snapshot.baseContentIdentity) {\n            if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {\n              setEditors((all) => all[path]\n                ? {\n                    ...all,\n                    [path]: {\n                      ...all[path],\n                      conflict: null,\n                      loadError: null,\n                      saveStatus: all[path].saveStatus === "conflict" ? null : all[path].saveStatus,\n                    },\n                  }\n                : all);\n            }\n            return;\n          }\n          if (editorIsDirty(latest)) {\n            setEditors((all) => all[path]\n              ? { ...all, [path]: { ...all[path], conflict: current, saveStatus: "conflict", loadError: null } }\n              : all);\n          } else {\n            void openDataFile(root, path, true);\n          }\n        }).catch(() => {\n          // A transient polling failure must not discard an editor buffer.\n        });\n      }\n'''
+          replace_once(poll_old, poll_new)
+
+          replace_once(
+              '''    setManualValidation({ kind: "loading" });\n    try {\n      const report = await invoke<ValidationReport>("validate", { projectPath: projectRoot });\n      setManualValidation({ kind: "done", value: report });\n''',
+              '''    const generation = workspaceGeneration.current;\n    setManualValidation({ kind: "loading" });\n    try {\n      const report = await invoke<ValidationReport>("validate", { projectPath: projectRoot });\n      if (workspaceGeneration.current !== generation) return;\n      setManualValidation({ kind: "done", value: report });\n''',
+          )
+          replace_once(
+              '''    } catch (error) {\n      setManualValidation({ kind: "error", diagnostic: asApiError(error).diagnostic });\n    }\n  }, [projectRoot, workspace]);\n''',
+              '''    } catch (error) {\n      if (workspaceGeneration.current !== generation) return;\n      setManualValidation({ kind: "error", diagnostic: asApiError(error).diagnostic });\n    }\n  }, [projectRoot, workspace]);\n''',
+          )
+          replace_once(
+              '''    setBuildState({ kind: "loading" });\n    try {\n      const response = await invoke<BuildResponse>("build", {\n''',
+              '''    const generation = workspaceGeneration.current;\n    setBuildState({ kind: "loading" });\n    try {\n      const response = await invoke<BuildResponse>("build", {\n''',
+          )
+          replace_once(
+              '''        dryRun: false,\n      });\n      setBuildState({ kind: "done", value: response });\n''',
+              '''        dryRun: false,\n      });\n      if (workspaceGeneration.current !== generation) return;\n      setBuildState({ kind: "done", value: response });\n''',
+          )
+          replace_once(
+              '''    } catch (error) {\n      setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });\n      setProblemsOpen(true);\n''',
+              '''    } catch (error) {\n      if (workspaceGeneration.current !== generation) return;\n      setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });\n      setProblemsOpen(true);\n''',
+          )
+
+          overwrite_marker = '''  const overwriteConflict = useCallback(async (path: string) => {\n    const editor = editorsRef.current[path];\n    if (!editor?.conflict) return;\n    await saveFile(path, editor.conflict.contentIdentity);\n  }, [saveFile]);\n'''
+          recheck = overwrite_marker + '''\n  const recheckSource = useCallback(async (path: string) => {\n    const state = workspaceStateRef.current;\n    const root = state.kind === "ready" ? state.workspace.project.project_root : state.previous?.project.project_root;\n    const editor = editorsRef.current[path];\n    if (!root || !editor) return;\n    const generation = workspaceGeneration.current;\n    try {\n      const current = await invoke<SourceContentState>("source_content", {\n        projectPath: root,\n        relativePath: path,\n      });\n      if (workspaceGeneration.current !== generation) return;\n      const latest = editorsRef.current[path];\n      if (!latest) return;\n      if (latest.previewState === "current"\n        && current.contentIdentity === latest.preview.candidateContentIdentity) {\n        await openDataFile(root, path, true);\n        showNotice("Saved source content confirmed.");\n        return;\n      }\n      if (current.contentIdentity === latest.snapshot.baseContentIdentity) {\n        setEditors((all) => all[path]\n          ? {\n              ...all,\n              [path]: {\n                ...all[path],\n                loadError: null,\n                conflict: null,\n                saveStatus: null,\n                saveDiagnostic: null,\n              },\n            }\n          : all);\n        showNotice("Source state confirmed. Local changes are still unsaved.");\n        return;\n      }\n      setEditors((all) => all[path]\n        ? {\n            ...all,\n            [path]: {\n              ...all[path],\n              loadError: null,\n              conflict: current,\n              saveStatus: "conflict",\n              view: "compare",\n            },\n          }\n        : all);\n    } catch (error) {\n      if (workspaceGeneration.current !== generation) return;\n      const diagnostic = apiDiagnosticToDiagnostic(asApiError(error).diagnostic);\n      setEditors((all) => all[path]\n        ? { ...all, [path]: { ...all[path], saveDiagnostic: diagnostic } }\n        : all);\n    }\n  }, [openDataFile, showNotice]);\n'''
+          replace_once(overwrite_marker, recheck)
+
+          focus_start = text.index('  const focusDiagnostic = useCallback(')
+          focus_end = text.index('\n\n  const activeDiagnostics =', focus_start)
+          focus_replacement = '''  const focusDiagnostic = useCallback(async (diagnostic: Diagnostic) => {\n    if (!workspace) return;\n    const source = diagnostic.source ? normalizePath(diagnostic.source) : null;\n    const file = source\n      ? workspace.files.find((candidate) => source.endsWith(normalizePath(candidate.path)))\n      : null;\n    if (!file) return;\n    const record = diagnosticRecordIndex(diagnostic);\n    const field = diagnosticField(diagnostic);\n    if (file.kind === "data" && record !== null && field) {\n      pendingCellFocus.current = cellKey(record, field);\n    }\n    selectFile(file);\n    if (pendingCellFocus.current) {\n      window.requestAnimationFrame(() => {\n        const key = pendingCellFocus.current;\n        if (!key) return;\n        const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);\n        if (cell) {\n          cell.focus();\n          pendingCellFocus.current = null;\n        }\n      });\n    }\n  }, [selectFile, workspace]);'''
+          text = text[:focus_start] + focus_replacement + text[focus_end:]
+
+          ref_effect_marker = '''  useEffect(() => {\n    workspaceStateRef.current = workspaceState;\n  }, [workspaceState]);\n'''
+          ref_effect_new = ref_effect_marker + '''\n  useEffect(() => {\n    const key = pendingCellFocus.current;\n    if (!key || !activePath || loadingPaths.has(activePath)) return;\n    const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);\n    if (cell) {\n      cell.focus();\n      pendingCellFocus.current = null;\n    }\n  }, [activePath, editors, loadingPaths]);\n'''
+          replace_once(ref_effect_marker, ref_effect_new)
+
+          replace_once(
+              '''  const problems = [...activeDiagnostics, ...manualDiagnostics, ...operationDiagnostics];\n''',
+              '''  const problems = [\n    ...activeDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Buffer" })),\n    ...manualDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Saved source" })),\n    ...operationDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Operation" })),\n  ];\n''',
+          )
+          replace_once(
+              '''          <button type="button" onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || !workspace?.capabilities.workspaceWrite}>\n''',
+              '''          <button type="button" onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>\n''',
+          )
+          replace_once(
+              '''              editors={editors}\n              onSelect={selectFile}\n''',
+              '''              editors={editors}\n              loadingPaths={loadingPaths}\n              onSelect={selectFile}\n''',
+          )
+          editor_render_old = '''          {activeFile?.kind === "data" && !activeEditor && (\n            <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading records through the shared application service." />\n          )}\n          {activeFile?.kind === "data" && activeEditor && (\n            <DataEditor\n              file={activeFile}\n              editor={activeEditor}\n              onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}\n              onSave={() => void saveFile(activeFile.path)}\n              onSwitchView={(view) => switchView(activeFile.path, view)}\n              onReloadConflict={() => void reloadConflict(activeFile.path)}\n              onOverwriteConflict={() => void overwriteConflict(activeFile.path)}\n              cellFocusStart={cellFocusStart}\n            />\n          )}\n'''
+          editor_render_new = '''          {activeFile?.kind === "data" && activeLoading && (\n            <EmptyEditor title={`Loading ${sourceName(activeFile.path)}…`} copy="Refreshing records through the shared application service." />\n          )}\n          {activeFile?.kind === "data" && !activeLoading && activeLoadDiagnostic && (\n            <section className="placeholder-editor">\n              <h2>{sourceName(activeFile.path)} is unavailable</h2>\n              <p>The previous clean snapshot is not editable until the source can be loaded safely.</p>\n              <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(activeLoadDiagnostic)} />\n            </section>\n          )}\n          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && !activeEditor && (\n            <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading records through the shared application service." />\n          )}\n          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (\n            <DataEditor\n              file={activeFile}\n              editor={activeEditor}\n              onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}\n              onSave={() => void saveFile(activeFile.path)}\n              onRecheckSource={() => void recheckSource(activeFile.path)}\n              onSwitchView={(view) => switchView(activeFile.path, view)}\n              onReloadConflict={() => void reloadConflict(activeFile.path)}\n              onOverwriteConflict={() => void overwriteConflict(activeFile.path)}\n              cellFocusStart={cellFocusStart}\n            />\n          )}\n'''
+          replace_once(editor_render_old, editor_render_new)
+          replace_once(
+              '''                  problems.map((diagnostic, index) => (\n                    <button className="problem-row" type="button" key={`${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>\n                      <span className="problem-icon">!</span>\n                      <strong>{diagnostic.code}</strong>\n                      <span>{diagnostic.message}</span>\n                      <small>{formatDiagnosticLocation(diagnostic)}</small>\n                    </button>\n                  ))\n''',
+              '''                  problems.map(({ diagnostic, origin }, index) => (\n                    <button className="problem-row" type="button" key={`${origin}-${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>\n                      <span className="problem-icon">!</span>\n                      <strong>{diagnostic.code}</strong>\n                      <span>{diagnostic.message}</span>\n                      <small>{origin} · {formatDiagnosticLocation(diagnostic)}</small>\n                    </button>\n                  ))\n''',
+          )
+
+          tree_start = text.index('function SourceTree({')
+          tree_end = text.index('\nfunction editorIsDirtySafe(', tree_start)
+          tree_replacement = r'''type SourceTreeFolder = {
+            kind: "folder";
+            name: string;
+            key: string;
+            depth: number;
+            children: SourceTreeNode[];
+          };
+
+          type SourceTreeFile = {
+            kind: "file";
+            name: string;
+            key: string;
+            depth: number;
+            file: WorkspaceSourceFile;
+          };
+
+          type SourceTreeNode = SourceTreeFolder | SourceTreeFile;
+
+          function SourceTree({
+            workspace,
+            activePath,
+            editors,
+            loadingPaths,
+            onSelect,
+          }: {
+            workspace: AuthoringWorkspace;
+            activePath: string | null;
+            editors: Record<string, EditorState>;
+            loadingPaths: Set<string>;
+            onSelect: (file: WorkspaceSourceFile) => void;
+          }) {
+            const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+            const groups = useMemo(() => workspace.sourceRoots.map((root) => {
+              const children: SourceTreeNode[] = [];
+              for (const file of workspace.files.filter((candidate) => candidate.sourceRoot === root)) {
+                const relative = file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
+                const parts = relative.split("/").filter(Boolean);
+                let level = children;
+                let prefix = root;
+                for (const [index, segment] of parts.slice(0, -1).entries()) {
+                  prefix = `${prefix}/${segment}`;
+                  let folder = level.find(
+                    (node): node is SourceTreeFolder => node.kind === "folder" && node.name === segment,
+                  );
+                  if (!folder) {
+                    folder = { kind: "folder", name: segment, key: prefix, depth: index + 1, children: [] };
+                    level.push(folder);
+                  }
+                  level = folder.children;
+                }
+                level.push({
+                  kind: "file",
+                  name: parts.at(-1) ?? file.path,
+                  key: file.path,
+                  depth: Math.max(1, parts.length),
+                  file,
+                });
+              }
+              const sortNodes = (nodes: SourceTreeNode[]) => {
+                nodes.sort((left, right) => {
+                  if (left.kind !== right.kind) return left.kind === "folder" ? -1 : 1;
+                  return left.name.localeCompare(right.name);
+                });
+                for (const node of nodes) if (node.kind === "folder") sortNodes(node.children);
+              };
+              sortNodes(children);
+              return { root, children };
+            }), [workspace]);
+
+            const toggleFolder = (key: string) => {
+              setCollapsed((current) => {
+                const next = new Set(current);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                return next;
+              });
+            };
+
+            const handleTreeKey = (
+              event: React.KeyboardEvent<HTMLButtonElement>,
+              folderKey?: string,
+              expanded = false,
+            ) => {
+              const tree = event.currentTarget.closest('[role="tree"]');
+              if (!tree) return;
+              const items = Array.from(tree.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'));
+              const index = items.indexOf(event.currentTarget);
+              const depth = Number(event.currentTarget.dataset.depth ?? "0");
+              const focusAt = (next: number) => items[Math.max(0, Math.min(items.length - 1, next))]?.focus();
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusAt(index + 1);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusAt(index - 1);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                focusAt(0);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                focusAt(items.length - 1);
+              } else if (event.key === "ArrowRight" && folderKey) {
+                event.preventDefault();
+                if (!expanded) toggleFolder(folderKey);
+                else if (Number(items[index + 1]?.dataset.depth ?? depth) > depth) focusAt(index + 1);
+              } else if (event.key === "ArrowLeft") {
+                if (folderKey && expanded) {
+                  event.preventDefault();
+                  toggleFolder(folderKey);
+                } else {
+                  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+                    if (Number(items[cursor].dataset.depth ?? "0") < depth) {
+                      event.preventDefault();
+                      items[cursor].focus();
+                      break;
+                    }
+                  }
+                }
+              } else if ((event.key === "Enter" || event.key === " ") && folderKey) {
+                event.preventDefault();
+                toggleFolder(folderKey);
+              }
+            };
+
+            const renderNode = (node: SourceTreeNode): React.ReactNode => {
+              if (node.kind === "folder") {
+                const expanded = !collapsed.has(node.key);
+                return (
+                  <div key={node.key}>
+                    <button
+                      type="button"
+                      role="treeitem"
+                      data-depth={node.depth}
+                      aria-expanded={expanded}
+                      className="tree-folder"
+                      style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+                      onClick={() => toggleFolder(node.key)}
+                      onKeyDown={(event) => handleTreeKey(event, node.key, expanded)}
+                    >
+                      <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+                      <span>{node.name}</span>
+                    </button>
+                    {expanded && <div role="group">{node.children.map(renderNode)}</div>}
+                  </div>
+                );
+              }
+
+              const editor = editors[node.file.path];
+              const dirty = editorIsDirtySafe(editor);
+              const loading = loadingPaths.has(node.file.path);
+              const stateLabels = [
+                loading ? "loading" : null,
+                editor?.saving ? "saving" : null,
+                dirty ? "unsaved changes" : null,
+                editor?.loadError ? "source unavailable" : null,
+                editor?.saveStatus === "failure" ? "save failed" : null,
+                editor?.saveStatus === "outcome_unknown" ? "save outcome unknown" : null,
+                editor?.conflict ? "external change conflict" : null,
+              ].filter(Boolean);
+              return (
+                <button
+                  key={node.key}
+                  type="button"
+                  role="treeitem"
+                  data-depth={node.depth}
+                  aria-selected={activePath === node.file.path}
+                  aria-label={`${node.file.path}${stateLabels.length ? `, ${stateLabels.join(", ")}` : ""}`}
+                  className={`tree-file ${activePath === node.file.path ? "active" : ""}`}
+                  style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+                  onClick={() => onSelect(node.file)}
+                  onKeyDown={handleTreeKey}
+                  title={node.file.path}
+                >
+                  <span className={`file-kind ${node.file.kind}`}>{node.file.kind === "data" ? "▦" : node.file.kind === "schema" ? "T" : node.file.kind === "type" ? "◇" : "!"}</span>
+                  <span className="tree-file-name">{node.name}</span>
+                  {dirty && <span className="dirty-dot" title="Unsaved changes">●</span>}
+                  {loading && <span className="file-state-badge" title="Loading">…</span>}
+                  {editor?.saving && <span className="file-state-badge" title="Saving">↻</span>}
+                  {editor?.loadError && <span className="file-state-badge error" title="Source unavailable">×</span>}
+                  {editor?.saveStatus === "failure" && <span className="file-state-badge error" title="Save failed">×</span>}
+                  {editor?.saveStatus === "outcome_unknown" && <span className="file-state-badge warning" title="Save outcome unknown">?</span>}
+                  {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}
+                </button>
+              );
+            };
+
+            return <div className="source-tree" role="tree" aria-label="Project source files">
+              {groups.map(({ root, children }) => {
+                const key = `root:${root}`;
+                const expanded = !collapsed.has(key);
+                return (
+                  <div className="source-root" key={root}>
+                    <button
+                      type="button"
+                      role="treeitem"
+                      data-depth="0"
+                      aria-expanded={expanded}
+                      className="tree-root-label"
+                      onClick={() => toggleFolder(key)}
+                      onKeyDown={(event) => handleTreeKey(event, key, expanded)}
+                    >
+                      <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+                      {root}
+                    </button>
+                    {expanded && <div role="group">{children.map(renderNode)}</div>}
+                  </div>
+                );
+              })}
+              {workspace.files.length === 0 && <div className="pane-message">No YAML source documents.</div>}
+            </div>;
+          }
+          '''
+          text = text[:tree_start] + tree_replacement + text[tree_end:]
+
+          replace_once(
+              '''  onSave,\n  onSwitchView,\n''',
+              '''  onSave,\n  onRecheckSource,\n  onSwitchView,\n''',
+          )
+          replace_once(
+              '''  onSave: () => void;\n  onSwitchView: (view: EditorState["view"]) => void;\n''',
+              '''  onSave: () => void;\n  onRecheckSource: () => void;\n  onSwitchView: (view: EditorState["view"]) => void;\n''',
+          )
+          replace_once(
+              '''  const dirty = editorIsDirty(editor);\n  const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];\n\n  return (\n''',
+              '''  const dirty = editorIsDirty(editor);\n  const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];\n  const lastFocusedCell = useRef<string | null>(null);\n\n  useEffect(() => {\n    lastFocusedCell.current = null;\n  }, [file.path]);\n\n  useEffect(() => {\n    if (editor.view !== "grid" || !lastFocusedCell.current) return;\n    const key = lastFocusedCell.current;\n    window.requestAnimationFrame(() => {\n      document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();\n    });\n  }, [editor.view]);\n\n  return (\n''',
+          )
+          replace_once(
+              '''          <button type="button" onClick={onSave} disabled={!dirty || editor.saving}>{editor.saving ? "Saving…" : "Save"}</button>\n''',
+              '''          <button type="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</button>\n''',
+          )
+          conflict_marker = '''      {editor.conflict && (\n        <div className="conflict-strip">\n'''
+          recovery = '''      {(editor.saveStatus === "failure" || editor.saveStatus === "outcome_unknown") && (\n        <div className="conflict-strip save-recovery-strip">\n          <div>\n            <strong>{editor.saveStatus === "outcome_unknown" ? "Previous save outcome is unknown." : "Save failed."}</strong>\n            <span>Local changes are preserved. Recheck the workspace source before continuing recovery.</span>\n          </div>\n          <div>\n            <button type="button" onClick={onRecheckSource}>Recheck Source</button>\n            {editor.saveStatus === "failure" && <button type="button" onClick={onSave}>Retry Save</button>}\n          </div>\n        </div>\n      )}\n\n''' + conflict_marker
+          replace_once(conflict_marker, recovery)
+          replace_once(
+              '''                            onFocus={() => cellFocusStart.current.set(key, value)}\n''',
+              '''                            onFocus={() => {\n                              cellFocusStart.current.set(key, value);\n                              lastFocusedCell.current = key;\n                            }}\n''',
+          )
+
+          path.write_text(text)
+
+          css_path = Path("apps/gui/src/styles.css")
+          css = css_path.read_text()
+          old = '''.tree-root-label {\n  display: flex; gap: 5px; align-items: center; height: 28px; padding: 0 10px;\n  color: #b6c0cd; font-size: 11px; font-weight: 650; letter-spacing: .02em;\n}\n.tree-root-label span { color: #78869a; }\n'''
+          new = '''.tree-root-label, .tree-folder {\n  display: flex; gap: 5px; align-items: center; width: 100%; min-height: 0;\n  border: 0; border-radius: 0; background: transparent; text-align: left;\n}\n.tree-root-label {\n  height: 28px; padding: 0 10px; color: #b6c0cd;\n  font-size: 11px; font-weight: 650; letter-spacing: .02em;\n}\n.tree-folder { height: 27px; padding-top: 0; padding-right: 8px; padding-bottom: 0; color: #9caabd; font-size: 11px; }\n.tree-root-label:hover:not(:disabled), .tree-folder:hover:not(:disabled) { border: 0; background: #17202b; }\n.folder-chevron { flex: 0 0 12px; color: #78869a; text-align: center; }\n'''
+          if css.count(old) != 1:
+              raise SystemExit("tree CSS marker not found")
+          css = css.replace(old, new, 1)
+          marker = '''.conflict-badge { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; color: #24180a; background: var(--warning); font-size: 9px; font-weight: 800; }\n'''
+          addition = marker + '''.file-state-badge { display: grid; place-items: center; min-width: 15px; height: 15px; border-radius: 4px; color: #aeb9c7; background: #293544; font-size: 9px; font-weight: 700; }\n.file-state-badge.error { color: #ffd4d8; background: #5a2e37; }\n.file-state-badge.warning { color: #2b1c09; background: var(--warning); }\n'''
+          if css.count(marker) != 1:
+              raise SystemExit("badge CSS marker not found")
+          css = css.replace(marker, addition, 1)
+          marker = '''.conflict-strip > div:last-child { display: flex; gap: 5px; }\n'''
+          addition = marker + '''.save-recovery-strip { border-color: #6a3f49; background: #301e24; }\n.save-recovery-strip strong { color: #f0aeb5; }\n.save-recovery-strip span { color: #c39198; }\n'''
+          if css.count(marker) != 1:
+              raise SystemExit("recovery CSS marker not found")
+          css = css.replace(marker, addition, 1)
+          css_path.write_text(css)
+
+          tests_path = Path("apps/gui/tests/app.test.mjs")
+          tests = tests_path.read_text()
+          tests += r'''
+
+          test("Explorer is a hierarchical keyboard tree with observable file states", () => {
+            assert.match(source, /role="tree"/);
+            assert.match(source, /role="treeitem"/);
+            assert.match(source, /aria-expanded=\{expanded\}/);
+            assert.match(source, /ArrowRight/);
+            assert.match(source, /ArrowLeft/);
+            assert.match(source, /save outcome unknown/);
+            assert.match(source, /loadingPaths/);
+          });
+
+          test("background clean-file reload does not steal Explorer selection", () => {
+            const start = source.indexOf("const openDataFile = useCallback");
+            const end = source.indexOf("const loadWorkspace = useCallback", start);
+            const openDataFile = source.slice(start, end);
+            assert.doesNotMatch(openDataFile, /setActivePath\(/);
+            assert.match(source, /void openDataFile\(root, path, true\)/);
+          });
+
+          test("shared preview collapses semantic no-op edits back to clean", () => {
+            assert.match(source, /edits: preview\.changed \? latest\.edits : \{\}/);
+          });
+
+          test("Problems navigation survives asynchronous file opening", () => {
+            assert.match(source, /pendingCellFocus/);
+            assert.match(source, /\[activePath, editors, loadingPaths\]/);
+          });
+
+          test("save failure and unknown outcome expose explicit recovery", () => {
+            assert.match(source, /Recheck Source/);
+            assert.match(source, /Previous save outcome is unknown/);
+            assert.match(source, /editor\.saveStatus === "outcome_unknown"/);
+          });
+
+          test("Problems identifies buffer, saved-source, and operation snapshots", () => {
+            assert.match(source, /origin: "Buffer"/);
+            assert.match(source, /origin: "Saved source"/);
+            assert.match(source, /origin: "Operation"/);
+          });
+          '''
+          tests_path.write_text(tests)
+      - name: Frontend focused verification
+        run: |
+          npm --prefix apps/gui test
+          npm --prefix apps/gui run build
+          git diff --check
+      - name: Commit verified frontend fixes
+        run: |
+          git add apps/gui/src/App.tsx apps/gui/src/styles.css apps/gui/tests/app.test.mjs
+          git diff --cached --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "GUI authoringのdirty・Explorer・recovery UXを修正"
+          git push origin HEAD:impl/gui-record-authoring

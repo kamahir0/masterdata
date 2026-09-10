@@ -51,7 +51,7 @@ Saveとvalidationは別のoperation resultとして扱わなければならな�
 
 Save candidateの生成はsource-preservingかつdeterministicでなければならない（MUST）。同じexact base snapshotと同じordered local edit setからは、同じcandidate source bytesを生成しなければならない（MUST）。
 
-変更不要なsource fileはbyte-for-byte unchangedでなければならない（MUST）。対象fileでも、編集対象valueと無関係なcomments、quote style、indentation、blank lines、mapping / sequence formatting、record order、mapping member order、およびunrelated source textを変更または削除してはならない（MUST NOT）。
+変更不要なsource fileはbyte-for-byte unchangedでなければならない（MUST）。対象fileでも、編集対象valueと無関係なcomments、quote style、indentation、blank lines、line ending / newline style、mapping / sequence formatting、record order、mapping member order、およびunrelated source textを変更または削除してはならない（MUST NOT）。
 
 編集対象scalar自身のquote / styleは、新しい入力を安全に表現するために必要な場合だけ変更してよい（MAY）。semantic AST全体を通常serializerで全面再出力する方式を通常Save pathとして使用してはならない（MUST NOT）。
 
@@ -120,7 +120,7 @@ Native filesystem write、Browser workspace write、permission、path safety、e
 - `long` / `ulong` boundary valueがfrontend/application boundaryでroundingされない。
 - 同一fileの複数cell変更は1 candidateへ入り、別fileは変更されない。
 - domain-invalidなedited valueでもvalidationだけを理由にSave拒否されない。
-- comment、blank line、unrelated quote/indent/order、およびunchanged file bytesが保持される。
+- comment、blank line、line ending、unrelated quote / indentation / order、およびunchanged file bytesが保持される。
 - source locationを再特定できない場合にfull serializationへfallbackしない。
 - base snapshot後のexternal editを通常SaveがConflictとして拒否し、external bytesを上書きしない。
 - explicit Overwrite前にもcurrent external identityを再確認する。

@@ -12,6 +12,7 @@ Build / PublishやMigration内部処理を増やすだけでは、この体験�
 「GUIでレコードを編集・保存し、差分と検証結果を確認できる体験」を次priorityとして具体化することが選択された。
 続く比較に対してHumanは、初期編集範囲はRequired Primitiveの非key field、保存単位はVS Codeのようなfile単位、
 validation結果は保存可否を妨げない方針を選択した。
+さらにdirty中Build、external modification、dirty bufferを失うnavigation lifecycleについてもVS Code寄りの明示的なbehaviorを選択した。
 
 これらはproduct choiceとして本RFCに記録する。canonical GUI / source-edit contractの詳細、Human Approval、
 implementation authorityをこのRFC単体で与えるものではない。
@@ -24,9 +25,12 @@ implementation authorityをこのRFC単体で与えるものではない。
 | Decision | 初期編集対象はRequired Primitiveの非key fieldとし、その他のfieldは初期版ではread-onlyとする。 |
 | Decision | dirty / Saveの単位はsource data fileとし、VS Codeに近い明示Save体験を採る。 |
 | Decision | validation resultは表示するが、validation errorの有無をSave可否のgateにしない。 |
+| Decision | dirty fileがあってもBuildできるが、Buildは保存済みsourceだけを使い暗黙Saveしない。 |
+| Decision | clean fileの外部変更は自動Reloadし、dirty fileの外部変更はconflictとしてCompare / Reload / Overwriteを明示選択する。 |
+| Decision | file / record / Table navigationではdirty bufferを保持し、Project切替・Reload・window close等の破棄を伴う操作だけSave All / Don't Save / Cancelを提示する。 |
 | Requirement | GUIから値を変更・保存し、差分と検証結果を確認できるようにする。exact behaviorはcanonical仕様化時に確定する。 |
 | Constraint | YAML正本、shared semantics、Tauriからapplication serviceへの委譲は既存Approved authorityに従う。 |
-| Open Question | source preservation、external change、dirty navigation、exact scalar transport、I/O failure等の詳細contract。 |
+| Open Question | source preservation、exact scalar transport、I/O failure等の詳細contract。 |
 
 ## 課題（Problem）
 
@@ -97,8 +101,21 @@ validation resultは編集体験の重要なfeedbackとして表示するが、v
 external modificationとの競合など、永続化を安全に完了できない物理的・整合性上のケースはsource-edit contractで扱う。
 validationと保存成功／失敗を混同しない。
 
-Buildは保存済みsourceを入力とする。dirty中のBuild開始可否、暗黙Saveの有無、external change時のcompare / reload / overwrite等は
-GUI / source-edit仕様で明示する。
+### D: dirty中のBuild
+
+source data fileがdirtyでもBuildの開始を禁止しない。Buildはdisk上の保存済みsourceだけを入力とし、dirty bufferを暗黙に含めない。
+Buildを理由にSaveまたはSave Allを暗黙実行せず、dirty fileがある場合は未保存変更がBuildへ含まれないことを利用者が認識できる表示を行う。
+
+### E: external modification
+
+cleanなfileが外部変更された場合はdisk上の最新内容へ自動Reloadする。dirtyなfileが外部変更された場合はlocal bufferを保持したままconflict状態にし、通常Saveで暗黙上書きしない。
+conflict recoveryでは少なくともCompare / Reload / Overwriteを明示選択できるようにする。
+
+### F: dirty bufferを失う操作
+
+file / record / Table間のnavigationだけでは確認を出さず、複数fileのdirty bufferを独立して保持する。
+Project切替、Project Reload、window close等、現在保持しているdirty bufferを失う操作では `Save All` / `Don't Save` / `Cancel` を提示する。
+Save Allに失敗またはconflictがある場合は元の破棄操作を完了せず、dirty bufferを保持する。
 
 ## トレードオフ（Trade-offs）
 
@@ -133,16 +150,14 @@ GUI Saveの具体的contractは新規で、現行Migrationの仕様や成功条�
 
 ## 未解決事項（Open Questions）
 
-OQ-A〜Cのproduct choice自体はHuman decisionで解決済み。
+OQ-A〜Cおよびdirty lifecycle / external modification / Buildのproduct choiceはHuman decisionで解決済み。
 以下はcanonical Draftで閉じる。既存Approved authorityからrecoverできる事項はHumanへ逐次質問せず整理する。
 
 - project pickerの入力方法、開けないproject、empty table、schemaをresolveできない状態の操作。
 - record表示順、重複PKを含むsource recordの識別・表示、非対応値・literal block stringの表示範囲。
 - exact scalar transport、文字列・数値の入力中状態、変更を元の値へ戻した場合のfile dirty判定。
 - file単位Saveのsource provenance、preservation、atomicity、通常I/O failureの結果。
-- external modification時のcompare / reload / overwrite policyと、dirty buffer保護。
 - 差分の表示単位、保存結果が不明な場合の再試行、reload後の入力復元の範囲。
-- dirty fileがある状態でのrecord / Table / project切替、Build、Reload、window closeのbehavior。
 - loading/saving中の操作、keyboard/focus、accessibility、shortcut、product textの言語。
 
 ## 受け入れ候補（Acceptance and Implementation Impact）
@@ -153,7 +168,10 @@ OQ-A〜Cのproduct choice自体はHuman decisionで解決済み。
 - 同一file内の複数変更が一度のSaveで永続化され、別fileのdirty stateが独立する。
 - split data files、同一PKの別source record、非対応field、64-bit整数の精度を確認する。
 - domain validation上invalidな値でもSave操作が禁止されず、保存後もvalidation resultを確認できる。
-- external edit、I/O failure、dirty中のnavigationでsourceと入力を承認済みcontractに従って扱う。
+- clean external editの自動Reloadと、dirty external editのconflict recoveryを確認する。
+- dirty file間のnavigationではbufferを保持し、Project切替 / Reload / window closeではSave All / Don't Save / Cancelで保護する。
+- dirty中Buildが保存済みsourceだけを使い、暗黙Saveしないことを確認する。
+- I/O failure時にsourceと入力を承認済みcontractに従って扱う。
 - 未変更text/fileを保持し、Saveだけでbuild/publishを開始しない。
 - 既存CLIのvalidationとGUIの保存済みsource validationが同じdomain resultを返す。
 
@@ -172,6 +190,9 @@ GUI app shell（Draft）、YAML subset（ApprovedのGUI save Open Question）、
 - 初期編集対象はRequired Primitiveの非key field。
 - Save / dirty管理はsource data file単位。
 - validation errorはSave禁止条件にしない。
+- dirty中でもBuild可能だが保存済みsourceだけを使い、暗黙Saveしない。
+- clean external modificationは自動Reload、dirty external modificationはconflictとしてCompare / Reload / Overwriteを明示する。
+- file / record / Table navigationではdirty bufferを保持し、破棄を伴うProject切替 / Reload / window closeでSave All / Don't Save / Cancelを提示する。
 
 ### New Requirements
 
@@ -183,7 +204,7 @@ None identified。
 
 ### Open Questions
 
-上記の保存・競合・dirty・exact representation等の詳細事項。
+上記のsource preservation、I/O failure、exact representation等の詳細事項。
 
 ### Potential ADRs
 
@@ -199,13 +220,12 @@ None identified。
 
 ## レビュー（Review）
 
-OQ-A〜CのHuman decisionは確定したが、canonical GUI / source-edit仕様はまだDraft化・review・Human Approvalされていない。
+Human product decisionsは増えたが、canonical GUI / source-edit仕様はまだDraft化・review・Human Approvalされていない。
 そのため本RFCだけを根拠にimplementation-readyとは判定しない。
 
 ### Blocking Issues
 
-implementationに対しては、file単位Saveのobservable contract、source preservation、external modification、dirty lifecycle、
-I/O failure、exact scalar transport等のcanonical仕様化とHuman Approvalが未完了。
+implementationに対しては、file単位Saveのsource preservation / atomicity、通常I/O failure、exact scalar transport等のcanonical仕様化とHuman Approvalが未完了。
 
 ### Non-blocking Issues
 
@@ -213,7 +233,7 @@ None identified。
 
 ### Questions
 
-OQ-A〜Cのproduct-level質問は解決済み。追加Human decisionが必要なobservable choiceを仕様refinementで発見した場合だけ提示する。
+現在選択済みのproduct-level質問は解決済み。追加Human decisionが必要なobservable choiceを仕様refinementで発見した場合だけ提示する。
 
 ### Approved as Proposed
 
@@ -223,9 +243,9 @@ No。Human product decisionsは記録済みだが、RFCはimplementation authori
 | --- | --- |
 | Intent fidelity / Normative strength | Human decisionを記録し、未承認の詳細contractと区別している。 |
 | Internal / Cross-spec consistency | shared semanticsとsource正本を参照し、Migrationを値編集のauthorityにしていない。 |
-| Terminology / Backward compatibility | file単位Saveをproduct choiceとして追加。既存formatやdomain identityは変更していない。 |
-| Testability / Unresolved ambiguity | file Saveとvalidation non-blockingの受け入れ候補を追加し、詳細未決定をOpenとして保持。 |
-| Implementation leakage / Unrequested behavior | library/APIを固定せず、external conflict等を未承認のまま推測していない。 |
+| Terminology / Backward compatibility | file単位SaveとVS Code寄りのdirty lifecycleをproduct choiceとして追加。既存formatやdomain identityは変更していない。 |
+| Testability / Unresolved ambiguity | file Save、validation non-blocking、Build、external conflict、dirty buffer保護の受け入れ候補を追加し、詳細未決定をOpenとして保持。 |
+| Implementation leakage / Unrequested behavior | library/APIを固定せず、未解決のsource preservation等を推測していない。 |
 
 実装diffがないためimplementation rationale reviewは対象外。
 
@@ -236,5 +256,8 @@ No。Human product decisionsは記録済みだが、RFCはimplementation authori
 1. 初期編集対象はRequired Primitiveの非key field。
 2. Save / dirty管理はVS Codeに近いsource data file単位。
 3. validation resultはSave可否を妨げない。
+4. dirty中でもBuild可能だが、保存済みsourceだけを使い暗黙Saveしない。
+5. clean external modificationは自動Reloadし、dirty external modificationはconflictとしてCompare / Reload / Overwriteを明示選択する。
+6. file / record / Table navigationではdirty bufferを保持し、Project切替 / Project Reload / window close等の破棄を伴う操作だけSave All / Don't Save / Cancelを提示する。
 
-RFCはDraftのままとし、次にGUI / shared source-editのcanonical Draftへ具体化する。
+RFCはDraftのままとし、GUI / shared source-editのcanonical Draftへ具体化する。

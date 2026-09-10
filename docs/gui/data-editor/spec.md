@@ -126,7 +126,7 @@ validation resultは編集体験のfeedbackとして表示するが、Save禁止
 
 ### GUI-DATA-VAL-002
 
-編集中bufferの状態と保存済みsourceに対するvalidation resultを利用者が混同しない表示にする。validationの対象snapshot / timingは後続source-edit contractとreviewで確定する。
+validationは現在のeditor bufferに対して自動実行し、buffer変更後は短いdebounceを置いて再評価する。Saveをvalidation開始条件にしてはならず、利用者は保存前でも最新bufferに対応するdiagnosticsを確認できるようにする。debounceの具体的時間は実装調整値であり、normative contractとして固定しない。
 
 ### GUI-DATA-VAL-003
 
@@ -135,6 +135,10 @@ cellへ対応づけられるdiagnosticが存在する場合、該当cellはgrid�
 ### GUI-DATA-VAL-004
 
 Problems panelはdiagnosticsを一覧表示し、cellへ対応づけ可能なentryを選択した場合は該当file / record / fieldのcellへ移動できなければならない。cellへ一意に対応づけられないfile / project level diagnosticもProblems panelから失ってはならない。
+
+### GUI-DATA-VAL-005
+
+buffer変更後にvalidationが未完了の場合、直前のdiagnosticsを現在bufferの確定結果であるかのように表示してはならない。pending / staleであることを識別できる状態を持ち、最新結果が返った時点でProblemsとcell markerを更新する。
 
 ## エラー（Errors）
 
@@ -188,7 +192,7 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 - row identityと、同一PKを持ち得るsource recordの選択・表示方法。
 - long / ulongを含むexact scalar transportと入力中representation。
 - source preservation、file Save atomicity、保存結果不明時のrecovery。
-- validationをどのsnapshotに対していつ再実行するか、保存済みsource resultとの切替表示。
+- validation実行失敗時の表示と、非常に大きいProjectでのperformance fallback。
 - loading / saving中のselection、editing、shortcut、focus behavior。
 - programmable viewのexpression / code model、aggregate semantics、sandbox、evaluation timing、performance budget。
 - computed / annotation / presentation definitionのproject-shared / user-local persistence boundary。

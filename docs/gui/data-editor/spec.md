@@ -1,6 +1,6 @@
 # GUI仕様: Data Editor
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 

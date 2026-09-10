@@ -13,6 +13,11 @@ Build / PublishやMigration内部処理を増やすだけでは、この体験�
 続く比較に対してHumanは、初期編集範囲はRequired Primitiveの非key field、保存単位はVS Codeのようなfile単位、
 validation結果は保存可否を妨げない方針を選択した。
 さらにdirty中Build、external modification、dirty bufferを失うnavigation lifecycleについてもVS Code寄りの明示的なbehaviorを選択した。
+また、dirty判定は保存・読込snapshotとの差分ベースとし、全変更を戻した場合は自動的にcleanへ戻すことを選択した。
+
+Humanは以後のGUI refinementについて、使い勝手・データ安全性・互換性を大きく左右する選択だけを確認対象とし、
+それ以外のinteraction detailは既存方針と一般的なUX慣習に従って仕様側で決定し、実使用後に必要なら調整する方針を選択した。
+この委任はcanonical specificationのreview / Human Approval gateを省略するものではなく、逐次の小粒な確認質問を不要にするためのrefinement policyである。
 
 これらはproduct choiceとして本RFCに記録する。canonical GUI / source-edit contractの詳細、Human Approval、
 implementation authorityをこのRFC単体で与えるものではない。
@@ -28,6 +33,8 @@ implementation authorityをこのRFC単体で与えるものではない。
 | Decision | dirty fileがあってもBuildできるが、Buildは保存済みsourceだけを使い暗黙Saveしない。 |
 | Decision | clean fileの外部変更は自動Reloadし、dirty fileの外部変更はconflictとしてCompare / Reload / Overwriteを明示選択する。 |
 | Decision | file / record / Table navigationではdirty bufferを保持し、Project切替・Reload・window close等の破棄を伴う操作だけSave All / Don't Save / Cancelを提示する。 |
+| Decision | dirtyは基準snapshotとの差分で判定し、全変更が基準snapshotと同一に戻ったfileは自動的にcleanへ戻す。 |
+| Decision | 大きなUX・安全性・互換性選択だけHumanへ確認し、routineなGUI interaction detailは仕様refinementで決定して後から調整可能とする。 |
 | Requirement | GUIから値を変更・保存し、差分と検証結果を確認できるようにする。exact behaviorはcanonical仕様化時に確定する。 |
 | Constraint | YAML正本、shared semantics、Tauriからapplication serviceへの委譲は既存Approved authorityに従う。 |
 | Open Question | source preservation、exact scalar transport、I/O failure等の詳細contract。 |
@@ -84,6 +91,9 @@ GUI上ではVS Codeに近い形でfileごとにdirty stateを持ち、利用者�
 同じfileに属する複数record / fieldの変更は、そのfileの1回のSaveでまとめて永続化される。
 別fileのdirty stateは独立して保持する。
 
+dirtyは現在のlocal bufferと最後に保存・読込された基準snapshotとの差分有無で判定する。
+全変更を基準snapshotと同一の内容へ戻した場合、そのfileは自動的にcleanへ戻す。
+
 source diffはSave可否のgateではなく、変更内容を確認するsurfaceとして提供する。
 Gitの有無に依存せず、UI内で保存予定または未保存のsource差分を確認できることを目指す。
 
@@ -116,6 +126,15 @@ conflict recoveryでは少なくともCompare / Reload / Overwriteを明示選�
 file / record / Table間のnavigationだけでは確認を出さず、複数fileのdirty bufferを独立して保持する。
 Project切替、Project Reload、window close等、現在保持しているdirty bufferを失う操作では `Save All` / `Don't Save` / `Cancel` を提示する。
 Save Allに失敗またはconflictがある場合は元の破棄操作を完了せず、dirty bufferを保持する。
+
+### G: GUI refinementの委任
+
+大きく使い勝手を左右するinteraction model、データ損失リスク、互換性・共有semanticsに関わる選択はHumanへ確認する。
+一方、debounce、focus復元、loading中の一時的なcontrol状態、minor shortcut/detail、表示密度等のroutine refinementは、
+既存のHuman-selected direction、platform慣習、accessibility、testabilityを基準に仕様側で決定してよい。
+
+この委任は初回実装を不変仕様として固定するものではない。実際に利用して違和感が確認されたdetailは、canonical ownerを更新して調整する。
+また、仕様全体のreview / Human Approvalというimplementation readiness gateは維持する。
 
 ## トレードオフ（Trade-offs）
 
@@ -151,11 +170,11 @@ GUI Saveの具体的contractは新規で、現行Migrationの仕様や成功条�
 ## 未解決事項（Open Questions）
 
 OQ-A〜Cおよびdirty lifecycle / external modification / Buildのproduct choiceはHuman decisionで解決済み。
-以下はcanonical Draftで閉じる。既存Approved authorityからrecoverできる事項はHumanへ逐次質問せず整理する。
+以下はcanonical Draftで閉じる。routine detailは上記delegationに従って仕様側で決定し、Humanへは大きなUX・安全性・互換性選択だけを提示する。
 
 - project pickerの入力方法、開けないproject、empty table、schemaをresolveできない状態の操作。
 - record表示順、重複PKを含むsource recordの識別・表示、非対応値・literal block stringの表示範囲。
-- exact scalar transport、文字列・数値の入力中状態、変更を元の値へ戻した場合のfile dirty判定。
+- exact scalar transport、文字列・数値の入力中状態。
 - file単位Saveのsource provenance、preservation、atomicity、通常I/O failureの結果。
 - 差分の表示単位、保存結果が不明な場合の再試行、reload後の入力復元の範囲。
 - loading/saving中の操作、keyboard/focus、accessibility、shortcut、product textの言語。
@@ -166,6 +185,7 @@ OQ-A〜Cおよびdirty lifecycle / external modification / Buildのproduct choic
 
 - project選択 → Table → record → 値変更 → source diff / validation確認 → file Save → reopenで変更を確認する。
 - 同一file内の複数変更が一度のSaveで永続化され、別fileのdirty stateが独立する。
+- 全変更を基準snapshotまで戻すとfileがcleanへ戻る。
 - split data files、同一PKの別source record、非対応field、64-bit整数の精度を確認する。
 - domain validation上invalidな値でもSave操作が禁止されず、保存後もvalidation resultを確認できる。
 - clean external editの自動Reloadと、dirty external editのconflict recoveryを確認する。
@@ -193,6 +213,8 @@ GUI app shell（Draft）、YAML subset（ApprovedのGUI save Open Question）、
 - dirty中でもBuild可能だが保存済みsourceだけを使い、暗黙Saveしない。
 - clean external modificationは自動Reload、dirty external modificationはconflictとしてCompare / Reload / Overwriteを明示する。
 - file / record / Table navigationではdirty bufferを保持し、破棄を伴うProject切替 / Reload / window closeでSave All / Don't Save / Cancelを提示する。
+- dirtyは基準snapshotとの差分で判定し、全変更を戻したfileはcleanへ戻す。
+- routineなGUI detailは仕様refinementへ委任し、大きなUX・安全性・互換性choiceだけHumanへ確認する。
 
 ### New Requirements
 
@@ -233,7 +255,7 @@ None identified。
 
 ### Questions
 
-現在選択済みのproduct-level質問は解決済み。追加Human decisionが必要なobservable choiceを仕様refinementで発見した場合だけ提示する。
+大きなUX・安全性・互換性に関する追加Human decisionが必要な場合だけ提示する。routineなinteraction detailはdelegated refinementとして仕様側で閉じる。
 
 ### Approved as Proposed
 
@@ -245,7 +267,7 @@ No。Human product decisionsは記録済みだが、RFCはimplementation authori
 | Internal / Cross-spec consistency | shared semanticsとsource正本を参照し、Migrationを値編集のauthorityにしていない。 |
 | Terminology / Backward compatibility | file単位SaveとVS Code寄りのdirty lifecycleをproduct choiceとして追加。既存formatやdomain identityは変更していない。 |
 | Testability / Unresolved ambiguity | file Save、validation non-blocking、Build、external conflict、dirty buffer保護の受け入れ候補を追加し、詳細未決定をOpenとして保持。 |
-| Implementation leakage / Unrequested behavior | library/APIを固定せず、未解決のsource preservation等を推測していない。 |
+| Implementation leakage / Unrequested behavior | library/APIを固定せず、routine detailとHuman escalation対象を分離している。 |
 
 実装diffがないためimplementation rationale reviewは対象外。
 
@@ -259,5 +281,7 @@ No。Human product decisionsは記録済みだが、RFCはimplementation authori
 4. dirty中でもBuild可能だが、保存済みsourceだけを使い暗黙Saveしない。
 5. clean external modificationは自動Reloadし、dirty external modificationはconflictとしてCompare / Reload / Overwriteを明示選択する。
 6. file / record / Table navigationではdirty bufferを保持し、Project切替 / Project Reload / window close等の破棄を伴う操作だけSave All / Don't Save / Cancelを提示する。
+7. dirtyは基準snapshotとの差分で判定し、全変更を戻したfileは自動的にcleanへ戻す。
+8. 大きなUX・データ安全性・互換性choiceだけHumanへ確認し、それ以外のGUI interaction detailは仕様側で決定して実使用後に必要なら調整する。
 
 RFCはDraftのままとし、GUI / shared source-editのcanonical Draftへ具体化する。

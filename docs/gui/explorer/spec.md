@@ -1,6 +1,6 @@
 # GUI仕様: Workspace Explorer
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 

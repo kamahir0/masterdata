@@ -52,6 +52,14 @@ validation resultの有無はSave可否のgateにしない。domain validation�
 
 利用者は未保存変更または保存予定変更に対応するsource diffを確認できなければならない。diffはvalidationやSaveの許可条件ではなく、変更内容を確認するためのsurfaceである。
 
+### GUI-DATA-BUILD-001
+
+source data fileがdirtyでもBuildの開始を禁止しない。Buildは保存済みsourceだけを入力とし、dirty bufferの未保存変更を暗黙に含めてはならない。
+
+### GUI-DATA-BUILD-002
+
+Build開始時にdirty fileが存在する場合、未保存変更がBuildへ含まれないことを利用者が認識できる表示を行う。Buildを理由にSaveまたはSave Allを暗黙実行してはならない。
+
 ## キーボード（Keyboard）
 
 ### GUI-DATA-KEY-001
@@ -126,7 +134,7 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 - dirty cellを元値へ戻した場合のfile dirty判定。
 - source preservation、file Save atomicity、保存結果不明時のrecovery。
 - external modification時のcompare / reload / overwrite behavior。
-- dirty中のfile / project切替、Reload、Build、window close behavior。
+- dirty中のfile / project切替、Reload、window close behavior。
 - validation表示の場所（cell、row、panel等）とdiff surfaceの具体的layout。
 - loading / saving中のselection、editing、shortcut、focus behavior。
 - programmable viewのexpression / code model、aggregate semantics、sandbox、evaluation timing、performance budget。

@@ -10,9 +10,10 @@ behaviorを扱ってよい。shared domain operationに対するadapter boundary
 
 ## Surface index
 
-- [GUI app shell](app-shell.md) — Desktop shellとshared application boundary（Draft）
-- [Workspace Explorer](explorer/spec.md) — 左ペインのfile / folder navigationとtyped editor selection（Draft）
-- [Data Editor](data-editor/spec.md) — record data YAMLのspreadsheet型editorとfile単位dirty / Save（Draft）
+- [GUI app shell](app-shell.md) — Desktop shellとshared application boundary（Approved）
+- [Workspace Explorer](explorer/spec.md) — 左ペインのfile / folder navigationとtyped editor selection（Approved）
+- [Data Editor](data-editor/spec.md) — record data YAMLのspreadsheet型editorとfile単位dirty / Save（Approved）
+- [Source Creation](source-creation/spec.md) — Explorerからのfolder / source artifact creation flow（Proposed）
 
 新しいsurface specificationは [_template.md](_template.md) から始める。大きなsurfaceでは、visual artifactを
 specificationの隣に置く。

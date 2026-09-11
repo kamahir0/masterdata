@@ -1,7 +1,7 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 44a840c343bd0c560cf1963bcdefb31d4a20a54d
+Stage: designing
+Candidate: none
 
 ## Blocking findings
 

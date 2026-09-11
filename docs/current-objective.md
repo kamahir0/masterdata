@@ -9,72 +9,82 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 ## Objective
 
-現在のHuman priorityは、**GUIで既存recordを編集・保存し、差分と検証結果を確認できる最初の体験を完成させる**ことである。
-2026-09-10に、AddField source commit safetyの完了後、この体験の具体化へ進む推薦にHumanが「進めて」と指示した。
+現在のHuman priorityは、**GUIのWorkspace Explorerから新しいsource artifactを安全に作成し、YAMLを手書きせずにProjectを組み立て始められる体験を完成させる**ことである。
 
-Humanは初期編集対象をRequired Primitiveの非key field、Save / dirty管理をVS Codeに近いsource data file単位、validation resultをSave可否のgateにしない方針として選択した。GUI全体は左にVS Code型のfile / folder Explorer、中央に選択source kindごとのtyped editorを持ち、record Data documentでは列=field・行=recordのspreadsheet型editorを表示する。dirty中Build、external modification、dirty buffer保護、dirty判定、Problems / Diff表示についてもHuman-selected behaviorを反映済みである。
+既存record authoring Objectiveはcandidate `44a840c343bd0c560cf1963bcdefb31d4a20a54d`のfinal verificationでBlockingなしとなり、2026-09-11に`objective-complete`へ到達した。その後Humanが「次に進む」と指示したため、直前に第一候補として提示していたExplorerからのsource artifact creationを次priorityとして選択する。
 
-HumanはroutineなGUI interaction detailについて、使い勝手・データ安全性・互換性を大きく左右する選択だけ確認し、それ以外は既存方針と一般的UX慣習に従って仕様refinement側で決定し、実使用後に調整する方針を選択した。
+初期creation sliceでは、Workspace上のfolderと、現在Approvedなdomain contractで完全な初期形を定義できる次のsource artifactを対象とする。
 
-2026-09-10にHumanが[GUI app shell](gui/app-shell.md)、[Workspace Explorer](gui/explorer/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Source Record Edit](specs/source-edit.md)のinitial existing-record authoring specification packageを承認した。4仕様は`Status: Approved`であり、review-spec観点でもBlocking issueはない。initial sliceについて必要なobservable behavior、failure semantics、non-scopeがApproved authorityから回収できるため、Current Objectiveはimplementation-readyである。
+- Table schema document
+- record Data document
+- Value Object
+- Normal Enum / Flags Enum
+- Custom Type
 
-## 現在の修正・UI整備範囲
+Table作成は名前だけの不完全なschema fileを置くoperationにはせず、field declarationとPrimary Keyを含むvalidな初期schemaをguided inputから作成する。Data documentは既存Tableを選択してempty `records`から開始する。Value Object / Enum / Flags / Custom Typeは各Approved Type System仕様に従うcomplete declarationを作成する。
 
-2026-09-11にHumanが、reviewで判明したpreview応答の世代混同、literal scalar周辺の空行消失、別fileのcell診断混入の修正を指示した。同時に`front-end-sample`で使用するAnt Design 6とLucide iconsの採用を選択した。
-既存のApproved編集・保存contractを維持し、UI component、theme、focus管理を整備する。新規domain behaviorは追加しない。
+Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
 
 ## Why now
 
-AddField source commit safetyはcandidate `d18fb43e896921e7ec2ec618c9b71640e9d02545`のfinal verificationを経て完了した。
-安全性基盤を積み上げるだけでは、YAMLを手書きせずに編集するという製品の動機は実現しない。
-そのためMigration operationを増やす前に、既存の共有validation / build基盤を利用者の編集体験へ接続する。
+現在のGUIは既存Data documentをExplorerから開き、編集・validation・Diff・file Save・external conflict recoveryまで実行できる。一方で、新しいTable、Data file、type declarationをGUIから作れないため、新規Projectや新しいmaster-data領域を始めるには依然としてYAMLの手書きが必要である。
+
+Product VisionはYAMLをcanonical Source of Truthに保ちながらtable / column-oriented GUIとschema-aware authoringを提供する方向を持つ。既存record編集の安全なsource write基盤が整った今、次にcreation boundaryをshared application semanticsへ接続することで、既存file編集からProject authoringへ体験を拡張する。
 
 ## Completion boundary
 
-- ProjectをGUIから開き、左のWorkspace Explorerからsource data fileを選択できるようにする。
-- 中央のData Editorで、そのfile内recordsをspreadsheet形式で確認し、Required Primitiveの非key fieldを編集できるようにする。
-- source data file単位でdirty stateと明示Saveを管理し、同一fileの複数変更を1回のSaveで永続化する。
-- validation errorはSave禁止条件にせず、local editor bufferに対するvalidation feedbackをcell markerとProblems panelから確認できるようにする。
-- base snapshotとlocal bufferのsource diffをfile単位Diff viewで確認できるようにする。
-- source-preserving Saveにより、変更対象外のcomment、quote、indentation、blank line、line ending、record/member order等を保持し、未変更fileをbyte-for-byte保持する。
-- external modificationではclean fileを自動Reloadし、dirty fileはConflictとしてlocal bufferを保護し、Compare / Reload / Overwriteの明示recoveryを提供する。
-- Project切替 / Project Reload / window close等のbuffer破棄操作ではSave All / Don't Save / Cancelで保護し、通常file navigationではdirty bufferを保持する。
-- dirty中でもBuild可能とするが、Buildは保存済みsourceだけを使用し、暗黙Saveしない。
-- `long` / `ulong`を含むscalar transportでroundingを起こさない。
-- Save failure / Outcome Unknownで未保存入力を失わず、staleなautomatic retry / overwriteを行わない。
-- 関連tests、required checks、final verificationでBlockingがないことを確認する。read-only viewerや仕様作成だけでこのObjectiveを完了扱いにしない。
+- Workspace Explorerのsource root / folderから、keyboardでも到達可能な`New` actionを実行できるようにする。
+- configured source root内に新しいfolderを作成できるようにする。folder pathをTable / type等のdomain identityとして扱わない。
+- Table schema作成では、Table identity、optional `csharpName`、1個以上のfield、MessagePack `key`、field type / modifier、exactly one Primary Key、およびoptional Secondary Keyをguided inputで指定し、Approved Table / Key / Type System仕様に従うvalidな初期schema documentを作成できるようにする。
+- Data document作成では既存Table identityとdestinationを選び、`kind: data` / `table` / empty `records`を持つvalidな初期documentを作成できるようにする。
+- Value Object作成ではname、key-compatible primitive underlying、およびsupported conversion optionを指定してvalidなtype documentを作成できるようにする。
+- Normal Enum / Flags Enum作成ではname、underlying、memberを指定し、各Approved Enum / Flags ruleを満たすvalidなtype documentを作成できるようにする。
+- Custom Type作成ではnameと1個以上のfieldを指定し、Approved Custom Type / Field Modifier / MessagePack key ruleを満たすvalidなtype documentを作成できるようにする。
+- YAML rendering、document semantics、name/type/key validation、identity collision判定をfrontendへ複製せず、shared core/application boundaryへ委譲する。
+- source fileは`.yaml`または`.yml`としてconfigured source root内へ作成し、path traversal / unsafe symlink等でworkspace外を書き換えない。
+- target file / folderが既に存在する場合は上書きせず、creation conflictとして入力を保持したままrecoveryできるようにする。
+- ordinary create failureで既存sourceを変更せず、partialなdestinationを成功扱いしない。write outcomeを確定できない場合は自動retry / overwriteせず、workspaceを再確認してから次のmutationへ進む。
+- Create成功後はExplorerを更新し、作成itemを選択・表示する。既存dirty bufferを暗黙Saveまたは破棄しない。
+- workspace write capabilityがないhostではCreate actionを実行可能として扱わない。
+- focused domain/application tests、React操作test、repository required checks、final verificationでBlockingがないことを確認する。
 
 ## Explicit non-scope
 
-現時点のpriorityに次は含めない。初期対応範囲の詳細はRFCとApproved仕様を参照する。
+現Objectiveでは次を含めない。
 
-- Explorerからの新規folder / Table / record / Value Object / Enum等の作成、rename、delete、move。これらは将来のauthoring modelとして維持する。
-- recordの追加・削除、schema編集、RenameField / DropField、MasterReference設計。
-- Enum / Value Object / Nullable / Array / Custom Typeやkey fieldの初期編集対応。
-- spreadsheetのrange selection、一括paste、fill handle、複数record同時編集、履歴付きUndo/Redo。
-- logical Table全体を複数data file横断で一括編集するTable View。
-- Programmable View / Computed Column / Annotation Columnのruntime、保存format、expression / JavaScript engine。将来product directionとしてData Editor仕様に記録済みである。
-- Standalone / Connected WebとNative Hostの実装、distribution全体。
-- GUI Publish、Unity integration全体の同時完成、Git stage / commit / push UI。
-- workflow control-planeの再設計、固定agent role / launcher追加。
-- Approved semanticsの無承認変更、未確定public API / syntax / formatの実装による先取り。
+- 既存source file / folderのrename、delete、move、duplicate。
+- Data documentへのrecord追加・削除。新規Data documentはempty `records`から開始する。
+- 作成後のTable schema / Value Object / Enum / Flags / Custom Typeを編集する専用typed editor。初期definitionはcreation flowで確定する。
+- Table schemaとData document等、複数artifactを1回のtransactionで同時作成するwizard。
+- Reference declarationなど、canonical ownerがまだDraftのdomain featureをcreation formで先取りすること。
+- template marketplace、import / copy from external file、Git stage / commit / push。
+- Standalone / Connected Web全体、Native Host lifecycle、distributionの同時完成。
+- Programmable View / Computed Column / Annotation Column、Table横断view、高度なspreadsheet操作。
 
 ## Next candidate
 
-このObjective完了後、Explorerからのsource artifact作成、対応型・spreadsheet操作の拡張、Programmable View、Table横断view、Build Profile / Publishへの接続、Unityを含む一連の利用確認を候補として比較する。
-RenameField / DropFieldは[Schema Migration仕様](specs/schema-migration.md)に残る後続機能であり、撤回していない。
-いずれも自動昇格せず、current realityとproduct valueを確認してHumanが次priorityを選ぶ。
+このObjective完了後は、Data Editorのrecord追加・削除、Table / Type専用editor、rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
+
+次priorityは自動昇格せず、current realityとproduct valueを確認してHumanが選択する。
 
 ## Relevant authorities
 
 - [Product vision](product/vision.md)
-- [GUI仕様index](gui/README.md)
-- [GUI app shell（Approved）](gui/app-shell.md)
-- [Workspace Explorer（Approved）](gui/explorer/spec.md)
-- [Data Editor（Approved）](gui/data-editor/spec.md)
-- [Source Record Edit（Approved）](specs/source-edit.md)
-- [最初のrecord authoring RFC（Draft）](rfcs/0005-first-record-authoring-experience.md) — Human-selected product choicesとdecision history
-- [YAML subset](specs/yaml-subset.md)、[Table / Key](specs/table-and-keys.md)、[Primitive Types](specs/type-system/primitives.md)
-- [Build Selection](specs/build-selection.md)、[Runtime hosts](specs/runtime-hosts.md)、[Schema Migration](specs/schema-migration.md)
-- [YAML正本ADR](adr/0001-yaml-is-source-of-truth.md)、[shared core ADR](adr/0002-rust-core-shared-by-cli-and-gui.md)、[host capability ADR](adr/0006-host-capability-composition.md)
-- [Specification workflow](contributing/specification-workflow.md)、[Development workflow](execution-workflow.md)
+- [GUI specification index](gui/README.md)
+- [GUI app shell](gui/app-shell.md)
+- [Workspace Explorer](gui/explorer/spec.md)
+- [Project layout and discovery](specs/project-layout.md)
+- [Masterdata YAML subset](specs/yaml-subset.md)
+- [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
+- [Primitive Types](specs/type-system/primitives.md)
+- [Field Modifiers](specs/type-system/field-modifiers.md)
+- [Value Objects](specs/type-system/value-objects.md)
+- [Enum / Flags](specs/type-system/enums.md)
+- [Custom Types](specs/type-system/custom-types.md)
+- [Runtime hosts / capability](specs/runtime-hosts.md)
+- [Source Record Edit](specs/source-edit.md) — source write safetyの既存evidence。creation operationのauthorityではない。
+- [YAML Source of Truth ADR](adr/0001-yaml-is-source-of-truth.md)
+- [shared core ADR](adr/0002-rust-core-shared-by-cli-and-gui.md)
+- [host capability ADR](adr/0006-host-capability-composition.md)
+- [Specification workflow](contributing/specification-workflow.md)
+- [Development workflow](execution-workflow.md)

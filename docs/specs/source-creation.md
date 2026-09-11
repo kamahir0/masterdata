@@ -1,6 +1,6 @@
 # Source Artifact Creation仕様
 
-Status: Proposed
+Status: Approved
 
 Domain: Source Authoring
 

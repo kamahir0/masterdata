@@ -25,6 +25,8 @@ Table作成は名前だけの不完全なschema fileを置くoperationにはせ�
 
 Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
 
+2026-09-11に、shared creation operationを所有する[Source Artifact Creation](specs/source-creation.md)と、Explorerからのguided flowを所有する[GUI Source Creation](gui/source-creation/spec.md)を`Status: Proposed`として作成した。既存Approved仕様とのauthority重複、scope侵食、未解決Open Questionはself-reviewで確認されていない。これらはHuman Approval前のためimplementation authorityではなく、承認されるまでCurrent Objectiveはimplementation-readyではない。
+
 ## Why now
 
 現在のGUIは既存Data documentをExplorerから開き、編集・validation・Diff・file Save・external conflict recoveryまで実行できる。一方で、新しいTable、Data file、type declarationをGUIから作れないため、新規Projectや新しいmaster-data領域を始めるには依然としてYAMLの手書きが必要である。
@@ -73,6 +75,8 @@ Product VisionはYAMLをcanonical Source of Truthに保ちながらtable / colum
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)
+- [GUI Source Creation（Proposed）](gui/source-creation/spec.md)
+- [Source Artifact Creation（Proposed）](specs/source-creation.md)
 - [Project layout and discovery](specs/project-layout.md)
 - [Masterdata YAML subset](specs/yaml-subset.md)
 - [Table / Primary Key / Secondary Key](specs/table-and-keys.md)

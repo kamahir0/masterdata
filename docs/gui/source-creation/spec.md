@@ -1,6 +1,6 @@
 # GUI仕様: Source Creation
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 

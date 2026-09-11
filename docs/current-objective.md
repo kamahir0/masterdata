@@ -18,6 +18,11 @@ HumanはroutineなGUI interaction detailについて、使い勝手・データ�
 
 2026-09-10にHumanが[GUI app shell](gui/app-shell.md)、[Workspace Explorer](gui/explorer/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Source Record Edit](specs/source-edit.md)のinitial existing-record authoring specification packageを承認した。4仕様は`Status: Approved`であり、review-spec観点でもBlocking issueはない。initial sliceについて必要なobservable behavior、failure semantics、non-scopeがApproved authorityから回収できるため、Current Objectiveはimplementation-readyである。
 
+## 現在の修正・UI整備範囲
+
+2026-09-11にHumanが、reviewで判明したpreview応答の世代混同、literal scalar周辺の空行消失、別fileのcell診断混入の修正を指示した。同時に`front-end-sample`で使用するAnt Design 6とLucide iconsの採用を選択した。
+既存のApproved編集・保存contractを維持し、UI component、theme、focus管理を整備する。新規domain behaviorは追加しない。
+
 ## Why now
 
 AddField source commit safetyはcandidate `d18fb43e896921e7ec2ec618c9b71640e9d02545`のfinal verificationを経て完了した。

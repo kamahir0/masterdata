@@ -26,7 +26,7 @@ specification、current implementation realityはcode / tests / Gitを参照し�
 - `masterdata-dotnet`: .NET SDKとstaged MasterMemory builderを呼び出す唯一のRust adapter
 - `masterdata-app`: CLIとTauriが共有するproject/validate/build orchestration。domain semanticsは持たない
 - `masterdata-cli`: application serviceを使うCLI。GUIやCLIにdomain logicを重複させない
-- `apps/gui`: TypeScript + React frontendとTauri v2 shell。backend commandはapplication serviceを呼ぶ
+- `apps/gui`: TypeScript + React frontend、Ant Design 6、Lucide iconsとTauri v2 shell。backend commandはapplication serviceを呼ぶ
 - `xtask`: repository固有の開発コマンドをRustで集約
 
 最終的なbuild pipelineは次を目指します。

@@ -44,7 +44,7 @@ test("GUI uses shared manual validation and full canonical build", () => {
 
 test("GUI keeps 64-bit primitive edits as text at the frontend boundary", () => {
   assert.match(source, /value: string/);
-  assert.match(source, /<input[\s\S]*value=\{value\}/);
+  assert.match(source, /<Input[\s\S]*value=\{value\}/);
   assert.doesNotMatch(source, /parseInt\(|parseFloat\(|Number\(value\)|valueAsNumber/);
 });
 

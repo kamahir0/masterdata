@@ -412,6 +412,11 @@ fn literal_span(
     {
         body_end_line += 1;
     }
+    // WHY: clip-style literal scalars do not own trailing separator blank lines.
+    // Replacing those bytes would erase unrelated source formatting (SOURCE-EDIT-005).
+    while body_end_line > body_start_line && lines[body_end_line - 1].text.trim().is_empty() {
+        body_end_line -= 1;
+    }
     let content_indent = (body_start_line..body_end_line)
         .find_map(|index| {
             let text = lines[index].text;

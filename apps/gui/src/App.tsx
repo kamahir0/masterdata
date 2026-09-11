@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Empty, Input, Modal, Tabs } from "antd";
+import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -418,6 +420,8 @@ function App() {
     if (existing !== undefined) {
       window.clearTimeout(existing);
     }
+    // WHY: revision restarts after Save/Reload; snapshot identity rejects responses from the previous buffer.
+    // EVIDENCE: GUI-DATA-VAL-005; regression tests in tests/authoring.test.tsx.
     const revision = editor.revision;
     const generation = workspaceGeneration.current;
     const timer = window.setTimeout(async () => {
@@ -432,7 +436,7 @@ function App() {
         if (workspaceGeneration.current !== generation) return;
         setEditors((current) => {
           const latest = current[path];
-          if (!latest || latest.revision !== revision) {
+          if (!latest || latest.revision !== revision || latest.snapshot !== editor.snapshot) {
             return current;
           }
           return {
@@ -451,7 +455,7 @@ function App() {
         const diagnostic = asApiError(error).diagnostic;
         setEditors((current) => {
           const latest = current[path];
-          if (!latest || latest.revision !== revision) {
+          if (!latest || latest.revision !== revision || latest.snapshot !== editor.snapshot) {
             return current;
           }
           return {
@@ -808,7 +812,7 @@ function App() {
     if (!workspace) return;
     const source = diagnostic.source ? normalizePath(diagnostic.source) : null;
     const file = source
-      ? workspace.files.find((candidate) => source.endsWith(normalizePath(candidate.path)))
+      ? workspace.files.find((candidate) => source === normalizePath(`${workspace.project.project_root}/${candidate.path}`))
       : null;
     if (!file) return;
     const record = diagnosticRecordIndex(diagnostic);
@@ -849,37 +853,37 @@ function App() {
     <main className="app-shell">
       <header className="titlebar">
         <div className="brand-block">
-          <div className="brand-mark">M</div>
+          <div className="brand-mark"><Database size={18} /></div>
           <div>
             <strong>masterdata</strong>
             <span>{workspace?.project.name ?? "No project"}</span>
           </div>
         </div>
         <div className="project-open">
-          <input
+          <Input
             aria-label="Project path"
             value={projectPathInput}
             onChange={(event) => setProjectPathInput(event.target.value)}
             placeholder="Project folder path"
           />
-          <button
-            type="button"
+          <Button
+            htmlType="button"
             onClick={() => projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
           >
-            Open Project
-          </button>
+            <FolderOpen size={15} /> Open Project
+          </Button>
         </div>
         <div className="command-bar">
-          <button type="button" onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</button>
-          <button type="button" onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
+          <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</Button>
+          <Button htmlType="button" icon={<Save size={15} />} onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
             {activeEditor?.saving ? "Saving…" : "Save"}
-          </button>
-          <button type="button" onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
+          </Button>
+          <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
             {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
-          </button>
-          <button className="primary" type="button" onClick={() => void runBuild()} disabled={!workspace?.capabilities.build || buildState.kind === "loading"}>
+          </Button>
+          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={!workspace?.capabilities.build || buildState.kind === "loading"}>
             {buildState.kind === "loading" ? "Building…" : "Build"}
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -943,6 +947,7 @@ function App() {
           {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor
               file={activeFile}
+              projectRoot={projectRoot!}
               editor={activeEditor}
               onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
               onSave={() => void saveFile(activeFile.path)}
@@ -955,7 +960,7 @@ function App() {
           )}
 
           <section className={`problems-panel ${problemsOpen ? "open" : "collapsed"}`}>
-            <button className="problems-header" type="button" onClick={() => setProblemsOpen((value) => !value)}>
+            <Button className="problems-header" htmlType="button" onClick={() => setProblemsOpen((value) => !value)}>
               <span>PROBLEMS <b>{problems.length}</b></span>
               <span className="problem-snapshot">
                 {activeEditor?.previewState === "pending" && "Buffer validation pending"}
@@ -963,7 +968,7 @@ function App() {
                 {activeEditor?.previewState === "current" && (activeEditor.preview.validation.valid ? "Buffer valid" : "Buffer has diagnostics")}
                 {manualValidation.kind === "done" && ` · Disk ${manualValidation.value.valid ? "valid" : "invalid"}`}
               </span>
-            </button>
+            </Button>
             {problemsOpen && (
               <div className="problems-body">
                 {activeEditor?.previewError && <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(activeEditor.previewError)} />}
@@ -971,12 +976,12 @@ function App() {
                   <div className="no-problems">No diagnostics for the current buffer.</div>
                 ) : (
                   problems.map(({ diagnostic, origin }, index) => (
-                    <button className="problem-row" type="button" key={`${origin}-${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>
+                    <Button className="problem-row" htmlType="button" key={`${origin}-${diagnostic.code}-${index}`} onClick={() => void focusDiagnostic(diagnostic)}>
                       <span className="problem-icon">!</span>
                       <strong>{diagnostic.code}</strong>
                       <span>{diagnostic.message}</span>
                       <small>{origin} · {formatDiagnosticLocation(diagnostic)}</small>
-                    </button>
+                    </Button>
                   ))
                 )}
                 {buildState.kind === "done" && (
@@ -994,30 +999,25 @@ function App() {
         <span>{dirtyCount > 0 ? `${dirtyCount} dirty` : "Saved"}</span>
       </footer>
 
-      {pendingAction && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="save-all-dialog" role="dialog" aria-modal="true" aria-labelledby="save-all-title">
-            <span className="dialog-kicker">UNSAVED CHANGES</span>
-            <h2 id="save-all-title">Save changes before continuing?</h2>
-            <p>{dirtyCount} source file{dirtyCount === 1 ? " has" : "s have"} unsaved changes. The requested action would discard the current buffers.</p>
-            <div className="dialog-actions">
-              <button type="button" onClick={() => setPendingAction(null)} disabled={pendingActionBusy}>Cancel</button>
-              <button type="button" onClick={() => void performAction(pendingAction)} disabled={pendingActionBusy}>Don't Save</button>
-              <button className="primary" type="button" disabled={pendingActionBusy} onClick={async () => {
-                setPendingActionBusy(true);
-                const action = pendingAction;
-                const ok = await saveAll();
-                setPendingActionBusy(false);
-                if (ok) await performAction(action);
-              }}>
-                {pendingActionBusy ? "Saving…" : "Save All"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+      <Modal open={pendingAction !== null} title="Save changes before continuing?"
+        closable={!pendingActionBusy} keyboard={!pendingActionBusy} mask={{ closable: false }}
+        onCancel={() => !pendingActionBusy && setPendingAction(null)}
+        footer={[
+          <Button key="cancel" disabled={pendingActionBusy} onClick={() => setPendingAction(null)}>Cancel</Button>,
+          <Button key="discard" disabled={pendingActionBusy} onClick={() => pendingAction && void performAction(pendingAction)}>Don't Save</Button>,
+          <Button key="save" type="primary" loading={pendingActionBusy} onClick={async () => {
+            if (!pendingAction) return;
+            setPendingActionBusy(true);
+            const action = pendingAction;
+            const ok = await saveAll();
+            setPendingActionBusy(false);
+            if (ok) await performAction(action);
+          }}>Save All</Button>,
+        ]}>
+        <p>{dirtyCount} source file{dirtyCount === 1 ? " has" : "s have"} unsaved changes. The requested action would discard the current buffers.</p>
+      </Modal>
 
-      {notice && <div className="toast">{notice}</div>}
+      {notice && <Alert className="toast" title={notice} type="info" showIcon role="status" />}
     </main>
   );
 }
@@ -1103,13 +1103,13 @@ function SourceTree({
   };
 
   const handleTreeKey = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
+    event: React.KeyboardEvent<HTMLElement>,
     folderKey?: string,
     expanded = false,
   ) => {
     const tree = event.currentTarget.closest('[role="tree"]');
     if (!tree) return;
-    const items = Array.from(tree.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'));
+    const items = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'));
     const index = items.indexOf(event.currentTarget);
     const depth = Number(event.currentTarget.dataset.depth ?? "0");
     const focusAt = (next: number) => items[Math.max(0, Math.min(items.length - 1, next))]?.focus();
@@ -1153,8 +1153,8 @@ function SourceTree({
       const expanded = !collapsed.has(node.key);
       return (
         <div key={node.key}>
-          <button
-            type="button"
+          <Button
+            htmlType="button"
             role="treeitem"
             data-depth={node.depth}
             aria-expanded={expanded}
@@ -1165,7 +1165,7 @@ function SourceTree({
           >
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
             <span>{node.name}</span>
-          </button>
+          </Button>
           {expanded && <div role="group">{node.children.map(renderNode)}</div>}
         </div>
       );
@@ -1185,9 +1185,9 @@ function SourceTree({
       editor?.conflict ? "external change conflict" : null,
     ].filter(Boolean);
     return (
-      <button
+      <Button
         key={node.key}
-        type="button"
+        htmlType="button"
         role="treeitem"
         data-depth={node.depth}
         aria-selected={activePath === node.file.path}
@@ -1207,7 +1207,7 @@ function SourceTree({
         {editor?.saveStatus === "failure" && <span className="file-state-badge error" title="Save failed">×</span>}
         {editor?.saveStatus === "outcome_unknown" && <span className="file-state-badge warning" title="Save outcome unknown">?</span>}
         {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}
-      </button>
+      </Button>
     );
   };
 
@@ -1217,8 +1217,8 @@ function SourceTree({
       const expanded = !collapsed.has(key);
       return (
         <div className="source-root" key={root}>
-          <button
-            type="button"
+          <Button
+            htmlType="button"
             role="treeitem"
             data-depth="0"
             aria-expanded={expanded}
@@ -1228,7 +1228,7 @@ function SourceTree({
           >
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
             {root}
-          </button>
+          </Button>
           {expanded && <div role="group">{children.map(renderNode)}</div>}
         </div>
       );
@@ -1243,6 +1243,7 @@ function editorIsDirtySafe(editor: EditorState | undefined): boolean {
 
 function DataEditor({
   file,
+  projectRoot,
   editor,
   onCellChange,
   onSave,
@@ -1253,6 +1254,7 @@ function DataEditor({
   cellFocusStart,
 }: {
   file: WorkspaceSourceFile;
+  projectRoot: string;
   editor: EditorState;
   onCellChange: (recordIndex: number, field: string, value: string) => void;
   onSave: () => void;
@@ -1286,14 +1288,13 @@ function DataEditor({
           <strong>{sourceName(file.path)}</strong>
           {dirty && <span className="tab-dirty">●</span>}
         </div>
-        <div className="view-tabs" role="tablist">
-          <button className={editor.view === "grid" ? "selected" : ""} type="button" onClick={() => onSwitchView("grid")}>Data</button>
-          <button className={editor.view === "diff" ? "selected" : ""} type="button" onClick={() => onSwitchView("diff")}>Diff</button>
-          {editor.conflict && <button className={editor.view === "compare" ? "selected conflict" : "conflict"} type="button" onClick={() => onSwitchView("compare")}>Conflict</button>}
-        </div>
+        <Tabs className="view-tabs" size="small" activeKey={editor.view}
+          onChange={(key) => onSwitchView(key as EditorState["view"])}
+          items={[{ key: "grid", label: "Data" }, { key: "diff", label: "Diff" },
+            ...(editor.conflict ? [{ key: "compare", label: "Conflict" }] : [])]} />
         <div className="editor-actions">
           <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
-          <button type="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</button>
+          <Button htmlType="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
         </div>
       </header>
 
@@ -1304,8 +1305,8 @@ function DataEditor({
             <span>Local changes are preserved. Recheck the workspace source before continuing recovery.</span>
           </div>
           <div>
-            <button type="button" onClick={onRecheckSource}>Recheck Source</button>
-            {editor.saveStatus === "failure" && <button type="button" onClick={onSave}>Retry Save</button>}
+            <Button htmlType="button" onClick={onRecheckSource}>Recheck Source</Button>
+            {editor.saveStatus === "failure" && <Button htmlType="button" onClick={onSave}>Retry Save</Button>}
           </div>
         </div>
       )}
@@ -1317,9 +1318,9 @@ function DataEditor({
             <span>Your unsaved buffer is preserved. Normal Save will not overwrite the external version.</span>
           </div>
           <div>
-            <button type="button" onClick={() => onSwitchView("compare")}>Compare</button>
-            <button type="button" onClick={onReloadConflict}>Reload</button>
-            <button className="danger" type="button" onClick={onOverwriteConflict}>Overwrite</button>
+            <Button htmlType="button" onClick={() => onSwitchView("compare")}>Compare</Button>
+            <Button htmlType="button" onClick={onReloadConflict}>Reload</Button>
+            <Button danger htmlType="button" onClick={onOverwriteConflict}>Overwrite</Button>
           </div>
         </div>
       )}
@@ -1350,12 +1351,14 @@ function DataEditor({
                     const value = currentCellText(editor, row.recordIndex, column.name);
                     const key = cellKey(row.recordIndex, column.name);
                     const hasDiagnostic = diagnostics.some((diagnostic) =>
+                      diagnostic.source != null &&
+                      normalizePath(diagnostic.source) === normalizePath(`${projectRoot}/${file.path}`) &&
                       diagnosticRecordIndex(diagnostic) === row.recordIndex && diagnosticField(diagnostic) === column.name);
                     const changed = key in editor.edits;
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""}`}>
                         <div className="cell-wrap">
-                          <input
+                          <Input
                             data-cell={key}
                             aria-label={`record ${row.recordIndex + 1} ${column.name}`}
                             value={value}
@@ -1506,16 +1509,14 @@ function SourcePlaceholder({ file }: { file: WorkspaceSourceFile }) {
 }
 
 function EmptyEditor({ title, copy }: { title: string; copy: string }) {
-  return <section className="empty-editor"><div className="empty-symbol">▦</div><h2>{title}</h2><p>{copy}</p></section>;
+  return <section className="empty-editor"><Empty description={<><h2>{title}</h2><p>{copy}</p></>} /></section>;
 }
 
 function DiagnosticBanner({ diagnostic }: { diagnostic: Diagnostic }) {
   return (
-    <div className="diagnostic-banner">
-      <strong>{diagnostic.code}</strong>
-      <span>{diagnostic.message}</span>
-      {diagnostic.suggestion && <small>{diagnostic.suggestion}</small>}
-    </div>
+    <Alert className="diagnostic-banner" type="error" showIcon
+      title={diagnostic.code}
+      description={<>{diagnostic.message}{diagnostic.suggestion && <p>{diagnostic.suggestion}</p>}</>} />
   );
 }
 

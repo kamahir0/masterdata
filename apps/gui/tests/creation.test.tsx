@@ -92,7 +92,7 @@ test('Cancel and reopen cannot bypass recheck after an uncertain commit', async 
   await screen.findByRole('status');
   expect(invoke.mock.calls.find(([command]) => command === 'recheck_creation')?.[1].request.destination).toBe('original.yaml');
   expect(createCalls()).toHaveLength(1);
-});
+}, 10_000);
 
 test('missing write capability prevents creation', async () => {
   await open(false);

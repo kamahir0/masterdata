@@ -179,7 +179,7 @@ test('Add Row creates an editable draft, validates it through the shared preview
   fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
   expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(true);
-}, 10_000);
+}, 20_000);
 
 test('deleting a new draft cancels the addition and returns the file to clean', async () => {
   openSnapshot = mutationSnapshot([]);

@@ -9,63 +9,56 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 ## Objective
 
-現在のHuman priorityは、**GUIのWorkspace Explorerから新しいsource artifactを安全に作成し、YAMLを手書きせずにProjectを組み立て始められる体験を完成させる**ことである。
+現在のHuman priorityは、**GUIのData Editorからrecordを追加・削除し、Source Creationで作ったempty Data documentをYAML手編集なしで実用的なrecord authoringへ進められる体験を完成させる**ことである。
 
-既存record authoring Objectiveはcandidate `44a840c343bd0c560cf1963bcdefb31d4a20a54d`のfinal verificationでBlockingなしとなり、2026-09-11に`objective-complete`へ到達した。その後Humanが「次に進む」と指示したため、直前に第一候補として提示していたExplorerからのsource artifact creationを次priorityとして選択する。
+Source Artifact Creation Objectiveはcandidate `f54bc545494cc40c014825fe64dc1d580edcbf34`のfinal verificationでBlockingなしとなり、2026-09-12に`objective-complete`へ到達した。その後Humanが次priorityとして第一推薦のData Editor record追加・削除を「進める」と選択したため、本Objectiveをcurrent priorityとする。
 
-初期creation sliceでは、Workspace上のfolderと、現在Approvedなdomain contractで完全な初期形を定義できる次のsource artifactを対象とする。
-
-- Table schema document
-- record Data document
-- Value Object
-- Normal Enum / Flags Enum
-- Custom Type
-
-Table作成は名前だけの不完全なschema fileを置くoperationにはせず、field declarationとPrimary Keyを含むvalidな初期schemaをguided inputから作成する。Data documentは既存Tableを選択してempty `records`から開始する。Value Object / Enum / Flags / Custom Typeは各Approved Type System仕様に従うcomplete declarationを作成する。
+既存[Source Record Edit](specs/source-edit.md)は既存record member value変更だけを所有し、record追加・削除を明示的にnon-scopeとしている。そのauthorityを黙って拡張せず、record structure mutationのsource-preserving semanticsは新しいspecificationで所有する。GUI interactionも既存Approved Data Editor contractを変更せず、別lifecycleのrecord-mutation specificationとして定義する。
 
 Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
 
-2026-09-11に、shared creation operationを所有する[Source Artifact Creation](specs/source-creation.md)と、Explorerからのguided flowを所有する[GUI Source Creation](gui/source-creation/spec.md)をHumanが承認し、両方とも`Status: Approved`となった。既存Approved仕様とのauthority重複、scope侵食、未解決Open Questionはself-reviewで確認されておらず、initial sliceに必要なobservable behavior、failure semantics、non-scopeをApproved authorityから安全に決定できるため、Current Objectiveはimplementation-readyである。
-
 ## Why now
 
-現在のGUIは既存Data documentをExplorerから開き、編集・validation・Diff・file Save・external conflict recoveryまで実行できる。一方で、新しいTable、Data file、type declarationをGUIから作れないため、新規Projectや新しいmaster-data領域を始めるには依然としてYAMLの手書きが必要である。
+現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags / Custom Typeを新規作成でき、既存Data documentではRequired Primitive non-key fieldを編集・validation・Diff・file Saveできる。一方、新規Data documentはempty `records`から開始するため、最初のrecordをGUIで追加する手段がなく、creation直後にYAML手編集へ戻る断点が残っている。
 
-Product VisionはYAMLをcanonical Source of Truthに保ちながらtable / column-oriented GUIとschema-aware authoringを提供する方向を持つ。既存record編集の安全なsource write基盤が整った今、次にcreation boundaryをshared application semanticsへ接続することで、既存file編集からProject authoringへ体験を拡張する。
+最初のrecord追加・既存record削除をfile単位dirty / Save、source-preserving patch、lost-update recoveryへ統合することで、Project作成から基本的なrecord authoringまでGUIだけで連続して行える範囲を拡張する。
 
 ## Completion boundary
 
-- Workspace Explorerのsource root / folderから、keyboardでも到達可能な`New` actionを実行できるようにする。
-- configured source root内に新しいfolderを作成できるようにする。folder pathをTable / type等のdomain identityとして扱わない。
-- Table schema作成では、Table identity、optional `csharpName`、1個以上のfield、MessagePack `key`、field type / modifier、exactly one Primary Key、およびoptional Secondary Keyをguided inputで指定し、Approved Table / Key / Type System仕様に従うvalidな初期schema documentを作成できるようにする。
-- Data document作成では既存Table identityとdestinationを選び、`kind: data` / `table` / empty `records`を持つvalidな初期documentを作成できるようにする。
-- Value Object作成ではname、key-compatible primitive underlying、およびsupported conversion optionを指定してvalidなtype documentを作成できるようにする。
-- Normal Enum / Flags Enum作成ではname、underlying、memberを指定し、各Approved Enum / Flags ruleを満たすvalidなtype documentを作成できるようにする。
-- Custom Type作成ではnameと1個以上のfieldを指定し、Approved Custom Type / Field Modifier / MessagePack key ruleを満たすvalidなtype documentを作成できるようにする。
-- YAML rendering、document semantics、name/type/key validation、identity collision判定をfrontendへ複製せず、shared core/application boundaryへ委譲する。
-- source fileは`.yaml`または`.yml`としてconfigured source root内へ作成し、path traversal / unsafe symlink等でworkspace外を書き換えない。
-- target file / folderが既に存在する場合は上書きせず、creation conflictとして入力を保持したままrecoveryできるようにする。
-- ordinary create failureで既存sourceを変更せず、partialなdestinationを成功扱いしない。write outcomeを確定できない場合は自動retry / overwriteせず、workspaceを再確認してから次のmutationへ進む。
-- Create成功後はExplorerを更新し、作成itemを選択・表示する。既存dirty bufferを暗黙Saveまたは破棄しない。
-- workspace write capabilityがないhostではCreate actionを実行可能として扱わない。
-- focused domain/application tests、React操作test、repository required checks、final verificationでBlockingがないことを確認する。
+- 選択中Data documentのTableが、全fieldをRequired Primitiveとして宣言している場合、Data Editorから`Add Row`を実行し、selected source fileの末尾へ新しいrecord draftを追加できるようにする。
+- 新規record draftはschema declaration orderの全fieldを持ち、初回Save前はPrimary / Secondary Key構成fieldを含む全fieldをlosslessなtext入力で編集できるようにする。`long` / `ulong`をfrontendのlossy numeric representationへ変換しない。
+- Add Row自体をfile-local dirty mutationとして扱い、validation errorをSave gateにしない。新規draftのdomain-invalid valueもshared validationでdiagnosticを返し、Source of Truthへ保存するかどうかは既存explicit Save workflowに従う。
+- TableにNullable / Array / Enum / Flags / Value Object / Custom Type等、初期row input scope外のfieldが含まれる場合、Add Rowを実行可能として誤表示せず、未対応理由を確認できるようにする。既存recordの表示・既存対応fieldの編集・record削除まで無効化してはならない。
+- 既存recordはPrimary Key valueではなく、base snapshot内の選択source occurrenceを対象としてDeleteできるようにする。同一PK valueを持つ別recordを誤って削除しない。
+- 既存recordをDeleteした時点では即時disk mutationせず、そのfileのlocal bufferで`Pending delete`として識別でき、Save前にUndoできるようにする。削除対象recordの既存local cell editsはDelete中も復元可能なbuffer stateとして保持する。
+- 新規record draftをSave前にDeleteした場合は、そのadditionをcancelし、他の変更がなければfileをcleanへ戻せるようにする。
+- 同一file内の既存cell edit、record addition、record deletionを1つのSave candidateへcompositionし、1回のfile Saveでcommitする。削除対象recordへのvalue editとDeleteが共存する場合はDeleteが最終candidateを所有し、Undo時にはDelete前のlocal edit stateを復元する。
+- Addはselected source fileの`records`末尾へdeterministicに挿入し、Deleteはselected source occurrenceだけを除去する。対象構造変更と無関係なcomments、blank lines、line ending、quote / indentation、record/member order、その他source textを保持する。
+- GUI Source Creationが生成するempty `records: []`をAdd Rowで安全にblock sequenceへ展開できるようにする。source shapeを安全に再特定できない場合はfull-file reserializationや近似patchへfallbackせず失敗する。
+- structure mutation後もbuffer validation、Problems、Diffは現在のlocal Save candidateを対象とし、stale previewをcurrent resultとして表示しない。
+- Save / Save All、external modification、Conflict Compare / Reload / Overwrite、Failure / Outcome Unknown recovery、dirty lifecycle、Buildは保存済みsourceのみという既存Data Editor contractをrecord structure mutationにも適用する。
+- record addition / deletionはBuild、Publish、Git、schema Migration、generated artifact更新を暗黙に開始しない。
+- source patch derivation、record value conversion、schema/validation semanticsをfrontendへ複製せず、shared core/application boundaryへ置く。
+- focused core/application tests、React状態遷移test、repository required checks、final verificationでBlockingがないことを確認する。
 
 ## Explicit non-scope
 
 現Objectiveでは次を含めない。
 
-- 既存source file / folderのrename、delete、move、duplicate。
-- Data documentへのrecord追加・削除。新規Data documentはempty `records`から開始する。
-- 作成後のTable schema / Value Object / Enum / Flags / Custom Typeを編集する専用typed editor。初期definitionはcreation flowで確定する。
-- Table schemaとData document等、複数artifactを1回のtransactionで同時作成するwizard。
-- Reference declarationなど、canonical ownerがまだDraftのdomain featureをcreation formで先取りすること。
-- template marketplace、import / copy from external file、Git stage / commit / push。
-- Standalone / Connected Web全体、Native Host lifecycle、distributionの同時完成。
-- Programmable View / Computed Column / Annotation Column、Table横断view、高度なspreadsheet操作。
+- Nullable / Array / Enum / Flags / Value Object / Custom Typeを含むTableへの新規record input UI。
+- `$tags`の追加・編集。
+- record duplicate、record move / reorder、drag & drop、複数record一括追加・一括削除。
+- spreadsheet range selection、一括paste、fill handle、履歴付きgeneral Undo/Redo。Pending deleteに対する局所Undoは本Objectiveに含む。
+- Table横断aggregate view、複数Data fileを1つのgridとして編集すること。
+- schema / type / field / keyの追加・削除・rename・編集。
+- source file / folderのrename、delete、move、duplicate。
+- multi-file atomic transaction。
+- Programmable View / Computed Column / Annotation Column。
+- Build Profile / Publish、Standalone / Connected Web全体、Native Host lifecycle、distributionの同時完成。
 
 ## Next candidate
 
-このObjective完了後は、Data Editorのrecord追加・削除、Table / Type専用editor、rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
+このObjective完了後は、Table / Type専用editor、complex fieldを含むrecord追加、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
 
 次priorityは自動昇格せず、current realityとproduct valueを確認してHumanが選択する。
 
@@ -75,18 +68,14 @@ Product VisionはYAMLをcanonical Source of Truthに保ちながらtable / colum
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)
-- [GUI Source Creation（Approved）](gui/source-creation/spec.md)
-- [Source Artifact Creation（Approved）](specs/source-creation.md)
-- [Project layout and discovery](specs/project-layout.md)
+- [Data Editor](gui/data-editor/spec.md) — existing-record GUI authority
+- [Source Record Edit](specs/source-edit.md) — existing-member editとfile Save safetyのauthority
+- [Source Artifact Creation](specs/source-creation.md) — empty Data document creationのauthority
 - [Masterdata YAML subset](specs/yaml-subset.md)
 - [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
 - [Primitive Types](specs/type-system/primitives.md)
 - [Field Modifiers](specs/type-system/field-modifiers.md)
-- [Value Objects](specs/type-system/value-objects.md)
-- [Enum / Flags](specs/type-system/enums.md)
-- [Custom Types](specs/type-system/custom-types.md)
 - [Runtime hosts / capability](specs/runtime-hosts.md)
-- [Source Record Edit](specs/source-edit.md) — source write safetyの既存evidence。creation operationのauthorityではない。
 - [YAML Source of Truth ADR](adr/0001-yaml-is-source-of-truth.md)
 - [shared core ADR](adr/0002-rust-core-shared-by-cli-and-gui.md)
 - [host capability ADR](adr/0006-host-capability-composition.md)

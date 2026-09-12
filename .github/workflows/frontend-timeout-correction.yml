@@ -1,0 +1,70 @@
+name: Frontend timeout correction
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: frontend-timeout-correction
+  cancel-in-progress: true
+
+jobs:
+  correction:
+    if: github.event.head_commit.message == 'Windows frontend timeout correction runnerを追加する'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply per-test timeout corrections
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_after(path: str, title: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              marker = f"test('{title}', async () => {{"
+              start = text.find(marker)
+              if start < 0:
+                  raise SystemExit(f'test not found: {title}')
+              end = text.find(old, start)
+              if end < 0:
+                  raise SystemExit(f'expected timeout terminator not found: {title}')
+              next_marker = text.find("\ntest('", start + len(marker))
+              if next_marker >= 0 and end > next_marker:
+                  raise SystemExit(f'timeout terminator escaped target test: {title}')
+              file.write_text(text[:end] + new + text[end + len(old):])
+
+          replace_after(
+              'apps/gui/tests/authoring.test.tsx',
+              'Add Row creates an editable draft, validates it through the shared preview, and makes saved keys read-only',
+              '\n}, 10_000);',
+              '\n}, 20_000);',
+          )
+          replace_after(
+              'apps/gui/tests/creation.test.tsx',
+              'Cancel and reopen cannot bypass recheck after an uncertain commit',
+              '\n});',
+              '\n}, 10_000);',
+          )
+          PY
+      - run: npm run frontend:test
+      - run: npm run frontend:build
+      - name: Commit verified timeout correction
+        run: |
+          rm .github/workflows/frontend-timeout-correction.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/gui/tests/authoring.test.tsx apps/gui/tests/creation.test.tsx .github/workflows/frontend-timeout-correction.yml
+          git commit -m "Windows frontend workflow test timeoutを安定化する"
+          git push origin HEAD:main

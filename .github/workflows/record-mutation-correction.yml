@@ -1,0 +1,97 @@
+name: Record mutation correction
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: record-mutation-correction
+  cancel-in-progress: true
+
+jobs:
+  correction:
+    if: github.event.head_commit.message == 'record mutation correction runnerを追加する'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply narrow verification corrections
+        shell: python
+        run: |
+          from pathlib import Path
+
+          app_path = Path('apps/gui/src/App.tsx')
+          app = app_path.read_text()
+          before = '''              edits: preview.changed ? latest.edits : {},
+              preview,
+'''
+          after = '''              edits: preview.changed ? latest.edits : {},
+              addedRecords: preview.changed ? latest.addedRecords : [],
+              pendingDeletes: preview.changed ? latest.pendingDeletes : [],
+              preview,
+'''
+          if app.count(before) != 1:
+              raise SystemExit(f'expected one preview normalization site, found {app.count(before)}')
+          app_path.write_text(app.replace(before, after))
+
+          test_path = Path('apps/gui/tests/authoring.test.tsx')
+          tests = test_path.read_text()
+
+          def add_timeout(title: str) -> None:
+              global tests
+              marker = f"test('{title}', async () => {{"
+              start = tests.find(marker)
+              if start < 0:
+                  raise SystemExit(f'test not found: {title}')
+              end = tests.find('\n});', start)
+              if end < 0:
+                  raise SystemExit(f'test end not found: {title}')
+              tests = tests[:end] + '\n}, 10_000);' + tests[end + len('\n});'):]
+
+          add_timeout('Add Row creates an editable draft, validates it through the shared preview, and makes saved keys read-only')
+          add_timeout('deleting a new draft cancels the addition and returns the file to clean')
+          add_timeout('structural mutation state survives Failure, Conflict, and Outcome Unknown recovery')
+
+          insertion_marker = "test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {"
+          regression = '''test('shared no-op preview normalizes structural mutation state back to clean', async () => {
+  openSnapshot = mutationSnapshot();
+  preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete record 1', exact: true }));
+  expect(screen.getByText('Pending delete')).toBeTruthy();
+  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+  expect(screen.queryByText('Pending delete')).toBeNull();
+  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).readOnly).toBe(false);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add Row', exact: true }));
+  expect(await screen.findByRole('textbox', { name: 'new record id' })).toBeTruthy();
+  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+  expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull();
+}, 10_000);
+
+'''
+          if insertion_marker not in tests:
+              raise SystemExit('regression insertion marker not found')
+          tests = tests.replace(insertion_marker, regression + insertion_marker, 1)
+          test_path.write_text(tests)
+      - run: npm run frontend:test
+      - run: npm run frontend:build
+      - name: Commit verified correction
+        run: |
+          rm .github/workflows/record-mutation-correction.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/gui/src/App.tsx apps/gui/tests/authoring.test.tsx .github/workflows/record-mutation-correction.yml
+          git commit -m "record mutation final verification findingsを修正する"
+          git push origin HEAD:main

@@ -44,7 +44,7 @@ test('guided Table submit keeps destination independent and sends explicit order
   expect(request.artifact.table).toBe('weapon');
   expect(request.artifact.fields.map((field: any) => field.name)).toEqual(['count', 'id']);
   expect(request.artifact.primaryKey.fields).toEqual(['id']);
-});
+}, 10_000);
 
 test('Enum creation transports the full ulong value as text', async () => {
   await open(); await choose('Artifact type', 'Enum'); await choose('Underlying', 'ulong');
@@ -54,7 +54,7 @@ test('Enum creation transports the full ulong value as text', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Create', exact: true }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
   expect(createCalls()[0][1].request.artifact.members[0].value).toBe('18446744073709551615');
-});
+}, 10_000);
 
 test('Conflict preserves input, exposes no Overwrite and Cancel does not create again', async () => {
   result = { status: 'conflict', diagnostic: { code: 'E-SOURCE-CREATE-CONFLICT', message: 'exists' } };

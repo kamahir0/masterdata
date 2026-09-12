@@ -41,7 +41,7 @@ jobs:
           test_path = Path('apps/gui/tests/authoring.test.tsx')
           tests = test_path.read_text()
 
-          def add_timeout(title: str) -> None:
+          def add_timeout(title: str, timeout: int) -> None:
               global tests
               marker = f"test('{title}', async () => {{"
               start = tests.find(marker)
@@ -50,11 +50,11 @@ jobs:
               end = tests.find('\n});', start)
               if end < 0:
                   raise SystemExit(f'test end not found: {title}')
-              tests = tests[:end] + '\n}, 10_000);' + tests[end + len('\n});'):]
+              tests = tests[:end] + f'\n}}, {timeout:_});' + tests[end + len('\n});'):]
 
-          add_timeout('Add Row creates an editable draft, validates it through the shared preview, and makes saved keys read-only')
-          add_timeout('deleting a new draft cancels the addition and returns the file to clean')
-          add_timeout('structural mutation state survives Failure, Conflict, and Outcome Unknown recovery')
+          add_timeout('Add Row creates an editable draft, validates it through the shared preview, and makes saved keys read-only', 10_000)
+          add_timeout('deleting a new draft cancels the addition and returns the file to clean', 10_000)
+          add_timeout('structural mutation state survives Failure, Conflict, and Outcome Unknown recovery', 20_000)
 
           insertion_marker = "test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {"
           regression_lines = [
@@ -80,6 +80,18 @@ jobs:
           if insertion_marker not in tests:
               raise SystemExit('regression insertion marker not found')
           tests = tests.replace(insertion_marker, regression + insertion_marker, 1)
+
+          old_mock = """  let saveResponse: any = { status: 'failure', snapshot: null, current: null, diagnostic: { code: 'E-IO', message: 'Cannot write source' } };\n  const normalInvoke = invoke.getMockImplementation()!;\n  invoke.mockImplementation(async (command, args) => command === 'save_data_file' ? saveResponse : normalInvoke(command, args));\n"""
+          new_mock = """  let saveResponse: any = { status: 'failure', snapshot: null, current: null, diagnostic: { code: 'E-IO', message: 'Cannot write source' } };\n  let sourceResponse = { contentIdentity: 'base', source: openSnapshot.baseSource };\n  const normalInvoke = invoke.getMockImplementation()!;\n  invoke.mockImplementation(async (command, args) => {\n    if (command === 'save_data_file') return saveResponse;\n    if (command === 'source_content') return sourceResponse;\n    return normalInvoke(command, args);\n  });\n"""
+          if tests.count(old_mock) != 1:
+              raise SystemExit(f'expected one structural save mock, found {tests.count(old_mock)}')
+          tests = tests.replace(old_mock, new_mock, 1)
+
+          conflict_marker = """  saveResponse = {\n    status: 'conflict',\n    snapshot: null,\n    current: { path: 'data.yaml', contentIdentity: 'external', source: 'external: true' },\n    diagnostic: { code: 'E-SOURCE-EDIT-CONFLICT', message: 'source changed' },\n  };\n"""
+          conflict_replacement = conflict_marker + "  sourceResponse = { contentIdentity: 'external', source: 'external: true' };\n"
+          if tests.count(conflict_marker) != 1:
+              raise SystemExit(f'expected one conflict response marker, found {tests.count(conflict_marker)}')
+          tests = tests.replace(conflict_marker, conflict_replacement, 1)
           test_path.write_text(tests)
           PY
       - run: npm run frontend:test

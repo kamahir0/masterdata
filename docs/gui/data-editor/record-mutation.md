@@ -1,6 +1,6 @@
 # GUI仕様: Data Editor Record Mutation
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 

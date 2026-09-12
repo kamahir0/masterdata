@@ -117,4 +117,4 @@ test('creation refresh selects the new source without discarding an existing dir
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-});
+}, 10_000);

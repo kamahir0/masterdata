@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   correction:
-    if: github.event.head_commit.message == 'record mutation correction runnerを追加する'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -26,20 +26,14 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply narrow verification corrections
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           app_path = Path('apps/gui/src/App.tsx')
           app = app_path.read_text()
-          before = '''              edits: preview.changed ? latest.edits : {},
-              preview,
-'''
-          after = '''              edits: preview.changed ? latest.edits : {},
-              addedRecords: preview.changed ? latest.addedRecords : [],
-              pendingDeletes: preview.changed ? latest.pendingDeletes : [],
-              preview,
-'''
+          before = "              edits: preview.changed ? latest.edits : {},\n              preview,\n"
+          after = "              edits: preview.changed ? latest.edits : {},\n              addedRecords: preview.changed ? latest.addedRecords : [],\n              pendingDeletes: preview.changed ? latest.pendingDeletes : [],\n              preview,\n"
           if app.count(before) != 1:
               raise SystemExit(f'expected one preview normalization site, found {app.count(before)}')
           app_path.write_text(app.replace(before, after))
@@ -63,28 +57,31 @@ jobs:
           add_timeout('structural mutation state survives Failure, Conflict, and Outcome Unknown recovery')
 
           insertion_marker = "test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {"
-          regression = '''test('shared no-op preview normalizes structural mutation state back to clean', async () => {
-  openSnapshot = mutationSnapshot();
-  preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
-  render(<App />);
-
-  fireEvent.click(await screen.findByRole('button', { name: 'Delete record 1', exact: true }));
-  expect(screen.getByText('Pending delete')).toBeTruthy();
-  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
-  expect(screen.queryByText('Pending delete')).toBeNull();
-  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).readOnly).toBe(false);
-
-  fireEvent.click(screen.getByRole('button', { name: 'Add Row', exact: true }));
-  expect(await screen.findByRole('textbox', { name: 'new record id' })).toBeTruthy();
-  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
-  expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull();
-}, 10_000);
-
-'''
+          regression_lines = [
+              "test('shared no-op preview normalizes structural mutation state back to clean', async () => {",
+              "  openSnapshot = mutationSnapshot();",
+              "  preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });",
+              "  render(<App />);",
+              "",
+              "  fireEvent.click(await screen.findByRole('button', { name: 'Delete record 1', exact: true }));",
+              "  expect(screen.getByText('Pending delete')).toBeTruthy();",
+              "  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());",
+              "  expect(screen.queryByText('Pending delete')).toBeNull();",
+              "  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).readOnly).toBe(false);",
+              "",
+              "  fireEvent.click(screen.getByRole('button', { name: 'Add Row', exact: true }));",
+              "  expect(await screen.findByRole('textbox', { name: 'new record id' })).toBeTruthy();",
+              "  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());",
+              "  expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull();",
+              "}, 10_000);",
+              "",
+          ]
+          regression = '\n'.join(regression_lines) + '\n'
           if insertion_marker not in tests:
               raise SystemExit('regression insertion marker not found')
           tests = tests.replace(insertion_marker, regression + insertion_marker, 1)
           test_path.write_text(tests)
+          PY
       - run: npm run frontend:test
       - run: npm run frontend:build
       - name: Commit verified correction

@@ -1,12 +1,12 @@
 # 仕様変更: Added record draftのkey field editability
 
-Status: Proposed
+Status: Applied
 
 ## Affected Specifications
 
 - `docs/gui/data-editor/spec.md` — `Status: Approved`
   - `GUI-DATA-STATE-001`
-- Related new proposal: `docs/gui/data-editor/record-mutation.md` — `Status: Proposed`
+- Related new specification: `docs/gui/data-editor/record-mutation.md` — `Status: Approved`
 
 ## 根拠と分類（Source Evidence and Classification）
 
@@ -39,15 +39,17 @@ Canonical wording適用時は、`GUI-DATA-STATE-001`のRequirement IDを維持�
 - Added record draftをSaveした後、同じrowのkey fieldがexisting-record scopeとしてread-onlyになることを状態遷移testで確認する。
 - shared domain/application boundaryではexisting-record `RecordValueEdit`とnew-record draft mutationを区別し、existing key editへfallbackしない。
 
-本proposalは`Applied`になるまでimplementation authorityではない。
-
 ## 未解決事項（Open Questions）
 
 None.
 
 ## レビュー（Review）
 
-Self-review: proposed deltaはexisting key mutationを許可せず、新しいrecordの初回definitionに必要な入力だけを明示的に分離する。`docs/gui/data-editor/record-mutation.md`のProposed requirementsと整合し、`GUI-DATA-STATE-001`以外のApproved Data Editor behaviorを変更しない。
+Self-review: proposed deltaはexisting key mutationを許可せず、新しいrecordの初回definitionに必要な入力だけを明示的に分離する。`docs/gui/data-editor/record-mutation.md`のrequirementsと整合し、`GUI-DATA-STATE-001`以外のApproved Data Editor behaviorを変更しない。
+
+Human approval後、`docs/gui/data-editor/spec.md`の`GUI-DATA-STATE-001`へdeltaを適用した。canonical requirement IDは維持し、existing recordのread-only key behaviorも維持した。
 
 ## 承認記録（Approval Record）
 
+- Human approval: 2026-09-12
+- Canonical application commit: `4e36a20c79b3bc570885bfded674313707d5bd99`

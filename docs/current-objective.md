@@ -13,9 +13,13 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 Source Artifact Creation Objectiveはcandidate `f54bc545494cc40c014825fe64dc1d580edcbf34`のfinal verificationでBlockingなしとなり、2026-09-12に`objective-complete`へ到達した。その後Humanが次priorityとして第一推薦のData Editor record追加・削除を「進める」と選択したため、本Objectiveをcurrent priorityとする。
 
-既存[Source Record Edit](specs/source-edit.md)は既存record member value変更だけを所有し、record追加・削除を明示的にnon-scopeとしている。そのauthorityを黙って拡張せず、record structure mutationのsource-preserving semanticsは新しいspecificationで所有する。GUI interactionも既存Approved Data Editor contractを変更せず、別lifecycleのrecord-mutation specificationとして定義する。
+既存[Source Record Edit](specs/source-edit.md)は既存record member value変更だけを所有し、record追加・削除を明示的にnon-scopeとしている。そのauthorityを黙って拡張せず、record structure mutationのsource-preserving semanticsは新しい[Source Record Mutation proposal](specs/source-record-mutation.md)で所有する。GUI interactionも新しい[Data Editor Record Mutation proposal](gui/data-editor/record-mutation.md)へ分離する。
+
+Added record draftで初回値としてkey fieldを入力できるようにするには、既存Approved `GUI-DATA-STATE-001`のapplicability boundaryを明確化する必要があるため、[spec change 0013](spec-changes/0013-data-editor-added-record-key-editability.md)をProposedとして作成した。existing recordのkey fieldは引き続きread-onlyであり、new draftだけを初回Save前の例外とする。
 
 Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
+
+2026-09-12時点で上記2つの新規specificationとspec change 0013は`Status: Proposed`である。self-reviewでは既存Approved authorityとの未処理conflict、Open Question、実装不能なsemantic gapは残っていない。implementation authorityにするにはHuman Approvalと、0013のcanonical Data Editor specificationへの適用が必要である。
 
 ## Why now
 
@@ -69,7 +73,10 @@ Humanが既に選択した方針どおり、使い勝手・データ安全性・
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)
 - [Data Editor](gui/data-editor/spec.md) — existing-record GUI authority
+- [Data Editor Record Mutation proposal](gui/data-editor/record-mutation.md) — `Status: Proposed`
 - [Source Record Edit](specs/source-edit.md) — existing-member editとfile Save safetyのauthority
+- [Source Record Mutation proposal](specs/source-record-mutation.md) — `Status: Proposed`
+- [Spec change 0013: Added record draft key editability](spec-changes/0013-data-editor-added-record-key-editability.md) — `Status: Proposed`
 - [Source Artifact Creation](specs/source-creation.md) — empty Data document creationのauthority
 - [Masterdata YAML subset](specs/yaml-subset.md)
 - [Table / Primary Key / Secondary Key](specs/table-and-keys.md)

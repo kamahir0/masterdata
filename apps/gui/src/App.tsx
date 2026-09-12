@@ -521,6 +521,8 @@ function App() {
             [path]: {
               ...latest,
               edits: preview.changed ? latest.edits : {},
+              addedRecords: preview.changed ? latest.addedRecords : [],
+              pendingDeletes: preview.changed ? latest.pendingDeletes : [],
               preview,
               previewState: "current",
               previewError: null,

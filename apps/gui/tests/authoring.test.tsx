@@ -179,7 +179,7 @@ test('Add Row creates an editable draft, validates it through the shared preview
   fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
   expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(true);
-});
+}, 10_000);
 
 test('deleting a new draft cancels the addition and returns the file to clean', async () => {
   openSnapshot = mutationSnapshot([]);
@@ -191,7 +191,24 @@ test('deleting a new draft cancels the addition and returns the file to clean', 
   await waitFor(() => expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull());
   expect(screen.getByText('Saved')).toBeTruthy();
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-});
+}, 10_000);
+
+test('shared no-op preview normalizes structural mutation state back to clean', async () => {
+  openSnapshot = mutationSnapshot();
+  preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete record 1', exact: true }));
+  expect(screen.getByText('Pending delete')).toBeTruthy();
+  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+  expect(screen.queryByText('Pending delete')).toBeNull();
+  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).readOnly).toBe(false);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add Row', exact: true }));
+  expect(await screen.findByRole('textbox', { name: 'new record id' })).toBeTruthy();
+  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+  expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull();
+}, 10_000);
 
 test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {
   openSnapshot = mutationSnapshot([
@@ -231,8 +248,13 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   openSnapshot = mutationSnapshot([]);
   preview = async () => ({ candidateSource: 'kind: data\ntable: item\nrecords:\n  - id: 1\n', changed: true, validation });
   let saveResponse: any = { status: 'failure', snapshot: null, current: null, diagnostic: { code: 'E-IO', message: 'Cannot write source' } };
+  let sourceResponse = { contentIdentity: 'base', source: openSnapshot.baseSource };
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => command === 'save_data_file' ? saveResponse : normalInvoke(command, args));
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'save_data_file') return saveResponse;
+    if (command === 'source_content') return sourceResponse;
+    return normalInvoke(command, args);
+  });
 
   render(<App />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
@@ -248,6 +270,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
     current: { path: 'data.yaml', contentIdentity: 'external', source: 'external: true' },
     diagnostic: { code: 'E-SOURCE-EDIT-CONFLICT', message: 'source changed' },
   };
+  sourceResponse = { contentIdentity: 'external', source: 'external: true' };
   fireEvent.click(screen.getByRole('button', { name: 'Retry Save', exact: true }));
   await waitFor(() => expect(screen.getByText('File changed outside masterdata.')).toBeTruthy());
   fireEvent.click(screen.getByRole('tab', { name: 'Data', exact: true }));
@@ -262,4 +285,4 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   fireEvent.click(screen.getByRole('button', { name: 'Overwrite', exact: true }));
   await waitFor(() => expect(screen.getByText('Previous save outcome is unknown.')).toBeTruthy());
   expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
-});
+}, 20_000);

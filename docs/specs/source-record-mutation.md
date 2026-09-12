@@ -1,6 +1,6 @@
 # Source Record Mutation仕様
 
-Status: Proposed
+Status: Approved
 
 Domain: Source Editing
 

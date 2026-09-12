@@ -34,7 +34,9 @@ source diffはmain gridとは別のfile単位`Diff` view / editorとして表示
 
 ### GUI-DATA-STATE-001
 
-初期sliceで編集可能なのはRequired Primitiveの非key fieldでなければならない（MUST）。Primary / Secondary Key構成field、Enum、Value Object、Nullable、Array、Custom Type等はread-onlyとして表示しなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
+base snapshotに存在するexisting recordの通常cell editで編集可能なのはRequired Primitiveの非key fieldでなければならない（MUST）。Primary / Secondary Key構成field、Enum、Value Object、Nullable、Array、Custom Type等はexisting recordではread-onlyとして表示しなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
+
+base snapshotに存在しないAdded record draftについては、別のApproved GUI specificationが初回Save前のediting scopeを定義してよい（MAY）。この例外からexisting recordのkey field editabilityを導出してはならない（MUST NOT）。Added record draftがSave成功して新しいbase snapshotのexisting recordになった後は、通常の本requirementのscopeへ戻らなければならない（MUST）。
 
 ### GUI-DATA-STATE-002
 

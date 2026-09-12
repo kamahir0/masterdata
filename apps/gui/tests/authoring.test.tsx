@@ -98,3 +98,23 @@ test('Ant Design Save All dialog preserves input when source commit fails', asyn
   expect((input as HTMLInputElement).value).toBe('20');
   expect(invoke.mock.calls.filter(([command]) => command === 'authoring_workspace')).toHaveLength(1);
 });
+
+test('creation refresh selects the new source without discarding an existing dirty buffer', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  let created = false;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: ['item'], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
+    if (command === 'create_source') { created = true; return { status: 'success', path: 'new.yaml', folder: false, diagnostic: null }; }
+    if (command === 'authoring_workspace' && created) return { ...workspace, files: [...workspace.files, { path: 'new.yaml', sourceRoot: '.', kind: 'schema' }] };
+    return normalInvoke(command, args);
+  });
+  const input = await open(); fireEvent.change(input, { target: { value: '20' } });
+  fireEvent.click(screen.getByRole('button', { name: 'New source artifact' }));
+  fireEvent.change(await screen.findByLabelText('Table identity'), { target: { value: 'weapon' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create', exact: true }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByRole('treeitem', { name: 'new.yaml', exact: true }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
+  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+});

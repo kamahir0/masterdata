@@ -302,3 +302,16 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 @media (prefers-reduced-motion: reduce) {
  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+.creation-form { max-height: 62vh; overflow: auto; padding: 4px 8px 12px 0; }
+.creation-destination { display: grid; grid-template-columns: 1fr 2fr; gap: 0 16px; }
+.creation-field { display: grid; grid-template-columns: 130px 1fr 1fr 130px auto; gap: 10px; align-items: end; }
+.creation-member, .creation-secondary { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
+.creation-secondary > .ant-select { flex: 1; }
+.creation-field .ant-input-number { width: 100%; }
+.creation-row-actions { flex-shrink: 0; }
+.creation-hint { color: var(--muted); font-size: 12px; }
+.creation-form h3 { margin-top: 20px; }
+.tree-folder[aria-selected="true"] { background: #2b2849; color: #e5dfff; }
+
+.creation-field > .creation-row-actions { margin-bottom: 24px; }

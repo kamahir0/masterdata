@@ -657,3 +657,30 @@ fn _format_note(note: &GenerationNote) -> String {
     let _ = write!(&mut text, "{}", note.message);
     text
 }
+
+/// Validate only the candidate's contribution to the generated name namespace.
+/// Existing unrelated invalid declarations must not gate source creation.
+pub fn validate_creation_names(
+    candidate: &masterdata_core::SourceDocument,
+    existing: &masterdata_core::ProjectDocuments,
+) -> Result<()> {
+    fn name(document: &masterdata_core::SourceDocument) -> Option<String> {
+        match document {
+            masterdata_core::SourceDocument::Schema(schema) => {
+                Some(masterdata_core::table_csharp_name(schema))
+            }
+            masterdata_core::SourceDocument::Type(ty) => Some(ty.name.clone()),
+            masterdata_core::SourceDocument::Data(_) => None,
+        }
+    }
+    let Some(candidate) = name(candidate) else {
+        return Ok(());
+    };
+    let mut names = existing
+        .files
+        .iter()
+        .filter_map(|file| name(&file.document))
+        .collect::<BTreeSet<_>>();
+    let mut filenames = names.iter().map(|name| name.to_ascii_lowercase()).collect();
+    insert_generated_name(&mut names, &mut filenames, &candidate)
+}

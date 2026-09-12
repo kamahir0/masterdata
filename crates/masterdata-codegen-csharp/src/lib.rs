@@ -10,4 +10,4 @@ mod model;
 mod render;
 
 pub use model::{CSharpGenerationPlan, GeneratedFile, GenerationNote};
-pub use render::CSharpGenerator;
+pub use render::{CSharpGenerator, validate_creation_names};

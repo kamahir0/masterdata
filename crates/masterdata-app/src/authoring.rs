@@ -39,7 +39,15 @@ pub struct AuthoringWorkspace {
     pub project: ProjectInfo,
     pub source_roots: Vec<String>,
     pub files: Vec<WorkspaceSourceFile>,
+    pub folders: Vec<WorkspaceFolder>,
     pub capabilities: AuthoringCapabilities,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceFolder {
+    pub path: String,
+    pub source_root: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -193,11 +201,32 @@ impl NativeApplicationService {
                 }),
             }
         }
+        let mut folders = Vec::new();
+        for root in &info.source_roots {
+            // Folder enumeration must preserve the existing read/discovery policy.
+            // Creation applies its stricter no-symlink mutation gate separately.
+            if !root.is_dir() {
+                continue;
+            }
+            let dir = cap_std::fs::Dir::open_ambient_dir(root, cap_std::ambient_authority())
+                .map_err(|error| io_authoring_error(root, error.to_string()))?;
+            let mut paths = Vec::new();
+            crate::creation::collect_folders(&dir, "", &mut paths)
+                .map_err(|error| io_authoring_error(root, error.to_string()))?;
+            for path in paths {
+                folders.push(WorkspaceFolder {
+                    path: project_relative_string(project.root(), &root.join(path)),
+                    source_root: project_relative_string(project.root(), root),
+                });
+            }
+        }
+        folders.sort_by(|a, b| a.path.cmp(&b.path));
         entries.sort_by(|left, right| left.path.cmp(&right.path));
         Ok(AuthoringWorkspace {
             project: info,
             source_roots,
             files: entries,
+            folders,
             capabilities: AuthoringCapabilities {
                 workspace_read: true,
                 workspace_write: true,
@@ -475,7 +504,7 @@ fn data_file_snapshot(
     })
 }
 
-fn load_authoring_documents(
+pub(super) fn load_authoring_documents(
     project: &Project,
     override_source: Option<(&Path, &str)>,
 ) -> masterdata_core::Result<(ProjectDocuments, Vec<Diagnostic>)> {
@@ -568,7 +597,7 @@ fn normalized_logical_path(path: &str) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("/"))
 }
 
-fn project_relative_string(root: &Path, path: &Path) -> String {
+pub(super) fn project_relative_string(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .components()

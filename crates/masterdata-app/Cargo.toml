@@ -6,6 +6,8 @@ license.workspace = true
 description = "Shared application workflows for the masterdata CLI and GUI"
 
 [dependencies]
+cap-fs-ext = "4"
+cap-std = "4"
 masterdata-codegen-csharp = { path = "../masterdata-codegen-csharp" }
 masterdata-core = { path = "../masterdata-core" }
 masterdata-dotnet = { path = "../masterdata-dotnet" }

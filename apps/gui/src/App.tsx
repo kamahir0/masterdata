@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Tabs } from "antd";
 import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
+import SourceCreation, { type CreationReport } from "./SourceCreation";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -65,6 +66,7 @@ type AuthoringWorkspace = {
   project: ProjectInfo;
   sourceRoots: string[];
   files: WorkspaceSourceFile[];
+  folders?: { path: string; sourceRoot: string }[];
   capabilities: AuthoringCapabilities;
 };
 
@@ -260,6 +262,10 @@ function diagnosticField(diagnostic: Diagnostic): string | null {
 }
 
 function App() {
+  const [creationOpen, setCreationOpen] = useState(false);
+  const [creationTarget, setCreationTarget] = useState({ root: "", folder: "" });
+  const [revealCreated, setRevealCreated] = useState<{ path: string; root: string } | null>(null);
+
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
     kind: "loading",
     previous: null,
@@ -378,6 +384,9 @@ function App() {
   const loadWorkspace = useCallback(async (requestedProject: string | null) => {
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
+    setCreationOpen(false);
+    setRevealCreated(null);
+    setCreationTarget({ root: "", folder: "" });
     for (const timer of previewTimers.current.values()) window.clearTimeout(timer);
     previewTimers.current.clear();
     setLoadingPaths(new Set());
@@ -834,6 +843,24 @@ function App() {
     }
   }, [selectFile, workspace]);
 
+  const refreshAfterCreation = useCallback(async (report: CreationReport) => {
+    if (!projectRoot) return;
+    const generation = workspaceGeneration.current;
+    const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: projectRoot });
+    if (workspaceGeneration.current !== generation) return;
+    // Creation refresh is navigation, not Project Reload: retain every dirty buffer.
+    // EVIDENCE: GUI-CREATE-INT-008, GUI-CREATE-INT-009.
+    setWorkspaceState({ kind: "ready", workspace: next });
+    setActivePath(report.path);
+    const root = report.folder ? next.folders?.find(folder => folder.path === report.path)?.sourceRoot
+      : next.files.find(file => file.path === report.path)?.sourceRoot;
+    setRevealCreated({ path: report.path, root: root ?? "" });
+    setCreationOpen(false);
+    const file = next.files.find(file => file.path === report.path);
+    if (file?.kind === "data") await openDataFile(projectRoot, file.path);
+    showNotice(`${sourceName(report.path)} created`);
+  }, [projectRoot, openDataFile, showNotice]);
+
   const activeDiagnostics = activeEditor?.previewState === "current"
     ? activeEditor.preview.validation.diagnostics
     : [];
@@ -897,7 +924,7 @@ function App() {
         <aside className="explorer" aria-label="Workspace Explorer">
           <div className="pane-heading">
             <span>EXPLORER</span>
-            <small>{workspace?.project.project_id ?? "project not open"}</small>
+            <Button size="small" aria-label="New source artifact" disabled={!workspace?.capabilities.workspaceWrite} onClick={() => setCreationOpen(true)}>New</Button>
           </div>
           {workspaceState.kind === "loading" && !workspace && <div className="pane-message">Opening project…</div>}
           {workspaceState.kind === "error" && !workspace && (
@@ -910,7 +937,13 @@ function App() {
               editors={editors}
               loadingPaths={loadingPaths}
               fileOpenErrors={fileOpenErrors}
-              onSelect={selectFile}
+              onSelect={(file) => {
+                selectFile(file);
+                const relative = file.sourceRoot && file.path.startsWith(`${file.sourceRoot}/`) ? file.path.slice(file.sourceRoot.length + 1) : file.path;
+                setCreationTarget({ root: file.sourceRoot, folder: relative.split("/").slice(0, -1).join("/") });
+              }}
+              onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
+              revealCreated={revealCreated}
             />
           )}
         </aside>
@@ -999,6 +1032,22 @@ function App() {
         <span>{dirtyCount > 0 ? `${dirtyCount} dirty` : "Saved"}</span>
       </footer>
 
+      {creationOpen && workspace && projectRoot && <SourceCreation key={projectRoot}
+        projectPath={projectRoot}
+        initialRootIndex={Math.max(0, workspace.sourceRoots.indexOf(creationTarget.root))}
+        initialFolder={creationTarget.folder}
+        canWrite={workspace.capabilities.workspaceWrite}
+        onCancel={() => {
+          setCreationOpen(false);
+          window.requestAnimationFrame(() => {
+            const origin = [creationTarget.root, creationTarget.folder].filter(Boolean).join("/");
+            const target = document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(origin)}"]`)
+              ?? document.querySelector<HTMLElement>('[aria-label="New source artifact"]');
+            target?.focus();
+          });
+        }}
+        onCreated={refreshAfterCreation} />}
+
       <Modal open={pendingAction !== null} title="Save changes before continuing?"
         closable={!pendingActionBusy} keyboard={!pendingActionBusy} mask={{ closable: false }}
         onCancel={() => !pendingActionBusy && setPendingAction(null)}
@@ -1024,6 +1073,7 @@ function App() {
 
 type SourceTreeFolder = {
   kind: "folder";
+  sourceRoot: string;
   name: string;
   key: string;
   depth: number;
@@ -1047,6 +1097,8 @@ function SourceTree({
   loadingPaths,
   fileOpenErrors,
   onSelect,
+  onFolderSelect,
+  revealCreated,
 }: {
   workspace: AuthoringWorkspace;
   activePath: string | null;
@@ -1054,22 +1106,36 @@ function SourceTree({
   loadingPaths: Set<string>;
   fileOpenErrors: Record<string, ApiDiagnostic>;
   onSelect: (file: WorkspaceSourceFile) => void;
+  onFolderSelect: (root: string, folder: string) => void;
+  revealCreated: { path: string; root: string } | null;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const groups = useMemo(() => workspace.sourceRoots.map((root) => {
     const children: SourceTreeNode[] = [];
+    const emptyFolders = (workspace.folders ?? []).filter(folder => folder.sourceRoot === root);
+    for (const folder of emptyFolders) {
+      const relative = root && folder.path.startsWith(`${root}/`) ? folder.path.slice(root.length + 1) : folder.path;
+      let level = children;
+      let prefix = root;
+      for (const [index, segment] of relative.split("/").filter(Boolean).entries()) {
+        prefix = prefix ? `${prefix}/${segment}` : segment;
+        let node = level.find((node): node is SourceTreeFolder => node.kind === "folder" && node.name === segment);
+        if (!node) { node = { kind: "folder", sourceRoot: root, name: segment, key: prefix, depth: index + 1, children: [] }; level.push(node); }
+        level = node.children;
+      }
+    }
     for (const file of workspace.files.filter((candidate) => candidate.sourceRoot === root)) {
       const relative = file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
       const parts = relative.split("/").filter(Boolean);
       let level = children;
       let prefix = root;
       for (const [index, segment] of parts.slice(0, -1).entries()) {
-        prefix = `${prefix}/${segment}`;
+        prefix = prefix ? `${prefix}/${segment}` : segment;
         let folder = level.find(
           (node): node is SourceTreeFolder => node.kind === "folder" && node.name === segment,
         );
         if (!folder) {
-          folder = { kind: "folder", name: segment, key: prefix, depth: index + 1, children: [] };
+          folder = { kind: "folder", sourceRoot: root, name: segment, key: prefix, depth: index + 1, children: [] };
           level.push(folder);
         }
         level = folder.children;
@@ -1092,6 +1158,13 @@ function SourceTree({
     sortNodes(children);
     return { root, children };
   }), [workspace]);
+
+  useEffect(() => {
+    if (!revealCreated) return;
+    setCollapsed(current => new Set([...current].filter(key => key !== `root:${revealCreated.root}` && key !== revealCreated.path && !revealCreated.path.startsWith(`${key}/`))));
+    const frame = window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(revealCreated.path)}"]`)?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [revealCreated, workspace]);
 
   const toggleFolder = (key: string) => {
     setCollapsed((current) => {
@@ -1157,9 +1230,15 @@ function SourceTree({
             htmlType="button"
             role="treeitem"
             data-depth={node.depth}
+            data-tree-path={node.key}
+            aria-selected={activePath === node.key}
             aria-expanded={expanded}
             className="tree-folder"
             style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+            onFocus={() => {
+              const root = node.sourceRoot;
+              onFolderSelect(root, root ? node.key.slice(root.length + 1) : node.key);
+            }}
             onClick={() => toggleFolder(node.key)}
             onKeyDown={(event) => handleTreeKey(event, node.key, expanded)}
           >
@@ -1190,6 +1269,7 @@ function SourceTree({
         htmlType="button"
         role="treeitem"
         data-depth={node.depth}
+        data-tree-path={node.file.path}
         aria-selected={activePath === node.file.path}
         aria-label={`${node.file.path}${stateLabels.length ? `, ${stateLabels.join(", ")}` : ""}`}
         className={`tree-file ${activePath === node.file.path ? "active" : ""}`}
@@ -1221,13 +1301,15 @@ function SourceTree({
             htmlType="button"
             role="treeitem"
             data-depth="0"
+            data-tree-path={root}
             aria-expanded={expanded}
             className="tree-root-label"
+            onFocus={() => onFolderSelect(root, "")}
             onClick={() => toggleFolder(key)}
             onKeyDown={(event) => handleTreeKey(event, key, expanded)}
           >
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
-            {root}
+            {root || "."}
           </Button>
           {expanded && <div role="group">{children.map(renderNode)}</div>}
         </div>

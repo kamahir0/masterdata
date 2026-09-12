@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use masterdata_app::{
-    AuthoringEdit, AuthoringWorkspace, DataFileSnapshot, NativeApplicationService,
-    SourceContentState, SourceEditPreview, SourceSaveReport,
+    AuthoringEdit, AuthoringWorkspace, CreationContext, CreationDestinationState, CreationReport,
+    CreationRequest, DataFileSnapshot, NativeApplicationService, SourceContentState,
+    SourceEditPreview, SourceSaveReport,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -83,6 +84,49 @@ fn authoring_workspace(
     let configured_path = configured_project_path(project_path);
     NativeApplicationService::new()
         .authoring_workspace(configured_path.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn creation_context(
+    project_path: Option<String>,
+) -> std::result::Result<CreationContext, ApiError> {
+    let current_dir = current_directory()?;
+    let configured = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .creation_context(configured.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn create_source(
+    project_path: Option<String>,
+    request: serde_json::Value,
+) -> std::result::Result<CreationReport, ApiError> {
+    // Decode inside the command so malformed form values remain a structured
+    // preflight rejection, never an ambiguous transport/commit failure.
+    // EVIDENCE: GUI-CREATE-ERR-001, SOURCE-CREATE-014.
+    let request: CreationRequest = serde_json::from_value(request).map_err(|error| {
+        ApiError::from(MasterdataError::new(
+            "E-SOURCE-CREATE-REQUEST",
+            ErrorKind::Validation,
+            format!("invalid creation input: {error}"),
+        ))
+    })?;
+    let current_dir = current_directory()?;
+    let configured = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .create_source(configured.as_deref().map(Path::new), &current_dir, &request)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn recheck_creation(
+    project_path: Option<String>,
+    request: CreationRequest,
+) -> std::result::Result<CreationDestinationState, ApiError> {
+    let current_dir = current_directory()?;
+    let configured = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .recheck_creation(configured.as_deref().map(Path::new), &current_dir, &request)
         .map_err(ApiError::from)
 }
 
@@ -215,6 +259,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             project_info,
             authoring_workspace,
+            creation_context,
+            create_source,
+            recheck_creation,
             open_data_file,
             preview_data_file,
             source_content,
@@ -232,6 +279,25 @@ mod tests {
 
     use super::DiagnosticDto;
     use masterdata_core::{Diagnostic, ErrorKind, ValidationReport};
+
+    #[test]
+    fn malformed_creation_input_is_a_structured_preflight_rejection() {
+        let result = super::create_source(
+            None,
+            serde_json::json!({
+                "sourceRoot":"/unused", "destination":"new.yaml",
+                "artifact":{"category":"table", "table":"item",
+                    "fields":[{"key":null,"name":"id","type":"int"}],
+                    "primaryKey":{"fields":["id"]}}
+            }),
+        );
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("invalid key accepted"),
+        };
+        assert_eq!(error.diagnostic.code, "E-SOURCE-CREATE-REQUEST");
+        assert_eq!(error.diagnostic.kind, ErrorKind::Validation);
+    }
 
     fn minimal_project() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))

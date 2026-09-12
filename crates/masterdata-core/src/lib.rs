@@ -13,6 +13,7 @@ mod migration;
 mod migration_commit;
 mod pipeline;
 mod project;
+mod source_creation;
 mod source_edit;
 mod table;
 mod type_system;
@@ -52,7 +53,7 @@ pub use source_edit::{
 };
 pub use table::{
     BuildSelection, ResolvedPrimaryKey, ResolvedRecord, ResolvedSecondaryKey, ResolvedTable,
-    TableBuild, resolve_tables,
+    TableBuild, resolve_tables, table_csharp_name,
 };
 pub use type_system::{
     FieldModifier, NormalizedValue, PrimitiveType, ResolvedConversions, ResolvedEnumMember,
@@ -60,3 +61,8 @@ pub use type_system::{
     build_type_system, csharp_property_name, is_csharp_reserved_keyword, resolve_type_system,
 };
 pub use validation::{ValidationReport, validate_documents, validate_documents_with_selection};
+
+pub use source_creation::{
+    CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, creation_choices,
+    prepare_source_creation,
+};

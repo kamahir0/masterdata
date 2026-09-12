@@ -266,10 +266,7 @@ pub fn resolve_tables(
             );
         }
 
-        let csharp_name = schema
-            .csharp_name
-            .clone()
-            .unwrap_or_else(|| table_to_csharp_name(&schema.table));
+        let csharp_name = table_csharp_name(schema);
         for field in &resolved_fields {
             let property_name = csharp_property_name(&field.name);
             if property_name == csharp_name {
@@ -960,4 +957,11 @@ struct RecordCandidate<'a> {
     record: ResolvedRecord,
     path: &'a Path,
     record_index: usize,
+}
+
+pub fn table_csharp_name(schema: &SchemaDocument) -> String {
+    schema
+        .csharp_name
+        .clone()
+        .unwrap_or_else(|| table_to_csharp_name(&schema.table))
 }

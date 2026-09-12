@@ -4,9 +4,10 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use masterdata_core::{
-    Diagnostic, ErrorKind, MasterdataError, PrimitiveType, Project, ProjectDocuments, ProjectInfo,
-    RecordValueEdit, SchemaDocument, SourceDocument, ValidationReport, dry_run_source_edit,
-    parse_yaml_document, source_content_identity, validate_documents,
+    AddedRecordDraft, AddedRecordField, Diagnostic, ErrorKind, MasterdataError, PrimitiveType,
+    Project, ProjectDocuments, ProjectInfo, RecordValueEdit, SchemaDocument, SourceDocument,
+    SourceRecordMutation, ValidationReport, dry_run_source_record_mutation, parse_yaml_document,
+    source_content_identity, validate_documents,
 };
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
@@ -76,6 +77,13 @@ pub struct DataEditorRow {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DataEditorAddCapability {
+    pub supported: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DataFileSnapshot {
     pub path: String,
     pub table: String,
@@ -83,6 +91,7 @@ pub struct DataFileSnapshot {
     pub base_content_identity: String,
     pub columns: Vec<DataEditorColumn>,
     pub rows: Vec<DataEditorRow>,
+    pub add_row: DataEditorAddCapability,
     pub validation: ValidationReport,
 }
 
@@ -100,6 +109,53 @@ impl From<&AuthoringEdit> for RecordValueEdit {
             record_index: value.record_index,
             field: value.field.clone(),
             value: value.value.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoringRecordField {
+    pub field: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoringRecordDraft {
+    pub fields: Vec<AuthoringRecordField>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoringRecordMutation {
+    #[serde(default)]
+    pub edits: Vec<AuthoringEdit>,
+    #[serde(default)]
+    pub added_records: Vec<AuthoringRecordDraft>,
+    #[serde(default)]
+    pub deleted_record_indices: Vec<usize>,
+}
+
+impl From<&AuthoringRecordMutation> for SourceRecordMutation {
+    fn from(value: &AuthoringRecordMutation) -> Self {
+        Self {
+            edits: value.edits.iter().map(RecordValueEdit::from).collect(),
+            additions: value
+                .added_records
+                .iter()
+                .map(|draft| AddedRecordDraft {
+                    fields: draft
+                        .fields
+                        .iter()
+                        .map(|field| AddedRecordField {
+                            field: field.field.clone(),
+                            value: field.value.clone(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            deletions: value.deleted_record_indices.clone(),
         }
     }
 }
@@ -256,12 +312,32 @@ impl NativeApplicationService {
         base_source: &str,
         edits: &[AuthoringEdit],
     ) -> masterdata_core::Result<SourceEditPreview> {
+        self.preview_data_file_mutation(
+            explicit_project,
+            current_dir,
+            relative_path,
+            base_source,
+            &AuthoringRecordMutation {
+                edits: edits.to_vec(),
+                ..AuthoringRecordMutation::default()
+            },
+        )
+    }
+
+    pub fn preview_data_file_mutation(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        relative_path: &str,
+        base_source: &str,
+        mutation: &AuthoringRecordMutation,
+    ) -> masterdata_core::Result<SourceEditPreview> {
         let project = Project::discover(explicit_project, current_dir)?;
         let target = resolve_source_file(&project, relative_path)?;
         let (documents, mut parse_diagnostics) =
             load_authoring_documents(&project, Some((&target, base_source)))?;
-        let edits = edits.iter().map(RecordValueEdit::from).collect::<Vec<_>>();
-        let dry_run = dry_run_source_edit(&documents, &target, &edits)?;
+        let mutation = SourceRecordMutation::from(mutation);
+        let dry_run = dry_run_source_record_mutation(&documents, &target, &mutation)?;
         let mut validation = validate_documents(&dry_run.transformed_documents);
         merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
         Ok(SourceEditPreview {
@@ -294,6 +370,31 @@ impl NativeApplicationService {
         edits: &[AuthoringEdit],
         overwrite_expected_identity: Option<&str>,
     ) -> masterdata_core::Result<SourceSaveReport> {
+        self.save_data_file_mutation(
+            explicit_project,
+            current_dir,
+            relative_path,
+            base_source,
+            base_content_identity,
+            &AuthoringRecordMutation {
+                edits: edits.to_vec(),
+                ..AuthoringRecordMutation::default()
+            },
+            overwrite_expected_identity,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_data_file_mutation(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        relative_path: &str,
+        base_source: &str,
+        base_content_identity: &str,
+        mutation: &AuthoringRecordMutation,
+        overwrite_expected_identity: Option<&str>,
+    ) -> masterdata_core::Result<SourceSaveReport> {
         let project = Project::discover(explicit_project, current_dir)?;
         let target = resolve_source_file(&project, relative_path)?;
         if source_content_identity(base_source) != base_content_identity {
@@ -306,8 +407,8 @@ impl NativeApplicationService {
         }
 
         let (documents, _) = load_authoring_documents(&project, Some((&target, base_source)))?;
-        let edits = edits.iter().map(RecordValueEdit::from).collect::<Vec<_>>();
-        let dry_run = dry_run_source_edit(&documents, &target, &edits)?;
+        let mutation = SourceRecordMutation::from(mutation);
+        let dry_run = dry_run_source_record_mutation(&documents, &target, &mutation)?;
         let current = read_source_state(&project, &target)?;
         let expected = overwrite_expected_identity.unwrap_or(base_content_identity);
         if current.content_identity != expected {
@@ -491,6 +592,7 @@ fn data_file_snapshot(
                 .collect(),
         })
         .collect();
+    let add_row = data_editor_add_capability(schema);
     let mut validation = validate_documents(documents);
     merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
     Ok(DataFileSnapshot {
@@ -500,8 +602,36 @@ fn data_file_snapshot(
         base_content_identity: source_content_identity(&loaded.source),
         columns,
         rows,
+        add_row,
         validation,
     })
+}
+
+fn data_editor_add_capability(schema: &SchemaDocument) -> DataEditorAddCapability {
+    if schema.fields.is_empty() {
+        return DataEditorAddCapability {
+            supported: false,
+            reason: Some(
+                "Add Row requires a Table with at least one Required Primitive field.".to_owned(),
+            ),
+        };
+    }
+    let unsupported = schema.fields.iter().find(|field| {
+        field.nullable || field.array || PrimitiveType::parse(&field.type_name).is_none()
+    });
+    match unsupported {
+        Some(field) => DataEditorAddCapability {
+            supported: false,
+            reason: Some(format!(
+                "Add Row currently supports Required Primitive fields only; `{}` is outside this scope.",
+                field.name
+            )),
+        },
+        None => DataEditorAddCapability {
+            supported: true,
+            reason: None,
+        },
+    }
 }
 
 pub(super) fn load_authoring_documents(
@@ -889,7 +1019,10 @@ fn authoring_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthoringEdit, SourceSaveStatus, install_source_candidate_with_pre_replace_hook};
+    use super::{
+        AuthoringEdit, AuthoringRecordDraft, AuthoringRecordField, AuthoringRecordMutation,
+        SourceSaveStatus, install_source_candidate_with_pre_replace_hook,
+    };
     use crate::NativeApplicationService;
     use std::fs;
     use tempfile::TempDir;
@@ -1062,5 +1195,130 @@ secondaryKeys: []
             .expect("preview");
         assert!(preview.changed);
         assert!(!preview.validation.valid);
+    }
+
+    #[test]
+    fn record_mutation_preview_and_save_share_the_source_edit_lifecycle() {
+        let temp = project();
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+        assert!(snapshot.add_row.supported);
+
+        let mutation = AuthoringRecordMutation {
+            edits: vec![AuthoringEdit {
+                record_index: 0,
+                field: "weight".to_owned(),
+                value: "11".to_owned(),
+            }],
+            added_records: vec![AuthoringRecordDraft {
+                fields: vec![
+                    AuthoringRecordField {
+                        field: "note".to_owned(),
+                        value: "new".to_owned(),
+                    },
+                    AuthoringRecordField {
+                        field: "id".to_owned(),
+                        value: "18446744073709551614".to_owned(),
+                    },
+                    AuthoringRecordField {
+                        field: "weight".to_owned(),
+                        value: "12".to_owned(),
+                    },
+                ],
+            }],
+            deleted_record_indices: Vec::new(),
+        };
+        let preview = service
+            .preview_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &mutation,
+            )
+            .expect("mutation preview");
+        assert!(preview.changed);
+        assert!(preview.candidate_source.contains("weight: 11 # keep"));
+        assert!(
+            preview
+                .candidate_source
+                .contains("id: 18446744073709551614")
+        );
+
+        let report = service
+            .save_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &snapshot.base_content_identity,
+                &mutation,
+                None,
+            )
+            .expect("mutation save");
+        assert_eq!(report.status, SourceSaveStatus::Success);
+        let saved = report.snapshot.expect("saved snapshot");
+        assert_eq!(saved.rows.len(), 2);
+        assert!(
+            !saved.columns[0].editable,
+            "saved added key becomes existing read-only"
+        );
+    }
+
+    #[test]
+    fn record_mutation_save_deletes_selected_occurrence_and_keeps_duplicate_key_record() {
+        let temp = project();
+        fs::write(
+            temp.path().join("sources/data/items.yaml"),
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n  - id: 1\n    weight: 20\n    note: second\n",
+        )
+        .expect("duplicate-key source");
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+        let report = service
+            .save_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &snapshot.base_content_identity,
+                &AuthoringRecordMutation {
+                    deleted_record_indices: vec![1],
+                    ..AuthoringRecordMutation::default()
+                },
+                None,
+            )
+            .expect("delete save");
+        assert_eq!(report.status, SourceSaveStatus::Success);
+        let source =
+            fs::read_to_string(temp.path().join("sources/data/items.yaml")).expect("source");
+        assert!(source.contains("note: first"));
+        assert!(!source.contains("note: second"));
+    }
+
+    #[test]
+    fn snapshot_reports_add_row_scope_without_disabling_existing_data_access() {
+        let temp = project();
+        let schema =
+            fs::read_to_string(temp.path().join("sources/schemas/item.yaml")).expect("schema");
+        fs::write(
+            temp.path().join("sources/schemas/item.yaml"),
+            schema.replace(
+                "    type: ulong\n  - key: 2",
+                "    type: ulong\n    nullable: true\n  - key: 2",
+            ),
+        )
+        .expect("complex schema");
+        let snapshot = NativeApplicationService::new()
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+
+        assert!(!snapshot.add_row.supported);
+        assert!(snapshot.add_row.reason.expect("reason").contains("weight"));
+        assert_eq!(snapshot.rows.len(), 1);
     }
 }

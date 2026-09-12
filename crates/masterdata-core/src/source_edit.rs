@@ -18,6 +18,24 @@ pub struct RecordValueEdit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddedRecordField {
+    pub field: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddedRecordDraft {
+    pub fields: Vec<AddedRecordField>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SourceRecordMutation {
+    pub edits: Vec<RecordValueEdit>,
+    pub additions: Vec<AddedRecordDraft>,
+    pub deletions: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceEditPlan {
     pub path: PathBuf,
     pub base_content_identity: String,
@@ -42,6 +60,22 @@ pub fn dry_run_source_edit(
     documents: &ProjectDocuments,
     path: &Path,
     edits: &[RecordValueEdit],
+) -> Result<SourceEditDryRun> {
+    dry_run_source_record_mutation(
+        documents,
+        path,
+        &SourceRecordMutation {
+            edits: edits.to_vec(),
+            additions: Vec::new(),
+            deletions: Vec::new(),
+        },
+    )
+}
+
+pub fn dry_run_source_record_mutation(
+    documents: &ProjectDocuments,
+    path: &Path,
+    mutation: &SourceRecordMutation,
 ) -> Result<SourceEditDryRun> {
     let loaded = documents
         .files
@@ -72,11 +106,12 @@ pub fn dry_run_source_edit(
 
     let schema = unique_schema_for_table(documents, &data.table, path)?;
     let editable = editable_fields(schema);
+    let deleted = deleted_record_indices(data, &mutation.deletions, path)?;
     let mut seen = BTreeSet::new();
     let mut expected = data.clone();
     let mut patches = Vec::new();
 
-    for edit in edits {
+    for edit in &mutation.edits {
         if !seen.insert((edit.record_index, edit.field.clone())) {
             return Err(source_edit_error(
                 "E-SOURCE-EDIT-DUPLICATE-TARGET",
@@ -123,7 +158,13 @@ pub fn dry_run_source_edit(
             )
         })?;
         let desired = desired_scalar(primitive, &edit.value)?;
-        if *current == desired.value {
+        let value_changed = *current != desired.value;
+        expected.records[edit.record_index].insert(edit.field.clone(), desired.value.clone());
+
+        // A pending delete owns the final candidate. Keep the edit in the
+        // in-memory expectation so Undo can restore it, but do not create an
+        // overlapping scalar patch for source text that will be removed.
+        if deleted.contains(&edit.record_index) || !value_changed {
             continue;
         }
         let span =
@@ -135,7 +176,38 @@ pub fn dry_run_source_edit(
             end: span.end,
             replacement,
         });
-        expected.records[edit.record_index].insert(edit.field.clone(), desired.value);
+    }
+
+    let additions = mutation
+        .additions
+        .iter()
+        .enumerate()
+        .map(|(index, draft)| added_record_plan(schema, draft, index, path))
+        .collect::<Result<Vec<_>>>()?;
+
+    let existing_records = std::mem::take(&mut expected.records);
+    expected.records = existing_records
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, record)| (!deleted.contains(&index)).then_some(record))
+        .collect();
+    expected
+        .records
+        .extend(additions.iter().map(|addition| addition.values.clone()));
+
+    if !deleted.is_empty() || !additions.is_empty() {
+        let sequence = locate_record_sequence(&loaded.source, data, path)?;
+        patches.extend(delete_record_patches(&loaded.source, &sequence, &deleted));
+        if !additions.is_empty() {
+            patches.extend(add_record_patches(
+                &loaded.source,
+                &sequence,
+                &additions,
+                path,
+            )?);
+        } else if expected.records.is_empty() {
+            patches.push(empty_records_patch(&loaded.source, &sequence));
+        }
     }
 
     let candidate_source = apply_patches(&loaded.source, &patches, path)?;
@@ -173,6 +245,126 @@ pub fn dry_run_source_edit(
             candidate_source,
         },
         transformed_documents,
+    })
+}
+
+fn deleted_record_indices(
+    data: &DataDocument,
+    indices: &[usize],
+    path: &Path,
+) -> Result<BTreeSet<usize>> {
+    let mut deleted = BTreeSet::new();
+    for &index in indices {
+        if !deleted.insert(index) {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-DUPLICATE-DELETE",
+                format!("record[{index}] is scheduled for deletion more than once"),
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-006",
+            ));
+        }
+        if index >= data.records.len() {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-RECORD-NOT-FOUND",
+                format!("record[{index}] does not exist in `{}`", path.display()),
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-001",
+            ));
+        }
+    }
+    Ok(deleted)
+}
+
+#[derive(Debug, Clone)]
+struct AddedRecordPlan {
+    values: BTreeMap<String, Value>,
+    rendered_fields: Vec<(String, String)>,
+}
+
+fn added_record_plan(
+    schema: &SchemaDocument,
+    draft: &AddedRecordDraft,
+    draft_index: usize,
+    path: &Path,
+) -> Result<AddedRecordPlan> {
+    let unsupported = schema.fields.iter().find(|field| {
+        field.nullable || field.array || PrimitiveType::parse(&field.type_name).is_none()
+    });
+    if schema.fields.is_empty() || unsupported.is_some() {
+        let detail = unsupported.map_or_else(
+            || "the table schema declares no fields".to_owned(),
+            |field| format!("field `{}` is not a Required Primitive", field.name),
+        );
+        return Err(source_edit_error(
+            "E-SOURCE-RECORD-ADD-UNSUPPORTED",
+            format!("record addition is unsupported for this Table: {detail}"),
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-002",
+        ));
+    }
+
+    let mut inputs = BTreeMap::new();
+    for field in &draft.fields {
+        if inputs
+            .insert(field.field.clone(), field.value.clone())
+            .is_some()
+        {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-DUPLICATE-FIELD",
+                format!(
+                    "added record draft[{draft_index}] contains field `{}` more than once",
+                    field.field
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-003",
+            ));
+        }
+        if !schema
+            .fields
+            .iter()
+            .any(|declared| declared.name == field.field)
+        {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-UNKNOWN-FIELD",
+                format!(
+                    "added record draft[{draft_index}] contains unknown field `{}`",
+                    field.field
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-003",
+            ));
+        }
+    }
+    if inputs.len() != schema.fields.len() {
+        let missing = schema
+            .fields
+            .iter()
+            .find(|field| !inputs.contains_key(&field.name))
+            .map(|field| field.name.as_str())
+            .unwrap_or("<unknown>");
+        return Err(source_edit_error(
+            "E-SOURCE-RECORD-MISSING-FIELD",
+            format!("added record draft[{draft_index}] is missing field `{missing}`"),
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-003",
+        ));
+    }
+
+    let mut values = BTreeMap::new();
+    let mut rendered_fields = Vec::with_capacity(schema.fields.len());
+    for field in &schema.fields {
+        let primitive = PrimitiveType::parse(&field.type_name).expect("checked above");
+        let input = inputs.get(&field.name).expect("field shape checked above");
+        let desired = desired_scalar(primitive, input)?;
+        rendered_fields.push((
+            field.name.clone(),
+            render_added_scalar(primitive, input, &desired)?,
+        ));
+        values.insert(field.name.clone(), desired.value);
+    }
+    Ok(AddedRecordPlan {
+        values,
+        rendered_fields,
     })
 }
 
@@ -297,6 +489,242 @@ struct MappingSpan {
 #[derive(Debug, Clone)]
 struct SequenceRegion {
     items: Vec<usize>,
+    indent: usize,
+}
+
+#[derive(Debug, Clone)]
+struct RecordSequenceLocation {
+    records_line: usize,
+    region_end: usize,
+    mapping: MappingSpan,
+    sequence: Option<SequenceRegion>,
+}
+
+fn locate_record_sequence(
+    source: &str,
+    data: &DataDocument,
+    path: &Path,
+) -> Result<RecordSequenceLocation> {
+    let lines = source_lines(source);
+    let records_line = find_top_level_key(&lines, "records").ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-RECORD-SOURCE-UNCLASSIFIABLE",
+            "data `records` source shape could not be located safely",
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-010",
+        )
+    })?;
+    let mapping = mapping_span(lines[records_line].text).ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-RECORD-SOURCE-UNCLASSIFIABLE",
+            "data `records` source mapping could not be located safely",
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-010",
+        )
+    })?;
+    let region_end = block_region_end(&lines, records_line);
+    let raw_value = mapping.raw_value.trim();
+    if raw_value == "[]" {
+        if !data.records.is_empty() {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-SOURCE-UNCLASSIFIABLE",
+                "data `records` source declares an empty sequence but parsed records exist",
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-010",
+            ));
+        }
+        return Ok(RecordSequenceLocation {
+            records_line,
+            region_end,
+            mapping,
+            sequence: None,
+        });
+    }
+
+    let sequence = find_block_sequence(&lines, records_line, region_end).ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-RECORD-SOURCE-UNCLASSIFIABLE",
+            "data `records` block sequence could not be located safely",
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-010",
+        )
+    })?;
+    if sequence.items.len() != data.records.len() {
+        return Err(source_edit_error(
+            "E-SOURCE-RECORD-SOURCE-UNCLASSIFIABLE",
+            format!(
+                "data `records` source has {} sequence item(s), but semantic parsing found {}",
+                sequence.items.len(),
+                data.records.len()
+            ),
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-010",
+        ));
+    }
+    Ok(RecordSequenceLocation {
+        records_line,
+        region_end,
+        mapping,
+        sequence: Some(sequence),
+    })
+}
+
+fn delete_record_patches(
+    source: &str,
+    location: &RecordSequenceLocation,
+    deleted: &BTreeSet<usize>,
+) -> Vec<SourcePatch> {
+    let Some(sequence) = &location.sequence else {
+        return Vec::new();
+    };
+    let lines = source_lines(source);
+    let literal_content = literal_block_scalar_content_lines(&lines);
+    let mut patches = Vec::new();
+    for &record_index in deleted {
+        let Some(&item_line) = sequence.items.get(record_index) else {
+            continue;
+        };
+        let end_line = sequence
+            .items
+            .get(record_index + 1)
+            .copied()
+            .unwrap_or(location.region_end);
+        for (line_index, line) in lines.iter().enumerate().take(end_line).skip(item_line) {
+            // Preserve separator comments and blank lines outside the target
+            // mapping. Literal block content is structural source owned by
+            // the deleted member and therefore must leave with its record.
+            if line_index == item_line
+                || literal_content.get(line_index).copied().unwrap_or(false)
+                || !is_ignorable_line(line.text)
+            {
+                patches.push(SourcePatch {
+                    start: line.start,
+                    end: line.next_start,
+                    replacement: String::new(),
+                });
+            }
+        }
+    }
+    patches
+}
+
+fn add_record_patches(
+    source: &str,
+    location: &RecordSequenceLocation,
+    additions: &[AddedRecordPlan],
+    path: &Path,
+) -> Result<Vec<SourcePatch>> {
+    let lines = source_lines(source);
+    let (insert_at, indent, clear_value) = match &location.sequence {
+        Some(sequence) => {
+            let insert_at = lines
+                .get(location.region_end)
+                .map_or(source.len(), |line| line.start);
+            (insert_at, sequence.indent, None)
+        }
+        None => {
+            if location.mapping.raw_value.trim() != "[]" {
+                return Err(source_edit_error(
+                    "E-SOURCE-RECORD-SOURCE-UNCLASSIFIABLE",
+                    "empty `records` sequence is not represented by a supported source shape",
+                    Some(path.to_path_buf()),
+                    "SOURCE-RECORD-010",
+                ));
+            }
+            let line = lines[location.records_line];
+            let value_start = line.start + location.mapping.value_start;
+            let mut clear_start = value_start;
+            while clear_start > line.start
+                && source
+                    .as_bytes()
+                    .get(clear_start - 1)
+                    .is_some_and(|byte| matches!(*byte, b' ' | b'\t'))
+            {
+                clear_start -= 1;
+            }
+            (
+                line.next_start,
+                yaml_indent(line.text) + 2,
+                Some((clear_start, line.start + location.mapping.value_end)),
+            )
+        }
+    };
+    let newline = newline_for(source);
+    let body = render_added_records(additions, indent, newline);
+    let prefix = if insert_at > 0 && !source[..insert_at].ends_with('\n') {
+        newline
+    } else {
+        ""
+    };
+    let suffix = if insert_at < source.len() || source.ends_with('\n') {
+        newline
+    } else {
+        ""
+    };
+    let mut patches = Vec::with_capacity(2);
+    if let Some((start, end)) = clear_value {
+        patches.push(SourcePatch {
+            start,
+            end,
+            replacement: String::new(),
+        });
+    }
+    patches.push(SourcePatch {
+        start: insert_at,
+        end: insert_at,
+        replacement: format!("{prefix}{body}{suffix}"),
+    });
+    Ok(patches)
+}
+
+fn empty_records_patch(source: &str, location: &RecordSequenceLocation) -> SourcePatch {
+    let line = source_lines(source)[location.records_line];
+    let start = line.start + location.mapping.value_start;
+    let replacement = if source.as_bytes().get(start) == Some(&b'#') {
+        "[] ".to_owned()
+    } else {
+        " []".to_owned()
+    };
+    SourcePatch {
+        start,
+        end: line.start + location.mapping.value_end,
+        replacement,
+    }
+}
+
+fn render_added_records(additions: &[AddedRecordPlan], indent: usize, newline: &str) -> String {
+    let mut lines = Vec::new();
+    for addition in additions {
+        for (field_index, (field, value)) in addition.rendered_fields.iter().enumerate() {
+            let field_indent = if field_index == 0 { indent } else { indent + 2 };
+            let item_prefix = if field_index == 0 { "- " } else { "" };
+            lines.push(format!(
+                "{}{item_prefix}{field}: {value}",
+                " ".repeat(field_indent)
+            ));
+        }
+    }
+    lines.join(newline)
+}
+
+fn render_added_scalar(
+    primitive: PrimitiveType,
+    input: &str,
+    desired: &DesiredScalar,
+) -> Result<String> {
+    if primitive == PrimitiveType::String {
+        if input.contains(['\n', '\r']) {
+            return json_string(input);
+        }
+        if plain_string_round_trips(input) {
+            return Ok(input.to_owned());
+        }
+        return json_string(input);
+    }
+    if let Some(source_text) = &desired.source_text {
+        return Ok(source_text.clone());
+    }
+    json_string(input)
 }
 
 fn locate_record_member_value(
@@ -592,10 +1020,10 @@ fn mapping_span(line: &str) -> Option<MappingSpan> {
     let after_colon = &mapping[colon + 1..];
     let value_leading = after_colon.len() - after_colon.trim_start().len();
     let value_start = mapping_offset + colon + 1 + value_leading;
-    let value_end = code.trim_end().len();
-    if value_start > value_end {
-        return None;
-    }
+    // A block collection may be introduced on the following line while an
+    // inline comment leaves only whitespace in this mapping line. Retain an
+    // empty source span so structural patches can keep that comment intact.
+    let value_end = code.trim_end().len().max(value_start);
     Some(MappingSpan {
         key,
         value_start,
@@ -645,7 +1073,10 @@ fn find_block_sequence(
         if !is_sequence_item(line) {
             let expected_indent = indent?;
             if current_indent <= expected_indent {
-                return Some(SequenceRegion { items });
+                return Some(SequenceRegion {
+                    items,
+                    indent: expected_indent,
+                });
             }
             continue;
         }
@@ -658,7 +1089,7 @@ fn find_block_sequence(
             items.push(index);
         }
     }
-    indent.map(|_| SequenceRegion { items })
+    indent.map(|indent| SequenceRegion { items, indent })
 }
 
 fn literal_block_scalar_content_lines(lines: &[SourceLine<'_>]) -> Vec<bool> {
@@ -857,7 +1288,10 @@ fn with_requirement(error: MasterdataError, requirement: &str) -> MasterdataErro
 
 #[cfg(test)]
 mod tests {
-    use super::{RecordValueEdit, dry_run_source_edit};
+    use super::{
+        AddedRecordDraft, AddedRecordField, RecordValueEdit, SourceRecordMutation,
+        dry_run_source_edit, dry_run_source_record_mutation,
+    };
     use crate::{ProjectDocuments, parse_yaml_document, validate_documents};
     use std::path::{Path, PathBuf};
     fn documents(schema: &str, data_path: &str, data: &str) -> ProjectDocuments {
@@ -981,5 +1415,358 @@ secondaryKeys: []
         .expect("same semantic value needs no patch");
         assert!(!dry_run.plan.changed);
         assert_eq!(dry_run.plan.candidate_source, data);
+    }
+
+    fn added(fields: &[(&str, &str)]) -> AddedRecordDraft {
+        AddedRecordDraft {
+            fields: fields
+                .iter()
+                .map(|(field, value)| AddedRecordField {
+                    field: (*field).to_owned(),
+                    value: (*value).to_owned(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn record_addition_expands_empty_records_and_uses_schema_order() {
+        let data = "kind: data\r\ntable: item\r\nrecords: []\r\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![added(&[
+                    ("note", "Potion"),
+                    ("id", "18446744073709551615"),
+                    ("weight", "10"),
+                ])],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("empty records can receive a first row");
+
+        assert_eq!(
+            dry_run.plan.candidate_source,
+            "kind: data\r\ntable: item\r\nrecords:\r\n  - id: 18446744073709551615\r\n    weight: 10\r\n    note: Potion\r\n"
+        );
+        assert_eq!(
+            dry_run
+                .transformed_documents
+                .data()
+                .next()
+                .unwrap()
+                .1
+                .records
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn record_addition_preserves_signed_and_unsigned_64_bit_boundaries() {
+        let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: signed
+    type: long
+  - key: 1
+    name: unsigned
+    type: ulong
+  - key: 2
+    name: note
+    type: string
+primaryKey:
+  fields: [signed]
+secondaryKeys: []
+"#;
+        let snapshot = documents(
+            schema,
+            "data.yaml",
+            "kind: data\ntable: item\nrecords: []\n",
+        );
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![added(&[
+                    ("note", "boundaries"),
+                    ("unsigned", "18446744073709551615"),
+                    ("signed", "-9223372036854775808"),
+                ])],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("64-bit boundary text stays representable");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("signed: -9223372036854775808")
+        );
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("unsigned: 18446744073709551615")
+        );
+    }
+
+    #[test]
+    fn record_addition_preserves_existing_comments_blank_lines_and_line_endings() {
+        let data = "kind: data\r\ntable: item\r\nrecords:\r\n  # keep before\r\n  - id: 1\r\n    weight: 10 # keep inline\r\n    note: 'one'\r\n\r\n  # keep after\r\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![added(&[("id", "2"), ("weight", "20"), ("note", "two")])],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("row append is source-preserving");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("  # keep before\r\n")
+        );
+        assert!(dry_run.plan.candidate_source.contains(
+            "weight: 10 # keep inline\r\n    note: 'one'\r\n\r\n  # keep after\r\n  - id: 2\r\n"
+        ));
+        assert!(
+            !dry_run
+                .plan
+                .candidate_source
+                .replace("\r\n", "")
+                .contains('\n')
+        );
+    }
+
+    #[test]
+    fn record_mutation_preserves_inline_comment_on_records_sequence() {
+        let empty = "kind: data\ntable: item\nrecords: [] # keep empty\n";
+        let snapshot = documents(SCHEMA, "data.yaml", empty);
+        let added_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![added(&[("id", "1"), ("weight", "10"), ("note", "one")])],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("inline comment on an empty flow sequence remains safe");
+        assert!(
+            added_run
+                .plan
+                .candidate_source
+                .contains("records: # keep empty\n  - id: 1")
+        );
+
+        let populated = "kind: data\ntable: item\nrecords: # keep records\n  - id: 1\n    weight: 10\n    note: one\n";
+        let snapshot = documents(SCHEMA, "data.yaml", populated);
+        let deleted_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                deletions: vec![0],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("last record can be removed beside the inline comment");
+        assert!(
+            deleted_run
+                .plan
+                .candidate_source
+                .contains("records: [] # keep records")
+        );
+    }
+
+    #[test]
+    fn record_delete_targets_source_occurrence_not_primary_key_value() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n  - id: 1\n    weight: 20\n    note: second\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                deletions: vec![1],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("selected occurrence can be deleted");
+
+        assert!(dry_run.plan.candidate_source.contains("note: first"));
+        assert!(!dry_run.plan.candidate_source.contains("note: second"));
+        assert_eq!(
+            dry_run
+                .transformed_documents
+                .data()
+                .next()
+                .unwrap()
+                .1
+                .records
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn record_delete_preserves_separator_comment_and_blank_line() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n\n  # keep separator\n  - id: 2\n    weight: 20\n    note: second\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                deletions: vec![0],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("selected occurrence can be removed without consuming separator text");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("records:\n\n  # keep separator\n  - id: 2")
+        );
+        assert!(!dry_run.plan.candidate_source.contains("note: first"));
+    }
+
+    #[test]
+    fn record_mutations_compose_edit_delete_and_add_in_one_candidate() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n  - id: 2\n    weight: 20\n    note: second\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "weight".to_owned(),
+                    value: "11".to_owned(),
+                }],
+                additions: vec![added(&[("id", "3"), ("weight", "30"), ("note", "third")])],
+                deletions: vec![1],
+            },
+        )
+        .expect("all mutation kinds compose");
+
+        assert!(dry_run.plan.candidate_source.contains("weight: 11"));
+        assert!(dry_run.plan.candidate_source.contains("note: third"));
+        assert!(!dry_run.plan.candidate_source.contains("note: second"));
+        assert_eq!(
+            dry_run
+                .transformed_documents
+                .data()
+                .next()
+                .unwrap()
+                .1
+                .records
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn record_addition_preserves_invalid_primitive_input_for_validation() {
+        let data = "kind: data\ntable: item\nrecords: []\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![added(&[
+                    ("id", "1"),
+                    ("weight", "not-a-number"),
+                    ("note", "draft"),
+                ])],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("domain-invalid input remains a YAML-safe candidate");
+        let report = validate_documents(&dry_run.transformed_documents);
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("weight: not-a-number")
+        );
+        assert!(!report.valid);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "E-TABLE-INVALID-RECORD-VALUE")
+        );
+    }
+
+    #[test]
+    fn record_addition_rejects_non_required_primitive_table_without_fallback_serialization() {
+        let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: weight
+    type: ulong
+    nullable: true
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+"#;
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: null\n";
+        let snapshot = documents(schema, "data.yaml", data);
+        let error = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![added(&[("id", "2"), ("weight", "3")])],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect_err("nullable add is outside the initial slice");
+
+        assert_eq!(error.diagnostic().code, "E-SOURCE-RECORD-ADD-UNSUPPORTED");
+        assert_eq!(
+            error.diagnostic().related_requirements,
+            ["SOURCE-RECORD-002"]
+        );
+    }
+
+    #[test]
+    fn deleting_last_record_restores_an_empty_sequence_without_losing_source_safety() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: only\n\n  # keep trailing\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                deletions: vec![0],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("last record deletion leaves a valid empty data document");
+
+        assert!(dry_run.plan.candidate_source.contains("records: []"));
+        assert!(dry_run.plan.candidate_source.contains("# keep trailing"));
+        assert!(
+            dry_run
+                .transformed_documents
+                .data()
+                .next()
+                .unwrap()
+                .1
+                .records
+                .is_empty()
+        );
     }
 }

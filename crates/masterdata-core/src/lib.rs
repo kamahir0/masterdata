@@ -49,7 +49,9 @@ pub use project::{
     initialize_project,
 };
 pub use source_edit::{
-    RecordValueEdit, SourceEditDryRun, SourceEditPlan, dry_run_source_edit, source_content_identity,
+    AddedRecordDraft, AddedRecordField, RecordValueEdit, SourceEditDryRun, SourceEditPlan,
+    SourceRecordMutation, dry_run_source_edit, dry_run_source_record_mutation,
+    source_content_identity,
 };
 pub use table::{
     BuildSelection, ResolvedPrimaryKey, ResolvedRecord, ResolvedSecondaryKey, ResolvedTable,

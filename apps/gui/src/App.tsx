@@ -88,6 +88,11 @@ type DataEditorRow = {
   cells: DataEditorCell[];
 };
 
+type DataEditorAddCapability = {
+  supported: boolean;
+  reason: string | null;
+};
+
 type ValidationReport = {
   valid: boolean;
   files_scanned: number;
@@ -106,6 +111,7 @@ type DataFileSnapshot = {
   baseContentIdentity: string;
   columns: DataEditorColumn[];
   rows: DataEditorRow[];
+  addRow?: DataEditorAddCapability;
   validation: ValidationReport;
 };
 
@@ -113,6 +119,26 @@ type AuthoringEdit = {
   recordIndex: number;
   field: string;
   value: string;
+};
+
+type AuthoringRecordField = {
+  field: string;
+  value: string;
+};
+
+type AuthoringRecordDraft = {
+  fields: AuthoringRecordField[];
+};
+
+type AuthoringRecordMutation = {
+  edits: AuthoringEdit[];
+  addedRecords: AuthoringRecordDraft[];
+  deletedRecordIndices: number[];
+};
+
+type AddedRecordDraft = {
+  draftId: string;
+  values: Record<string, string>;
 };
 
 type SourceEditPreview = {
@@ -161,6 +187,8 @@ type OperationState<T> =
 type EditorState = {
   snapshot: DataFileSnapshot;
   edits: Record<string, AuthoringEdit>;
+  addedRecords: AddedRecordDraft[];
+  pendingDeletes: number[];
   preview: SourceEditPreview;
   previewState: "current" | "pending" | "unavailable";
   previewError: ApiDiagnostic | null;
@@ -212,6 +240,8 @@ function editorFromSnapshot(snapshot: DataFileSnapshot): EditorState {
   return {
     snapshot,
     edits: {},
+    addedRecords: [],
+    pendingDeletes: [],
     preview: {
       candidateSource: snapshot.baseSource,
       candidateContentIdentity: snapshot.baseContentIdentity,
@@ -241,7 +271,33 @@ function currentCellText(editor: EditorState, recordIndex: number, field: string
 }
 
 function editorIsDirty(editor: EditorState): boolean {
-  return Object.keys(editor.edits).length > 0;
+  return Object.keys(editor.edits).length > 0
+    || editor.addedRecords.length > 0
+    || editor.pendingDeletes.length > 0;
+}
+
+function draftCellKey(draftId: string, field: string): string {
+  return `draft:${draftId}:${field}`;
+}
+
+function addCapability(snapshot: DataFileSnapshot): DataEditorAddCapability {
+  return snapshot.addRow ?? {
+    supported: false,
+    reason: "Add Row capability is unavailable for this source snapshot.",
+  };
+}
+
+function mutationForEditor(editor: EditorState): AuthoringRecordMutation {
+  return {
+    edits: Object.values(editor.edits),
+    addedRecords: editor.addedRecords.map((draft) => ({
+      fields: editor.snapshot.columns.map((column) => ({
+        field: column.name,
+        value: draft.values[column.name] ?? "",
+      })),
+    })),
+    deletedRecordIndices: [...editor.pendingDeletes].sort((left, right) => left - right),
+  };
 }
 
 function sourceName(path: string): string {
@@ -259,6 +315,17 @@ function diagnosticRecordIndex(diagnostic: Diagnostic): number | null {
 
 function diagnosticField(diagnostic: Diagnostic): string | null {
   return diagnostic.message.match(/field `([^`]+)`/)?.[1] ?? null;
+}
+
+function diagnosticCellKey(editor: EditorState, candidateRecordIndex: number, field: string): string | null {
+  let remaining = candidateRecordIndex;
+  for (const row of editor.snapshot.rows) {
+    if (editor.pendingDeletes.includes(row.recordIndex)) continue;
+    if (remaining === 0) return cellKey(row.recordIndex, field);
+    remaining -= 1;
+  }
+  const draft = editor.addedRecords[remaining];
+  return draft ? draftCellKey(draft.draftId, field) : null;
 }
 
 function App() {
@@ -285,6 +352,7 @@ function App() {
   const editorsRef = useRef(editors);
   const workspaceStateRef = useRef(workspaceState);
   const workspaceGeneration = useRef(0);
+  const draftSequence = useRef(0);
   const cellFocusStart = useRef(new Map<string, string>());
   const pendingCellFocus = useRef<string | null>(null);
 
@@ -440,7 +508,7 @@ function App() {
           projectPath: root,
           relativePath: path,
           baseSource: editor.snapshot.baseSource,
-          edits: Object.values(editor.edits),
+          ...mutationForEditor(editor),
         });
         if (workspaceGeneration.current !== generation) return;
         setEditors((current) => {
@@ -485,7 +553,7 @@ function App() {
     if (!projectRoot) return;
     setEditors((current) => {
       const editor = current[path];
-      if (!editor || editor.saving) return current;
+      if (!editor || editor.saving || editor.pendingDeletes.includes(recordIndex)) return current;
       const nextEdits = { ...editor.edits };
       const key = cellKey(recordIndex, field);
       if (value === baseCellText(editor.snapshot, recordIndex, field)) {
@@ -496,6 +564,106 @@ function App() {
       const next: EditorState = {
         ...editor,
         edits: nextEdits,
+        revision: editor.revision + 1,
+        previewState: "pending",
+        previewError: null,
+        saveDiagnostic: null,
+      };
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const addRow = useCallback((path: string) => {
+    if (!projectRoot) return;
+    setEditors((current) => {
+      const editor = current[path];
+      if (!editor || editor.saving || !addCapability(editor.snapshot).supported) return current;
+      const draftId = `draft-${draftSequence.current + 1}`;
+      draftSequence.current += 1;
+      const values: Record<string, string> = {};
+      for (const column of editor.snapshot.columns) values[column.name] = "";
+      const next: EditorState = {
+        ...editor,
+        addedRecords: [...editor.addedRecords, { draftId, values }],
+        revision: editor.revision + 1,
+        previewState: "pending",
+        previewError: null,
+        saveDiagnostic: null,
+      };
+      const firstField = editor.snapshot.columns[0]?.name;
+      if (firstField) pendingCellFocus.current = draftCellKey(draftId, firstField);
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const updateDraftCell = useCallback((path: string, draftId: string, field: string, value: string) => {
+    if (!projectRoot) return;
+    setEditors((current) => {
+      const editor = current[path];
+      if (!editor || editor.saving) return current;
+      if (!editor.addedRecords.some((draft) => draft.draftId === draftId)) return current;
+      const nextDrafts = editor.addedRecords.map((draft) => draft.draftId === draftId
+        ? { ...draft, values: { ...draft.values, [field]: value } }
+        : draft);
+      const next: EditorState = {
+        ...editor,
+        addedRecords: nextDrafts,
+        revision: editor.revision + 1,
+        previewState: "pending",
+        previewError: null,
+        saveDiagnostic: null,
+      };
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const deleteExistingRow = useCallback((path: string, recordIndex: number) => {
+    if (!projectRoot) return;
+    setEditors((current) => {
+      const editor = current[path];
+      if (!editor || editor.saving || editor.pendingDeletes.includes(recordIndex)) return current;
+      const next: EditorState = {
+        ...editor,
+        pendingDeletes: [...editor.pendingDeletes, recordIndex].sort((left, right) => left - right),
+        revision: editor.revision + 1,
+        previewState: "pending",
+        previewError: null,
+        saveDiagnostic: null,
+      };
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const undoExistingDelete = useCallback((path: string, recordIndex: number) => {
+    if (!projectRoot) return;
+    setEditors((current) => {
+      const editor = current[path];
+      if (!editor || editor.saving || !editor.pendingDeletes.includes(recordIndex)) return current;
+      const next: EditorState = {
+        ...editor,
+        pendingDeletes: editor.pendingDeletes.filter((index) => index !== recordIndex),
+        revision: editor.revision + 1,
+        previewState: "pending",
+        previewError: null,
+        saveDiagnostic: null,
+      };
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const deleteDraftRow = useCallback((path: string, draftId: string) => {
+    if (!projectRoot) return;
+    setEditors((current) => {
+      const editor = current[path];
+      if (!editor || editor.saving || !editor.addedRecords.some((draft) => draft.draftId === draftId)) return current;
+      const next: EditorState = {
+        ...editor,
+        addedRecords: editor.addedRecords.filter((draft) => draft.draftId !== draftId),
         revision: editor.revision + 1,
         previewState: "pending",
         previewError: null,
@@ -526,7 +694,7 @@ function App() {
         relativePath: path,
         baseSource: editor.snapshot.baseSource,
         baseContentIdentity: editor.snapshot.baseContentIdentity,
-        edits: Object.values(editor.edits),
+        ...mutationForEditor(editor),
         overwriteExpectedIdentity: overwriteExpectedIdentity ?? null,
       });
       if (workspaceGeneration.current !== generation) return false;
@@ -827,7 +995,9 @@ function App() {
     const record = diagnosticRecordIndex(diagnostic);
     const field = diagnosticField(diagnostic);
     if (file.kind === "data" && record !== null && field) {
-      pendingCellFocus.current = cellKey(record, field);
+      const editor = editorsRef.current[file.path];
+      const target = editor && diagnosticCellKey(editor, record, field);
+      if (target) pendingCellFocus.current = target;
     }
     selectFile(file);
     if (pendingCellFocus.current) {
@@ -983,6 +1153,11 @@ function App() {
               projectRoot={projectRoot!}
               editor={activeEditor}
               onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
+              onDraftCellChange={(draftId, field, value) => updateDraftCell(activeFile.path, draftId, field, value)}
+              onAddRow={() => addRow(activeFile.path)}
+              onDeleteExistingRow={(recordIndex) => deleteExistingRow(activeFile.path, recordIndex)}
+              onUndoExistingDelete={(recordIndex) => undoExistingDelete(activeFile.path, recordIndex)}
+              onDeleteDraftRow={(draftId) => deleteDraftRow(activeFile.path, draftId)}
               onSave={() => void saveFile(activeFile.path)}
               onRecheckSource={() => void recheckSource(activeFile.path)}
               onSwitchView={(view) => switchView(activeFile.path, view)}
@@ -1028,7 +1203,7 @@ function App() {
 
       <footer className="statusbar">
         <span>{activePath ?? "No source selected"}</span>
-        <span>{activeEditor ? `${activeEditor.snapshot.rows.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
+        <span>{activeEditor ? `${activeEditor.snapshot.rows.length + activeEditor.addedRecords.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
         <span>{dirtyCount > 0 ? `${dirtyCount} dirty` : "Saved"}</span>
       </footer>
 
@@ -1323,11 +1498,20 @@ function editorIsDirtySafe(editor: EditorState | undefined): boolean {
   return editor ? editorIsDirty(editor) : false;
 }
 
+type GridRow =
+  | { kind: "existing"; recordIndex: number; pendingDelete: boolean }
+  | { kind: "added"; draft: AddedRecordDraft };
+
 function DataEditor({
   file,
   projectRoot,
   editor,
   onCellChange,
+  onDraftCellChange,
+  onAddRow,
+  onDeleteExistingRow,
+  onUndoExistingDelete,
+  onDeleteDraftRow,
   onSave,
   onRecheckSource,
   onSwitchView,
@@ -1339,6 +1523,11 @@ function DataEditor({
   projectRoot: string;
   editor: EditorState;
   onCellChange: (recordIndex: number, field: string, value: string) => void;
+  onDraftCellChange: (draftId: string, field: string, value: string) => void;
+  onAddRow: () => void;
+  onDeleteExistingRow: (recordIndex: number) => void;
+  onUndoExistingDelete: (recordIndex: number) => void;
+  onDeleteDraftRow: (draftId: string) => void;
   onSave: () => void;
   onRecheckSource: () => void;
   onSwitchView: (view: EditorState["view"]) => void;
@@ -1349,6 +1538,19 @@ function DataEditor({
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
   const lastFocusedCell = useRef<string | null>(null);
+  const capability = addCapability(editor.snapshot);
+  const gridRows: GridRow[] = [
+    ...editor.snapshot.rows.map((row) => ({
+      kind: "existing" as const,
+      recordIndex: row.recordIndex,
+      pendingDelete: editor.pendingDeletes.includes(row.recordIndex),
+    })),
+    ...editor.addedRecords.map((draft) => ({ kind: "added" as const, draft })),
+  ];
+  const gridCellKeys = gridRows.map((row) => editor.snapshot.columns.map((column) =>
+    row.kind === "existing"
+      ? cellKey(row.recordIndex, column.name)
+      : draftCellKey(row.draft.draftId, column.name)));
 
   useEffect(() => {
     lastFocusedCell.current = null;
@@ -1376,9 +1578,24 @@ function DataEditor({
             ...(editor.conflict ? [{ key: "compare", label: "Conflict" }] : [])]} />
         <div className="editor-actions">
           <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
+          <Button
+            htmlType="button"
+            aria-label="Add Row"
+            onClick={onAddRow}
+            disabled={!capability.supported || editor.saving}
+          >
+            Add Row
+          </Button>
           <Button htmlType="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
         </div>
       </header>
+
+      {!capability.supported && (
+        <div className="add-row-reason" role="status">
+          <strong>Add Row unavailable</strong>
+          <span>{capability.reason ?? "This Table is outside the initial Required Primitive scope."}</span>
+        </div>
+      )}
 
       {(editor.saveStatus === "failure" || editor.saveStatus === "outcome_unknown") && (
         <div className="conflict-strip save-recovery-strip">
@@ -1426,33 +1643,89 @@ function DataEditor({
               </tr>
             </thead>
             <tbody>
-              {editor.snapshot.rows.map((row) => (
-                <tr key={row.recordIndex}>
-                  <th className="row-number">{row.recordIndex + 1}</th>
+              {gridRows.map((gridRow, gridRowIndex) => (
+                <tr
+                  key={gridRow.kind === "existing" ? `record-${gridRow.recordIndex}` : gridRow.draft.draftId}
+                  className={gridRow.kind === "existing" && gridRow.pendingDelete ? "pending-delete" : ""}
+                >
+                  <th className="row-number">
+                    {gridRow.kind === "existing" ? gridRow.recordIndex + 1 : "new"}
+                    {gridRow.kind === "existing" && gridRow.pendingDelete ? (
+                      <>
+                        <span className="row-state pending">Pending delete</span>
+                        <Button
+                          size="small"
+                          htmlType="button"
+                          aria-label={`Undo Delete record ${gridRow.recordIndex + 1}`}
+                          onClick={() => onUndoExistingDelete(gridRow.recordIndex)}
+                          disabled={editor.saving}
+                        >
+                          Undo Delete
+                        </Button>
+                      </>
+                    ) : gridRow.kind === "existing" ? (
+                      <Button
+                        size="small"
+                        htmlType="button"
+                        aria-label={`Delete record ${gridRow.recordIndex + 1}`}
+                        onClick={() => onDeleteExistingRow(gridRow.recordIndex)}
+                        disabled={editor.saving}
+                      >
+                        Delete
+                      </Button>
+                    ) : (
+                      <>
+                        <span className="row-state added">New draft</span>
+                        <Button
+                          size="small"
+                          htmlType="button"
+                          aria-label={`Delete new row ${gridRowIndex + 1}`}
+                          onClick={() => onDeleteDraftRow(gridRow.draft.draftId)}
+                          disabled={editor.saving}
+                        >
+                          Delete
+                        </Button>
+                      </>
+                    )}
+                  </th>
                   {editor.snapshot.columns.map((column, columnIndex) => {
-                    const value = currentCellText(editor, row.recordIndex, column.name);
-                    const key = cellKey(row.recordIndex, column.name);
+                    const key = gridCellKeys[gridRowIndex][columnIndex];
+                    const value = gridRow.kind === "existing"
+                      ? currentCellText(editor, gridRow.recordIndex, column.name)
+                      : gridRow.draft.values[column.name] ?? "";
                     const hasDiagnostic = diagnostics.some((diagnostic) =>
                       diagnostic.source != null &&
                       normalizePath(diagnostic.source) === normalizePath(`${projectRoot}/${file.path}`) &&
-                      diagnosticRecordIndex(diagnostic) === row.recordIndex && diagnosticField(diagnostic) === column.name);
-                    const changed = key in editor.edits;
+                      diagnosticField(diagnostic) === column.name &&
+                      diagnosticRecordIndex(diagnostic) !== null &&
+                      diagnosticCellKey(editor, diagnosticRecordIndex(diagnostic)!, column.name) === key);
+                    const changed = gridRow.kind === "added" || key in editor.edits;
+                    const editable = gridRow.kind === "added"
+                      ? !editor.saving
+                      : column.editable && !gridRow.pendingDelete && !editor.saving;
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""}`}>
                         <div className="cell-wrap">
                           <Input
                             data-cell={key}
-                            aria-label={`record ${row.recordIndex + 1} ${column.name}`}
+                            aria-label={`${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`}
                             value={value}
-                            readOnly={!column.editable || editor.saving}
+                            readOnly={!editable}
                             onFocus={() => {
                               cellFocusStart.current.set(key, value);
                               lastFocusedCell.current = key;
                             }}
-                            onChange={(event) => onCellChange(row.recordIndex, column.name, event.target.value)}
-                            onKeyDown={(event) => handleGridKey(event, row.recordIndex, columnIndex, editor.snapshot, () => {
+                            onChange={(event) => gridRow.kind === "added"
+                              ? onDraftCellChange(gridRow.draft.draftId, column.name, event.target.value)
+                              : onCellChange(gridRow.recordIndex, column.name, event.target.value)}
+                            onKeyDown={(event) => handleGridKey(event, gridRowIndex, columnIndex, gridCellKeys, () => {
                               const initial = cellFocusStart.current.get(key);
-                              if (initial !== undefined) onCellChange(row.recordIndex, column.name, initial);
+                              if (initial === undefined) return;
+                              if (gridRow.kind === "added") {
+                                onDraftCellChange(gridRow.draft.draftId, column.name, initial);
+                              } else {
+                                onCellChange(gridRow.recordIndex, column.name, initial);
+                              }
                             })}
                           />
                           {hasDiagnostic && <span className="cell-error" title="Validation diagnostic">!</span>}
@@ -1464,7 +1737,7 @@ function DataEditor({
               ))}
             </tbody>
           </table>
-          {editor.snapshot.rows.length === 0 && <div className="empty-grid">This data file has no records.</div>}
+          {gridRows.length === 0 && <div className="empty-grid">This data file has no records.</div>}
         </div>
       )}
 
@@ -1503,7 +1776,7 @@ function handleGridKey(
   event: React.KeyboardEvent<HTMLInputElement>,
   rowIndex: number,
   columnIndex: number,
-  snapshot: DataFileSnapshot,
+  cellKeys: string[][],
   cancel: () => void,
 ) {
   const input = event.currentTarget;
@@ -1525,9 +1798,9 @@ function handleGridKey(
   else if (event.key === "ArrowLeft" && input.selectionStart === 0) nextColumn -= 1;
   else if (event.key === "ArrowRight" && input.selectionStart === input.value.length) nextColumn += 1;
   else return;
-  if (nextRow < 0 || nextRow >= snapshot.rows.length || nextColumn < 0 || nextColumn >= snapshot.columns.length) return;
+  if (nextRow < 0 || nextRow >= cellKeys.length || nextColumn < 0 || nextColumn >= (cellKeys[nextRow]?.length ?? 0)) return;
   event.preventDefault();
-  const next = cellKey(snapshot.rows[nextRow].recordIndex, snapshot.columns[nextColumn].name);
+  const next = cellKeys[nextRow][nextColumn];
   document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(next)}"]`)?.focus();
 }
 

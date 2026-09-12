@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use masterdata_app::{
-    AuthoringEdit, AuthoringWorkspace, CreationContext, CreationDestinationState, CreationReport,
-    CreationRequest, DataFileSnapshot, NativeApplicationService, SourceContentState,
-    SourceEditPreview, SourceSaveReport,
+    AuthoringEdit, AuthoringRecordDraft, AuthoringRecordMutation, AuthoringWorkspace,
+    CreationContext, CreationDestinationState, CreationReport, CreationRequest, DataFileSnapshot,
+    NativeApplicationService, SourceContentState, SourceEditPreview, SourceSaveReport,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -152,16 +152,23 @@ fn preview_data_file(
     relative_path: String,
     base_source: String,
     edits: Vec<AuthoringEdit>,
+    added_records: Option<Vec<AuthoringRecordDraft>>,
+    deleted_record_indices: Option<Vec<usize>>,
 ) -> std::result::Result<SourceEditPreview, ApiError> {
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
+    let mutation = AuthoringRecordMutation {
+        edits,
+        added_records: added_records.unwrap_or_default(),
+        deleted_record_indices: deleted_record_indices.unwrap_or_default(),
+    };
     NativeApplicationService::new()
-        .preview_data_file(
+        .preview_data_file_mutation(
             configured_path.as_deref().map(Path::new),
             &current_dir,
             &relative_path,
             &base_source,
-            &edits,
+            &mutation,
         )
         .map_err(ApiError::from)
 }
@@ -182,6 +189,7 @@ fn source_content(
         .map_err(ApiError::from)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(rename_all = "camelCase")]
 fn save_data_file(
     project_path: Option<String>,
@@ -189,18 +197,25 @@ fn save_data_file(
     base_source: String,
     base_content_identity: String,
     edits: Vec<AuthoringEdit>,
+    added_records: Option<Vec<AuthoringRecordDraft>>,
+    deleted_record_indices: Option<Vec<usize>>,
     overwrite_expected_identity: Option<String>,
 ) -> std::result::Result<SourceSaveReport, ApiError> {
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
+    let mutation = AuthoringRecordMutation {
+        edits,
+        added_records: added_records.unwrap_or_default(),
+        deleted_record_indices: deleted_record_indices.unwrap_or_default(),
+    };
     NativeApplicationService::new()
-        .save_data_file(
+        .save_data_file_mutation(
             configured_path.as_deref().map(Path::new),
             &current_dir,
             &relative_path,
             &base_source,
             &base_content_identity,
-            &edits,
+            &mutation,
             overwrite_expected_identity.as_deref(),
         )
         .map_err(ApiError::from)

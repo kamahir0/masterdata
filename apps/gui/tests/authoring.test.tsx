@@ -8,6 +8,19 @@ const validation = { valid: true, diagnostics: [] };
 const snapshot = () => ({ path: 'data.yaml', table: 'item', baseSource: 'weight: 10', baseContentIdentity: 'base',
   columns: [{ name: 'weight', typeName: 'ulong', editable: true, keyField: false }],
   rows: [{ recordIndex: 0, cells: [{ field: 'weight', text: '10', editable: true }] }], validation });
+const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
+  { field: 'id', text: '1', editable: false },
+  { field: 'weight', text: '10', editable: true },
+  { field: 'note', text: 'first', editable: true },
+] }]) => ({
+  path: 'data.yaml', table: 'item', baseSource: 'kind: data\ntable: item\nrecords: []\n', baseContentIdentity: 'base',
+  columns: [
+    { name: 'id', typeName: 'ulong', editable: false, keyField: true },
+    { name: 'weight', typeName: 'ulong', editable: true, keyField: false },
+    { name: 'note', typeName: 'string', editable: true, keyField: false },
+  ],
+  rows, addRow: { supported: true, reason: null }, validation,
+});
 const workspace = { project: { project_root: '/project', name: 'Demo', project_id: 'demo' }, sourceRoots: ['.'],
   files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data' }],
   capabilities: { workspaceRead: true, workspaceWrite: true, validate: true, build: true } };
@@ -118,3 +131,135 @@ test('creation refresh selects the new source without discarding an existing dir
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, 10_000);
+
+test('Add Row creates an editable draft, validates it through the shared preview, and makes saved keys read-only', async () => {
+  openSnapshot = mutationSnapshot([]);
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return {
+      candidateSource: 'kind: data\ntable: item\nrecords:\n  - id: 18446744073709551615\n    weight: invalid\n    note: draft\n',
+      changed: true,
+      validation: {
+        valid: false,
+        diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', source: '/project/data.yaml', record_identity: 'record[0]', message: 'field `weight` is invalid' }],
+      },
+    };
+  };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => command === 'save_data_file'
+    ? { status: 'success', snapshot: mutationSnapshot([
+        { recordIndex: 0, cells: [
+          { field: 'id', text: '1', editable: false },
+          { field: 'weight', text: '10', editable: true },
+          { field: 'note', text: 'first', editable: true },
+        ] },
+        { recordIndex: 1, cells: [
+          { field: 'id', text: '18446744073709551615', editable: false },
+          { field: 'weight', text: 'invalid', editable: true },
+          { field: 'note', text: 'draft', editable: true },
+        ] },
+      ]) }
+    : normalInvoke(command, args));
+
+  render(<App />);
+  const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
+  fireEvent.click(add);
+  const id = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
+  expect(id.readOnly).toBe(false);
+  await waitFor(() => expect(document.activeElement).toBe(id));
+  fireEvent.change(id, { target: { value: '18446744073709551615' } });
+  const weight = screen.getByRole('textbox', { name: 'new record weight' }) as HTMLInputElement;
+  fireEvent.change(weight, { target: { value: 'invalid' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'new record note' }), { target: { value: 'draft' } });
+  await waitFor(() => expect(previewArgs?.addedRecords?.[0]?.fields.map((field: any) => field.field)).toEqual(['id', 'weight', 'note']));
+  await waitFor(() => expect(weight.closest('td')?.classList.contains('invalid')).toBe(true));
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+
+  fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
+  expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(true);
+});
+
+test('deleting a new draft cancels the addition and returns the file to clean', async () => {
+  openSnapshot = mutationSnapshot([]);
+  preview = async (args) => ({ candidateSource: openSnapshot.baseSource, changed: Boolean(args.addedRecords?.length || args.deletedRecordIndices?.length), validation });
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
+  await screen.findByRole('textbox', { name: 'new record id' });
+  fireEvent.click(screen.getByRole('button', { name: 'Delete new row 1', exact: true }));
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull());
+  expect(screen.getByText('Saved')).toBeTruthy();
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+});
+
+test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {
+  openSnapshot = mutationSnapshot([
+    { recordIndex: 0, cells: [
+      { field: 'id', text: '1', editable: false },
+      { field: 'weight', text: '10', editable: true },
+      { field: 'note', text: 'first', editable: true },
+    ] },
+    { recordIndex: 1, cells: [
+      { field: 'id', text: '2', editable: false },
+      { field: 'weight', text: '20', editable: true },
+      { field: 'note', text: 'second', editable: true },
+    ] },
+  ]);
+  render(<App />);
+  const weight = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
+  fireEvent.change(weight, { target: { value: '11' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Delete record 1', exact: true }));
+  expect(screen.getByText('Pending delete')).toBeTruthy();
+  expect(weight.value).toBe('11');
+  expect(weight.readOnly).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Undo Delete record 1', exact: true }));
+  expect(weight.value).toBe('11');
+  expect(weight.readOnly).toBe(false);
+});
+
+test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
+  openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
+  render(<App />);
+  const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
+  expect((add as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Delete record 1', exact: true })).toBeTruthy();
+});
+
+test('structural mutation state survives Failure, Conflict, and Outcome Unknown recovery', async () => {
+  openSnapshot = mutationSnapshot([]);
+  preview = async () => ({ candidateSource: 'kind: data\ntable: item\nrecords:\n  - id: 1\n', changed: true, validation });
+  let saveResponse: any = { status: 'failure', snapshot: null, current: null, diagnostic: { code: 'E-IO', message: 'Cannot write source' } };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => command === 'save_data_file' ? saveResponse : normalInvoke(command, args));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
+  const draftId = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
+  fireEvent.change(draftId, { target: { value: '1' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
+  await waitFor(() => expect(screen.getByText('Save failed.')).toBeTruthy());
+  expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+
+  saveResponse = {
+    status: 'conflict',
+    snapshot: null,
+    current: { path: 'data.yaml', contentIdentity: 'external', source: 'external: true' },
+    diagnostic: { code: 'E-SOURCE-EDIT-CONFLICT', message: 'source changed' },
+  };
+  fireEvent.click(screen.getByRole('button', { name: 'Retry Save', exact: true }));
+  await waitFor(() => expect(screen.getByText('File changed outside masterdata.')).toBeTruthy());
+  fireEvent.click(screen.getByRole('tab', { name: 'Data', exact: true }));
+  expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+
+  saveResponse = {
+    status: 'outcome_unknown',
+    snapshot: null,
+    current: null,
+    diagnostic: { code: 'E-SOURCE-EDIT-WRITE-VERIFY', message: 'could not verify write' },
+  };
+  fireEvent.click(screen.getByRole('button', { name: 'Overwrite', exact: true }));
+  await waitFor(() => expect(screen.getByText('Previous save outcome is unknown.')).toBeTruthy());
+  expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+});

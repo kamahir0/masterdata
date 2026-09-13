@@ -9,60 +9,59 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 ## Objective
 
-現在のHuman priorityは、**GUIのData Editorからrecordを追加・削除し、Source Creationで作ったempty Data documentをYAML手編集なしで実用的なrecord authoringへ進められる体験を完成させる**ことである。
+現在のHuman priorityは、**GUIのTable EditorからSchema Migration v1の`AddField` / `RenameField` / `DropField`をplan・diff確認付きで安全に実行し、既存Table schemaをYAML手編集なしで変更できる最初のschema-aware authoring体験を完成させる**ことである。
 
-Source Artifact Creation Objectiveはcandidate `f54bc545494cc40c014825fe64dc1d580edcbf34`のfinal verificationでBlockingなしとなり、2026-09-12に`objective-complete`へ到達した。その後Humanが次priorityとして第一推薦のData Editor record追加・削除を「進める」と選択したため、本Objectiveをcurrent priorityとする。
+Data Editor record mutation Objectiveはcandidate `71d155d4f9bd76af932af61481ac40f9bc47d2ef`のfinal verificationでBlockingなしとなり、2026-09-13時点で`objective-complete`に到達している。その後Humanが、次候補として推薦したTable Editor v1について「進めて」と選択したため、本Objectiveをcurrent priorityとする。
 
-既存[Source Record Edit](specs/source-edit.md)は既存record member value変更だけを所有し、record追加・削除を明示的にnon-scopeとしている。そのauthorityを黙って拡張せず、record structure mutationのsource-preserving semanticsは[Source Record Mutation](specs/source-record-mutation.md)が所有する。GUI interactionも[Data Editor Record Mutation](gui/data-editor/record-mutation.md)へ分離する。
+Schema transformation semanticsのauthorityは既存Approved [Schema Migration v1](specs/schema-migration.md)であり、本ObjectiveはGUI convenienceのために別のfield identity、key allocation、dependency rewrite、source rewrite、transaction semanticsを発明しない。GUI observable workflowは新しい[Table Editor](gui/table-editor/spec.md)で仕様化し、Human Approval後にimplementation authorityとする。
 
-Added record draftで初回値としてkey fieldを入力できるようにするため、既存Approved `GUI-DATA-STATE-001`のapplicability boundaryを[spec change 0013](spec-changes/0013-data-editor-added-record-key-editability.md)で明確化した。existing recordのkey fieldは引き続きread-onlyであり、new draftだけを初回Save前の例外とする。
+implementation realityでは、Approved Migration v1が`AddField` / `RenameField` / `DropField`を定義している一方、current `masterdata-core`の`MigrationCommand`は`AddField`のみ実装済みである。この差はcanonical specificationを狭める理由ではなく、Approved behaviorへ実装を追随させるimplementation gapとして扱う。本Objectiveにはshared core/applicationでの`RenameField` / `DropField`実装と、そのGUI Table Editorへの接続を含める。
 
 Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
 
-2026-09-12にHumanが上記2つの新規specificationとspec change 0013を承認した。`Source Record Mutation`と`Data Editor Record Mutation`は`Status: Approved`となり、0013はcanonical `GUI-DATA-STATE-001`へ適用済みで`Status: Applied`である。既存Approved authorityとの未処理conflict、Open Question、implementation convenienceで新しいpublic semanticsを発明する必要は残っていないため、本Objectiveはimplementation readiness gateを満たす。
-
 ## Why now
 
-現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags / Custom Typeを新規作成でき、既存Data documentではRequired Primitive non-key fieldを編集・validation・Diff・file Saveできる。一方、新規Data documentはempty `records`から開始するため、最初のrecordをGUIで追加する手段がなく、creation直後にYAML手編集へ戻る断点が残っている。
+現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags / Custom Typeを新規作成でき、Data documentではrecordの追加・削除・Required Primitive value編集・validation・Diff・SaveまでGUI内で行える。一方、作成済みTable schemaを変更する専用editorはなく、field追加・rename・dropではYAML手編集または別surfaceへ戻る断点が残っている。
 
-最初のrecord追加・既存record削除をfile単位dirty / Save、source-preserving patch、lost-update recoveryへ統合することで、Project作成から基本的なrecord authoringまでGUIだけで連続して行える範囲を拡張する。
+Product Visionはschema-aware editingを長期方向として明示しており、Schema Migration v1にはsource-preserving transformation、deterministic Plan、destructive authorization、lost-update preflight、multi-file rollback / Recovery Requiredまで既にApproved contractがある。次にそのshared semanticsをTable Editorへ接続することで、新しいdomain ruleを増やさずschema authoringの主要な断点を閉じられる。
 
 ## Completion boundary
 
-- 選択中Data documentのTableが、全fieldをRequired Primitiveとして宣言している場合、Data Editorから`Add Row`を実行し、selected source fileの末尾へ新しいrecord draftを追加できるようにする。
-- 新規record draftはschema declaration orderの全fieldを持ち、初回Save前はPrimary / Secondary Key構成fieldを含む全fieldをlosslessなtext入力で編集できるようにする。`long` / `ulong`をfrontendのlossy numeric representationへ変換しない。
-- Add Row自体をfile-local dirty mutationとして扱い、validation errorをSave gateにしない。新規draftのdomain-invalid valueもshared validationでdiagnosticを返し、Source of Truthへ保存するかどうかは既存explicit Save workflowに従う。
-- TableにNullable / Array / Enum / Flags / Value Object / Custom Type等、初期row input scope外のfieldが含まれる場合、Add Rowを実行可能として誤表示せず、未対応理由を確認できるようにする。既存recordの表示・既存対応fieldの編集・record削除まで無効化してはならない。
-- 既存recordはPrimary Key valueではなく、base snapshot内の選択source occurrenceを対象としてDeleteできるようにする。同一PK valueを持つ別recordを誤って削除しない。
-- 既存recordをDeleteした時点では即時disk mutationせず、そのfileのlocal bufferで`Pending delete`として識別でき、Save前にUndoできるようにする。削除対象recordの既存local cell editsはDelete中も復元可能なbuffer stateとして保持する。
-- 新規record draftをSave前にDeleteした場合は、そのadditionをcancelし、他の変更がなければfileをcleanへ戻せるようにする。
-- 同一file内の既存cell edit、record addition、record deletionを1つのSave candidateへcompositionし、1回のfile Saveでcommitする。削除対象recordへのvalue editとDeleteが共存する場合はDeleteが最終candidateを所有し、Undo時にはDelete前のlocal edit stateを復元する。
-- Addはselected source fileの`records`末尾へdeterministicに挿入し、Deleteはselected source occurrenceだけを除去する。対象構造変更と無関係なcomments、blank lines、line ending、quote / indentation、record/member order、その他source textを保持する。
-- GUI Source Creationが生成するempty `records: []`をAdd Rowで安全にblock sequenceへ展開できるようにする。source shapeを安全に再特定できない場合はfull-file reserializationや近似patchへfallbackせず失敗する。
-- structure mutation後もbuffer validation、Problems、Diffは現在のlocal Save candidateを対象とし、stale previewをcurrent resultとして表示しない。
-- Save / Save All、external modification、Conflict Compare / Reload / Overwrite、Failure / Outcome Unknown recovery、dirty lifecycle、Buildは保存済みsourceのみという既存Data Editor contractをrecord structure mutationにも適用する。
-- record addition / deletionはBuild、Publish、Git、schema Migration、generated artifact更新を暗黙に開始しない。
-- source patch derivation、record value conversion、schema/validation semanticsをfrontendへ複製せず、shared core/application boundaryへ置く。
-- focused core/application tests、React状態遷移test、repository required checks、final verificationでBlockingがないことを確認する。
+- Workspace ExplorerでTable schema documentを選択した場合、folder pathではなくshared source semantics / document kindに基づいてTable Editorを開く。
+- Table Editorはlogical Table identity、schema source provenance、field declaration order、MessagePack key、type / modifier、Primary Key、Secondary Keyをshared application snapshotから表示し、frontend独自にYAMLをparseしてschema meaningを再構成しない。
+- 初期mutation surfaceはApproved Migration v1の`AddField` / `RenameField` / `DropField`に限定する。field type変更、field reorder、MessagePack key変更、Primary / Secondary Key編集、Table rename等を暗黙に実装しない。
+- `AddField`ではfield key、name、type、Nullable / Array modifier、および必要なexplicit constant initializerを入力できる。initializerやtype/value validityはshared Migration / Type System semanticsで判定し、frontendで簡易YAML/type validatorを複製しない。既存recordがある場合のinitializer requirementもMIGRATION-006へ委譲する。
+- `RenameField`はlogical Table identity + current field nameをsemantic selectorとして使用し、MessagePack keyを変更しない。Primary / Secondary Key等のApproved dependency updateはshared Migration semanticsへ委譲し、frontendで文字列置換しない。
+- `DropField`はdestructive operationとして明示し、mutation開始にはGUI confirmationとは別にbackendへmachine-actionable destructive authorizationを渡す。依存fieldを黙って削除・修復して成功扱いしない。
+- source mutation前に必ずdeterministic Migration Planを作成し、operation / target、affected source files、affected record count、diagnostics、destructive stateを利用者が確認できるようにする。
+- Planからaffected sourceごとのbefore / after Diffを確認できるようにする。Plan / Diffの表示自体はsourceを変更しない。
+- Applyは現在表示中のPlanと同じsemantic command / base snapshotに対してのみ実行する。source/config/membershipがstaleならmutationせずstructured errorを表示し、re-planを要求する。
+- Migration Planが変更対象として示すsource fileにData Editorのdirty bufferが存在する場合、Applyを開始せず、対象dirty fileを識別できるようにする。unrelated dirty bufferだけを理由にPlanまたはApplyを全面禁止せず、それらのbufferを保持する。
+- successful Migration後はaffected sourceをworkspace authorityから再取得し、Table Editorを最新schemaへ更新する。affected clean Data Editor snapshotはstaleなままeditableにせず再読込し、unrelated dirty bufferは保持する。
+- commit failure + rollback success / mutation未開始はSuccessと区別し、operation inputとPlan情報を失わずretry / re-planできる状態を保つ。`Recovery Required`ではその状態を明示し、Approved MIGRATION-010に従って安全なsource stateを再確立するまでGUIから追加のintentional source mutationを開始しない。
+- Migration成功はBuild / Publish / Git / generated artifact更新を暗黙に開始しない。必要なら既存Buildを別operationとして実行する。
+- Tauri frontendはfilesystem、YAML rewrite、Migration dependency resolution、source transactionを実装せず、shared Native Application Serviceを薄く呼び出す。
+- current implementation gapであるshared `RenameField` / `DropField`をApproved Schema Migration v1どおり実装し、Add/Rename/Dropすべてでsource-preserving patch、postcondition、stale-plan preflight、rollback / Recovery Required semanticsを維持する。
+- focused core/application regression、Tauri adapter test、React状態遷移test、repository required checks、final verificationでBlockingがないことを確認する。
 
 ## Explicit non-scope
 
 現Objectiveでは次を含めない。
 
-- Nullable / Array / Enum / Flags / Value Object / Custom Typeを含むTableへの新規record input UI。
-- `$tags`の追加・編集。
-- record duplicate、record move / reorder、drag & drop、複数record一括追加・一括削除。
-- spreadsheet range selection、一括paste、fill handle、履歴付きgeneral Undo/Redo。Pending deleteに対する局所Undoは本Objectiveに含む。
-- Table横断aggregate view、複数Data fileを1つのgridとして編集すること。
-- schema / type / field / keyの追加・削除・rename・編集。
-- source file / folderのrename、delete、move、duplicate。
-- multi-file atomic transaction。
-- Programmable View / Computed Column / Annotation Column。
+- field type変更、Nullable / Array modifier変更、field reorder、MessagePack key変更。
+- Primary Key / Secondary Keyの追加・削除・reorder・nonUnique変更。
+- Table identity / `csharpName`の変更。
+- Value Object / Enum / Flags / Custom Typeの既存definition編集を行うType Editor。
+- schema file / folderのrename、delete、move、duplicate。
+- Data Editorのcomplex field record input拡張。
+- arbitrary raw-YAML schema editor、formatter、general text editor。
+- Migration v1外のSQL-like language、bulk migration script、ChangeFieldType、cross-table arbitrary transform。
 - Build Profile / Publish、Standalone / Connected Web全体、Native Host lifecycle、distributionの同時完成。
+- crash / power-lossまで含むglobal filesystem transaction保証。
 
 ## Next candidate
 
-このObjective完了後は、Table / Type専用editor、complex fieldを含むrecord追加、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
+このObjective完了後は、Type Editor、complex fieldを含むrecord追加、Primary / Secondary Key editingを含む次段schema authoring、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
 
 次priorityは自動昇格せず、current realityとproduct valueを確認してHumanが選択する。
 
@@ -72,14 +71,12 @@ Humanが既に選択した方針どおり、使い勝手・データ安全性・
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)
-- [Data Editor](gui/data-editor/spec.md) — existing-record GUI authority。spec change 0013適用済み。
-- [Data Editor Record Mutation](gui/data-editor/record-mutation.md) — `Status: Approved`
-- [Source Record Edit](specs/source-edit.md) — existing-member editとfile Save safetyのauthority
-- [Source Record Mutation](specs/source-record-mutation.md) — `Status: Approved`
-- [Spec change 0013: Added record draft key editability](spec-changes/0013-data-editor-added-record-key-editability.md) — `Status: Applied`
-- [Source Artifact Creation](specs/source-creation.md) — empty Data document creationのauthority
+- [Table Editor](gui/table-editor/spec.md) — current proposal owner for GUI workflow
+- [Data Editor](gui/data-editor/spec.md)
+- [Schema Migration v1](specs/schema-migration.md) — Add/Rename/Drop semantics、Plan、source preservation、commit safetyのcanonical authority
 - [Masterdata YAML subset](specs/yaml-subset.md)
 - [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
+- [Type System](specs/type-system/README.md)
 - [Primitive Types](specs/type-system/primitives.md)
 - [Field Modifiers](specs/type-system/field-modifiers.md)
 - [Runtime hosts / capability](specs/runtime-hosts.md)

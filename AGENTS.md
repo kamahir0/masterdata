@@ -54,11 +54,15 @@ delegationはexecution strategyであり、repositoryが固定の`main-reviewer`
 
 Humanから「進めて」等の短い指示を受けたagentは、conversationの前回stateではなくfresh repositoryのCurrent ObjectiveとDevelopment Stateを読み、[`docs/execution-workflow.md`](docs/execution-workflow.md)のstage semanticsに従って現在可能なactivityを進める。
 
+Stageから導出されるActivity classは二値であり、`implementation-ready` / `correction-ready`は`IMPLEMENTATION`、それ以外は`NON_IMPLEMENTATION`とする。短い「進めて」はprompt受領時のActivity classを1回進める意味であり、activity中にclassが変わるStageへ到達したらそこで停止する。Humanがcross-boundary continuationを明示していない限り、`NON_IMPLEMENTATION`から`IMPLEMENTATION`へ、またはその逆へ同じturnで自動継続してはならない（MUST NOT）。
+
+Current Objectiveに関するdevelopment activityまたはstatus responseのfinal responseでは、`docs/execution-workflow.md`で定義された`Execution Handoff` blockを必ず出力し、少なくとも`Current stage`、`Next activity`、`Next activity class`、`Human action required`、`Short "進める" means`、`Stop boundary`、`2-agent lane`を明示する（MUST）。これらはfresh Stageから導出するprojectionであり、`docs/execution-state.md`へactor routingとして保存してはならない。
+
 ### Implementation readiness
 
 agentは設計・仕様議論の進行中に、`docs/execution-workflow.md`のImplementation readiness gateを確認する。必要なobservable semanticsがApproved authorityから決定でき、Specification Gap / Human decision /必要なApprovalが残らず、completion boundary・invariant・non-scopeから安全にimplementation scopeを切れる状態になったら、Humanへ**implementation-readyであることを自ら明示する**。
 
-Humanが「そろそろ実装agentへ渡すべきか」を判断することを前提にしない。implementation-ready後は、同じagentが`implement-spec`で実装を続けても、execution environment / cost / capability上有益なら別agentへdelegateしてもよい。
+Humanが「そろそろ実装agentへ渡すべきか」を判断することを前提にしない。implementation-ready後は、同じagentが次のimplementation activityを担当しても、execution environment / cost / capability上有益なら別agentへdelegateしてもよい。ただし、`NON_IMPLEMENTATION` activity中にimplementation-readyへ到達した同じturnで、短い「進めて」だけを根拠に実装へ跨いではならない。
 
 ### One semantic objective = one implementation work package
 

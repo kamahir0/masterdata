@@ -75,7 +75,9 @@ Current Objectiveをimplementation-readyへ進めてよいのは、少なくと�
 
 このgateが満たされていない間は、`designing`または`decision-required`を使用する。
 
-このgateが満たされたら、agentはHumanへ**「仕様上の未決定事項はなく、ここからimplementationを開始できる」**ことを明示する。execution environmentやcost / capability上delegationが有益なら別agentへdelegateしてよいが、delegationが利用できないことを理由にimplementationを不自然に停止する必要はない。同じagentがそのまま`implement-spec`を実行してよい。
+このgateが満たされたら、agentはHumanへ**「仕様上の未決定事項はなく、ここからimplementationを開始できる」**ことを明示する。execution environmentやcost / capability上delegationが有益なら別agentへdelegateしてよいが、delegationが利用できないことを理由にimplementationを不自然に停止する必要はない。同じagentがimplementationを担当してよい。
+
+ただし、短い「進めて」等のcontinuation promptで`NON_IMPLEMENTATION` activityを開始したturn中にreadiness gateを満たして`implementation-ready`へ到達した場合、そのturnのままimplementationへ進んではならない（MUST NOT）。後述のActivity class boundaryで停止してExecution Handoffを返し、次の短いcontinuation promptまたはHumanの明示的なcross-boundary指示でimplementationを開始する。
 
 ## Development State format
 
@@ -207,6 +209,17 @@ verification resultによる`correction-ready`、`decision-required`、`objectiv
 
 Humanから「進めて」等の短い指示を受けたagentはPre-action freshness gate後にStageを読み、原則として次のactivityを行う。
 
+### Activity class and continuation boundary
+
+各Stageには、agent topologyとは独立したderivedなActivity classを1つだけ割り当てる。Activity classはDevelopment Stateへ保存せず、freshなStageから機械的に導出する。
+
+- `IMPLEMENTATION`: production / test / fixture等の実装変更を主目的として行うactivity。`implementation-ready`と`correction-ready`だけが該当する。
+- `NON_IMPLEMENTATION`: design / specification / approval reflection / verification / priority selection等。`designing`、`decision-required`、`verification-ready`、`objective-complete`が該当する。
+
+短い「進めて」「continue」等のcontinuation promptは、**prompt受領時のStageに対応するActivity classを1回進める指示**として解釈する。activity中にStageが別のActivity classへ遷移した時点で、そのturnは停止してExecution Handoffを返さなければならない（MUST）。特に`NON_IMPLEMENTATION`から`IMPLEMENTATION`へ自動で跨いではならず（MUST NOT）、`IMPLEMENTATION`から`NON_IMPLEMENTATION`へ到達した後にverificationまで連続実行してもならない（MUST NOT）。
+
+Humanが「承認後そのまま実装まで」「実装して検証まで」のようにcross-boundary continuationを明示した場合だけ、指定された範囲でこのstop boundaryを跨いでよい（MAY）。単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない（MUST NOT）。
+
 - `designing`: current design/specification workを継続し、readiness gateを満たすために必要な調査・spec refinement・reviewを進める。Human decisionが必要な時だけ具体的なdecisionを求める。
 - `decision-required`: Human decision neededの内容を提示し、そのdecisionだけを求める。Approvalを自動代行しない。
 - `implementation-ready`: Current Objectiveを実装し、final candidateと`verification-ready` transitionまで閉じる。同一agentでもdelegateでもよい。PR作成やCI pendingで途中停止しない。
@@ -222,26 +235,33 @@ Development Stateはactor-neutralなauthorityのまま維持し、`mainline` / `
 
 標準の2-agent split modeでは次のroutingを使用する。
 
-| Development Stage | 次のactivity | 2-agent運用で推奨するlane |
-| --- | --- | --- |
-| `designing` | design / specificationを進める | 本流側 |
-| `decision-required` | Human decisionを整理・提示し、回答後にcanonical authorityへ反映する | 本流側 |
-| `implementation-ready` | Current Objectiveを実装してcandidate化する | 実装側 |
-| `verification-ready` | recorded Candidateをfinal verificationする | 本流側 |
-| `correction-ready` | recorded Blockingだけを修正して新candidate化する | 実装側 |
-| `objective-complete` | 次priority候補を比較・推薦しHuman decisionへ戻る | 本流側 |
+| Development Stage | Activity class | 次のactivity | 2-agent運用で推奨するlane |
+| --- | --- | --- | --- |
+| `designing` | `NON_IMPLEMENTATION` | design / specificationを進める | 本流側 |
+| `decision-required` | `NON_IMPLEMENTATION` | Human decisionを整理・提示し、回答後にcanonical authorityへ反映する | 本流側 |
+| `implementation-ready` | `IMPLEMENTATION` | Current Objectiveを実装してcandidate化する | 実装側 |
+| `verification-ready` | `NON_IMPLEMENTATION` | recorded Candidateをfinal verificationする | 本流側 |
+| `correction-ready` | `IMPLEMENTATION` | recorded Blockingだけを修正して新candidate化する | 実装側 |
+| `objective-complete` | `NON_IMPLEMENTATION` | 次priority候補を比較・推薦しHuman decisionへ戻る | 本流側 |
 
 したがって標準split modeでは、**実装側を動かすのは`implementation-ready`と`correction-ready`、それ以外は本流側**と一目で判断できる。このmappingはcost / capabilityを分離した運用のdefault projectionであり、single-agent運用では無視して同じagentがStageに対応するactivityを継続してよい。
 
-Humanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合、およびrepository activity後のstatus / completion reportでは、agentはfreshなDevelopment Stateから少なくとも次を明示する。
+Current Objectiveに関するdevelopment activityを行ったagentのfinal response、およびHumanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合のstatus responseは、通常の説明文の有無にかかわらず、末尾にfreshなDevelopment Stateから導出した次の`Execution Handoff` blockを必ず含めなければならない（MUST）。
 
 ```text
-現在: <Stage>
-次のactivity: <Stageから導出したactivity>
-2-agent運用: <本流側 | 実装側>
+Execution Handoff
+Current stage: <Stage>
+Next activity: <Stageから導出したactivity>
+Next activity class: <IMPLEMENTATION | NON_IMPLEMENTATION>
+Human action required: <yes | no>
+Short "進める" means: <次の短いcontinuation promptで実行する内容>
+Stop boundary: <このactivityが停止すべきStageまたは条件>
+2-agent lane: <本流側 | 実装側>
 ```
 
-`decision-required`ではこれに加えて具体的なHuman decisionを提示する。`Candidate`、Blocking、CI等の重要なcurrent contextは必要に応じて併記してよいが、HumanへStage名だけを返してlaneを推測させてはならない。
+`Human action required`は`decision-required`、`objective-complete`でのpriority選定、その他具体的なHuman decision / Approval待ちでは`yes`とし、それ以外は通常`no`とする。`decision-required`ではblockに加えて具体的なHuman decisionを本文で提示する。`Candidate`、Blocking、CI等の重要なcurrent contextは必要に応じて本文へ併記してよい。
+
+`Short "進める" means`と`Stop boundary`はActivity class boundaryをHumanが予測できる具体度で書く。HumanへStage名だけ、またはlaneだけを返して次がimplementationかnon-implementationかを推測させてはならない（MUST NOT）。このresponse contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも次の起動先を機械的に判断できるようにするためのprojectionである。
 
 このprojectionを`docs/execution-state.md`へ`Next actor`、`Recommended lane`、agent名等として永続化してはならない（MUST NOT）。Stage semanticsがroutingの唯一のsourceであり、agent topologyをDevelopment Stateへ逆流させない。
 

@@ -98,6 +98,17 @@ fn development_state_is_well_formed_and_discoverable() {
     let agents = fs::read_to_string(root.join("AGENTS.md")).expect("read AGENTS.md");
     assert!(agents.contains("docs/execution-state.md"));
     assert!(agents.contains("docs/execution-workflow.md"));
+    for required in [
+        "Next activity class",
+        "Short \"進める\" means",
+        "activity中にclassが変わるStageへ到達したらそこで停止",
+        "Execution Handoff",
+    ] {
+        assert!(
+            agents.contains(required),
+            "AGENTS.md lost execution handoff policy: {required}"
+        );
+    }
 }
 
 #[test]
@@ -122,10 +133,17 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "### `correction-ready`",
         "## Split-mode routing projection",
         "実装側を動かすのは`implementation-ready`と`correction-ready`、それ以外は本流側",
-        "現在: <Stage>",
-        "次のactivity: <Stageから導出したactivity>",
-        "2-agent運用: <本流側 | 実装側>",
-        "HumanへStage名だけを返してlaneを推測させてはならない",
+        "## Activity class and continuation boundary",
+        "`IMPLEMENTATION`: production / test / fixture等の実装変更を主目的",
+        "`NON_IMPLEMENTATION`: design / specification / approval reflection / verification / priority selection等",
+        "単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない",
+        "Execution Handoff",
+        "Next activity: <Stageから導出したactivity>",
+        "Next activity class: <IMPLEMENTATION | NON_IMPLEMENTATION>",
+        "Short \"進める\" means:",
+        "Stop boundary:",
+        "2-agent lane: <本流側 | 実装側>",
+        "HumanへStage名だけ、またはlaneだけを返して次がimplementationかnon-implementationかを推測させてはならない",
         "## Pre-action freshness gate",
         "## Post-action report verification",
         "current owner branchのremote HEAD",

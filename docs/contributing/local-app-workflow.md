@@ -19,11 +19,11 @@ macOSでは `scripts/local-app/app.command` をダブルクリックできます
 
 ## package / install
 
-`target/local-dist/` はpackage phaseで毎回消去・再生成されるdeveloper向け集約先です。macOSでは `.app` を `~/Applications/masterdata-local.app` へ置き換えます。WindowsではTauriが生成したrelease `.exe` を `target/local-dist/windows/` に集約し、`%LOCALAPPDATA%\Programs\masterdata-local\masterdata-gui.exe` へコピーします。管理者権限やsystem-wide `/Applications`は要求しません。Windowsのlocal installはportable executable deploymentです。installer policyや正式版identityをこのworkflowで固定しないためです。
+`target/local-dist/` はpackage phaseで毎回repository配下の対象directoryだけを消去・再生成するdeveloper-onlyの集約先です。baseのTauri設定は変更せず、package phaseだけinline configでbundleを有効化します。macOSでは既知の `masterdata.app` を `~/Applications/masterdata-local.app` へstagingして置き換えます。Windowsでは既知の `target/release/masterdata-gui.exe` だけを集約し、`%LOCALAPPDATA%\Programs\masterdata-local\masterdata-gui.exe` へstagingして置き換えます。管理者権限やsystem-wide `/Applications`は要求しません。Windowsのlocal installはportable executable deploymentです。起動中でWindowsが置換を拒否した場合はprocessをkillせず、対象pathと「GUIを閉じてretry」というstructured errorで停止します。
 
 ## failure / troubleshooting
 
-失敗時はphase名とstructured diagnostic codeを表示してnon-zeroで終了します。`doctor`、`npm ci`、OS依存（Xcode CLT、WebView2/C++ Build Tools）、Tauri build output、空き容量、per-user directory権限を確認してください。`smoke`はinstalled executableの存在、process起動、2秒間の即時crashを確認します。
+失敗時はphase名とstructured diagnostic codeを表示してnon-zeroで終了します。`doctor`、`npm ci`、OS依存（Xcode CLT、WebView2/C++ Build Tools）、Tauri build output、空き容量、per-user directory権限を確認してください。`smoke`はlocal-distの既知artifact、install済みproduction executableの存在、起動、2秒間の即時crashを確認し、smoke自身が起動したprocessを終了します。GUI操作、`Open Project`、`Validate`、`Build`の画面操作までは確認しません。`reinstall`最後のlaunchだけはprocessを残してGUI確認に使います。
 
 ## scope
 

@@ -320,20 +320,32 @@ test('Migration refresh reloads affected clean editors and preserves unrelated d
   expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='other.yaml')).toHaveLength(1);
   expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
 }, 20_000);
-test('Recovery Required blocks Save Create Apply and Build across navigation until host recheck succeeds',async()=>{
+const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
+test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;
-  let recovery:any=null;
   invoke.mockImplementation(async(command,args)=>{
     if(command==='authoring_workspace')return tableWorkspace;
     if(command==='open_table')return tableSnapshot;
     if(command==='plan_table_migration')return {...tablePlan,files:tablePlan.files.slice(0,1)};
-    if(command==='apply_table_migration'){recovery={state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery'};return recovery;}
+    if(command==='apply_table_migration')return recoveryRequired;
+    return normal(command,args);
+  });
+  const input=await open();fireEvent.change(input,{target:{value:'20'}});
+  await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
+  await screen.findByText('Recovery Required — source changes and Build are blocked');
+  expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
+}, 20_000);
+test('Recovery Required blocks Save until host recheck succeeds',async()=>{
+  const normal=invoke.getMockImplementation()!;
+  let recovery:any=recoveryRequired;
+  invoke.mockImplementation(async(command,args)=>{
+    if(command==='authoring_workspace')return tableWorkspace;
     if(command==='migration_recovery_status')return recovery;
     if(command==='recheck_migration'){recovery=null;return null;}
     return normal(command,args);
   });
   const input=await open();fireEvent.change(input,{target:{value:'20'}});
-  await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);

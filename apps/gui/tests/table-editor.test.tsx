@@ -23,10 +23,12 @@ test('input changes invalidate the reviewed plan and Diff uses its captured sour
   expect(screen.queryByRole('button',{name:'Apply reviewed Plan'})).toBeNull();
   expect(invoke.mock.calls.some(([command])=>command==='apply_table_migration')).toBe(false);
 });
-test('affected dirty files block Apply while unrelated dirty files do not',async()=>{
+test('affected dirty file disables Apply',async()=>{
   await open(['data.yaml']);await rename();
   expect((screen.getByRole('button',{name:'Apply reviewed Plan'}) as HTMLButtonElement).disabled).toBe(true);
-  cleanup();await open(['other.yaml']);await rename();
+});
+test('unrelated dirty file allows Apply',async()=>{
+  await open(['other.yaml']);await rename();
   fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await waitFor(()=>expect(onResult).toHaveBeenCalledOnce());
   expect(invoke.mock.calls.find(([command])=>command==='apply_table_migration')?.[1]).toEqual({projectPath:'/project',token:'1',allowDestructive:false});

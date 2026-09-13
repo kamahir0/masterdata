@@ -1,13 +1,13 @@
 # 仕様変更: Migration Recovery Required時のproject-level source mutation gate
 
-Status: Proposed
+Status: Applied
 
 ## Affected Specifications
 
 - `docs/gui/app-shell.md` — `Status: Approved`
   - `GUI-SHELL-STATE-001`
   - `GUI-SHELL-CAPABILITY-001`
-- Related new specification: `docs/gui/table-editor/spec.md` — `Status: Proposed`
+- Related new specification: `docs/gui/table-editor/spec.md` — `Status: Approved`
 - Canonical domain authority: `docs/specs/schema-migration.md` — `MIGRATION-010`
 
 ## 根拠と分類（Source Evidence and Classification）
@@ -56,3 +56,10 @@ None for the initial GUI safety gate. Recovery workspaceをGUIからどこまで
 ## レビュー（Review）
 
 Self-review: このdeltaは`MIGRATION-010`の既存Approved safety requirementをGUI cross-surface behaviorへfaithfully mapするもので、通常時のsource mutation semanticsを変更しない。Table Editor specへglobal shell ruleを重複配置せず、project-level command availabilityのownerであるapp shellへroutingする。
+
+## 承認記録（Approval Record）
+
+- Human approval: 2026-09-13。このsessionで提示したTable Editor v1と本deltaの2件に対する「承認」。
+- Canonical application: 本承認反映commitで`docs/gui/app-shell.md`の`GUI-SHELL-STATE-001` / `GUI-SHELL-CAPABILITY-001`へatomicに適用。既存IDを維持する。
+- Table Editor v1も同時にApprovedへ移行し、cross-surface gateの参照先をapp shellのcanonical ownerへ更新した。
+- review-spec照合: intent、内部整合、cross-spec整合、用語、規範強度、testability、互換性、未決定事項、adapter boundary、scopeを確認。Blocking / Non-blocking / QuestionsはNone identified。Approved as Proposed: Yes。これはreview判定であり、status変更の根拠は上記Human approvalである。

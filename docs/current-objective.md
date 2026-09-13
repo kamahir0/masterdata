@@ -13,7 +13,7 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 Data Editor record mutation Objectiveはcandidate `71d155d4f9bd76af932af61481ac40f9bc47d2ef`のfinal verificationでBlockingなしとなり、2026-09-13時点で`objective-complete`に到達している。その後Humanが、次候補として推薦したTable Editor v1について「進めて」と選択したため、本Objectiveをcurrent priorityとする。
 
-Schema transformation semanticsのauthorityは既存Approved [Schema Migration v1](specs/schema-migration.md)であり、本ObjectiveはGUI convenienceのために別のfield identity、key allocation、dependency rewrite、source rewrite、transaction semanticsを発明しない。GUI observable workflowは新しい[Table Editor](gui/table-editor/spec.md)で仕様化し、Human Approval後にimplementation authorityとする。
+Schema transformation semanticsのauthorityは既存Approved [Schema Migration v1](specs/schema-migration.md)であり、本ObjectiveはGUI convenienceのために別のfield identity、key allocation、dependency rewrite、source rewrite、transaction semanticsを発明しない。GUI observable workflowのauthorityはApproved [Table Editor](gui/table-editor/spec.md)である。2026-09-13にHumanがTable Editor v1とspec change 0014を承認し、Recovery Requiredのcross-surface gateも[GUI app shell](gui/app-shell.md)へatomicに適用した。必要なobservable behavior、completion boundary、failure semantics、non-scopeはApproved authorityから決定でき、未解決のSpecification Gap / Human decision / Approvalはないため、implementation-readyである。
 
 implementation realityでは、Approved Migration v1が`AddField` / `RenameField` / `DropField`を定義している一方、current `masterdata-core`の`MigrationCommand`は`AddField`のみ実装済みである。この差はcanonical specificationを狭める理由ではなく、Approved behaviorへ実装を追随させるimplementation gapとして扱う。本Objectiveにはshared core/applicationでの`RenameField` / `DropField`実装と、そのGUI Table Editorへの接続を含める。
 
@@ -71,7 +71,7 @@ Product Visionはschema-aware editingを長期方向として明示しており�
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)
-- [Table Editor](gui/table-editor/spec.md) — current proposal owner for GUI workflow
+- [Table Editor](gui/table-editor/spec.md) — Approved GUI workflow authority
 - [Data Editor](gui/data-editor/spec.md)
 - [Schema Migration v1](specs/schema-migration.md) — Add/Rename/Drop semantics、Plan、source preservation、commit safetyのcanonical authority
 - [Masterdata YAML subset](specs/yaml-subset.md)

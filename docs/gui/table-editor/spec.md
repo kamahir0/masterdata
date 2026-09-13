@@ -1,12 +1,12 @@
 # GUI仕様: Table Editor
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 
 既存Table schema documentをWorkspace Explorerから選択し、Schema Migration v1の`AddField` / `RenameField` / `DropField`をdeterministic Planとsource Diffを確認しながら安全に実行できるschema-aware editorを提供する。
 
-Table / field / key / type semantics、Migration dependency resolution、source-preserving rewrite、lost-update preflight、multi-file commit / rollbackは[Schema Migration v1](../../specs/schema-migration.md)と既存domain specificationsが所有する。本仕様はそれらを再定義せず、Table Editorのlayout、state、interaction、dirty-buffer composition、surface-local error/recovery、adapter boundaryを所有する。`Recovery Required`中のcross-surface command gateは[spec change 0014](../../spec-changes/0014-gui-migration-recovery-mutation-gate.md)がapp shellへのdeltaとして所有する。
+Table / field / key / type semantics、Migration dependency resolution、source-preserving rewrite、lost-update preflight、multi-file commit / rollbackは[Schema Migration v1](../../specs/schema-migration.md)と既存domain specificationsが所有する。本仕様はそれらを再定義せず、Table Editorのlayout、state、interaction、dirty-buffer composition、surface-local error/recovery、adapter boundaryを所有する。`Recovery Required`中のcross-surface command gateは[GUI app shell](../app-shell.md)の`GUI-SHELL-STATE-001` / `GUI-SHELL-CAPABILITY-001`が所有する。
 
 ## レイアウト（Layout）
 
@@ -104,7 +104,7 @@ Migration commitがmutation開始前に失敗した場合、またはcommit fail
 
 ### GUI-TABLE-ERR-002
 
-Migration commitが`Recovery Required`となった場合、Table Editorはその状態を明示し、affected file stateと利用可能なrecovery informationを表示できなければならない（MUST）。cross-surfaceなsource mutation停止は[spec change 0014](../../spec-changes/0014-gui-migration-recovery-mutation-gate.md)をapp shellへ適用したcanonical ruleへ委譲し、Table Editor独自の別gateを実装してはならない（MUST NOT）。exact recovery command / journal UIは本sliceで固定しない。
+Migration commitが`Recovery Required`となった場合、Table Editorはその状態を明示し、affected file stateと利用可能なrecovery informationを表示できなければならない（MUST）。cross-surfaceなsource mutation停止は[GUI app shell](../app-shell.md)の`GUI-SHELL-STATE-001` / `GUI-SHELL-CAPABILITY-001`へ委譲し、Table Editor独自の別gateを実装してはならない（MUST NOT）。exact recovery command / journal UIは本sliceで固定しない。
 
 ### GUI-TABLE-ERR-003
 
@@ -146,4 +146,4 @@ None.
 
 ## 未解決事項（Open Questions）
 
-None identified for the initial Table Editor v1 proposal. Exact Ant Design component、Plan panelのmodal / inline配置、field-row action placement、key suggestion algorithmのpresentation、Diff layout、initializer widget / serialized wire shapeは、上記observable contractを満たす限りimplementation detailとする。
+None identified for the initial Table Editor v1. Exact Ant Design component、Plan panelのmodal / inline配置、field-row action placement、key suggestion algorithmのpresentation、Diff layout、initializer widget / serialized wire shapeは、上記observable contractを満たす限りimplementation detailとする。

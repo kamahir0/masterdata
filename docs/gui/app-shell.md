@@ -54,6 +54,12 @@ full canonical Build actionはshared Native Application Servicesの既存Build o
 
 Save、Build等のhost-dependent action availabilityは、[Runtime hosts](../specs/runtime-hosts.md)のgranted capabilityに従って決定しなければならない（MUST）。Tauri Desktopであることだけを理由に、利用不能なcapabilityを常に利用可能として表示してはならない（MUST NOT）。
 
+Migrationの`Recovery Required`中は、granted capabilityがあっても、そのProjectのcanonical YAML sourceを意図的に変更するGUI commandを開始してはならない（MUST NOT）。Data EditorのSave / Save All / explicit Overwrite、Source Creation、Table EditorのMigration Apply、および将来追加されるsource rename / delete / move等を含む。
+
+この状態ではcanonical source setの整合が確定していないため、GUI shellからnormal Buildを開始可能として表示してはならない（MUST NOT）。Explorer navigation、Problems閲覧、Diff / source inspection、workspaceのre-read、recovery guidance等のread-only操作まで一律に禁止してはならない（MUST NOT）。
+
+source mutationとnormal Buildを再度有効化してよいのは、shared application / host boundaryがactual workspace sourceを再取得し、安全なsource stateを確立した後だけである（MUST）。frontend local flagの解除だけでrecovery完了扱いしてはならない（MUST NOT）。
+
 ## Diagnostics
 
 ### GUI-SHELL-DIAG-001
@@ -69,6 +75,10 @@ GUIはsurfaceに応じて表示量を調整してよい（MAY）が、diagnostic
 Project open / reload / command実行中は、operationが進行中であることを識別できなければならない（MUST）。古いProject stateを新しいProjectの確定stateとして編集可能に表示してはならない（MUST NOT）。
 
 operation failureはmodalだけに依存せず、利用者が原因とrecovery actionを確認できるpersistentまたは再確認可能なsurfaceへ残さなければならない（MUST）。
+
+shared application boundaryがMigration commit resultとして`Recovery Required`を返した場合、GUI shellはそのProjectのsource mutation recovery-required stateとして保持しなければならない（MUST）。原因、affected file state、利用可能なrecovery informationを確認できるpersistentまたは再確認可能なsurfaceを提供し、単なるtoastだけでstateを消費してはならない（MUST NOT）。command availabilityは`GUI-SHELL-CAPABILITY-001`に従う。
+
+Migrationのsource-set stateとrollback semanticsは[Schema Migration v1](../specs/schema-migration.md)の`MIGRATION-010`が所有する。exact recovery command、journal format、manual file recovery UI、crash / power-loss transaction保証は本shell仕様で固定しない。
 
 ## 将来のtyped editor
 

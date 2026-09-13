@@ -32,13 +32,15 @@ pub use document::{
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use migration::{
-    AddFieldCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan, MigrationOperation,
-    MigrationPatch, MigrationPlan, MigrationValidation, dry_run_migration, plan_migration,
+    AddFieldCommand, DropFieldCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan,
+    MigrationOperation, MigrationPatch, MigrationPlan, MigrationValidation, RenameFieldCommand,
+    dry_run_migration, migration_table_schema, plan_migration,
 };
 pub use migration_commit::{
     MigrationCommitFailure, MigrationCommitFailureInjection, MigrationCommitFailurePoint,
     MigrationCommitReport, MigrationCommitState, MigrationFileCommitState,
-    MigrationFileCommitStatus, commit_migration, commit_migration_with_failures,
+    MigrationFileCommitStatus, commit_migration, commit_migration_authorized,
+    commit_migration_authorized_with_failures, commit_migration_with_failures,
 };
 pub use pipeline::{
     BuildPlan, BuildStatus, SemanticBuildPreparation, compute_schema_source_content_hash,

@@ -31,6 +31,7 @@ beforeEach(() => {
   preview = async () => ({ candidateSource: 'weight: 20', changed: true, validation });
   invoke.mockReset();
   invoke.mockImplementation(async (command, args) => {
+    if (command === 'migration_recovery_status') return null;
     if (command === 'authoring_workspace') return workspace;
     if (command === 'open_data_file') return structuredClone(openSnapshot);
     if (command === 'preview_data_file') return preview(args);
@@ -285,4 +286,62 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   fireEvent.click(screen.getByRole('button', { name: 'Overwrite', exact: true }));
   await waitFor(() => expect(screen.getByText('Previous save outcome is unknown.')).toBeTruthy());
   expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+}, 20_000);
+
+const tableSnapshot = {path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string']};
+const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml',sourceRoot:'.',kind:'data'},{path:'schema.yaml',sourceRoot:'.',kind:'schema'}]};
+const tablePlan = {token:'table-plan',table:'item',operation:'RenameField',field:'id',destructive:false,affectedRecordCount:1,files:[{path:'schema.yaml',before:'name: id',after:'name: itemId'},{path:'data.yaml',before:'id: 1',after:'itemId: 1'}],diagnostics:[]};
+async function planFromTable() {
+  fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
+  fireEvent.click(await screen.findByRole('button',{name:'Rename Field',exact:true}));
+  fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});
+  fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
+  await screen.findByRole('region',{name:'Migration Plan'});
+}
+test('Migration refresh reloads affected clean editors and preserves unrelated dirty buffers',async()=>{
+  const normal=invoke.getMockImplementation()!;
+  invoke.mockImplementation(async(command,args)=>{
+    if(command==='authoring_workspace')return tableWorkspace;
+    if(command==='open_table')return tableSnapshot;
+    if(command==='plan_table_migration')return tablePlan;
+    if(command==='apply_table_migration')return {state:'success',files:['schema.yaml','data.yaml']};
+    if(command==='open_data_file')return {...snapshot(),path:args.relativePath};
+    return normal(command,args);
+  });
+  await open();
+  fireEvent.click(screen.getByRole('treeitem',{name:'other.yaml',exact:true}));
+  const input=await screen.findByRole('textbox',{name:'record 1 weight'});
+  fireEvent.change(input,{target:{value:'20'}});
+  await planFromTable();
+  fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
+  await waitFor(()=>expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='data.yaml')).toHaveLength(2));
+  fireEvent.click(screen.getByRole('treeitem',{name:'other.yaml, unsaved changes',exact:true}));
+  expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
+  expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='other.yaml')).toHaveLength(1);
+  expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
+}, 20_000);
+test('Recovery Required blocks Save Create Apply and Build across navigation until host recheck succeeds',async()=>{
+  const normal=invoke.getMockImplementation()!;
+  let recovery:any=null;
+  invoke.mockImplementation(async(command,args)=>{
+    if(command==='authoring_workspace')return tableWorkspace;
+    if(command==='open_table')return tableSnapshot;
+    if(command==='plan_table_migration')return {...tablePlan,files:tablePlan.files.slice(0,1)};
+    if(command==='apply_table_migration'){recovery={state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery'};return recovery;}
+    if(command==='migration_recovery_status')return recovery;
+    if(command==='recheck_migration'){recovery=null;return null;}
+    return normal(command,args);
+  });
+  const input=await open();fireEvent.change(input,{target:{value:'20'}});
+  await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
+  await screen.findByText('Recovery Required — source changes and Build are blocked');
+  expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('treeitem',{name:'data.yaml, unsaved changes',exact:true}));
+  expect(screen.getAllByRole('button',{name:'Save',exact:true}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
+  fireEvent.keyDown(window,{key:'s',metaKey:true});
+  expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:'Recheck recovered source'}));
+  await waitFor(()=>expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(false));
+  expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
 }, 20_000);

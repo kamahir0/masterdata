@@ -15,7 +15,7 @@ Data Editor record mutation Objectiveはcandidate `71d155d4f9bd76af932af61481ac4
 
 Schema transformation semanticsのauthorityは既存Approved [Schema Migration v1](specs/schema-migration.md)であり、本ObjectiveはGUI convenienceのために別のfield identity、key allocation、dependency rewrite、source rewrite、transaction semanticsを発明しない。GUI observable workflowのauthorityはApproved [Table Editor](gui/table-editor/spec.md)である。2026-09-13にHumanがTable Editor v1とspec change 0014を承認し、Recovery Requiredのcross-surface gateも[GUI app shell](gui/app-shell.md)へatomicに適用した。必要なobservable behavior、completion boundary、failure semantics、non-scopeはApproved authorityから決定でき、未解決のSpecification Gap / Human decision / Approvalはないため、implementation-readyである。
 
-implementation realityでは、Approved Migration v1が`AddField` / `RenameField` / `DropField`を定義している一方、current `masterdata-core`の`MigrationCommand`は`AddField`のみ実装済みである。この差はcanonical specificationを狭める理由ではなく、Approved behaviorへ実装を追随させるimplementation gapとして扱う。本Objectiveにはshared core/applicationでの`RenameField` / `DropField`実装と、そのGUI Table Editorへの接続を含める。
+本Objectiveの選択時点のimplementation realityでは、Approved Migration v1が`AddField` / `RenameField` / `DropField`を定義している一方、当時の`masterdata-core`の`MigrationCommand`は`AddField`のみ実装済みである。この差はcanonical specificationを狭める理由ではなく、Approved behaviorへ実装を追随させるimplementation gapとして扱う。本Objectiveにはshared core/applicationでの`RenameField` / `DropField`実装と、そのGUI Table Editorへの接続を含める。
 
 Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
 

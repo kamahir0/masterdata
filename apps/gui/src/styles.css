@@ -327,3 +327,11 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .tree-folder[aria-selected="true"] { background: #2b2849; color: #e5dfff; }
 
 .creation-field > .creation-row-actions { margin-bottom: 24px; }
+
+.table-editor { padding: 20px; overflow: auto; min-height: 0; flex: 1; }
+.table-editor h2 { margin-top: 0; }
+.source-provenance { color: var(--muted); font-size: 12px; }
+.migration-form, .migration-plan { margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+.migration-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.migration-diff section { min-width: 0; }
+.migration-diff pre { overflow: auto; white-space: pre; max-height: 360px; padding: 12px; background: #111723; }

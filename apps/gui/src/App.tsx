@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Tabs } from "antd";
 import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
+import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type CreationReport } from "./SourceCreation";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -329,6 +330,17 @@ function diagnosticCellKey(editor: EditorState, candidateRecordIndex: number, fi
 }
 
 function App() {
+  const [recoveries, setRecoveries] = useState<Record<string, MigrationResult>>({});
+  const recoveryRef = useRef<Record<string, MigrationResult>>({});
+  const [tableEpoch, setTableEpoch] = useState(0);
+  const [migrationBusyRoot, setMigrationBusyRoot] = useState<string | null>(null);
+  const migrationBusyRef = useRef<string | null>(null);
+  const sourceMutationBlocked = useCallback((root: string) => !!recoveryRef.current[root] || migrationBusyRef.current === root, []);
+  const recordRecovery = useCallback((root: string, result: MigrationResult | null) => {
+    const next = { ...recoveryRef.current };
+    if (result?.state === "recovery_required") next[root] = result; else delete next[root];
+    recoveryRef.current = next; setRecoveries(next);
+  }, []);
   const [creationOpen, setCreationOpen] = useState(false);
   const [creationTarget, setCreationTarget] = useState({ root: "", folder: "" });
   const [revealCreated, setRevealCreated] = useState<{ path: string; root: string } | null>(null);
@@ -380,6 +392,8 @@ function App() {
       ? workspaceState.previous
       : null;
   const projectRoot = workspace?.project.project_root ?? null;
+  const recovery = projectRoot ? recoveries[projectRoot] : null;
+  const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
   const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
   const activeEditor = activePath ? editors[activePath] ?? null : null;
   const activeLoading = activePath ? loadingPaths.has(activePath) : false;
@@ -469,7 +483,9 @@ function App() {
       const next = await invoke<AuthoringWorkspace>("authoring_workspace", {
         projectPath: requestedProject,
       });
+      const recovery = await invoke<MigrationResult | null>("migration_recovery_status", { projectPath: next.project.project_root });
       if (workspaceGeneration.current !== generation) return;
+      recordRecovery(next.project.project_root, recovery);
       setWorkspaceState({ kind: "ready", workspace: next });
       setProjectPathInput(next.project.project_root);
       setEditors({});
@@ -486,7 +502,7 @@ function App() {
         previous,
       });
     }
-  }, [openDataFile]);
+  }, [recordRecovery, openDataFile]);
 
   useEffect(() => {
     void loadWorkspace(null);
@@ -680,6 +696,7 @@ function App() {
     const state = workspaceStateRef.current;
     const root = state.kind === "ready" ? state.workspace.project.project_root : state.previous?.project.project_root;
     const editor = editorsRef.current[path];
+    if (root && sourceMutationBlocked(root)) return false;
     if (!root || !editor || !editorIsDirty(editor)) return true;
     if (editor.saveStatus === "outcome_unknown" && !overwriteExpectedIdentity) {
       showNotice("Recheck the source before saving again because the previous save outcome is unknown.");
@@ -751,7 +768,7 @@ function App() {
         : current);
       return false;
     }
-  }, [showNotice]);
+  }, [sourceMutationBlocked, showNotice]);
 
   const saveAll = useCallback(async (): Promise<boolean> => {
     const paths = Object.entries(editorsRef.current)
@@ -884,7 +901,7 @@ function App() {
   }, [projectRoot, workspace]);
 
   const runBuild = useCallback(async () => {
-    if (!workspace?.capabilities.build || !projectRoot || buildState.kind === "loading") return;
+    if (!workspace?.capabilities.build || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading") return;
     if (dirtyCount > 0) {
       showNotice("Build uses saved source only; unsaved changes are not included.");
     }
@@ -903,7 +920,7 @@ function App() {
       setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });
       setProblemsOpen(true);
     }
-  }, [buildState.kind, dirtyCount, projectRoot, showNotice, workspace]);
+  }, [sourceMutationBlocked, buildState.kind, dirtyCount, projectRoot, showNotice, workspace]);
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
     setActivePath(file.path);
@@ -1033,6 +1050,35 @@ function App() {
     showNotice(`${sourceName(report.path)} created`);
   }, [projectRoot, openDataFile, showNotice]);
 
+  const refreshMigrationFiles = useCallback(async (root: string, paths: string[]) => {
+    const state = workspaceStateRef.current;
+    if (state.kind !== "ready" || state.workspace.project.project_root !== root) return;
+    const generation = workspaceGeneration.current;
+    // Evict affected clean snapshots before awaiting reload, so they cannot be
+    // edited against an obsolete schema (GUI-TABLE-STATE-004).
+    const retained = { ...editorsRef.current };
+    const reload = paths.filter(path => retained[path] && !editorIsDirty(retained[path]));
+    for (const path of reload) delete retained[path];
+    editorsRef.current = retained; setEditors(retained);
+    const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
+    if (workspaceGeneration.current !== generation) return;
+    setWorkspaceState({ kind: "ready", workspace: next });
+    setTableEpoch(epoch => epoch + 1);
+    await Promise.all(reload.filter(path => next.files.some(file => file.path === path && file.kind === "data")).map(path => openDataFile(root, path, true)));
+  }, [openDataFile]);
+  const migrationResult = useCallback(async (root: string, result: MigrationResult) => {
+    if (result.state === "recovery_required") recordRecovery(root, result);
+    if (result.state === "success") await refreshMigrationFiles(root, result.files);
+  }, [recordRecovery, refreshMigrationFiles]);
+  const recheckMigration = async () => {
+    if (!projectRoot || !recovery) return;
+    try {
+      const result = await invoke<MigrationResult | null>("recheck_migration", { projectPath: projectRoot });
+      if (!result) await refreshMigrationFiles(projectRoot, recovery.files);
+      recordRecovery(projectRoot, result);
+    } catch (error) { showNotice(asApiError(error).diagnostic.message); }
+  };
+
   const activeDiagnostics = activeEditor?.previewState === "current"
     ? activeEditor.preview.validation.diagnostics
     : [];
@@ -1074,13 +1120,13 @@ function App() {
         </div>
         <div className="command-bar">
           <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</Button>
-          <Button htmlType="button" icon={<Save size={15} />} onClick={() => activePath && void saveFile(activePath)} disabled={!activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
+          <Button htmlType="button" icon={<Save size={15} />} onClick={() => activePath && void saveFile(activePath)} disabled={mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
             {activeEditor?.saving ? "Saving…" : "Save"}
           </Button>
           <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
             {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
           </Button>
-          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={!workspace?.capabilities.build || buildState.kind === "loading"}>
+          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || !workspace?.capabilities.build || buildState.kind === "loading"}>
             {buildState.kind === "loading" ? "Building…" : "Build"}
           </Button>
         </div>
@@ -1096,7 +1142,7 @@ function App() {
         <aside className="explorer" aria-label="Workspace Explorer">
           <div className="pane-heading">
             <span>EXPLORER</span>
-            <Button size="small" aria-label="New source artifact" disabled={!workspace?.capabilities.workspaceWrite} onClick={() => setCreationOpen(true)}>New</Button>
+            <Button size="small" aria-label="New source artifact" disabled={mutationBlocked || !workspace?.capabilities.workspaceWrite} onClick={() => setCreationOpen(true)}>New</Button>
           </div>
           {workspaceState.kind === "loading" && !workspace && <div className="pane-message">Opening project…</div>}
           {workspaceState.kind === "error" && !workspace && (
@@ -1130,10 +1176,22 @@ function App() {
           {!workspace && workspaceState.kind !== "loading" && (
             <EmptyEditor title="Open a Masterdata project" copy="Enter a project folder path above. Project semantics are resolved by the shared Rust application service." />
           )}
+          {recovery && <Alert role="alert" type="error" title="Recovery Required — source changes and Build are blocked"
+            description={<><p>{recovery.diagnostic?.message}</p><p>{recovery.files.join(", ")}</p>{recovery.fileStates?.map(file => <p key={file.path}>{file.path}: {file.state}</p>)}{recovery.recoveryWorkspace && <p>Recovery workspace: {recovery.recoveryWorkspace}</p>}</>}
+            action={<Button onClick={() => void recheckMigration()}>Recheck recovered source</Button>} />}
           {workspace && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
-          {activeFile && activeFile.kind !== "data" && (
+          {activeFile?.kind === "schema" && projectRoot && <TableEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
+            projectPath={projectRoot} path={activeFile.path} canWrite={!!workspace?.capabilities.workspaceWrite && !mutationBlocked}
+            dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
+            beginApply={paths => {
+              if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
+              migrationBusyRef.current = projectRoot; setMigrationBusyRoot(projectRoot); return true;
+            }}
+            endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
+            onResult={result => migrationResult(projectRoot, result)} />}
+          {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && (
             <SourcePlaceholder file={activeFile} />
           )}
           {activeFile?.kind === "data" && activeLoading && (
@@ -1151,6 +1209,7 @@ function App() {
           )}
           {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor
+              mutationBlocked={mutationBlocked}
               file={activeFile}
               projectRoot={projectRoot!}
               editor={activeEditor}
@@ -1213,7 +1272,7 @@ function App() {
         projectPath={projectRoot}
         initialRootIndex={Math.max(0, workspace.sourceRoots.indexOf(creationTarget.root))}
         initialFolder={creationTarget.folder}
-        canWrite={workspace.capabilities.workspaceWrite}
+        canWrite={workspace.capabilities.workspaceWrite && !mutationBlocked}
         onCancel={() => {
           setCreationOpen(false);
           window.requestAnimationFrame(() => {
@@ -1231,7 +1290,7 @@ function App() {
         footer={[
           <Button key="cancel" disabled={pendingActionBusy} onClick={() => setPendingAction(null)}>Cancel</Button>,
           <Button key="discard" disabled={pendingActionBusy} onClick={() => pendingAction && void performAction(pendingAction)}>Don't Save</Button>,
-          <Button key="save" type="primary" loading={pendingActionBusy} onClick={async () => {
+          <Button key="save" type="primary" disabled={mutationBlocked} loading={pendingActionBusy} onClick={async () => {
             if (!pendingAction) return;
             setPendingActionBusy(true);
             const action = pendingAction;
@@ -1505,6 +1564,7 @@ type GridRow =
   | { kind: "added"; draft: AddedRecordDraft };
 
 function DataEditor({
+  mutationBlocked,
   file,
   projectRoot,
   editor,
@@ -1521,6 +1581,7 @@ function DataEditor({
   onOverwriteConflict,
   cellFocusStart,
 }: {
+  mutationBlocked: boolean;
   file: WorkspaceSourceFile;
   projectRoot: string;
   editor: EditorState;
@@ -1584,11 +1645,11 @@ function DataEditor({
             htmlType="button"
             aria-label="Add Row"
             onClick={onAddRow}
-            disabled={!capability.supported || editor.saving}
+            disabled={mutationBlocked || !capability.supported || editor.saving}
           >
             Add Row
           </Button>
-          <Button htmlType="button" onClick={onSave} disabled={!dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
+          <Button htmlType="button" onClick={onSave} disabled={mutationBlocked || !dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
         </div>
       </header>
 
@@ -1607,7 +1668,7 @@ function DataEditor({
           </div>
           <div>
             <Button htmlType="button" onClick={onRecheckSource}>Recheck Source</Button>
-            {editor.saveStatus === "failure" && <Button htmlType="button" onClick={onSave}>Retry Save</Button>}
+            {editor.saveStatus === "failure" && <Button htmlType="button" disabled={mutationBlocked} onClick={onSave}>Retry Save</Button>}
           </div>
         </div>
       )}
@@ -1621,7 +1682,7 @@ function DataEditor({
           <div>
             <Button htmlType="button" onClick={() => onSwitchView("compare")}>Compare</Button>
             <Button htmlType="button" onClick={onReloadConflict}>Reload</Button>
-            <Button danger htmlType="button" onClick={onOverwriteConflict}>Overwrite</Button>
+            <Button danger htmlType="button" disabled={mutationBlocked} onClick={onOverwriteConflict}>Overwrite</Button>
           </div>
         </div>
       )}
@@ -1660,7 +1721,7 @@ function DataEditor({
                           htmlType="button"
                           aria-label={`Undo Delete record ${gridRow.recordIndex + 1}`}
                           onClick={() => onUndoExistingDelete(gridRow.recordIndex)}
-                          disabled={editor.saving}
+                          disabled={mutationBlocked || editor.saving}
                         >
                           Undo Delete
                         </Button>
@@ -1671,7 +1732,7 @@ function DataEditor({
                         htmlType="button"
                         aria-label={`Delete record ${gridRow.recordIndex + 1}`}
                         onClick={() => onDeleteExistingRow(gridRow.recordIndex)}
-                        disabled={editor.saving}
+                        disabled={mutationBlocked || editor.saving}
                       >
                         Delete
                       </Button>
@@ -1683,7 +1744,7 @@ function DataEditor({
                           htmlType="button"
                           aria-label={`Delete new row ${gridRowIndex + 1}`}
                           onClick={() => onDeleteDraftRow(gridRow.draft.draftId)}
-                          disabled={editor.saving}
+                          disabled={mutationBlocked || editor.saving}
                         >
                           Delete
                         </Button>
@@ -1702,9 +1763,9 @@ function DataEditor({
                       diagnosticRecordIndex(diagnostic) !== null &&
                       diagnosticCellKey(editor, diagnosticRecordIndex(diagnostic)!, column.name) === key);
                     const changed = gridRow.kind === "added" || key in editor.edits;
-                    const editable = gridRow.kind === "added"
+                    const editable = !mutationBlocked && (gridRow.kind === "added"
                       ? !editor.saving
-                      : column.editable && !gridRow.pendingDelete && !editor.saving;
+                      : column.editable && !gridRow.pendingDelete && !editor.saving);
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""}`}>
                         <div className="cell-wrap">

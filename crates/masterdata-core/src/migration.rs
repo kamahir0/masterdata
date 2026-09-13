@@ -1,3 +1,4 @@
+mod field_mutation;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -26,13 +27,29 @@ pub struct AddFieldCommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RenameFieldCommand {
+    pub table: String,
+    pub field: String,
+    pub new_name: String,
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropFieldCommand {
+    pub table: String,
+    pub field: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum MigrationCommand {
     AddField(AddFieldCommand),
+    RenameField(RenameFieldCommand),
+    DropField(DropFieldCommand),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MigrationOperation {
     AddField,
+    RenameField,
+    DropField,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +71,7 @@ pub struct MigrationFilePlan {
     pub patches: Vec<MigrationPatch>,
 }
 
-/// Deterministic, pre-mutation description of an AddField transformation.
+/// Deterministic, pre-mutation description of a field transformation.
 ///
 /// The plan contains text patches only; it never writes to the filesystem and
 /// does not represent a public JSON/CLI result contract.
@@ -109,6 +126,15 @@ fn prepare_migration(
 ) -> Result<MigrationDryRun> {
     match command {
         MigrationCommand::AddField(command) => prepare_add_field(documents, command),
+        MigrationCommand::RenameField(command) => field_mutation::prepare(
+            documents,
+            &command.table,
+            &command.field,
+            Some(&command.new_name),
+        ),
+        MigrationCommand::DropField(command) => {
+            field_mutation::prepare(documents, &command.table, &command.field, None)
+        }
     }
 }
 
@@ -1535,4 +1561,20 @@ fn insertion_at(source: &str, position: usize, rendered: &str) -> String {
 
 fn append_at_end(source: &str, rendered: &str) -> String {
     insertion_at(source, source.len(), rendered)
+}
+
+/// Read schema through the same closure/resolution gate used by Migration.
+pub fn migration_table_schema(documents: &ProjectDocuments, table: &str) -> Result<SchemaDocument> {
+    let probe = FieldDefinition {
+        key: 0,
+        name: "probe".into(),
+        type_name: "int".into(),
+        nullable: false,
+        array: false,
+    };
+    let (closure, _) = resolve_target_snapshot(documents, table, &probe)?;
+    Ok(find_target_schema(&closure, table)
+        .expect("resolved schema")
+        .document
+        .clone())
 }

@@ -67,6 +67,79 @@ fn configured_project_path(project_path: Option<String>) -> Option<String> {
     project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok())
 }
 
+fn table_session() -> std::result::Result<
+    std::sync::MutexGuard<'static, masterdata_app::TableAuthoringSession>,
+    ApiError,
+> {
+    static SESSION: std::sync::OnceLock<std::sync::Mutex<masterdata_app::TableAuthoringSession>> =
+        std::sync::OnceLock::new();
+    SESSION.get_or_init(Default::default).lock().map_err(|_| {
+        ApiError::from(MasterdataError::new(
+            "E-MIGRATION-SESSION",
+            ErrorKind::Io,
+            "Migration session unavailable",
+        ))
+    })
+}
+fn table_root(project_path: Option<String>) -> std::result::Result<PathBuf, ApiError> {
+    let path = configured_project_path(project_path);
+    Ok(NativeApplicationService::new()
+        .project_info(path.as_deref().map(Path::new), &current_directory()?)
+        .map_err(ApiError::from)?
+        .project_root)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn open_table(
+    project_path: Option<String>,
+    relative_path: String,
+) -> std::result::Result<masterdata_app::TableSnapshot, ApiError> {
+    table_session()?
+        .open_table(&table_root(project_path)?, &relative_path)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn plan_table_migration(
+    project_path: Option<String>,
+    input: serde_json::Value,
+) -> std::result::Result<masterdata_app::TablePlanView, ApiError> {
+    let input = serde_json::from_value(input).map_err(|error| {
+        ApiError::from(MasterdataError::new(
+            "E-MIGRATION-INPUT",
+            ErrorKind::Validation,
+            format!("invalid Migration input: {error}"),
+        ))
+    })?;
+    table_session()?
+        .plan(&table_root(project_path)?, input)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn apply_table_migration(
+    project_path: Option<String>,
+    token: String,
+    allow_destructive: bool,
+) -> std::result::Result<masterdata_app::TableApplyView, ApiError> {
+    table_session()?
+        .apply(&table_root(project_path)?, &token, allow_destructive)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn migration_recovery_status(
+    project_path: Option<String>,
+) -> std::result::Result<Option<masterdata_app::TableApplyView>, ApiError> {
+    table_session()?
+        .recovery_status(&table_root(project_path)?)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn recheck_migration(
+    project_path: Option<String>,
+) -> std::result::Result<Option<masterdata_app::TableApplyView>, ApiError> {
+    table_session()?
+        .recheck(&table_root(project_path)?)
+        .map_err(ApiError::from)
+}
+
 #[tauri::command(rename_all = "camelCase")]
 fn project_info(project_path: Option<String>) -> std::result::Result<ProjectInfo, ApiError> {
     let current_dir = current_directory()?;
@@ -112,6 +185,12 @@ fn create_source(
             format!("invalid creation input: {error}"),
         ))
     })?;
+    // Hold the shared session guard across mutation so Apply cannot race another
+    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
+    let session = table_session()?;
+    session
+        .ensure_mutation_allowed(&table_root(project_path.clone())?)
+        .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured = configured_project_path(project_path);
     NativeApplicationService::new()
@@ -201,6 +280,12 @@ fn save_data_file(
     deleted_record_indices: Option<Vec<usize>>,
     overwrite_expected_identity: Option<String>,
 ) -> std::result::Result<SourceSaveReport, ApiError> {
+    // Hold the shared session guard across mutation so Apply cannot race another
+    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
+    let session = table_session()?;
+    session
+        .ensure_mutation_allowed(&table_root(project_path.clone())?)
+        .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
     let mutation = AuthoringRecordMutation {
@@ -248,6 +333,12 @@ fn build(
     project_path: Option<String>,
     dry_run: bool,
 ) -> std::result::Result<BuildResponse, ApiError> {
+    // Hold the shared session guard across mutation so Apply cannot race another
+    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
+    let session = table_session()?;
+    session
+        .ensure_mutation_allowed(&table_root(project_path.clone())?)
+        .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
     let execution = NativeApplicationService::new()
@@ -272,6 +363,11 @@ fn build(
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            open_table,
+            plan_table_migration,
+            apply_table_migration,
+            migration_recovery_status,
+            recheck_migration,
             project_info,
             authoring_workspace,
             creation_context,
@@ -312,6 +408,39 @@ mod tests {
         };
         assert_eq!(error.diagnostic.code, "E-SOURCE-CREATE-REQUEST");
         assert_eq!(error.diagnostic.kind, ErrorKind::Validation);
+    }
+
+    #[test]
+    fn table_commands_preserve_snapshot_and_preflight_diagnostics() {
+        let project = minimal_project();
+        let file = NativeTableFixture::schema_path(&project);
+        let table = super::open_table(Some(project.to_string_lossy().into_owned()), file)
+            .expect("Table snapshot");
+        assert!(!table.schema.fields.is_empty());
+        let error = super::plan_table_migration(
+            Some(project.to_string_lossy().into_owned()),
+            serde_json::json!({"operation":"drop","table":table.schema.table,"field":"missing"}),
+        )
+        .expect_err("missing field rejected");
+        assert_eq!(error.diagnostic.kind, ErrorKind::Validation);
+    }
+    struct NativeTableFixture;
+    impl NativeTableFixture {
+        fn schema_path(root: &Path) -> String {
+            let project = masterdata_core::Project::discover(Some(root), root).unwrap();
+            let files = project.load_documents().unwrap();
+            let schema = files
+                .files
+                .iter()
+                .find(|file| matches!(file.document, masterdata_core::SourceDocument::Schema(_)))
+                .unwrap();
+            schema
+                .path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        }
     }
 
     fn minimal_project() -> std::path::PathBuf {

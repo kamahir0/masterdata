@@ -20,6 +20,8 @@ use masterdata_dotnet::{
 };
 use tempfile::TempDir;
 
+mod table_authoring;
+pub use table_authoring::*;
 mod authoring;
 mod creation;
 pub use creation::*;

@@ -107,7 +107,7 @@ impl MigrationCommitFailureInjection {
     }
 }
 
-/// Commit an already verified AddField dry-run against its exact source snapshot.
+/// Commit an already verified Migration dry-run against its exact source snapshot.
 pub fn commit_migration(
     project: &Project,
     source_snapshot: &ProjectDocuments,
@@ -116,7 +116,7 @@ pub fn commit_migration(
     commit_migration_with_failures(project, source_snapshot, dry_run, &[])
 }
 
-/// Commit an already verified AddField dry-run with deterministic test seams.
+/// Commit an already verified Migration dry-run with deterministic test seams.
 #[doc(hidden)]
 pub fn commit_migration_with_failures(
     project: &Project,
@@ -124,7 +124,44 @@ pub fn commit_migration_with_failures(
     dry_run: &MigrationDryRun,
     injections: &[MigrationCommitFailureInjection],
 ) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
+    commit_migration_authorized_with_failures(project, source_snapshot, dry_run, false, injections)
+}
+
+/// Authorization is execution input, not intent carried by a displayed Plan.
+pub fn commit_migration_authorized(
+    project: &Project,
+    source_snapshot: &ProjectDocuments,
+    dry_run: &MigrationDryRun,
+    allow_destructive: bool,
+) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
+    commit_migration_authorized_with_failures(
+        project,
+        source_snapshot,
+        dry_run,
+        allow_destructive,
+        &[],
+    )
+}
+
+#[doc(hidden)]
+pub fn commit_migration_authorized_with_failures(
+    project: &Project,
+    source_snapshot: &ProjectDocuments,
+    dry_run: &MigrationDryRun,
+    allow_destructive: bool,
+    injections: &[MigrationCommitFailureInjection],
+) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
     let mut report = report_for(dry_run);
+    if dry_run.plan.destructive && !allow_destructive {
+        return Err(MigrationCommitFailure {
+            report,
+            error: MasterdataError::new(
+                "E-MIGRATION-DESTRUCTIVE-AUTHORIZATION",
+                ErrorKind::Validation,
+                "DropField requires explicit destructive execution authorization",
+            ),
+        });
+    }
     let mut transaction = match SourceCommitTransaction::stage(source_snapshot, dry_run) {
         Ok(transaction) => transaction,
         Err(error) => return Err(MigrationCommitFailure { report, error }),

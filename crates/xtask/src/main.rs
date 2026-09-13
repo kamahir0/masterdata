@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use masterdata_app::NativeApplicationService;
 use masterdata_core::{ErrorKind, MasterdataError, Project, Result};
 
+mod app;
 mod rationale_check;
 mod spec_check;
 
@@ -29,6 +30,8 @@ enum CommandKind {
     Cli,
     /// Copy minimal fixture and start the Tauri development application.
     Gui,
+    /// Run the local GUI development/package/install/smoke workflow.
+    App(app::AppArgs),
     /// Run fixture discovery, validation, production binary build, and .NET bridge smoke test.
     TestIntegration,
     /// Check specification, RFC, proposal, ADR, and relative-link integrity.
@@ -58,6 +61,7 @@ fn run() -> Result<()> {
         CommandKind::Doctor => doctor(),
         CommandKind::Cli => cli_smoke(),
         CommandKind::Gui => gui(),
+        CommandKind::App(args) => app::run(args),
         CommandKind::TestIntegration => test_integration(),
         CommandKind::CheckSpecs => check_specs(),
         CommandKind::CheckRationale => check_rationale(),

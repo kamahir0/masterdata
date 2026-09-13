@@ -26,6 +26,7 @@
 **/.masterdata/generated/
 **/.masterdata/dev-project/
 /target/dev-project/
+/target/local-dist/
 
 # IDE / OS
 .DS_Store

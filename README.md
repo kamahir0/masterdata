@@ -84,6 +84,9 @@ cargo xtask cli
 # fixtureをコピーしてTauri GUIを起動
 cargo xtask gui
 
+# local GUI: verify -> package -> per-user install -> production smoke -> launch
+cargo xtask app reinstall
+
 # fixture discovery -> validation -> production binary build -> .NET bridge smoke test
 cargo xtask test-integration
 
@@ -144,6 +147,7 @@ identity/compatibilityのcanonical contractとlifecycleは[互換性仕様のind
 - [アーキテクチャ判断（Architectural decision）](docs/adr/)
 - [agent向けルール（Agent rules）](AGENTS.md)
 - [最小fixture（Minimal fixture）](fixtures/minimal/README.md)
+- [ローカルGUI workflow](docs/contributing/local-app-workflow.md)
 
 仕様はコードと同じくGit管理する第一級成果物です。未確定事項は各文書の`Status: Draft` / `Proposed`または`Open Questions`に残し、AIが自動で`Approved`へ進めません。
 

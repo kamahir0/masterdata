@@ -114,6 +114,10 @@ Approved authorityから安全に決定できないsemantic / product / compatib
 
 `Candidate`はdecision発見時にverification対象candidateが存在すればexact SHA、存在しなければ`none`としてよい。Blocking findingsは`None.`とし、Human decision neededへ**必要なdecisionだけ**を具体的に記録する。
 
+`Human decision needed`とHuman向けfinal responseでは、Humanが元RFC / specificationを開かなくても各選択肢の意味を一目で区別できる自己記述的な表記を使用しなければならない（MUST）。`Option A` / `Option B` / `Option C`、RFC番号、Requirement ID、Issue番号、commit SHA等のopaque referenceだけを選択肢名・推薦名として提示してはならない（MUST NOT）。各選択肢は意味を表す短い名称を主ラベルとし、opaque referenceは括弧書き等の補助参照へ下げる。例えば「Option Cを推奨」ではなく「Shared Type Migration v1 + Plan / Diff（RFC 0006 Option C）を推奨」のように、内容を先に示す。
+
+複数案からHuman decisionを求める場合、final responseでは各案を短いsemantic labelと1行程度のeffect / trade-offでscanできる形にし、推薦がある場合もsemantic labelで明示する。Humanにreference tokenだけを記憶・照合させるformatを要求してはならない（MUST NOT）。
+
 Humanの回答をchatだけに残してはならない。適切なcanonical owner、spec-change、ADR、Current Objective等へdurably反映し、必要なApproval lifecycleを完了した後、`designing`、`implementation-ready`、`verification-ready`等の適切なstageへ遷移する。
 
 ### `implementation-ready`
@@ -259,7 +263,7 @@ Stop boundary: <このactivityが停止すべきStageまたは条件>
 2-agent lane: <本流側 | 実装側>
 ```
 
-`Human action required`は`decision-required`、`objective-complete`でのpriority選定、その他具体的なHuman decision / Approval待ちでは`yes`とし、それ以外は通常`no`とする。`decision-required`ではblockに加えて具体的なHuman decisionを本文で提示する。`Candidate`、Blocking、CI等の重要なcurrent contextは必要に応じて本文へ併記してよい。
+`Human action required`は`decision-required`、`objective-complete`でのpriority選定、その他具体的なHuman decision / Approval待ちでは`yes`とし、それ以外は通常`no`とする。`decision-required`ではblockに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、opaque referenceではなく各案のsemantic labelを主表示とし、Humanが現在のresponseだけで選択内容を比較できる形にする。`Candidate`、Blocking、CI等の重要なcurrent contextは必要に応じて本文へ併記してよい。
 
 `Short "進める" means`と`Stop boundary`はActivity class boundaryをHumanが予測できる具体度で書く。HumanへStage名だけ、またはlaneだけを返して次がimplementationかnon-implementationかを推測させてはならない（MUST NOT）。このresponse contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも次の起動先を機械的に判断できるようにするためのprojectionである。
 

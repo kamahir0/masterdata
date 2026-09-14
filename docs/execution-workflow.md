@@ -114,9 +114,11 @@ Approved authorityから安全に決定できないsemantic / product / compatib
 
 `Candidate`はdecision発見時にverification対象candidateが存在すればexact SHA、存在しなければ`none`としてよい。Blocking findingsは`None.`とし、Human decision neededへ**必要なdecisionだけ**を具体的に記録する。
 
-`Human decision needed`とHuman向けfinal responseでは、Humanが元RFC / specificationを開かなくても各選択肢の意味を一目で区別できる自己記述的な表記を使用しなければならない（MUST）。`Option A` / `Option B` / `Option C`、RFC番号、Requirement ID、Issue番号、commit SHA等のopaque referenceだけを選択肢名・推薦名として提示してはならない（MUST NOT）。各選択肢は意味を表す短い名称を主ラベルとし、opaque referenceは括弧書き等の補助参照へ下げる。例えば「Option Cを推奨」ではなく「Shared Type Migration v1 + Plan / Diff（RFC 0006 Option C）を推奨」のように、内容を先に示す。
+`Human decision needed`はcold-start agentがdecision subjectと各choiceを識別できる程度に自己記述的でなければならない（MUST）。各choiceは意味を表す短いsemantic labelを主ラベルとし、`Option A` / `Option B` / `Option C`、RFC番号、Requirement ID、Issue番号、commit SHA等のopaque referenceだけを選択肢名・推薦名にしてはならない（MUST NOT）。一方、比較理由、詳細なeffect / trade-off、proposal本文、operation set等をcanonical RFC / specificationからDevelopment Stateへ複製してはならない（MUST NOT）。それらのownerが存在する場合は参照先を示し、Development Stateはdecision subject、semantic label、推薦の有無、canonical comparison ownerに留める。
 
-複数案からHuman decisionを求める場合、final responseでは各案を短いsemantic labelと1行程度のeffect / trade-offでscanできる形にし、推薦がある場合もsemantic labelで明示する。Humanにreference tokenだけを記憶・照合させるformatを要求してはならない（MUST NOT）。
+Human向けfinal responseでは、Humanが元RFC / specificationを開かなくても現在のresponseだけで判断できるよう、各案をsemantic labelと1行程度のeffect / trade-offでscanできる形にしなければならない（MUST）。推薦がある場合もsemantic labelを主表示とし、例えば「Option Cを推奨」ではなく「Shared Type Migration v1 + Plan / Diff（RFC 0006 Option C）を推奨」のように内容を先に示す。Humanにreference tokenだけを記憶・照合させてはならない（MUST NOT）。
+
+pending Human decisionが1つだけで、直前のagent responseが1つの具体的なchoiceをsemantic label付きで明確に推薦し、そのresponse上で短い肯定的continuationが推薦案のacceptanceを意味すると一意に理解できる場合、「進める」「それで」「推奨案で」等の肯定的continuationをそのchoiceへのHuman acceptanceとして扱ってよい（MAY）。この解釈はpending decisionを解決して同じ`NON_IMPLEMENTATION` activityを進めるためのものであり、implementation開始を含むActivity class boundaryを跨ぐauthorizationにはならない（MUST NOT）。複数decisionが残る場合、推薦が複数または不明確な場合、referentが曖昧な場合、直前のresponseでchoiceを提示していない場合、またはdestructive operation等でexact explicit consent自体がcontractとなる場合は推測せず具体的なdecisionを求める。
 
 Humanの回答をchatだけに残してはならない。適切なcanonical owner、spec-change、ADR、Current Objective等へdurably反映し、必要なApproval lifecycleを完了した後、`designing`、`implementation-ready`、`verification-ready`等の適切なstageへ遷移する。
 
@@ -222,10 +224,12 @@ Humanから「進めて」等の短い指示を受けたagentはPre-action fresh
 
 短い「進めて」「continue」等のcontinuation promptは、**prompt受領時のStageに対応するActivity classを1回進める指示**として解釈する。activity中にStageが別のActivity classへ遷移した時点で、そのturnは停止してExecution Handoffを返さなければならない（MUST）。特に`NON_IMPLEMENTATION`から`IMPLEMENTATION`へ自動で跨いではならず（MUST NOT）、`IMPLEMENTATION`から`NON_IMPLEMENTATION`へ到達した後にverificationまで連続実行してもならない（MUST NOT）。
 
+`decision-required`で短い肯定的continuationを受けた場合は、前節のacceptance ruleを満たすときだけ推薦choiceへのacceptanceとして扱ってよい。acceptanceをcanonical authorityへ反映してspecification activityを進めた結果`implementation-ready`へ到達しても、その同じcontinuationをimplementation authorizationへ再利用してはならず、Activity class boundaryで停止する（MUST NOT）。
+
 Humanが「承認後そのまま実装まで」「実装して検証まで」のようにcross-boundary continuationを明示した場合だけ、指定された範囲でこのstop boundaryを跨いでよい（MAY）。単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない（MUST NOT）。
 
 - `designing`: current design/specification workを継続し、readiness gateを満たすために必要な調査・spec refinement・reviewを進める。Human decisionが必要な時だけ具体的なdecisionを求める。
-- `decision-required`: Human decision neededの内容を提示し、そのdecisionだけを求める。Approvalを自動代行しない。
+- `decision-required`: Human decision neededの内容を自己記述的に提示し、未解決ならそのdecisionだけを求める。直前の推薦への一意な肯定的continuationは上記ruleに従ってacceptanceとして扱ってよい。Approvalを自動代行しない。
 - `implementation-ready`: Current Objectiveを実装し、final candidateと`verification-ready` transitionまで閉じる。同一agentでもdelegateでもよい。PR作成やCI pendingで途中停止しない。
 - `verification-ready`: recorded Candidateをfinal verificationする。同一agentならfreshな別passとして扱い、必要ならindependent verificationへdelegateしてよい。
 - `correction-ready`: recorded Blockingだけをnarrow corrective passで修正し、新candidateと`verification-ready` transitionまで閉じる。
@@ -259,15 +263,18 @@ Next activity: <Stageから導出したactivity>
 Next activity class: <IMPLEMENTATION | NON_IMPLEMENTATION>
 Human action required: <yes | no>
 Short "進める" means: <次の短いcontinuation promptで実行する内容>
+Implementation starts on short continuation: <YES | NO>
 Stop boundary: <このactivityが停止すべきStageまたは条件>
 2-agent lane: <本流側 | 実装側>
 ```
 
-`Human action required`は`decision-required`、`objective-complete`でのpriority選定、その他具体的なHuman decision / Approval待ちでは`yes`とし、それ以外は通常`no`とする。`decision-required`ではblockに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、opaque referenceではなく各案のsemantic labelを主表示とし、Humanが現在のresponseだけで選択内容を比較できる形にする。`Candidate`、Blocking、CI等の重要なcurrent contextは必要に応じて本文へ併記してよい。
+`Human action required`は`decision-required`、`objective-complete`でのpriority選定、その他具体的なHuman decision / Approval待ちでは`yes`とし、それ以外は通常`no`とする。`decision-required`ではblockに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、Human向けfinal responseでopaque referenceではなく各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。Development State自体へその比較説明を複製してはならない。
 
-`Short "進める" means`と`Stop boundary`はActivity class boundaryをHumanが予測できる具体度で書く。HumanへStage名だけ、またはlaneだけを返して次がimplementationかnon-implementationかを推測させてはならない（MUST NOT）。このresponse contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも次の起動先を機械的に判断できるようにするためのprojectionである。
+`Short "進める" means`と`Stop boundary`はActivity class boundaryをHumanが予測できる具体度で書く。`Implementation starts on short continuation`は、通常の短いcontinuationが次にproduction / test / fixture等を変更する`IMPLEMENTATION` activityを開始するなら`YES`、それ以外は`NO`とする。したがって通常は`implementation-ready` / `correction-ready`で`YES`、`designing` / `decision-required` / `verification-ready` / `objective-complete`で`NO`となる。HumanへStage名、lane、Activity classだけを返してimplementation開始有無を推測させてはならない（MUST NOT）。
 
-このprojectionを`docs/execution-state.md`へ`Next actor`、`Recommended lane`、agent名等として永続化してはならない（MUST NOT）。Stage semanticsがroutingの唯一のsourceであり、agent topologyをDevelopment Stateへ逆流させない。
+このresponse contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも、**次の短い返答で本格的なcode mutationが始まるか**と次の起動先を機械的に判断できるようにするためのprojectionである。
+
+このprojectionを`docs/execution-state.md`へ`Next actor`、`Recommended lane`、`Implementation starts`、agent名等として永続化してはならない（MUST NOT）。Stage semanticsがroutingの唯一のsourceであり、agent topologyをDevelopment Stateへ逆流させない。
 
 ## Post-action report verification
 
@@ -316,6 +323,6 @@ Development Stateへsecret、credential、private token、個人情報、agent i
 
 ## Integrity check
 
-`crates/xtask/tests/execution_state.rs`は、Development StateのStage、Candidate SHA、Blocking / Human decision sectionの基本整合性、`AGENTS.md`からworkflow ownerがdiscoverableであること、およびreadiness / agent-topology-neutral / Git-delivery-topology / pre-action / post-action policyがworkflowから失われていないことを検証する。
+`crates/xtask/tests/execution_state.rs`は、Development StateのStage、Candidate SHA、Blocking / Human decision sectionの基本整合性、`AGENTS.md`からworkflow ownerがdiscoverableであること、およびreadiness / agent-topology-neutral / Git-delivery-topology / pre-action / post-action / Human decision presentation policyがworkflowから失われていないことを検証する。
 
 このtestは`cargo test --workspace --exclude masterdata-gui`を通じて`cargo xtask check-all` / CIに含まれる。mechanical consistencyとpolicy discoverabilityだけを検証し、review findingの意味、Human decisionの妥当性、Objective completion、delegation先の品質、agentがruntimeでpolicyを必ず遵守することまで機械判定したと主張してはならない。

@@ -93,6 +93,10 @@ fn development_state_is_well_formed_and_discoverable() {
         !state.contains("Recommended lane:"),
         "Development State must not persist split-mode lane routing"
     );
+    assert!(
+        !state.contains("Implementation starts on short continuation:"),
+        "Development State must not persist Human-facing execution projection"
+    );
 
     assert_file_exists(&root, "docs/execution-workflow.md");
     let agents = fs::read_to_string(root.join("AGENTS.md")).expect("read AGENTS.md");
@@ -137,13 +141,16 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "`IMPLEMENTATION`: production / test / fixture等の実装変更を主目的",
         "`NON_IMPLEMENTATION`: design / specification / approval reflection / verification / priority selection等",
         "単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない",
+        "肯定的continuationをそのchoiceへのHuman acceptanceとして扱ってよい",
+        "比較理由、詳細なeffect / trade-off、proposal本文、operation set等をcanonical RFC / specificationからDevelopment Stateへ複製してはならない",
         "Execution Handoff",
         "Next activity: <Stageから導出したactivity>",
         "Next activity class: <IMPLEMENTATION | NON_IMPLEMENTATION>",
         "Short \"進める\" means:",
+        "Implementation starts on short continuation: <YES | NO>",
         "Stop boundary:",
         "2-agent lane: <本流側 | 実装側>",
-        "HumanへStage名だけ、またはlaneだけを返して次がimplementationかnon-implementationかを推測させてはならない",
+        "次の短い返答で本格的なcode mutationが始まるか",
         "## Pre-action freshness gate",
         "## Post-action report verification",
         "current owner branchのremote HEAD",

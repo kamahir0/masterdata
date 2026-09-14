@@ -103,14 +103,13 @@ fn development_state_is_well_formed_and_discoverable() {
     assert!(agents.contains("docs/execution-state.md"));
     assert!(agents.contains("docs/execution-workflow.md"));
     for required in [
-        "Next activity class",
-        "Short \"進める\" means",
+        "Human-facing execution summary",
+        "次の短い返答で本格実装が始まるか",
         "activity中にclassが変わるStageへ到達したらそこで停止",
-        "Execution Handoff",
     ] {
         assert!(
             agents.contains(required),
-            "AGENTS.md lost execution handoff policy: {required}"
+            "AGENTS.md lost Human-facing execution policy: {required}"
         );
     }
 }
@@ -143,14 +142,14 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない",
         "肯定的continuationをそのchoiceへのHuman acceptanceとして扱ってよい",
         "比較理由、詳細なeffect / trade-off、proposal本文、operation set等をcanonical RFC / specificationからDevelopment Stateへ複製してはならない",
-        "Execution Handoff",
-        "Next activity: <Stageから導出したactivity>",
-        "Next activity class: <IMPLEMENTATION | NON_IMPLEMENTATION>",
-        "Short \"進める\" means:",
-        "Implementation starts on short continuation: <YES | NO>",
-        "Stop boundary:",
-        "2-agent lane: <本流側 | 実装側>",
-        "次の短い返答で本格的なcode mutationが始まるか",
+        "### Human-facing execution summary",
+        "固定のserialization format、固定field名、JSON、code block、colon-separated schemaを要求してはならない",
+        "Human actionが必要か",
+        "短い「進める」の意味",
+        "次の短い返答で本格実装が始まるか",
+        "停止地点",
+        "実行先の目安",
+        "自然な文章またはcompactなMarkdownを優先する",
         "## Pre-action freshness gate",
         "## Post-action report verification",
         "current owner branchのremote HEAD",
@@ -167,10 +166,11 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "role-unbound",
         "fixed `main-reviewer`",
         "fixed `implementation-agent`",
+        "Execution Handoff\nCurrent stage:",
     ] {
         assert!(
             !workflow.contains(forbidden),
-            "development workflow still encodes fixed agent topology: {forbidden}"
+            "development workflow still encodes fixed agent/presentation topology: {forbidden}"
         );
     }
 }

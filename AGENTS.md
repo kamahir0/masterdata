@@ -56,7 +56,7 @@ Humanから「進めて」等の短い指示を受けたagentは、conversation�
 
 Stageから導出されるActivity classは二値であり、`implementation-ready` / `correction-ready`は`IMPLEMENTATION`、それ以外は`NON_IMPLEMENTATION`とする。短い「進めて」はprompt受領時のActivity classを1回進める意味であり、activity中にclassが変わるStageへ到達したらそこで停止する。Humanがcross-boundary continuationを明示していない限り、`NON_IMPLEMENTATION`から`IMPLEMENTATION`へ、またはその逆へ同じturnで自動継続してはならない（MUST NOT）。
 
-Current Objectiveに関するdevelopment activityまたはstatus responseのfinal responseでは、`docs/execution-workflow.md`で定義された`Execution Handoff` blockを必ず出力し、少なくとも`Current stage`、`Next activity`、`Next activity class`、`Human action required`、`Short "進める" means`、`Stop boundary`、`2-agent lane`を明示する（MUST）。これらはfresh Stageから導出するprojectionであり、`docs/execution-state.md`へactor routingとして保存してはならない。
+Current Objectiveに関するdevelopment activityまたはstatus responseのfinal responseでは、[`docs/execution-workflow.md`](docs/execution-workflow.md)で定義された**Human-facing execution summary**を必ず提示する（MUST）。固定の`Execution Handoff` schema、JSON、code block、`Next activity class` / `Short "進める" means`等の特定field labelを要求せず、自然な文章またはcompactなMarkdownを優先する。Humanが少なくとも「次に何をするか」「Human actionが必要か」「短い『進める』で何が起きるか」「次の短い返答で本格実装が始まるか」「どこで止まるか」を一目で判断できなければならない。split-modeで起動先が判断材料になる場合だけ本流側 / 実装側の目安も示す。これらはfresh Stageから導出するprojectionであり、`docs/execution-state.md`へactor routingやpresentation stateとして保存してはならない。
 
 ### Implementation readiness
 

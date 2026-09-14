@@ -77,7 +77,7 @@ Current Objectiveをimplementation-readyへ進めてよいのは、少なくと�
 
 このgateが満たされたら、agentはHumanへ**「仕様上の未決定事項はなく、ここからimplementationを開始できる」**ことを明示する。execution environmentやcost / capability上delegationが有益なら別agentへdelegateしてよいが、delegationが利用できないことを理由にimplementationを不自然に停止する必要はない。同じagentがimplementationを担当してよい。
 
-ただし、短い「進めて」等のcontinuation promptで`NON_IMPLEMENTATION` activityを開始したturn中にreadiness gateを満たして`implementation-ready`へ到達した場合、そのturnのままimplementationへ進んではならない（MUST NOT）。後述のActivity class boundaryで停止してExecution Handoffを返し、次の短いcontinuation promptまたはHumanの明示的なcross-boundary指示でimplementationを開始する。
+ただし、短い「進めて」等のcontinuation promptで`NON_IMPLEMENTATION` activityを開始したturn中にreadiness gateを満たして`implementation-ready`へ到達した場合、そのturnのままimplementationへ進んではならない（MUST NOT）。後述のActivity class boundaryで停止し、Human-facing execution summaryを返して、次の短いcontinuation promptまたはHumanの明示的なcross-boundary指示でimplementationを開始する。
 
 ## Development State format
 
@@ -222,7 +222,7 @@ Humanから「進めて」等の短い指示を受けたagentはPre-action fresh
 - `IMPLEMENTATION`: production / test / fixture等の実装変更を主目的として行うactivity。`implementation-ready`と`correction-ready`だけが該当する。
 - `NON_IMPLEMENTATION`: design / specification / approval reflection / verification / priority selection等。`designing`、`decision-required`、`verification-ready`、`objective-complete`が該当する。
 
-短い「進めて」「continue」等のcontinuation promptは、**prompt受領時のStageに対応するActivity classを1回進める指示**として解釈する。activity中にStageが別のActivity classへ遷移した時点で、そのturnは停止してExecution Handoffを返さなければならない（MUST）。特に`NON_IMPLEMENTATION`から`IMPLEMENTATION`へ自動で跨いではならず（MUST NOT）、`IMPLEMENTATION`から`NON_IMPLEMENTATION`へ到達した後にverificationまで連続実行してもならない（MUST NOT）。
+短い「進めて」「continue」等のcontinuation promptは、**prompt受領時のStageに対応するActivity classを1回進める指示**として解釈する。activity中にStageが別のActivity classへ遷移した時点で、そのturnは停止してHuman-facing execution summaryを返さなければならない（MUST）。特に`NON_IMPLEMENTATION`から`IMPLEMENTATION`へ自動で跨いではならず（MUST NOT）、`IMPLEMENTATION`から`NON_IMPLEMENTATION`へ到達した後にverificationまで連続実行してもならない（MUST NOT）。
 
 `decision-required`で短い肯定的continuationを受けた場合は、前節のacceptance ruleを満たすときだけ推薦choiceへのacceptanceとして扱ってよい。acceptanceをcanonical authorityへ反映してspecification activityを進めた結果`implementation-ready`へ到達しても、その同じcontinuationをimplementation authorizationへ再利用してはならず、Activity class boundaryで停止する（MUST NOT）。
 
@@ -254,27 +254,44 @@ Development Stateはactor-neutralなauthorityのまま維持し、`mainline` / `
 
 したがって標準split modeでは、**実装側を動かすのは`implementation-ready`と`correction-ready`、それ以外は本流側**と一目で判断できる。このmappingはcost / capabilityを分離した運用のdefault projectionであり、single-agent運用では無視して同じagentがStageに対応するactivityを継続してよい。
 
-Current Objectiveに関するdevelopment activityを行ったagentのfinal response、およびHumanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合のstatus responseは、通常の説明文の有無にかかわらず、末尾にfreshなDevelopment Stateから導出した次の`Execution Handoff` blockを必ず含めなければならない（MUST）。
+### Human-facing execution summary
 
-```text
-Execution Handoff
-Current stage: <Stage>
-Next activity: <Stageから導出したactivity>
-Next activity class: <IMPLEMENTATION | NON_IMPLEMENTATION>
-Human action required: <yes | no>
-Short "進める" means: <次の短いcontinuation promptで実行する内容>
-Implementation starts on short continuation: <YES | NO>
-Stop boundary: <このactivityが停止すべきStageまたは条件>
-2-agent lane: <本流側 | 実装側>
+Current Objectiveに関するdevelopment activityを行ったagentのfinal response、およびHumanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合のstatus responseでは、freshなDevelopment Stateから導出した**Human-facing execution summary**を必ず提示する（MUST）。ただし、Human-facing responseへ固定のserialization format、固定field名、JSON、code block、colon-separated schemaを要求してはならない（MUST NOT）。repository/state側のmachine-orientedな厳密さと、chat側の読みやすさを分離する。
+
+Human-facing execution summaryは、表現方法にかかわらず、少なくとも次の意味を一目で判断できるようにしなければならない（MUST）。
+
+- **次に何をするか**。
+- **Human actionが必要か**。必要なら何を決める・承認するか。
+- **短い「進める」の意味**。次の短いcontinuationで何が起きるか。
+- **次の短い返答で本格実装が始まるか**。production / test / fixture等を変更する`IMPLEMENTATION` activityを開始するなら「始まる」、それ以外は「始まらない」と明示する。
+- **停止地点**。どのStageまたは条件でHumanへ戻るか。
+- split-modeで次の起動先が判断材料になる場合は、**実行先の目安**として本流側 / 実装側を明示する。single-agent運用で不要ならlaneを常時表示する必要はない。
+
+Stage名、Activity class、Candidate SHA、CI status等は、Humanの判断やtraceabilityに有用な場合は併記してよいが、上記の意味がHuman向け表現だけで明確なら固定fieldとして常時露出する必要はない。`Next activity class`、`Short "進める" means`、`Implementation starts on short continuation`、`2-agent lane`等の英語field labelをそのまま表示することも要求しない。
+
+通常は長いschema blockより、自然な文章またはcompactなMarkdownを優先する（SHOULD）。例えば次のような表現でよいが、これはserialization contractではない。
+
+```markdown
+### 次に進むと
+
+**やること**  推薦案をcanonical specへ反映してreviewします。
+
+**本格実装**  まだ始まりません。
+
+**あなたの操作**  推薦案でよければ「進める」で進みます。
+
+**停止地点**  implementation-ready、または追加のHuman decisionが必要になった時点。
+
+**実行先の目安**  本流側（split-modeの場合）
 ```
 
-`Human action required`は`decision-required`、`objective-complete`でのpriority選定、その他具体的なHuman decision / Approval待ちでは`yes`とし、それ以外は通常`no`とする。`decision-required`ではblockに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、Human向けfinal responseでopaque referenceではなく各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。Development State自体へその比較説明を複製してはならない。
+`decision-required`ではsummaryに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、opaque referenceではなく各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。Development State自体へその比較説明を複製してはならない。
 
-`Short "進める" means`と`Stop boundary`はActivity class boundaryをHumanが予測できる具体度で書く。`Implementation starts on short continuation`は、通常の短いcontinuationが次にproduction / test / fixture等を変更する`IMPLEMENTATION` activityを開始するなら`YES`、それ以外は`NO`とする。したがって通常は`implementation-ready` / `correction-ready`で`YES`、`designing` / `decision-required` / `verification-ready` / `objective-complete`で`NO`となる。HumanへStage名、lane、Activity classだけを返してimplementation開始有無を推測させてはならない（MUST NOT）。
+短いcontinuationで本格実装が始まるかの判定はActivity class boundaryから導出する。通常は`implementation-ready` / `correction-ready`で「始まる」、`designing` / `decision-required` / `verification-ready` / `objective-complete`で「始まらない」となる。HumanへStage名、lane、Activity classだけを返してimplementation開始有無を推測させてはならない（MUST NOT）。
 
-このresponse contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも、**次の短い返答で本格的なcode mutationが始まるか**と次の起動先を機械的に判断できるようにするためのprojectionである。
+このsummary contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも、**次の短い返答で本格的なcode mutationが始まるか**と、必要なら次の起動先を即座に判断できるようにするためのprojectionである。
 
-このprojectionを`docs/execution-state.md`へ`Next actor`、`Recommended lane`、`Implementation starts`、agent名等として永続化してはならない（MUST NOT）。Stage semanticsがroutingの唯一のsourceであり、agent topologyをDevelopment Stateへ逆流させない。
+このprojectionを`docs/execution-state.md`へ`Next actor`、`Recommended lane`、`Implementation starts`、Human-facing label、agent名等として永続化してはならない（MUST NOT）。Stage semanticsがroutingの唯一のsourceであり、agent topologyやchat presentationをDevelopment Stateへ逆流させない。
 
 ## Post-action report verification
 
@@ -323,6 +340,6 @@ Development Stateへsecret、credential、private token、個人情報、agent i
 
 ## Integrity check
 
-`crates/xtask/tests/execution_state.rs`は、Development StateのStage、Candidate SHA、Blocking / Human decision sectionの基本整合性、`AGENTS.md`からworkflow ownerがdiscoverableであること、およびreadiness / agent-topology-neutral / Git-delivery-topology / pre-action / post-action / Human decision presentation policyがworkflowから失われていないことを検証する。
+`crates/xtask/tests/execution_state.rs`は、Development StateのStage、Candidate SHA、Blocking / Human decision sectionの基本整合性、`AGENTS.md`からworkflow ownerがdiscoverableであること、およびreadiness / agent-topology-neutral / Git-delivery-topology / pre-action / post-action / Human decision presentation / Human-facing execution summary policyがworkflowから失われていないことを検証する。
 
 このtestは`cargo test --workspace --exclude masterdata-gui`を通じて`cargo xtask check-all` / CIに含まれる。mechanical consistencyとpolicy discoverabilityだけを検証し、review findingの意味、Human decisionの妥当性、Objective completion、delegation先の品質、agentがruntimeでpolicyを必ず遵守することまで機械判定したと主張してはならない。

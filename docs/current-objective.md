@@ -9,76 +9,85 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 ## Objective
 
-現在のHuman priorityは、**GUIのTable EditorからSchema Migration v1の`AddField` / `RenameField` / `DropField`をplan・diff確認付きで安全に実行し、既存Table schemaをYAML手編集なしで変更できる最初のschema-aware authoring体験を完成させる**ことである。
+現在のHuman priorityは、**既存Value Object / Enum / Flags Enum / Custom TypeをGUIからraw YAML手編集なしで安全に変更できるType Editor v1を完成させる**ことである。
 
-Data Editor record mutation Objectiveはcandidate `71d155d4f9bd76af932af61481ac40f9bc47d2ef`のfinal verificationでBlockingなしとなり、2026-09-13時点で`objective-complete`に到達している。その後Humanが、次候補として推薦したTable Editor v1について「進めて」と選択したため、本Objectiveをcurrent priorityとする。
+直前のTable Editor Objectiveはcandidate `d765f40d225130b29a44427dd8cc1a536ce168a6`のfinal verificationでBlockingなしとなり、2026-09-14時点で`objective-complete`へ到達した。その後Humanが次候補比較で推薦されたType Editorについて「進める」と選択したため、本Objectiveをcurrent priorityとする。
 
-Schema transformation semanticsのauthorityは既存Approved [Schema Migration v1](specs/schema-migration.md)であり、本ObjectiveはGUI convenienceのために別のfield identity、key allocation、dependency rewrite、source rewrite、transaction semanticsを発明しない。GUI observable workflowのauthorityはApproved [Table Editor](gui/table-editor/spec.md)である。2026-09-13にHumanがTable Editor v1とspec change 0014を承認し、Recovery Requiredのcross-surface gateも[GUI app shell](gui/app-shell.md)へatomicに適用した。必要なobservable behavior、completion boundary、failure semantics、non-scopeはApproved authorityから決定でき、未解決のSpecification Gap / Human decision / Approvalはないため、implementation-readyである。
+各type categoryの静的なschema/data/generated C# semanticsはApproved [Type System](specs/type-system/README.md) familyが所有する。一方、既存type declarationを変更するときのdependency rewrite、source mutation、lost-update、destructive authorization、multi-file rollback、既存data transformationを所有するcanonical mutation contractはまだ存在しない。Approved [Schema Migration v1](specs/schema-migration.md)はTable fieldの`AddField` / `RenameField` / `DropField`に限定され、Type Editorをscope外としている。
 
-本Objectiveの選択時点のimplementation realityでは、Approved Migration v1が`AddField` / `RenameField` / `DropField`を定義している一方、当時の`masterdata-core`の`MigrationCommand`は`AddField`のみ実装済みである。この差はcanonical specificationを狭める理由ではなく、Approved behaviorへ実装を追随させるimplementation gapとして扱う。本Objectiveにはshared core/applicationでの`RenameField` / `DropField`実装と、そのGUI Table Editorへの接続を含める。
-
-Humanが既に選択した方針どおり、使い勝手・データ安全性・互換性を大きく左右しないroutine interaction detailは既存UI方針、platform convention、accessibility、testabilityに従って仕様側で決定し、実使用後に必要なら調整する。
+したがって、本Objectiveは実装へ直接進まず、まず[Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md)でmutation boundaryを確定する。RFCが採用された場合は、そのdecisionをType Migration / GUI Type Editorのcanonical specificationへ移し、Human Approval lifecycleを完了してからimplementation-readyへ進む。
 
 ## Why now
 
-現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags / Custom Typeを新規作成でき、Data documentではrecordの追加・削除・Required Primitive value編集・validation・Diff・SaveまでGUI内で行える。一方、作成済みTable schemaを変更する専用editorはなく、field追加・rename・dropではYAML手編集または別surfaceへ戻る断点が残っている。
+現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags Enum / Custom Typeを新規作成できる。Data documentはData Editorでrecord authoringでき、Table schemaはTable EditorでSchema Migration v1のAdd/Rename/Drop FieldをPlan / Diff付きで実行できる。一方、作成済みtype documentは専用editorを持たず、definition変更ではYAML手編集へ戻る断点が残っている。
 
-Product Visionはschema-aware editingを長期方向として明示しており、Schema Migration v1にはsource-preserving transformation、deterministic Plan、destructive authorization、lost-update preflight、multi-file rollback / Recovery Requiredまで既にApproved contractがある。次にそのshared semanticsをTable Editorへ接続することで、新しいdomain ruleを増やさずschema authoringの主要な断点を閉じられる。
+Product Visionはschema-aware editingとshared Rust semanticsを長期方向としている。Type System自体はApproved済みなので、次に必要なのはtype-definition mutationをどのshared semantic boundaryで安全に扱うかを確定し、そのboundaryへGUIを接続することである。
 
 ## Completion boundary
 
-- Workspace ExplorerでTable schema documentを選択した場合、folder pathではなくshared source semantics / document kindに基づいてTable Editorを開く。
-- Table Editorはlogical Table identity、schema source provenance、field declaration order、MessagePack key、type / modifier、Primary Key、Secondary Keyをshared application snapshotから表示し、frontend独自にYAMLをparseしてschema meaningを再構成しない。
-- 初期mutation surfaceはApproved Migration v1の`AddField` / `RenameField` / `DropField`に限定する。field type変更、field reorder、MessagePack key変更、Primary / Secondary Key編集、Table rename等を暗黙に実装しない。
-- `AddField`ではfield key、name、type、Nullable / Array modifier、および必要なexplicit constant initializerを入力できる。initializerやtype/value validityはshared Migration / Type System semanticsで判定し、frontendで簡易YAML/type validatorを複製しない。既存recordがある場合のinitializer requirementもMIGRATION-006へ委譲する。
-- `RenameField`はlogical Table identity + current field nameをsemantic selectorとして使用し、MessagePack keyを変更しない。Primary / Secondary Key等のApproved dependency updateはshared Migration semanticsへ委譲し、frontendで文字列置換しない。
-- `DropField`はdestructive operationとして明示し、mutation開始にはGUI confirmationとは別にbackendへmachine-actionable destructive authorizationを渡す。依存fieldを黙って削除・修復して成功扱いしない。
-- source mutation前に必ずdeterministic Migration Planを作成し、operation / target、affected source files、affected record count、diagnostics、destructive stateを利用者が確認できるようにする。
-- Planからaffected sourceごとのbefore / after Diffを確認できるようにする。Plan / Diffの表示自体はsourceを変更しない。
-- Applyは現在表示中のPlanと同じsemantic command / base snapshotに対してのみ実行する。source/config/membershipがstaleならmutationせずstructured errorを表示し、re-planを要求する。
-- Migration Planが変更対象として示すsource fileにData Editorのdirty bufferが存在する場合、Applyを開始せず、対象dirty fileを識別できるようにする。unrelated dirty bufferだけを理由にPlanまたはApplyを全面禁止せず、それらのbufferを保持する。
-- successful Migration後はaffected sourceをworkspace authorityから再取得し、Table Editorを最新schemaへ更新する。affected clean Data Editor snapshotはstaleなままeditableにせず再読込し、unrelated dirty bufferは保持する。
-- commit failure + rollback success / mutation未開始はSuccessと区別し、operation inputとPlan情報を失わずretry / re-planできる状態を保つ。`Recovery Required`ではその状態を明示し、Approved MIGRATION-010に従って安全なsource stateを再確立するまでGUIから追加のintentional source mutationを開始しない。
-- Migration成功はBuild / Publish / Git / generated artifact更新を暗黙に開始しない。必要なら既存Buildを別operationとして実行する。
-- Tauri frontendはfilesystem、YAML rewrite、Migration dependency resolution、source transactionを実装せず、shared Native Application Serviceを薄く呼び出す。
-- current implementation gapであるshared `RenameField` / `DropField`をApproved Schema Migration v1どおり実装し、Add/Rename/Dropすべてでsource-preserving patch、postcondition、stale-plan preflight、rollback / Recovery Required semanticsを維持する。
-- focused core/application regression、Tauri adapter test、React状態遷移test、repository required checks、final verificationでBlockingがないことを確認する。
+本Objectiveのfinal completion boundaryは、RFC 0006のHuman decisionと後続Approved specificationによって確定する。設計段階では少なくとも次を満たす方向でrefineする。
+
+- Workspace Explorerで`kind: type` documentを選択した場合、shared source semanticsからtype categoryをresolveし、Value Object / Enum / Flags Enum / Custom Typeの専用Type Editorを開ける。
+- Type Editorはtype identity、source provenance、category-specific declarationをshared application snapshotから表示し、frontendがYAMLを独自parseしてdomain meaningを再構成しない。
+- mutation operation set、dependent source rewrite、destructive behavior、existing data treatmentはApproved mutation specificationだけをauthorityとし、GUI convenienceのために暗黙のrewrite / coercion / compatibility policyを発明しない。
+- source mutation前のreview surface、lost-update prevention、failure/recovery semanticsは採用されたshared mutation contractに従い、frontend/Tauriへdomain transaction semanticsを複製しない。
+- successful type mutationはBuild / Publish / Git / generated artifact更新を暗黙に開始しない。
+- Data Editor等の既存dirty buffer、Recovery Required、host capabilityはApproved GUI app shell / editor lifecycleと矛盾なくcompositionする。
+- focused core/application regression、Tauri adapter test、React workflow test、repository required checks、final verificationでBlockingがないことを確認する。
+
+## Current design decision
+
+RFC 0006では次の3案を比較している。
+
+1. selected type fileだけをtyped direct editする。
+2. dependency rewrite不要な変更だけにType Editor v1を限定する。
+3. shared Type Migration v1を導入し、Type EditorをPlan / Diff付きのthin GUI adapterにする。
+
+現時点の推薦は3である。推薦operation setは、Value Object conversion setting、Enum/Flags member Add/Rename/Drop、Custom Type field Add/Rename/Dropに限定し、type declaration rename、underlying変更、member numeric value変更、Custom Type field type/modifier/key/reorder等をv1非対象とする。これは未承認proposalであり、Human decisionとcanonical specification approval前にはimplementation authorityにならない。
 
 ## Explicit non-scope
 
-現Objectiveでは次を含めない。
+Human decisionとApproved specificationで別途採用されない限り、現Objectiveでは次を暗黙に含めない。
 
-- field type変更、Nullable / Array modifier変更、field reorder、MessagePack key変更。
-- Primary Key / Secondary Keyの追加・削除・reorder・nonUnique変更。
-- Table identity / `csharpName`の変更。
-- Value Object / Enum / Flags / Custom Typeの既存definition編集を行うType Editor。
-- schema file / folderのrename、delete、move、duplicate。
-- Data Editorのcomplex field record input拡張。
-- arbitrary raw-YAML schema editor、formatter、general text editor。
-- Migration v1外のSQL-like language、bulk migration script、ChangeFieldType、cross-table arbitrary transform。
-- Build Profile / Publish、Standalone / Connected Web全体、Native Host lifecycle、distributionの同時完成。
-- crash / power-lossまで含むglobal filesystem transaction保証。
+- type declaration name rename。
+- Value Object / Enum / Flagsのunderlying変更。
+- Enum / Flags member numeric value変更・reorder。
+- Custom Type field type / modifier / MessagePack key変更・reorder。
+- type category conversion。
+- Table Primary / Secondary Key editing。
+- Data Editorのcomplex field input拡張。
+- source file / folder rename、delete、move、duplicate。
+- arbitrary raw YAML editor、formatter、general text editor。
+- released-version compatibility system全体。
+- Build Profile / Publish、Standalone / Connected Web全体。
+- Build / Publish / Gitの自動実行。
 
 ## Next candidate
 
-このObjective完了後は、Type Editor、complex fieldを含むrecord追加、Primary / Secondary Key editingを含む次段schema authoring、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
+本Objective完了後は、complex fieldを含むrecord入力、Primary / Secondary Key editingを含む次段schema authoring、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
 
 次priorityは自動昇格せず、current realityとproduct valueを確認してHumanが選択する。
 
 ## Relevant authorities
 
 - [Product vision](product/vision.md)
+- [Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md) — current design comparison。implementation authorityではない
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)
-- [Table Editor](gui/table-editor/spec.md) — Approved GUI workflow authority
+- [Source Creation](gui/source-creation/spec.md)
 - [Data Editor](gui/data-editor/spec.md)
-- [Schema Migration v1](specs/schema-migration.md) — Add/Rename/Drop semantics、Plan、source preservation、commit safetyのcanonical authority
+- [Table Editor](gui/table-editor/spec.md)
+- [Schema Migration v1](specs/schema-migration.md)
 - [Masterdata YAML subset](specs/yaml-subset.md)
 - [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
 - [Type System](specs/type-system/README.md)
 - [Primitive Types](specs/type-system/primitives.md)
 - [Field Modifiers](specs/type-system/field-modifiers.md)
+- [Value Objects](specs/type-system/value-objects.md)
+- [Enum / Flags](specs/type-system/enums.md)
+- [Custom Types](specs/type-system/custom-types.md)
+- [C# naming](specs/type-system/csharp-naming.md)
 - [Runtime hosts / capability](specs/runtime-hosts.md)
 - [YAML Source of Truth ADR](adr/0001-yaml-is-source-of-truth.md)
 - [shared core ADR](adr/0002-rust-core-shared-by-cli-and-gui.md)

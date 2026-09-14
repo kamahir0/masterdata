@@ -1,6 +1,6 @@
 # Type Migration v1仕様
 
-Status: Proposed
+Status: Approved
 
 Domain: Type Migration
 

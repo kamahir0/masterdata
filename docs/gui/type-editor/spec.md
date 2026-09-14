@@ -94,6 +94,12 @@ backendがexisting occurrence等のType Migration precondition failureを返し�
 
 Type Migration成功をBuild / Publish / Git / generated artifact更新と同一操作へ結合してはならない（MUST NOT）。成功後にBuild等を別actionとして実行できてよい（MAY）。
 
+### GUI-TYPE-INT-009
+
+Type Editorからshared application boundaryへ渡すsemantic valueは、Approved Type System / YAML subsetが許すexact valueをlosslessに保持しなければならない（MUST）。特にEnum / Flagsの`long` / `ulong`を含むmember numeric value、Custom Type field initializer内の64-bit integerその他のscalar valueを、JavaScriptのsafe-integer rangeへ丸めたり、floating-point `number`へlossy coercionしてはならない（MUST NOT）。
+
+このrequirementはspecific wire encodingを固定しない。string、tagged scalar、BigInt-safe adapter等の具体的transport representationは、round-tripでexact semantic valueを保持し、shared Rust semanticsが最終validationを行う限りimplementation detailとしてよい（MAY）。
+
 ## キーボード（Keyboard）
 
 ### GUI-TYPE-KEY-001
@@ -158,6 +164,7 @@ None.
 - v1非対象propertyはdirect-edit可能にならない。
 - Value Object conversion、Enum/Flags Add/Rename/Drop、Custom field Add/Rename/Dropがshared Type Migration command / Planへ接続される。
 - Enum/Flags Addのnumeric value、Custom field Addのinitializer等がshared diagnosticsで検証される。
+- `long` / `ulong`のEnum/Flags numeric valueとinitializer内scalarがfrontend/Tauri境界をlosslessにround-tripする。
 - Flags `None = 0`にRename/Drop actionを提供しない。
 - Plan / Diffはmutation前で、affected files / occurrence count / diagnosticsをcurrent Planから表示する。
 - plan後のexternal source/config/membership changeをApplyがstaleとして拒否し、sourceを上書きしない。
@@ -169,4 +176,4 @@ None.
 
 ## 未解決事項（Open Questions）
 
-None identified for Type Editor v1. exact Ant Design component、Plan panelのmodal / inline配置、member/field row action placement、numeric input widget、initializer widget / serialized wire shape、Diff layout、minor focus stylingは、上記observable contractを満たす限りimplementation detailとする。
+None identified for Type Editor v1. exact Ant Design component、Plan panelのmodal / inline配置、member/field row action placement、numeric input widget、initializer widget / serialized wire shape、Diff layout、minor focus stylingは、`GUI-TYPE-INT-009`のlossless transportを満たす限りimplementation detailとする。

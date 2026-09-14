@@ -1,6 +1,6 @@
 # GUI仕様: Type Editor
 
-Status: Proposed
+Status: Approved
 
 ## 目的
 

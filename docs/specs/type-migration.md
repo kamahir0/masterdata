@@ -181,7 +181,9 @@ Type Migration implementationはdependency resolution、source patch、postcondi
 
 Type Migrationはcurrent source schemaを安全に変換するauthoring operationであり、released-version compatibility systemを導入しない。
 
-`RenameEnumMember`と`RenameCustomField`はgenerated C# identifierを変更し得るため、Type Migrationがsource transformationとして成功してもexternal consumerのsource compatibilityを保証しない。v1でtype declaration rename、underlying変更、member numeric value変更、Custom Type field type/modifier/key変更を除外するのは、serialization/API compatibilityとarbitrary data conversion policyを本sliceへ持ち込まないためである。
+v1の各operationはsource migrationとして成功しても、generated C#を利用するexternal consumerのsource / API compatibilityを保証しない。`SetValueObjectConversions`はimplicit conversion operatorの有無、Enum/Flags member Add/Rename/Dropはgenerated enum member surface、Custom Type field Add/Rename/Dropはpropertyおよびpublic constructor surfaceを変更し得る。Type Migration Planの成功条件はcurrent canonical sourceとcurrent Approved Type System semanticsに対する変換整合性であり、released external consumerの互換性判定ではない。
+
+v1でtype declaration rename、underlying変更、member numeric value変更、Custom Type field type/modifier/key変更を除外するのは、serialization/API compatibilityとarbitrary data conversion policyを本sliceへさらに拡張しないためである。この限定も、v1 operationそのものがexternal compatibilityを保証する意味ではない。
 
 Enum/Flags numeric valueはcurrent schema member valueでありpersistent wire identityではないという`SCHEMA-ENUM-001`を変更しない。Custom Type field MessagePack `key`の意味も既存`SCHEMA-KEY-001`を変更しない。
 

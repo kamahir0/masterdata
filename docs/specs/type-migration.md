@@ -8,7 +8,7 @@ Domain: Type Migration
 
 この文書は、既存Value Object / Enum / Flags Enum / Custom Type declarationを、canonical YAMLをSource of Truthのままproject-wideに安全に変更するType Migration v1のsemantic contractを定義する。
 
-Type category、declaration、data representation、generated C# semanticsは既存の[Type System](type-system/README.md) familyが所有する。本仕様はそれらを再定義せず、type-definition mutationのoperation set、dependency resolution、Plan / Diff、source-preserving rewrite、stale-plan preflight、destructive authorization、multi-file commit / rollback / Recovery Requiredを所有する。[Schema Migration v1](schema-migration.md)のTable field mutationとは別のcanonical ownerであり、Type-specific semanticsを`MIGRATION-*`へ追加しない。
+Type category、declaration、data representation、generated C# semanticsは既存の[Type System](type-system/README.md) familyが所有する。本仕様はそれらを再定義せず、type-definition mutationのoperation set、dependency resolution、Plan / Diff、source-preserving rewrite、stale-plan preflight、destructive authorization、およびType Migration operationからshared source-set commit protocolへのcompositionを所有する。[Schema Migration v1](schema-migration.md)のTable field mutationとは別のcanonical ownerであり、Type-specific semanticsを`MIGRATION-*`へ追加しない。複数YAML file commitのobservable Success / rollback / Recovery Required state自体は、既存の`MIGRATION-010`を再利用し、本仕様で重複定義しない。
 
 GUI compositionは[Type Editor v1](../gui/type-editor/spec.md)が所有する。public CLI grammar、specific Rust struct layout、wire format、filesystem journal layoutは本仕様で固定しない。
 
@@ -135,20 +135,9 @@ Apply直前のstale-plan preflightは、Plan作成に使用したproject config�
 
 ### TYPE-MIGRATION-016
 
-複数fileへ跨るType Migration commitは、通常のI/O failureについて少なくとも次のobservable source-set stateを区別しなければならない（MUST）。
+Type Migrationが複数YAML fileのsource mutation commitへ進む場合、observable source-set stateとrollback / Recovery Required semanticsは[Schema Migration v1](schema-migration.md)の`MIGRATION-010`へ従わなければならない（MUST）。Type Migration固有の別transaction state machineを導入してはならず（MUST NOT）、`Recovery Required`をSuccessとして扱ったり、rollback failure後にintentional source mutationを継続してはならない（MUST NOT）。
 
-```text
-Success
-→ complete NEW migrated source set
-
-commit failure + rollback success
-→ complete OLD source set remains usable
-
-commit failure + rollback failure
-→ Recovery Required
-```
-
-`Recovery Required`をSuccessとして報告してはならず（MUST NOT）、それ以上のintentional source mutationを停止する状態としてshared application boundaryへ返さなければならない（MUST）。staging、backup、journal、atomic replace等の具体的filesystem mechanism、process crash / OS crash / power lossまで含むglobal atomicity保証は本仕様で固定しない。
+Type Migration implementationは`MIGRATION-010`のobservable protocolをshared application/host boundaryへ返し、[GUI app shell](../gui/app-shell.md)の既存Recovery Required gateとcompositionできなければならない（MUST）。backup layout、journal format、staging directory、exact recovery command、process crash / OS crash / power loss保証は既存ownerの境界を越えて本仕様で再定義しない。
 
 ### TYPE-MIGRATION-017
 
@@ -156,7 +145,7 @@ Type Migration成功はBuild、Publish、Git commit/push、generated C#、canoni
 
 ### TYPE-MIGRATION-018
 
-Type Migration implementationはdependency resolution、source patch、postcondition、stale-plan preflight、destructive authorization、multi-file commit / rollback semanticsをshared core/application boundaryへ置かなければならない（MUST）。GUI、Tauri adapter、将来のCLI/Web adapterが独自にYAMLをparse/rewriteし、Type Migration semanticsを複製してはならない（MUST NOT）。
+Type Migration implementationはdependency resolution、source patch、postcondition、stale-plan preflight、destructive authorization、multi-file commit integrationをshared core/application boundaryへ置かなければならない（MUST）。GUI、Tauri adapter、将来のCLI/Web adapterが独自にYAMLをparse/rewriteし、Type Migration semanticsを複製してはならない（MUST NOT）。
 
 ## 検証ルール
 
@@ -174,7 +163,7 @@ Type Migration implementationはdependency resolution、source patch、postcondi
 - unrelated invalid sourceは安全に分類できる限りblockせず、unclassifiable sourceはfail closedする。
 - external source/config/membership changeをstale preflightが拒否し、old Planで上書きしない。
 - unaffected file bytesとaffected fileのunrelated source textを保持する。
-- multi-file failureでcomplete OLD rollbackとRecovery Requiredを区別する。
+- multi-file failureが`MIGRATION-010`のcomplete OLD rollbackとRecovery Requiredを区別し、Type Migration固有の別state machineを作らない。
 - successがBuild / Publish / Git / generated artifact更新を起動しない。
 
 ## 互換性

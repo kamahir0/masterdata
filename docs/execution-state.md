@@ -1,7 +1,7 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: 0d4105eff8613fec605903f6184185274382a4e3
 
 ## Blocking findings
 
@@ -16,8 +16,14 @@ None.
 
 RFC 0006のShared Type Migration v1 + Plan / Diff decisionは、このApproved contractへ反映済みである。
 
+## Candidate evidence
+
+Type Editor v1の共有core/application、Tauri adapter、React workflowを実装した。
+`cargo xtask check-all`と`review-code` self-reviewを完了し、self-reviewのBlockingは解消済み。
+canonical specificationのStatusはApprovedを維持しており、Objective完了の判定はfinal verificationへ残す。
+
 ## Next activity
 
-Current ObjectiveのType Editor v1を、Approved Type Migration / GUI Type Editor contractと既存Approved authorityに従う1つのsemantic implementation work packageとして実装する。
-
-implementation activityではcore/application semantic engine、Tauri adapter、React Type Editor、focused regression/evidence、required repository checks、self-review、commit/pushをfinal candidateまで閉じ、exact Candidate SHAを記録して`verification-ready`へ進める。
+記録されたexact Candidate SHAをfreshな別passでfinal verificationする。
+[Current Objective](current-objective.md)のcompletion boundaryとApproved authorityへ照合し、
+Blockingなしの場合だけ`objective-complete`へ進める。

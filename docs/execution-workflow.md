@@ -118,6 +118,22 @@ Approved authorityから安全に決定できないsemantic / product / compatib
 
 Human向けfinal responseでは、Humanが元RFC / specificationを開かなくても現在のresponseだけで判断できるよう、各案をsemantic labelと1行程度のeffect / trade-offでscanできる形にしなければならない（MUST）。推薦がある場合もsemantic labelを主表示とし、例えば「Option Cを推奨」ではなく「Shared Type Migration v1 + Plan / Diff（RFC 0006 Option C）を推奨」のように内容を先に示す。Humanにreference tokenだけを記憶・照合させてはならない（MUST NOT）。
 
+#### Decision presentation gate for `decision-required`
+
+cold-startまたはfreshness gate後に`Stage: decision-required`をrecoverし、**このsessionでまだcurrent decisionをHumanへ自己完結的に提示していない場合**、agentはHumanへchoiceを求める前に次をすべて実行しなければならない（MUST）。
+
+1. `Human decision needed`にcanonical comparison ownerが示されている場合はそれを読み、current decisionの比較根拠をrecoverする。
+2. Development Stateに記録された**全choiceを列挙**し、各choiceをsemantic labelで示す。推薦choiceだけを表示してalternativesを省略してはならない（MUST NOT）。
+3. 各choiceについて、Humanが違いを判断できる1行程度のeffect / trade-offを示す。詳細本文をDevelopment Stateへ複製せず、Human-facing responseでcanonical ownerから展開する。
+4. 推薦がある場合は推薦choiceを明示する。ただし、推薦理由だけを長く説明して他choiceの比較可能性を失わせてはならない。
+5. **短い「進める」で何をacceptするのか**を明示する。推薦が1つでacceptance ruleを適用できる場合はsemantic labelで「推薦案を採用する」と示し、`Option Cで進める`等のopaque referenceをHumanに必須入力として要求しない。
+6. **次の短い返答で本格実装が始まるかを明示**する。`decision-required`からの通常continuationでは「始まらない」と明示し、acceptance後に`implementation-ready`へ到達しても同じcontinuationで実装へ跨がない。
+7. どこで停止してHumanへ戻るかを示し、Human decisionを待つ。
+
+cold-start sessionの最初の短い「進める」は、current session内に直前の自己完結したdecision presentationが存在しないため、推薦choiceへのacceptanceとして扱ってはならない（MUST NOT）。そのturnは上記presentation gateを実行してHuman decisionを求めるところで停止する。
+
+推薦案だけを説明してalternativesを省略したresponse、採用後の手順だけを列挙してchoice比較を省略したresponse、または「本格実装が始まる / 始まらない」をHumanに推測させるresponseは、`decision-required`のHuman-facing contractを満たさない。
+
 pending Human decisionが1つだけで、直前のagent responseが1つの具体的なchoiceをsemantic label付きで明確に推薦し、そのresponse上で短い肯定的continuationが推薦案のacceptanceを意味すると一意に理解できる場合、「進める」「それで」「推奨案で」等の肯定的continuationをそのchoiceへのHuman acceptanceとして扱ってよい（MAY）。この解釈はpending decisionを解決して同じ`NON_IMPLEMENTATION` activityを進めるためのものであり、implementation開始を含むActivity class boundaryを跨ぐauthorizationにはならない（MUST NOT）。複数decisionが残る場合、推薦が複数または不明確な場合、referentが曖昧な場合、直前のresponseでchoiceを提示していない場合、またはdestructive operation等でexact explicit consent自体がcontractとなる場合は推測せず具体的なdecisionを求める。
 
 Humanの回答をchatだけに残してはならない。適切なcanonical owner、spec-change、ADR、Current Objective等へdurably反映し、必要なApproval lifecycleを完了した後、`designing`、`implementation-ready`、`verification-ready`等の適切なstageへ遷移する。
@@ -229,7 +245,7 @@ Humanから「進めて」等の短い指示を受けたagentはPre-action fresh
 Humanが「承認後そのまま実装まで」「実装して検証まで」のようにcross-boundary continuationを明示した場合だけ、指定された範囲でこのstop boundaryを跨いでよい（MAY）。単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない（MUST NOT）。
 
 - `designing`: current design/specification workを継続し、readiness gateを満たすために必要な調査・spec refinement・reviewを進める。Human decisionが必要な時だけ具体的なdecisionを求める。
-- `decision-required`: Human decision neededの内容を自己記述的に提示し、未解決ならそのdecisionだけを求める。直前の推薦への一意な肯定的continuationは上記ruleに従ってacceptanceとして扱ってよい。Approvalを自動代行しない。
+- `decision-required`: current sessionでdecision presentation済みか確認する。未提示ならDecision presentation gateを実行して全choice・trade-off・推薦・短いcontinuationの意味・本格実装開始有無を提示し、Human decisionを待って停止する。提示済みで直前の推薦への一意な肯定的continuationなら上記acceptance ruleに従ってacceptanceとして扱ってよい。Approvalを自動代行しない。
 - `implementation-ready`: Current Objectiveを実装し、final candidateと`verification-ready` transitionまで閉じる。同一agentでもdelegateでもよい。PR作成やCI pendingで途中停止しない。
 - `verification-ready`: recorded Candidateをfinal verificationする。同一agentならfreshな別passとして扱い、必要ならindependent verificationへdelegateしてよい。
 - `correction-ready`: recorded Blockingだけをnarrow corrective passで修正し、新candidateと`verification-ready` transitionまで閉じる。
@@ -285,7 +301,7 @@ Stage名、Activity class、Candidate SHA、CI status等は、Humanの判断やt
 **実行先の目安**  本流側（split-modeの場合）
 ```
 
-`decision-required`ではsummaryに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、opaque referenceではなく各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。Development State自体へその比較説明を複製してはならない。
+`decision-required`ではsummaryに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、opaque referenceではなく**Development Stateに記録された全choice**について各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。推薦だけを説明してalternativesを省略してはならない（MUST NOT）。Development State自体へその比較説明を複製してはならない。
 
 短いcontinuationで本格実装が始まるかの判定はActivity class boundaryから導出する。通常は`implementation-ready` / `correction-ready`で「始まる」、`designing` / `decision-required` / `verification-ready` / `objective-complete`で「始まらない」となる。HumanへStage名、lane、Activity classだけを返してimplementation開始有無を推測させてはならない（MUST NOT）。
 

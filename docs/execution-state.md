@@ -1,24 +1,23 @@
 # Development State
 
-Stage: decision-required
+Stage: implementation-ready
 Candidate: none
 
 ## Blocking findings
 
 None.
 
-## Human decision needed
+## Approved implementation authority
 
-Type Editor v1のimplementation authorityとして、次の2つのProposed specificationを明示的に承認するか決める。
+2026-09-14、Human maintainerは次の2 specificationを明示的に承認した。
 
-Recommended:
-- **Type Migration v1 + GUI Type Editor v1をProposedのまま両方承認する** — RFC 0006で採用したShared Type Migration + Plan / Diff方向をcanonical contractにし、implementation readiness gateへ進める。
+- `docs/specs/type-migration.md` — `Status: Approved`
+- `docs/gui/type-editor/spec.md` — `Status: Approved`
 
-Alternative:
-- **仕様修正を要求する** — data safety、operation scope、GUI behavior等の修正点を反映して再reviewするまでimplementationを開始しない。
+RFC 0006のShared Type Migration v1 + Plan / Diff decisionは、このApproved contractへ反映済みである。
 
-Approval対象:
-- `docs/specs/type-migration.md`
-- `docs/gui/type-editor/spec.md`
+## Next activity
 
-RFC adoption自体は完了済みであり、比較理由のownerは `docs/rfcs/0006-type-editor-mutation-strategy.md` とする。
+Current ObjectiveのType Editor v1を、Approved Type Migration / GUI Type Editor contractと既存Approved authorityに従う1つのsemantic implementation work packageとして実装する。
+
+implementation activityではcore/application semantic engine、Tauri adapter、React Type Editor、focused regression/evidence、required repository checks、self-review、commit/pushをfinal candidateまで閉じ、exact Candidate SHAを記録して`verification-ready`へ進める。

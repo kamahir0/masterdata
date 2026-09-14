@@ -15,7 +15,7 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 2026-09-14、Humanは[Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md)の比較から、**Shared Type Migration v1 + Plan / Diff**を採用することを明示的に選択した。したがって、selected type fileだけのdirect editやdependency-free subsetではなく、project-wide dependency rewriteとsource mutation safetyをshared semantic boundaryへ置く方向で本Objectiveを完成させる。
 
-各type categoryの静的なschema/data/generated C# semanticsはApproved [Type System](specs/type-system/README.md) familyが所有する。採用decisionをcanonical behaviorへ移すcandidateとして[Type Migration v1](specs/type-migration.md)と[GUI Type Editor](gui/type-editor/spec.md)をProposed化する。これらはHuman Approvalまではimplementation authorityではない。
+各type categoryの静的なschema/data/generated C# semanticsはApproved [Type System](specs/type-system/README.md) familyが所有する。採用decisionをcanonical behaviorへ移した[Type Migration v1](specs/type-migration.md)と[GUI Type Editor](gui/type-editor/spec.md)は、2026-09-14にHuman maintainerが明示的に承認したApproved implementation authorityである。
 
 ## Why now
 
@@ -44,12 +44,12 @@ Product Visionはschema-aware editingとshared Rust semanticsを長期方向と�
 
 RFC 0006で比較した3案のうち、Humanはshared Type Migrationを導入しType Editorをthin GUI adapterにする案を選択した。selected-file direct editとdependency-free subsetは本Objectiveのdesign directionとしては採用しない。
 
-採用decisionを具体化するcanonical candidateは次の2文書である。
+採用decisionを具体化したcanonical implementation authorityは次の2文書である。
 
 - [Type Migration v1](specs/type-migration.md) — operation set、dependency resolution、Plan / Diff、source rewrite、stale preflight、authorization、commit / rollback。
 - [GUI Type Editor](gui/type-editor/spec.md) — category-specific editor、guided input、Plan / Diff / Apply、dirty-buffer / recovery composition、thin adapter boundary。
 
-両文書はHuman Approvalを受けるまで`Proposed`であり、implementation authorityではない。reviewでBlockingがなければ、次に必要なHuman actionはこの2 specificationの明示approvalである。
+両文書は2026-09-14にHuman maintainerが明示的に承認し、`Status: Approved`となった。未解決のSpecification Gap / Human decisionは現時点でなく、本Objectiveはimplementation work packageへ進める。
 
 ## Explicit non-scope
 
@@ -78,8 +78,8 @@ RFC 0006で比較した3案のうち、Humanはshared Type Migrationを導入し
 
 - [Product vision](product/vision.md)
 - [Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md) — Accepted design rationale。implementation authorityではない
-- [Type Migration v1](specs/type-migration.md) — Proposed。Human Approval前はimplementation authorityではない
-- [GUI Type Editor](gui/type-editor/spec.md) — Proposed。Human Approval前はimplementation authorityではない
+- [Type Migration v1](specs/type-migration.md) — Approved implementation authority
+- [GUI Type Editor](gui/type-editor/spec.md) — Approved implementation authority
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)

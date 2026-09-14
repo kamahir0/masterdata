@@ -176,6 +176,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [Runtime hosts / composition root / capability仕様](runtime-hosts.md) — `Status: Approved`
 - [CLI surface仕様](cli.md) — `Status: Approved`
 - [Schema Migration v1仕様](schema-migration.md) — `Status: Approved`
+- [Type Migration v1仕様](type-migration.md) — `Status: Proposed`
 - [Compatibility仕様](compatibility/README.md)
   - [Table identity仕様](compatibility/table-identity.md)
   - [Field identity仕様](compatibility/field-identity.md) — `Status: Deprecated`（旧Field ID modelのhistory）

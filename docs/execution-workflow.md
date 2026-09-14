@@ -128,7 +128,7 @@ cold-startまたはfreshness gate後に`Stage: decision-required`をrecoverし�
 4. 推薦がある場合は推薦choiceを明示する。ただし、推薦理由だけを長く説明して他choiceの比較可能性を失わせてはならない。
 5. **短い「進める」で何をacceptするのか**を明示する。推薦が1つでacceptance ruleを適用できる場合はsemantic labelで「推薦案を採用する」と示し、`Option Cで進める`等のopaque referenceをHumanに必須入力として要求しない。
 6. **次の短い返答で本格実装が始まるかを明示**する。`decision-required`からの通常continuationでは「始まらない」と明示し、acceptance後に`implementation-ready`へ到達しても同じcontinuationで実装へ跨がない。
-7. どこで停止してHumanへ戻るかを示し、Human decisionを待つ。
+7. Human-facing execution summaryのstable Markdown presentation templateで停止地点まで示し、Human decisionを待つ。
 
 cold-start sessionの最初の短い「進める」は、current session内に直前の自己完結したdecision presentationが存在しないため、推薦choiceへのacceptanceとして扱ってはならない（MUST NOT）。そのturnは上記presentation gateを実行してHuman decisionを求めるところで停止する。
 
@@ -272,38 +272,26 @@ Development Stateはactor-neutralなauthorityのまま維持し、`mainline` / `
 
 ### Human-facing execution summary
 
-Current Objectiveに関するdevelopment activityを行ったagentのfinal response、およびHumanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合のstatus responseでは、freshなDevelopment Stateから導出した**Human-facing execution summary**を必ず提示する（MUST）。ただし、Human-facing responseへ固定のserialization format、固定field名、JSON、code block、colon-separated schemaを要求してはならない（MUST NOT）。repository/state側のmachine-orientedな厳密さと、chat側の読みやすさを分離する。
+Current Objectiveに関するdevelopment activityを行ったagentのfinal response、およびHumanが「タスクを整理して」「次はどっち」「何を動かせばよい」等を尋ねた場合のstatus responseでは、freshなDevelopment Stateから導出した**Human-facing execution summary**を必ず提示する（MUST）。
 
-Human-facing execution summaryは、表現方法にかかわらず、少なくとも次の意味を一目で判断できるようにしなければならない（MUST）。
+Human-facing summaryは、Humanが毎turn同じ場所をscanできるよう、通常のMarkdownとして次の**stable Markdown presentation template**をこの順序で使用する（MUST）。Humanがそのturnで別formatを明示的に要求した場合だけpresentationを変更してよい。
 
-- **次に何をするか**。
-- **Human actionが必要か**。必要なら何を決める・承認するか。
-- **短い「進める」の意味**。次の短いcontinuationで何が起きるか。
-- **次の短い返答で本格実装が始まるか**。production / test / fixture等を変更する`IMPLEMENTATION` activityを開始するなら「始まる」、それ以外は「始まらない」と明示する。
-- **停止地点**。どのStageまたは条件でHumanへ戻るか。
-- split-modeで次の起動先が判断材料になる場合は、**実行先の目安**として本流側 / 実装側を明示する。single-agent運用で不要ならlaneを常時表示する必要はない。
+1. `### 次に進むと`
+2. `**現在地**` — current Stageと、必要なら現在状態の短い意味。
+3. `**次にやること**` — 次のactivity。
+4. `**判断が必要**` — Human decision / Approvalが必要なら内容を示す。不要なら`なし`と明示する。複数choiceがある場合はこのfield内で全choiceをsemantic label + 短いeffect / trade-offとして列挙し、推薦を明示する。
+5. `**「進める」の意味**` — 次の短いcontinuationで実行・acceptする内容。
+6. `**本格実装**` — 通常の短いcontinuationが`IMPLEMENTATION` activityを開始するなら`始まります。`、それ以外は`始まりません。`と明示する。
+7. `**停止地点**` — どのStageまたは条件でHumanへ戻るか。
+8. split-modeで次の起動先が判断材料になる場合だけ、末尾に`**実行先の目安**`を追加してよい。
 
-Stage名、Activity class、Candidate SHA、CI status等は、Humanの判断やtraceabilityに有用な場合は併記してよいが、上記の意味がHuman向け表現だけで明確なら固定fieldとして常時露出する必要はない。`Next activity class`、`Short "進める" means`、`Implementation starts on short continuation`、`2-agent lane`等の英語field labelをそのまま表示することも要求しない。
+このtemplateはHuman-facing UIの安定性のためのpresentation contractであり、repository stateのserialization formatではない。summary全体をJSON、code block、brace / quoted-key / colon-separated field等のmachine serialization syntaxとして表示してはならない（MUST NOT）。見出し・field label・順序は安定させる一方、各fieldの本文はHumanが読みやすい自然な日本語で記述してよい。
 
-通常は長いschema blockより、自然な文章またはcompactなMarkdownを優先する（SHOULD）。例えば次のような表現でよいが、これはserialization contractではない。
+Stage名、Activity class、Candidate SHA、CI status等は、Humanの判断やtraceabilityに有用な場合は各field本文へ簡潔に併記してよい。machine-orientedな英語field labelへ戻す必要はない。
 
-```markdown
-### 次に進むと
+`decision-required`では`**判断が必要**`のfield内に具体的なHuman decisionを提示する。複数案がある場合は、opaque referenceではなく**Development Stateに記録された全choice**について各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。推薦だけを説明してalternativesを省略してはならない（MUST NOT）。Development State自体へその比較説明を複製してはならない。
 
-**やること**  推薦案をcanonical specへ反映してreviewします。
-
-**本格実装**  まだ始まりません。
-
-**あなたの操作**  推薦案でよければ「進める」で進みます。
-
-**停止地点**  implementation-ready、または追加のHuman decisionが必要になった時点。
-
-**実行先の目安**  本流側（split-modeの場合）
-```
-
-`decision-required`ではsummaryに加えて具体的なHuman decisionを本文で提示する。複数案がある場合は、opaque referenceではなく**Development Stateに記録された全choice**について各案のsemantic labelと短いeffect / trade-offを示し、Humanが現在のresponseだけで比較できる形にする。推薦だけを説明してalternativesを省略してはならない（MUST NOT）。Development State自体へその比較説明を複製してはならない。
-
-短いcontinuationで本格実装が始まるかの判定はActivity class boundaryから導出する。通常は`implementation-ready` / `correction-ready`で「始まる」、`designing` / `decision-required` / `verification-ready` / `objective-complete`で「始まらない」となる。HumanへStage名、lane、Activity classだけを返してimplementation開始有無を推測させてはならない（MUST NOT）。
+短いcontinuationで本格実装が始まるかの判定はActivity class boundaryから導出する。通常は`implementation-ready` / `correction-ready`で`始まります。`、`designing` / `decision-required` / `verification-ready` / `objective-complete`で`始まりません。`となる。HumanへStage名、lane、Activity classだけを返してimplementation開始有無を推測させてはならない（MUST NOT）。
 
 このsummary contractはagent間handoffをHumanが転送するためではなく、Humanが管理AIとimplementation AIを分離して運用する場合にも、**次の短い返答で本格的なcode mutationが始まるか**と、必要なら次の起動先を即座に判断できるようにするためのprojectionである。
 

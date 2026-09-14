@@ -104,6 +104,9 @@ fn development_state_is_well_formed_and_discoverable() {
     assert!(agents.contains("docs/execution-workflow.md"));
     for required in [
         "Human-facing execution summary",
+        "stable Markdown presentation template",
+        "### 次に進むと",
+        "**本格実装**",
         "次の短い返答で本格実装が始まるか",
         "activity中にclassが変わるStageへ到達したらそこで停止",
     ] {
@@ -149,14 +152,17 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "次の短い返答で本格実装が始まるかを明示",
         "推薦案だけを説明してalternativesを省略したresponse",
         "### Human-facing execution summary",
-        "固定のserialization format、固定field名、JSON、code block、colon-separated schemaを要求してはならない",
-        "Human actionが必要か",
-        "短い「進める」の意味",
-        "次の短い返答で本格実装が始まるか",
-        "停止地点",
-        "実行先の目安",
+        "stable Markdown presentation template",
+        "### 次に進むと",
+        "**現在地**",
+        "**次にやること**",
+        "**判断が必要**",
+        "**「進める」の意味**",
+        "**本格実装**",
+        "**停止地点**",
+        "**実行先の目安**",
+        "summary全体をJSON、code block",
         "Development Stateに記録された全choice",
-        "自然な文章またはcompactなMarkdownを優先する",
         "## Pre-action freshness gate",
         "## Post-action report verification",
         "current owner branchのremote HEAD",
@@ -174,10 +180,11 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "fixed `main-reviewer`",
         "fixed `implementation-agent`",
         "Execution Handoff\nCurrent stage:",
+        "固定のserialization format、固定field名、JSON、code block、colon-separated schemaを要求してはならない",
     ] {
         assert!(
             !workflow.contains(forbidden),
-            "development workflow still encodes fixed agent/presentation topology: {forbidden}"
+            "development workflow still encodes obsolete agent/presentation topology: {forbidden}"
         );
     }
 }

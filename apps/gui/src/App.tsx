@@ -1,3 +1,4 @@
+import TypeEditor from "./TypeEditor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Tabs } from "antd";
 import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
@@ -1191,7 +1192,16 @@ function App() {
             }}
             endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
             onResult={result => migrationResult(projectRoot, result)} />}
-          {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && (
+          {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
+            projectPath={projectRoot} path={activeFile.path} canWrite={!!workspace?.capabilities.workspaceWrite && !mutationBlocked}
+            dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
+            beginApply={paths => {
+              if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
+              migrationBusyRef.current = projectRoot; setMigrationBusyRoot(projectRoot); return true;
+            }}
+            endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
+            onResult={result => migrationResult(projectRoot, result)} />}
+          {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && activeFile.kind !== "type" && (
             <SourcePlaceholder file={activeFile} />
           )}
           {activeFile?.kind === "data" && activeLoading && (

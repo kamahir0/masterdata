@@ -114,6 +114,31 @@ fn plan_table_migration(
         .map_err(ApiError::from)
 }
 #[tauri::command(rename_all = "camelCase")]
+fn open_type(
+    project_path: Option<String>,
+    relative_path: String,
+) -> std::result::Result<masterdata_app::TypeSnapshot, ApiError> {
+    table_session()?
+        .open_type(&table_root(project_path)?, &relative_path)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn plan_type_migration(
+    project_path: Option<String>,
+    input: serde_json::Value,
+) -> std::result::Result<masterdata_app::TypePlanView, ApiError> {
+    let input = serde_json::from_value(input).map_err(|e| {
+        ApiError::from(MasterdataError::new(
+            "E-TYPE-EDITOR-INPUT",
+            ErrorKind::Validation,
+            e.to_string(),
+        ))
+    })?;
+    table_session()?
+        .plan_type(&table_root(project_path)?, input)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
 fn apply_table_migration(
     project_path: Option<String>,
     token: String,
@@ -364,6 +389,8 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             open_table,
+            open_type,
+            plan_type_migration,
             plan_table_migration,
             apply_table_migration,
             migration_recovery_status,
@@ -423,6 +450,29 @@ mod tests {
         )
         .expect_err("missing field rejected");
         assert_eq!(error.diagnostic.kind, ErrorKind::Validation);
+    }
+    #[test]
+    fn type_commands_preserve_exact_numbers_and_share_apply_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        masterdata_core::initialize_project(
+            dir.path(),
+            &masterdata_core::InitOptions {
+                project_id: "test.types".into(),
+                name: "Types".into(),
+                version: "0.1.0".into(),
+            },
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("sources/type.yaml"), "kind: type\nname: Rarity\nenum:\n  underlying: ulong\n  members:\n    - name: Rare\n      value: 18446744073709551615\n").unwrap();
+        let path = Some(dir.path().to_string_lossy().into_owned());
+        let snapshot = super::open_type(path.clone(), "sources/type.yaml".into()).unwrap();
+        assert_eq!(snapshot.members[0].value, "18446744073709551615");
+        let plan = super::plan_type_migration(path.clone(), serde_json::json!({"operation":"add_enum","target":"Rarity","name":"High","value":"18446744073709551614"})).unwrap();
+        assert!(plan.files[0].after.contains("18446744073709551614"));
+        let outcome = super::apply_table_migration(path.clone(), plan.token, false).unwrap();
+        assert_eq!(outcome.state, "success");
+        let error = super::plan_type_migration(path, serde_json::json!({"operation":"add_enum","target":"Rarity","name":"Bad","value":18446744073709551615_u64})).unwrap_err();
+        assert_eq!(error.diagnostic.code, "E-TYPE-EDITOR-INPUT");
     }
     struct NativeTableFixture;
     impl NativeTableFixture {

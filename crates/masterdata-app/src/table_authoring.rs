@@ -107,15 +107,15 @@ pub struct TableFileState {
     pub path: String,
     pub state: String,
 }
-struct Prepared {
-    project: Project,
-    before: ProjectDocuments,
-    dry_run: MigrationDryRun,
+pub(crate) struct Prepared {
+    pub(crate) project: Project,
+    pub(crate) before: ProjectDocuments,
+    pub(crate) dry_run: SourceCommitCandidate,
 }
 #[derive(Default)]
 pub struct TableAuthoringSession {
-    sequence: u64,
-    plans: BTreeMap<String, Prepared>,
+    pub(crate) sequence: u64,
+    pub(crate) plans: BTreeMap<String, Prepared>,
     recovery: BTreeMap<PathBuf, TableApplyView>,
 }
 fn error(code: &str, message: &str) -> MasterdataError {
@@ -192,7 +192,7 @@ impl TableAuthoringSession {
             Prepared {
                 project,
                 before,
-                dry_run,
+                dry_run: dry_run.into(),
             },
         );
         Ok(view)
@@ -225,7 +225,7 @@ impl TableAuthoringSession {
                     "Plan is no longer available; re-plan",
                 )
             })?;
-        let (report, diagnostic) = match commit_migration_authorized_with_failures(
+        let (report, diagnostic) = match commit_source_candidate_with_failures(
             &plan.project,
             &plan.before,
             &plan.dry_run,
@@ -317,7 +317,6 @@ impl TableAuthoringSession {
                         state: "recovery_required".into(),
                         files: plan
                             .dry_run
-                            .plan
                             .affected_files
                             .iter()
                             .map(|file| project_relative_string(project.root(), &file.path))

@@ -30,8 +30,8 @@ fn section<'a>(content: &'a str, heading: &str) -> Option<&'a str> {
 }
 
 fn required_section<'a>(content: &'a str, heading: &str) -> &'a str {
-    let body = section(content, heading)
-        .unwrap_or_else(|| panic!("missing `## {heading}` section"));
+    let body =
+        section(content, heading).unwrap_or_else(|| panic!("missing `## {heading}` section"));
     assert!(!body.is_empty(), "`## {heading}` section must not be empty");
     body
 }

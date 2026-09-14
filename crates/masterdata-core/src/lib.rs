@@ -70,3 +70,10 @@ pub use source_creation::{
     CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, creation_choices,
     prepare_source_creation,
 };
+
+pub use migration_commit::{SourceCommitCandidate, commit_source_candidate_with_failures};
+
+pub use migration::type_mutation::{
+    TypeMigrationCommand, TypeMigrationDryRun, TypeMigrationOperation, dry_run_type_migration,
+    migration_type_declaration,
+};

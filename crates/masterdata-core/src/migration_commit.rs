@@ -10,6 +10,25 @@ use crate::error::{ErrorKind, MasterdataError, Result};
 use crate::migration::MigrationDryRun;
 use crate::project::Project;
 
+/// Semantic-operation-neutral input to the existing source-set transaction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceCommitCandidate {
+    pub source_inputs: Vec<PathBuf>,
+    pub destructive: bool,
+    pub affected_files: Vec<crate::MigrationFilePlan>,
+    pub transformed_documents: ProjectDocuments,
+}
+impl From<MigrationDryRun> for SourceCommitCandidate {
+    fn from(value: MigrationDryRun) -> Self {
+        Self {
+            source_inputs: value.plan.source_inputs,
+            destructive: value.plan.destructive,
+            affected_files: value.plan.affected_files,
+            transformed_documents: value.transformed_documents,
+        }
+    }
+}
+
 const IO_ERROR_CODE: &str = "E-IO-ACCESS";
 const PLAN_ERROR_CODE: &str = "E-MIGRATION-PATCH-INVALID";
 
@@ -151,14 +170,31 @@ pub fn commit_migration_authorized_with_failures(
     allow_destructive: bool,
     injections: &[MigrationCommitFailureInjection],
 ) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
+    commit_source_candidate_with_failures(
+        project,
+        source_snapshot,
+        &dry_run.clone().into(),
+        allow_destructive,
+        injections,
+    )
+}
+
+/// Type and Table migrations share authorization, stale preflight and recovery.
+pub fn commit_source_candidate_with_failures(
+    project: &Project,
+    source_snapshot: &ProjectDocuments,
+    dry_run: &SourceCommitCandidate,
+    allow_destructive: bool,
+    injections: &[MigrationCommitFailureInjection],
+) -> std::result::Result<MigrationCommitReport, MigrationCommitFailure> {
     let mut report = report_for(dry_run);
-    if dry_run.plan.destructive && !allow_destructive {
+    if dry_run.destructive && !allow_destructive {
         return Err(MigrationCommitFailure {
             report,
             error: MasterdataError::new(
                 "E-MIGRATION-DESTRUCTIVE-AUTHORIZATION",
                 ErrorKind::Validation,
-                "DropField requires explicit destructive execution authorization",
+                "Destructive migration requires explicit execution authorization",
             ),
         });
     }
@@ -179,8 +215,7 @@ pub fn commit_migration_authorized_with_failures(
     // closure_candidate_source_change_rejects_without_mutation;
     // closure_candidate_schema_change_rejects_without_mutation;
     // closure_candidate_type_change_rejects_without_mutation.
-    if let Err(error) =
-        preflight_source_snapshot(project, source_snapshot, &dry_run.plan.source_inputs)
+    if let Err(error) = preflight_source_snapshot(project, source_snapshot, &dry_run.source_inputs)
     {
         return Err(MigrationCommitFailure { report, error });
     }
@@ -196,11 +231,10 @@ pub fn commit_migration_authorized_with_failures(
     Ok(report)
 }
 
-fn report_for(dry_run: &MigrationDryRun) -> MigrationCommitReport {
+fn report_for(dry_run: &SourceCommitCandidate) -> MigrationCommitReport {
     MigrationCommitReport {
         state: MigrationCommitState::NotStarted,
         files: dry_run
-            .plan
             .affected_files
             .iter()
             .map(|file| MigrationFileCommitStatus {
@@ -466,7 +500,7 @@ struct SourceCommitTransaction {
 }
 
 impl SourceCommitTransaction {
-    fn stage(source_snapshot: &ProjectDocuments, dry_run: &MigrationDryRun) -> Result<Self> {
+    fn stage(source_snapshot: &ProjectDocuments, dry_run: &SourceCommitCandidate) -> Result<Self> {
         let snapshot_paths = snapshot_paths(source_snapshot)?;
         let workspace = TempDir::new().map_err(|error| {
             commit_error(
@@ -498,9 +532,9 @@ impl SourceCommitTransaction {
             )
         })?;
 
-        let mut entries = Vec::with_capacity(dry_run.plan.affected_files.len());
+        let mut entries = Vec::with_capacity(dry_run.affected_files.len());
         let mut planned_paths = BTreeSet::new();
-        for (index, planned) in dry_run.plan.affected_files.iter().enumerate() {
+        for (index, planned) in dry_run.affected_files.iter().enumerate() {
             if !planned_paths.insert(planned.path.clone()) {
                 return Err(commit_error(
                     PLAN_ERROR_CODE,

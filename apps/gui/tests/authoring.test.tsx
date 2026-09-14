@@ -291,17 +291,19 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
 const tableSnapshot = {path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string']};
 const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml',sourceRoot:'.',kind:'data'},{path:'schema.yaml',sourceRoot:'.',kind:'schema'}]};
 const tablePlan = {token:'table-plan',table:'item',operation:'RenameField',field:'id',destructive:false,affectedRecordCount:1,files:[{path:'schema.yaml',before:'name: id',after:'name: itemId'},{path:'data.yaml',before:'id: 1',after:'itemId: 1'}],diagnostics:[]};
-async function planFromTable() {
+async function planFromTable(type = false) {
   fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
   fireEvent.click(await screen.findByRole('button',{name:'Rename Field',exact:true}));
   fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});
   fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
-  await screen.findByRole('region',{name:'Migration Plan'});
+  await screen.findByRole('region',{name:type?'Type Migration Plan':'Migration Plan'});
 }
-test('Migration refresh reloads affected clean editors and preserves unrelated dirty buffers',async()=>{
+test.each(['table','type'])('%s Migration refresh reloads affected clean editors and preserves unrelated dirty buffers',async(kind)=>{
   const normal=invoke.getMockImplementation()!;
   invoke.mockImplementation(async(command,args)=>{
-    if(command==='authoring_workspace')return tableWorkspace;
+    if(command==='authoring_workspace')return {...tableWorkspace,files:tableWorkspace.files.map(f=>f.kind==='schema'&&kind==='type'?{...f,kind:'type'}:f)};
+    if(command==='open_type')return {path:'schema.yaml',name:'Reward',category:'Custom Type',fields:tableSnapshot.schema.fields,members:[],conversions:null,underlying:null,fieldTypes:['int']};
+    if(command==='plan_type_migration')return {...tablePlan,target:'Reward',selector:'id',affectedOccurrenceCount:1,files:tablePlan.files};
     if(command==='open_table')return tableSnapshot;
     if(command==='plan_table_migration')return tablePlan;
     if(command==='apply_table_migration')return {state:'success',files:['schema.yaml','data.yaml']};
@@ -312,7 +314,7 @@ test('Migration refresh reloads affected clean editors and preserves unrelated d
   fireEvent.click(screen.getByRole('treeitem',{name:'other.yaml',exact:true}));
   const input=await screen.findByRole('textbox',{name:'record 1 weight'});
   fireEvent.change(input,{target:{value:'20'}});
-  await planFromTable();
+  await planFromTable(kind==='type');
   fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await waitFor(()=>expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='data.yaml')).toHaveLength(2));
   fireEvent.click(screen.getByRole('treeitem',{name:'other.yaml, unsaved changes',exact:true}));
@@ -321,17 +323,19 @@ test('Migration refresh reloads affected clean editors and preserves unrelated d
   expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
 }, 20_000);
 const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
-test('Migration recovery result blocks Create and Build',async()=>{
+test.each(['table','type'])('%s Migration recovery result blocks Create and Build',async(kind)=>{
   const normal=invoke.getMockImplementation()!;
   invoke.mockImplementation(async(command,args)=>{
-    if(command==='authoring_workspace')return tableWorkspace;
+    if(command==='authoring_workspace')return {...tableWorkspace,files:tableWorkspace.files.map(f=>f.kind==='schema'&&kind==='type'?{...f,kind:'type'}:f)};
+    if(command==='open_type')return {path:'schema.yaml',name:'Reward',category:'Custom Type',fields:tableSnapshot.schema.fields,members:[],conversions:null,underlying:null,fieldTypes:['int']};
+    if(command==='plan_type_migration')return {...tablePlan,target:'Reward',selector:'id',affectedOccurrenceCount:1,files:tablePlan.files.slice(0,1)};
     if(command==='open_table')return tableSnapshot;
     if(command==='plan_table_migration')return {...tablePlan,files:tablePlan.files.slice(0,1)};
     if(command==='apply_table_migration')return recoveryRequired;
     return normal(command,args);
   });
   const input=await open();fireEvent.change(input,{target:{value:'20'}});
-  await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
+  await planFromTable(kind==='type');fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);

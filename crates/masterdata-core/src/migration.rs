@@ -1,4 +1,5 @@
 mod field_mutation;
+pub mod type_mutation;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 

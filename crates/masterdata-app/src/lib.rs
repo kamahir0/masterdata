@@ -736,3 +736,6 @@ mod tests {
         }
     }
 }
+
+mod type_authoring;
+pub use type_authoring::*;

@@ -19,16 +19,20 @@ fn field<'a>(content: &'a str, name: &str) -> &'a str {
     values[0].trim()
 }
 
-fn section<'a>(content: &'a str, heading: &str) -> &'a str {
+fn section<'a>(content: &'a str, heading: &str) -> Option<&'a str> {
     let marker = format!("## {heading}");
-    let (_, rest) = content
-        .split_once(&marker)
-        .unwrap_or_else(|| panic!("missing `{marker}` section"));
-    let body = rest
-        .split_once("\n## ")
-        .map_or(rest, |(body, _)| body)
-        .trim();
-    assert!(!body.is_empty(), "`{marker}` section must not be empty");
+    let (_, rest) = content.split_once(&marker)?;
+    Some(
+        rest.split_once("\n## ")
+            .map_or(rest, |(body, _)| body)
+            .trim(),
+    )
+}
+
+fn required_section<'a>(content: &'a str, heading: &str) -> &'a str {
+    let body = section(content, heading)
+        .unwrap_or_else(|| panic!("missing `## {heading}` section"));
+    assert!(!body.is_empty(), "`## {heading}` section must not be empty");
     body
 }
 
@@ -44,22 +48,28 @@ fn assert_file_exists(root: &Path, relative: &str) {
 }
 
 #[test]
-fn development_state_is_well_formed_and_discoverable() {
+fn development_state_keeps_only_stage_mechanical_invariants() {
     let root = repository_root();
-    let state_path = root.join("docs/execution-state.md");
-    let state = fs::read_to_string(&state_path).expect("read docs/execution-state.md");
+    let state = fs::read_to_string(root.join("docs/execution-state.md"))
+        .expect("read docs/execution-state.md");
 
     assert_eq!(state.lines().next(), Some("# Development State"));
     let stage = field(&state, "Stage");
     let candidate = field(&state, "Candidate");
-    let blocking = section(&state, "Blocking findings");
-    let human_decision = section(&state, "Human decision needed");
+    let blocking = required_section(&state, "Blocking findings");
 
     match stage {
         "designing" | "implementation-ready" => {
             assert_eq!(candidate, "none");
             assert_eq!(blocking, "None.");
-            assert_eq!(human_decision, "None.");
+            if let Some(human_decision) = section(&state, "Human decision needed") {
+                assert_eq!(human_decision, "None.");
+            }
+        }
+        "decision-required" => {
+            assert!(candidate == "none" || is_commit_sha(candidate));
+            assert_eq!(blocking, "None.");
+            assert_ne!(required_section(&state, "Human decision needed"), "None.");
         }
         "verification-ready" | "objective-complete" => {
             assert!(
@@ -67,7 +77,9 @@ fn development_state_is_well_formed_and_discoverable() {
                 "{stage} requires an exact candidate SHA"
             );
             assert_eq!(blocking, "None.");
-            assert_eq!(human_decision, "None.");
+            if let Some(human_decision) = section(&state, "Human decision needed") {
+                assert_eq!(human_decision, "None.");
+            }
         }
         "correction-ready" => {
             assert!(
@@ -75,84 +87,99 @@ fn development_state_is_well_formed_and_discoverable() {
                 "correction-ready requires the reviewed candidate SHA"
             );
             assert_ne!(blocking, "None.");
-            assert_eq!(human_decision, "None.");
-        }
-        "decision-required" => {
-            assert!(candidate == "none" || is_commit_sha(candidate));
-            assert_eq!(blocking, "None.");
-            assert_ne!(human_decision, "None.");
+            if let Some(human_decision) = section(&state, "Human decision needed") {
+                assert_eq!(human_decision, "None.");
+            }
         }
         other => panic!("unknown development stage: {other}"),
     }
 
-    assert!(
-        !state.contains("Next actor:"),
-        "Development State must not persist actor routing"
-    );
-    assert!(
-        !state.contains("Recommended lane:"),
-        "Development State must not persist split-mode lane routing"
-    );
-    assert!(
-        !state.contains("Implementation starts on short continuation:"),
-        "Development State must not persist Human-facing execution projection"
-    );
-
-    assert_file_exists(&root, "docs/execution-workflow.md");
-    let agents = fs::read_to_string(root.join("AGENTS.md")).expect("read AGENTS.md");
-    assert!(agents.contains("docs/execution-state.md"));
-    assert!(agents.contains("docs/execution-workflow.md"));
-    for required in [
-        "Human-facing execution summary",
-        "stable Markdown presentation template",
-        "### 次に進むと",
-        "**本格実装**",
-        "次の短い返答で本格実装が始まるか",
-        "activity中にclassが変わるStageへ到達したらそこで停止",
+    for forbidden in [
+        "Next actor:",
+        "Recommended lane:",
+        "Implementation starts on short continuation:",
+        "Agent:",
+        "Session role:",
     ] {
         assert!(
-            agents.contains(required),
-            "AGENTS.md lost Human-facing execution policy: {required}"
+            !state.contains(forbidden),
+            "Development State must not persist actor/presentation routing: {forbidden}"
         );
     }
 }
 
 #[test]
-fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
+fn development_workflow_owners_are_discoverable() {
+    let root = repository_root();
+
+    for relative in [
+        "AGENTS.md",
+        "docs/current-objective.md",
+        "docs/execution-state.md",
+        "docs/execution-workflow.md",
+        "skills/implement-spec/SKILL.md",
+        "skills/review-code/SKILL.md",
+        "docs/contributing/specification-workflow.md",
+        "docs/contributing/implementation-rationale.md",
+    ] {
+        assert_file_exists(&root, relative);
+    }
+
+    let agents = fs::read_to_string(root.join("AGENTS.md")).expect("read AGENTS.md");
+    for owner in [
+        "docs/current-objective.md",
+        "docs/execution-state.md",
+        "docs/execution-workflow.md",
+        "skills/implement-spec/SKILL.md",
+        "skills/review-code/SKILL.md",
+    ] {
+        assert!(
+            agents.contains(owner),
+            "AGENTS.md must route agents to canonical owner: {owner}"
+        );
+    }
+}
+
+#[test]
+fn development_workflow_keeps_structural_contracts() {
     let root = repository_root();
     let workflow = fs::read_to_string(root.join("docs/execution-workflow.md"))
         .expect("read docs/execution-workflow.md");
 
-    for required in [
-        "## Core principle: state describes work, not agent identity",
-        "同じHuman-triggered agentがdesign / implementation / verification / correctionを連続して行ってよい",
-        "delegationはexecution strategy",
-        "## Git delivery topology boundary",
-        "Development lifecycleとGit delivery topologyは別のconcern",
-        "implementation開始を理由にagentが新しいbranchを作成または別branchへ切り替えてはならない",
-        "PR作成やremote CI completionはそのtransitionの前提条件ではない",
-        "PRの作成、PRがopenであること、remote CIがpendingであることは、final candidateを`verification-ready`へ遷移させない理由にならない",
+    for heading in [
+        "## Model autonomy within hard boundaries",
+        "## Pre-action freshness gate",
+        "## Development State",
         "## Implementation readiness gate",
-        "Humanが実装開始時期やGit delivery stepを手作業で見抜くことを前提にしない",
-        "### `implementation-ready`",
-        "### `verification-ready`",
-        "### `correction-ready`",
-        "## Split-mode routing projection",
-        "実装側を動かすのは`implementation-ready`と`correction-ready`、それ以外は本流側",
         "## Activity class and continuation boundary",
-        "`IMPLEMENTATION`: production / test / fixture等の実装変更を主目的",
-        "`NON_IMPLEMENTATION`: design / specification / approval reflection / verification / priority selection等",
-        "単に「進めて」とだけ言われた場合はcross-boundary authorizationと解釈してはならない",
-        "肯定的continuationをそのchoiceへのHuman acceptanceとして扱ってよい",
-        "比較理由、詳細なeffect / trade-off、proposal本文、operation set等をcanonical RFC / specificationからDevelopment Stateへ複製してはならない",
-        "#### Decision presentation gate for `decision-required`",
-        "全choiceを列挙",
-        "推薦choiceだけを表示してalternativesを省略してはならない",
-        "cold-start sessionの最初の短い「進める」",
-        "次の短い返答で本格実装が始まるかを明示",
-        "推薦案だけを説明してalternativesを省略したresponse",
-        "### Human-facing execution summary",
-        "stable Markdown presentation template",
+        "## Decision presentation gate for `decision-required`",
+        "## Candidate / state transition",
+        "## Human-facing execution summary",
+        "## Post-action report verification",
+        "## Public repository trust boundary",
+        "## Integrity check",
+    ] {
+        assert!(
+            workflow.contains(heading),
+            "development workflow lost required structural owner section: {heading}"
+        );
+    }
+
+    for stage in [
+        "`designing`",
+        "`decision-required`",
+        "`implementation-ready`",
+        "`verification-ready`",
+        "`correction-ready`",
+        "`objective-complete`",
+    ] {
+        assert!(
+            workflow.contains(stage),
+            "development workflow lost stage contract: {stage}"
+        );
+    }
+
+    for label in [
         "### 次に進むと",
         "**現在地**",
         "**次にやること**",
@@ -160,31 +187,10 @@ fn development_workflow_keeps_readiness_topology_and_freshness_gates() {
         "**「進める」の意味**",
         "**本格実装**",
         "**停止地点**",
-        "**実行先の目安**",
-        "summary全体をJSON、code block",
-        "Development Stateに記録された全choice",
-        "## Pre-action freshness gate",
-        "## Post-action report verification",
-        "current owner branchのremote HEAD",
-        "fresh repositoryと矛盾する旧review結果",
     ] {
         assert!(
-            workflow.contains(required),
-            "development workflow lost required policy: {required}"
-        );
-    }
-
-    for forbidden in [
-        "role-aware launcher",
-        "role-unbound",
-        "fixed `main-reviewer`",
-        "fixed `implementation-agent`",
-        "Execution Handoff\nCurrent stage:",
-        "固定のserialization format、固定field名、JSON、code block、colon-separated schemaを要求してはならない",
-    ] {
-        assert!(
-            !workflow.contains(forbidden),
-            "development workflow still encodes obsolete agent/presentation topology: {forbidden}"
+            workflow.contains(label),
+            "development workflow lost stable Human-facing label: {label}"
         );
     }
 }

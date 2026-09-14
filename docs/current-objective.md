@@ -11,43 +11,49 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 現在のHuman priorityは、**既存Value Object / Enum / Flags Enum / Custom TypeをGUIからraw YAML手編集なしで安全に変更できるType Editor v1を完成させる**ことである。
 
-直前のTable Editor Objectiveはcandidate `d765f40d225130b29a44427dd8cc1a536ce168a6`のfinal verificationでBlockingなしとなり、2026-09-14時点で`objective-complete`へ到達した。その後Humanが次候補比較で推薦されたType Editorについて「進める」と選択したため、本Objectiveをcurrent priorityとする。
+直前のTable Editor Objectiveはcandidate `d765f40d225130b29a44427dd8cc1a536ce168a6`のfinal verificationでBlockingなしとなり、2026-09-14時点で`objective-complete`へ到達した。その後Humanが次候補比較で推薦されたType Editorについて「進める」と選択したため、本Objectiveをcurrent priorityとした。
 
-各type categoryの静的なschema/data/generated C# semanticsはApproved [Type System](specs/type-system/README.md) familyが所有する。一方、既存type declarationを変更するときのdependency rewrite、source mutation、lost-update、destructive authorization、multi-file rollback、既存data transformationを所有するcanonical mutation contractはまだ存在しない。Approved [Schema Migration v1](specs/schema-migration.md)はTable fieldの`AddField` / `RenameField` / `DropField`に限定され、Type Editorをscope外としている。
+2026-09-14、Humanは[Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md)の比較から、**Shared Type Migration v1 + Plan / Diff**を採用することを明示的に選択した。したがって、selected type fileだけのdirect editやdependency-free subsetではなく、project-wide dependency rewriteとsource mutation safetyをshared semantic boundaryへ置く方向で本Objectiveを完成させる。
 
-したがって、本Objectiveは実装へ直接進まず、まず[Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md)でmutation boundaryを確定する。RFCが採用された場合は、そのdecisionをType Migration / GUI Type Editorのcanonical specificationへ移し、Human Approval lifecycleを完了してからimplementation-readyへ進む。
+各type categoryの静的なschema/data/generated C# semanticsはApproved [Type System](specs/type-system/README.md) familyが所有する。採用decisionをcanonical behaviorへ移すcandidateとして[Type Migration v1](specs/type-migration.md)と[GUI Type Editor](gui/type-editor/spec.md)をProposed化する。これらはHuman Approvalまではimplementation authorityではない。
 
 ## Why now
 
 現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags Enum / Custom Typeを新規作成できる。Data documentはData Editorでrecord authoringでき、Table schemaはTable EditorでSchema Migration v1のAdd/Rename/Drop FieldをPlan / Diff付きで実行できる。一方、作成済みtype documentは専用editorを持たず、definition変更ではYAML手編集へ戻る断点が残っている。
 
-Product Visionはschema-aware editingとshared Rust semanticsを長期方向としている。Type System自体はApproved済みなので、次に必要なのはtype-definition mutationをどのshared semantic boundaryで安全に扱うかを確定し、そのboundaryへGUIを接続することである。
+Product Visionはschema-aware editingとshared Rust semanticsを長期方向としている。Type System自体はApproved済みなので、次に必要なのはtype-definition mutationをshared Type Migrationとして安全に扱い、そのboundaryへGUIを接続することである。
 
 ## Completion boundary
 
-本Objectiveのfinal completion boundaryは、RFC 0006のHuman decisionと後続Approved specificationによって確定する。設計段階では少なくとも次を満たす方向でrefineする。
+本Objectiveは、Human-approvedなType Migration v1 / Type Editor v1 contractに従い、少なくとも次を満たしたfinal candidateがverificationでBlockingなしとなった時点で完了する。
 
 - Workspace Explorerで`kind: type` documentを選択した場合、shared source semanticsからtype categoryをresolveし、Value Object / Enum / Flags Enum / Custom Typeの専用Type Editorを開ける。
 - Type Editorはtype identity、source provenance、category-specific declarationをshared application snapshotから表示し、frontendがYAMLを独自parseしてdomain meaningを再構成しない。
-- mutation operation set、dependent source rewrite、destructive behavior、existing data treatmentはApproved mutation specificationだけをauthorityとし、GUI convenienceのために暗黙のrewrite / coercion / compatibility policyを発明しない。
-- source mutation前のreview surface、lost-update prevention、failure/recovery semanticsは採用されたshared mutation contractに従い、frontend/Tauriへdomain transaction semanticsを複製しない。
+- v1 mutation operation setはValue Object conversion setting、Enum/Flags member Add/Rename/Drop、Custom Type field Add/Rename/Dropに限定する。
+- type declaration rename、underlying変更、Enum/Flags member numeric value変更/reorder、Custom Type field type/modifier/key変更/reorder、type category conversionをv1へ含めない。
+- mutation前にdeterministic Planとaffected-file Diffを生成し、dependent source rewrite、source preservation、postcondition、stale-plan prevention、destructive authorization、multi-file rollback / Recovery Requiredをshared core/application boundaryが所有する。
+- Enum/Flags member renameはnumeric valueを保持したままexisting symbolic occurrenceを更新し、member dropはexisting occurrenceがあればreplacementを推測せずfail closedする。
+- Custom Type field addはexisting value occurrenceがある場合にexplicit constant initializerを要求し、rename/dropはnested occurrenceを含むdependent mappingへshared semanticsで適用する。
+- Migration Planがaffected sourceとして示すfileにData Editorのdirty bufferがある場合はApplyをblockし、unrelated dirty bufferは保持する。
 - successful type mutationはBuild / Publish / Git / generated artifact更新を暗黙に開始しない。
-- Data Editor等の既存dirty buffer、Recovery Required、host capabilityはApproved GUI app shell / editor lifecycleと矛盾なくcompositionする。
 - focused core/application regression、Tauri adapter test、React workflow test、repository required checks、final verificationでBlockingがないことを確認する。
 
 ## Current design decision
 
-RFC 0006では次の3案を比較している。
+**Shared Type Migration v1 + Plan / Diffを採用済み。**
 
-1. selected type fileだけをtyped direct editする。
-2. dependency rewrite不要な変更だけにType Editor v1を限定する。
-3. shared Type Migration v1を導入し、Type EditorをPlan / Diff付きのthin GUI adapterにする。
+RFC 0006で比較した3案のうち、Humanはshared Type Migrationを導入しType Editorをthin GUI adapterにする案を選択した。selected-file direct editとdependency-free subsetは本Objectiveのdesign directionとしては採用しない。
 
-現時点の推薦は3である。推薦operation setは、Value Object conversion setting、Enum/Flags member Add/Rename/Drop、Custom Type field Add/Rename/Dropに限定し、type declaration rename、underlying変更、member numeric value変更、Custom Type field type/modifier/key/reorder等をv1非対象とする。これは未承認proposalであり、Human decisionとcanonical specification approval前にはimplementation authorityにならない。
+採用decisionを具体化するcanonical candidateは次の2文書である。
+
+- [Type Migration v1](specs/type-migration.md) — operation set、dependency resolution、Plan / Diff、source rewrite、stale preflight、authorization、commit / rollback。
+- [GUI Type Editor](gui/type-editor/spec.md) — category-specific editor、guided input、Plan / Diff / Apply、dirty-buffer / recovery composition、thin adapter boundary。
+
+両文書はHuman Approvalを受けるまで`Proposed`であり、implementation authorityではない。reviewでBlockingがなければ、次に必要なHuman actionはこの2 specificationの明示approvalである。
 
 ## Explicit non-scope
 
-Human decisionとApproved specificationで別途採用されない限り、現Objectiveでは次を暗黙に含めない。
+現Objectiveでは次を含めない。
 
 - type declaration name rename。
 - Value Object / Enum / Flagsのunderlying変更。
@@ -71,7 +77,9 @@ Human decisionとApproved specificationで別途採用されない限り、現Ob
 ## Relevant authorities
 
 - [Product vision](product/vision.md)
-- [Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md) — current design comparison。implementation authorityではない
+- [Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md) — Accepted design rationale。implementation authorityではない
+- [Type Migration v1](specs/type-migration.md) — Proposed。Human Approval前はimplementation authorityではない
+- [GUI Type Editor](gui/type-editor/spec.md) — Proposed。Human Approval前はimplementation authorityではない
 - [GUI specification index](gui/README.md)
 - [GUI app shell](gui/app-shell.md)
 - [Workspace Explorer](gui/explorer/spec.md)

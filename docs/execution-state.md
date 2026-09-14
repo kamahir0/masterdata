@@ -9,13 +9,16 @@ None.
 
 ## Human decision needed
 
-Type Editor v1のmutation strategyを選ぶ。
+Type Editor v1のimplementation authorityとして、次の2つのProposed specificationを明示的に承認するか決める。
 
 Recommended:
-- **Shared Type Migration v1 + Plan / Diff**（RFC 0006 Option C）
+- **Type Migration v1 + GUI Type Editor v1をProposedのまま両方承認する** — RFC 0006で採用したShared Type Migration + Plan / Diff方向をcanonical contractにし、implementation readiness gateへ進める。
 
-Alternatives:
-- **selected type fileのtyped direct edit**（RFC 0006 Option A）
-- **dependency-free changeだけに限定**（RFC 0006 Option B）
+Alternative:
+- **仕様修正を要求する** — data safety、operation scope、GUI behavior等の修正点を反映して再reviewするまでimplementationを開始しない。
 
-比較理由・trade-off・提案するv1 operation setのcanonical ownerは `docs/rfcs/0006-type-editor-mutation-strategy.md` とする。
+Approval対象:
+- `docs/specs/type-migration.md`
+- `docs/gui/type-editor/spec.md`
+
+RFC adoption自体は完了済みであり、比較理由のownerは `docs/rfcs/0006-type-editor-mutation-strategy.md` とする。

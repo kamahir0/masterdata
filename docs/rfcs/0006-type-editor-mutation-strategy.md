@@ -1,12 +1,12 @@
 # RFC: Type Editor v1 mutation strategy
 
-Status: Proposed
+Status: Accepted
 
 ## 背景（Context）
 
 Humanは、Table Editor Objective完了後の次priorityとしてType Editorを選択した。
 
-現在のGUIはWorkspace ExplorerからValue Object、Enum、Flags Enum、Custom Typeを新規作成できるが、作成済みのtype documentには専用editorがない。各type categoryの静的なschema/data/generated C# semanticsはApproved Type System specificationで定義済みである。一方、既存type declarationを変更するときのdependency rewrite、source mutation、lost-update、rollback、destructive authorization、既存dataの扱いを所有するcanonical mutation contractは存在しない。
+現在のGUIはWorkspace ExplorerからValue Object、Enum、Flags Enum、Custom Typeを新規作成できるが、作成済みtype documentには専用editorがない。各type categoryの静的なschema/data/generated C# semanticsはApproved Type System specificationで定義済みである。一方、既存type declarationを変更するときのdependency rewrite、source mutation、lost-update、rollback、destructive authorization、既存dataの扱いには専用のcanonical mutation contractがなかった。
 
 既存のSchema Migration v1はTable fieldの`AddField` / `RenameField` / `DropField`だけを対象とし、Type Editorやtype-definition mutationをscope外としている。したがって、Type Editorを単なるGUI convenienceとして実装し、frontendまたはTauri adapterでtype YAMLを書き換えることはできない。
 
@@ -20,7 +20,7 @@ Type definitionの変更はselected fileだけで完結しない場合がある�
 - Custom Type field rename / dropはnested mappingを含む既存dataへ影響する。
 - type name、underlying、field type/modifier、MessagePack key、member numeric value等の変更はgenerated API、serialization、validation、compatibilityへ追加の意味を持つ。
 
-このため、Type Editor v1では「どの変更を許可するか」と「依存sourceをどう安全に変換するか」を先に決める必要がある。
+このため、Type Editor v1では「どの変更を許可するか」と「依存sourceをどう安全に変換するか」を先に決める必要があった。
 
 ## 目標（Goals）
 
@@ -96,70 +96,40 @@ Type MigrationはSchema Migration v1を無制限に拡張せず、別canonical o
 
 Type Editor v1の価値は「既存type definitionを安全に変更できること」にあるため、単にform UIを追加するだけでは主要な断点を閉じない。一方で、type rename、underlying/type変更、member numeric value変更、field modifier/key変更まで一度に扱うとcompatibilityとdata conversion policyが急激に広がる。
 
-そのため、project-wide safetyは最初からshared migration boundaryへ置きつつ、operation setは「既存valueを決定論的に変換でき、arbitrary value conversionを要求しない変更」に限定するのが最も小さいcoherent sliceと考える。
+そのため、project-wide safetyは最初からshared migration boundaryへ置きつつ、operation setは「既存valueを決定論的に変換でき、arbitrary value conversionを要求しない変更」に限定するのが最も小さいcoherent sliceと判断した。
 
-## 提案（Proposal）
+## 採用した方向（Accepted Direction）
 
-**Option Cを採用し、Type Migration v1 + Type Editor v1を1つのsemantic objectiveとして設計する。**
+**Option C: Shared Type Migration v1 + Plan / Diffを採用する。**
 
-初期operation setは次を提案する。
+採用した初期operation setは次の範囲でcanonical specificationへ移す。
 
-### Value Object
+- Value Object: conversion setting変更。
+- Normal Enum / Flags Enum: member Add / Rename / Drop。
+- Custom Type: field Add / Rename / Drop。
+- type declaration rename、underlying変更、Enum/Flags member numeric value変更/reorder、Custom Type field type/modifier/key変更/reorder、type category conversionはv1非対象。
 
-- `SetValueObjectConversions`: `fromUnderlyingImplicit` / `toUnderlyingImplicit`だけを変更する。
-- type declaration name変更、underlying primitive変更はv1 scope外とする。
+project-wide safetyはshared Type Migration boundaryが所有し、Type EditorはPlan / Diff / Applyのthin adapterとする。source mutation成功はBuild / Publish / Git / generated artifact更新を暗黙に開始しない。
 
-### Normal Enum / Flags Enum
+詳細なobservable contractは次のcanonical candidateへ移した。このRFCはrationaleを保持するがimplementation authorityではない。
 
-- `AddEnumMember`: explicit name + numeric valueでmemberを追加する。implicit numberingは導入しない。
-- `RenameEnumMember`: current member nameをselectorとし、numeric valueを保持したままdeclarationと既存symbolic data occurrenceを更新する。
-- `DropEnumMember`: destructive operationとする。existing data occurrenceが1件でも存在する場合はreplacementを推測せずfail closedする。未使用memberだけをexplicit destructive authorization付きで削除できる。
-- Flagsの`None = 0`はApproved contractによりrename/drop対象にしない。
-- underlying変更、member numeric value変更、member reorderはv1 scope外とする。
-
-### Custom Type
-
-- `AddCustomField`: explicit MessagePack key、name、base type、modifier、および既存value occurrenceがある場合のexplicit constant initializerを受け取る。すべてのexisting Custom Type mapping occurrenceへ同じvalidated initializerを追加する。
-- `RenameCustomField`: current field nameをselectorとし、MessagePack keyを保持したままdeclarationとすべてのexisting mapping occurrenceを更新する。
-- `DropCustomField`: destructive operationとしてdeclarationとすべてのexisting mapping occurrenceから対象memberを削除する。
-- type declaration name変更、field type/modifier/key変更、field reorderはv1 scope外とする。
-
-### Shared execution model
-
-採用後のcanonical Type Migration specificationでは、少なくとも次のcontractを定義する。
-
-- logical type declaration identity / operation targetをshared semanticsでresolveする。
-- mutation前にdeterministic Planを作成し、operation、target、destructive state、affected source files、affected value occurrence count、diagnosticsを確認できる。
-- Planに対応するexact before/after source Diffをfile単位で生成する。
-- source rewriteはsource-preservingかつdeterministicとし、変更不要fileはbyte-for-byte unchangedにする。
-- patched sourceをcanonical parser / Type System / dependent Table semanticsで再resolveし、operation-specific postconditionを確認する。
-- resolution / dependency classificationに必要なsourceをclosureへ含め、unclassifiable sourceをunrelatedと推測しない。
-- Apply直前にproject config、source membership、resolutionへ使用したexact source bytesのstale-plan preflightを行う。
-- destructive operationにはGUI confirmationとは別のmachine-actionable authorizationを要求する。
-- multi-file commitはcomplete NEW / complete OLD rollback / Recovery Requiredを区別し、Recovery Required中は既存GUI shell gateへ統合する。
-- successful Type MigrationはBuild / Publish / Git / generated artifact更新を暗黙に開始しない。
-
-### GUI composition
-
-Type Editor v1はWorkspace Explorerで`kind: type` documentを選択したときにshared application snapshotからtype categoryとdeclarationを表示する。frontendはYAMLを独自parse/rewriteせず、上記Type Migration operationのguided input、Plan/Diff、Apply、error/recovery stateを表示するthin adapterとする。
-
-Migration Planがaffected sourceとして示すfileにData Editorのdirty bufferがある場合はApplyをblockし、unrelated dirty bufferは保持する。successful Apply後はaffected clean editor snapshotをworkspace authorityからrefreshする。
+- [Type Migration v1仕様](../specs/type-migration.md)
+- [GUI Type Editor仕様](../gui/type-editor/spec.md)
 
 ## 互換性（Compatibility）
 
-RFC段階では既存Approved behaviorを変更しない。
+Type Migration operationはsource YAML、generated C# API、binary inputへ影響し得る。v1ではcompatibility surfaceをboundedにするため、type declaration rename、underlying変更、Enum/Flags numeric value変更、Custom Type field type/modifier/key変更を除外する。
 
-提案を採用した場合、Type Migration operationはsource YAML、generated C# API、binary inputへ影響し得る。v1ではcompatibility surfaceをboundedにするため、type declaration rename、underlying変更、Enum/Flags numeric value変更、Custom Type field type/modifier/key変更を除外する。
-
-`RenameEnumMember`および`RenameCustomField`はgenerated C# identifierを変更し得るため、source migrationとして成功してもexternal consumerのsource compatibilityまで保証しない。このRFCはreleased-version compatibility systemを導入しない。採用後のcanonical specificationでは、operation successとexternal/generated API compatibilityが別conceptであることを明示する必要がある。
+`RenameEnumMember`および`RenameCustomField`はgenerated C# identifierを変更し得るため、source migrationとして成功してもexternal consumerのsource compatibilityまで保証しない。released-version compatibility systemは別scopeである。
 
 ## 未解決事項（Open Questions）
 
-- Humanは本RFCのProposal（Option C + 上記初期operation set）をType Editor v1のdesign directionとして採用するか。
-- Proposalを採用しない場合、Option Aのsingle-file direct edit、Option Bのdependency-free subset、または別のbounded operation setのどれを選ぶか。
+RFCのadoption decisionは解決済み。canonical Type Migration / GUI Type Editor specificationのreviewとHuman Approvalは、それぞれのspecification lifecycleで扱う。
 
-exact GUI component、Plan panel layout、field/member row action placement、default focus等、data safety / compatibility / semantic outcomeを変えないinteraction detailはRFC decision後のGUI specificationで決定してよい。
+exact GUI component、Plan panel layout、field/member row action placement、default focus等、data safety / compatibility / semantic outcomeを変えないinteraction detailはGUI specificationとimplementation detailの境界に従う。
 
 ## 決定（Decision）
 
-未決定。Human maintainerの選択を待つ。
+2026-09-14、Human maintainerは**Shared Type Migration v1 + Plan / Diff（Option C）**をType Editor v1のdesign directionとして採用した。
+
+このdecisionはRFCを`Accepted`にするが、product specificationを自動で`Approved`にはしない。implementationは、[Type Migration v1仕様](../specs/type-migration.md)と[GUI Type Editor仕様](../gui/type-editor/spec.md)が明示的なHuman Approvalを受けるまで開始しない。

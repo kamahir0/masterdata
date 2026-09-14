@@ -15,6 +15,7 @@ behaviorを扱ってよい。shared domain operationに対するadapter boundary
 - [Data Editor](data-editor/spec.md) — record data YAMLのspreadsheet型editorとfile単位dirty / Save（Approved）
 - [Source Creation](source-creation/spec.md) — Explorerからのfolder / source artifact creation flow（Approved）
 - [Table Editor](table-editor/spec.md) — Schema Migration v1のplan / diff / Add・Rename・Drop Field GUI（Approved）
+- [Type Editor](type-editor/spec.md) — Type Migration v1のPlan / Diff / Value Object・Enum・Flags・Custom Type編集GUI（Proposed）
 
 新しいsurface specificationは [_template.md](_template.md) から始める。大きなsurfaceでは、visual artifactを
 specificationの隣に置く。

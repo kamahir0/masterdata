@@ -9,13 +9,15 @@ None.
 
 ## Human decision needed
 
-`docs/spec-changes/0015-complex-value-authoring.md`の2つのobservable source behaviorを選択する。
+`docs/spec-changes/0015-complex-value-authoring.md`（`Status: Proposed`）を**proposal全体としてApproveするかRejectするか**を選択する。
 
-1. Structural complex editのsource preservation
-   - P1: Fine-grained preservation。target subtree内も必要rangeだけpatchし、安全にlocalizeできなければfail closedする。
-   - P2: Target-subtree replacement。structural editではedited value subtree全体のcanonical renderingを許す。
-2. Added record draftのunset value representation
-   - D1: YAML `null` placeholder。未入力値もSave candidateへ表現し、Required等ではvalidation diagnosticにする。
-   - D2: Local-only `Unset`。具体的YAML nodeへ変換されるまでSave candidate生成をblockする。
+Review result:
 
-Recommendation: **P1 + D1**。
+- Blocking Issues: None identified.
+- Non-blocking Issues: None identified.
+- Questions: None identified.
+- Approved as Proposed: **Yes**（review recommendation。Human Approvalそのものではない）。
+
+ProposalはHuman-selectedなOption C + P1 Fine-grained preservation + D1 YAML `null` placeholderを含む。
+
+Approval後はcanonical specificationへapproved deltaをatomicに適用し、spec-changeを`Applied`へ進め、implementation readinessを確認する。本Stageではimplementationを開始しない。

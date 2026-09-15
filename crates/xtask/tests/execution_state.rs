@@ -100,10 +100,13 @@ fn development_state_keeps_only_stage_mechanical_invariants() {
         "Implementation starts on short continuation:",
         "Agent:",
         "Session role:",
+        "## Approved implementation authority",
+        "## Final verification evidence",
+        "## Next activity",
     ] {
         assert!(
             !state.contains(forbidden),
-            "Development State must not persist actor/presentation routing: {forbidden}"
+            "Development State must not persist history/evidence/presentation state: {forbidden}"
         );
     }
 }

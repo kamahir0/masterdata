@@ -9,10 +9,13 @@ None.
 
 ## Human decision needed
 
-Complex Value Authoring v1のinitial strategyを`docs/rfcs/0007-complex-value-authoring-strategy.md`から選択する。
+`docs/spec-changes/0015-complex-value-authoring.md`の2つのobservable source behaviorを選択する。
 
-- Option A: existing-record complex editだけを先行する。
-- Option B: scalar-like categoryから段階導入する。
-- Option C: shared schema-driven value authoring modelをexisting editとAdd Rowで共用する。
+1. Structural complex editのsource preservation
+   - P1: Fine-grained preservation。target subtree内も必要rangeだけpatchし、安全にlocalizeできなければfail closedする。
+   - P2: Target-subtree replacement。structural editではedited value subtree全体のcanonical renderingを許す。
+2. Added record draftのunset value representation
+   - D1: YAML `null` placeholder。未入力値もSave candidateへ表現し、Required等ではvalidation diagnosticにする。
+   - D2: Local-only `Unset`。具体的YAML nodeへ変換されるまでSave candidate生成をblockする。
 
-Recommendation: Option C。
+Recommendation: **P1 + D1**。

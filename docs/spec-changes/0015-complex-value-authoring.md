@@ -124,7 +124,40 @@ None identified for this proposal. Exact DTO field name、React component placem
 
 ## レビュー（Review）
 
-Independent `review-spec` pending after P1 / D1 incorporation.
+### Blocking Issues
+
+None identified.
+
+P1は`SOURCE-EDIT-005`のunrelated source preservationと`SOURCE-EDIT-006`のfail-closedをcomplex subtreeへ強める方向であり、broad serializer fallbackを許可しない既存contractと矛盾しない。D1はfield entryを省略せず`null`をcandidateへ置き、Required / Array等では`TYPE-FIELD-003`に従ってinvalid diagnosticとするため、Type System semanticsを変更しない。
+
+### Non-blocking Issues
+
+None identified.
+
+### Questions
+
+None identified.
+
+### Approved as Proposed
+
+**Yes.** Humanが選択したOption C + P1 + D1を、Approved Type System、Source Edit、Source Record Mutation、Data Editorの既存安全境界を弱めずtest可能なdeltaへ落とせている。これはreview recommendationであり、specificationを`Approved`へ変更するHuman Approvalではない。
+
+| Review axis | Verdict |
+| --- | --- |
+| Intent fidelity | Option C、P1、D1のHuman decisionをその強度のまま反映。 |
+| Internal consistency | shared typed model、P1 source patch、D1 null placeholder、validation non-blockingが整合。 |
+| Cross-spec consistency | `SOURCE-EDIT-005/006`、`SOURCE-RECORD-003/004/011`、Data Editor dirty/Save、Type System null/Array semanticsを維持。 |
+| Terminology consistency | Existing `Base snapshot`、`Save candidate`、`Added record draft`、Type System用語を使用。 |
+| Normative strength | Human decisionとApproved constraintに対応するMUST/MUST NOTだけを追加。 |
+| Testability | nested patch preservation、fail-closed、null placeholder、complex Add Rowをobservable testへ分解可能。 |
+| Backward compatibility | YAML/domain/binary semanticsは変更せずauthoring capabilityのみ拡張。source textはP1で既存 preservationを強化。 |
+| Unresolved ambiguity | ApprovalをblockするOpen Questionなし。exact UI/DTO/internal patch structureは非semantic detailとして残す。 |
+| Implementation leakage | crate/API/componentのexact structureを固定していない。 |
+| Unrequested behavior | key mutation、schema/type mutation、raw YAML editor、bulk edit、Build/Publish/Git連動を追加していない。 |
+
+Current implementation / testsはRequired-Primitive-only existing edit/Add RowというApproved initial sliceを実装しており、本proposalのcomplex capabilityを先行実装しているevidenceは確認していない。したがって未承認semanticsのretroactive approval問題は見つからない。
+
+Implementation rationale review: implementation diffは本review scopeに存在しないためNot applicable。
 
 ## 承認記録（Approval Record）
 

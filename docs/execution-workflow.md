@@ -85,7 +85,7 @@ Stageは次の6つだけ。
 - `implementation-ready`: [`../skills/implement-spec/SKILL.md`](../skills/implement-spec/SKILL.md)でfinal candidateと`verification-ready`まで。
 - `verification-ready`: [`../skills/review-code/SKILL.md`](../skills/review-code/SKILL.md)でrecorded Candidateをfreshな別passでverification。
 - `correction-ready`: recorded Blockingだけを修正し新candidateと`verification-ready`まで。新decisionが必要なら`decision-required`。
-- `objective-complete`: next candidateを自動昇格せずHuman priority decisionへ戻る。
+- `objective-complete`: next candidatesをcurrent reality / product valueで比較し、Human priority decisionを提示して停止する。Human selection前にCurrent Objectiveを更新しない。
 
 agent identity / delegationはstateに保存しない。
 
@@ -100,6 +100,18 @@ agent identity / delegationはstateに保存しない。
 cold-start最初の短い「進める」は、直前の自己完結したdecision presentationなしに推薦acceptanceとして扱わない（MUST NOT）。直前responseで単一choiceのacceptanceが一意なら短い肯定をacceptanceとしてよい（MAY）が、implementation boundaryは跨がない。exact consentが必要なdestructive actionには使わない。
 
 Human decisionはchatだけに残さずcanonical ownerへ反映する。
+
+## Priority presentation gate for `objective-complete`
+
+`objective-complete`では次priorityは未選択である。短い「進める」やcold-startを、agentが推薦candidateを自動選択するauthorizationとして扱ってはならない（MUST NOT）。このsessionで自己完結したpriority presentationがまだない場合は次を行う。
+
+1. `current-objective.md`のNext candidate、relevant current reality、Product Visionを必要な範囲だけ確認する。
+2. 現時点で有力な候補をsemantic label + short trade-offで比較する。recommendationは出してよいが、selected priorityとして表現しない。
+3. stable Human-facing execution summaryで、Humanに必要なpriority choice、「進める」が何を意味するか、本格実装開始有無、stop boundaryを明示して停止する（MUST）。
+
+直前responseが候補比較と単一recommendationを自己完結的に提示し、`「進める」の意味`でそのcandidate選択を一意に定義している場合だけ、次の短い肯定をpriority selectionとして扱ってよい（MAY）。選択後は`current-objective.md`へdurably反映し、必要なdesign/spec activityへ進めるが、短いcontinuationだけでimplementation classへ跨がない（MUST NOT）。
+
+Humanが単一candidateを明示指定した場合は比較presentationを省略してそのselectionを反映してよい。推薦を求められただけの場合はselectionとして扱わない。
 
 ## Candidate / state transition
 
@@ -116,7 +128,7 @@ verification後は、Blockingなし=`objective-complete`、Approved内で修正�
 
 ## Human-facing execution summary
 
-Current Objectiveのdevelopment/status responseはfresh stateから次のstable Markdown順序で出す（MUST）。Humanが別formatを明示した場合だけ変更可能。
+Current Objectiveのdevelopment/status/priority responseはfresh stateから次のstable Markdown順序で出す（MUST）。`objective-complete`で次候補を比較・推薦するresponseもpriority responseに含む。Humanが別formatを明示した場合だけ変更可能。
 
 1. `### 次に進むと`
 2. `**現在地**`

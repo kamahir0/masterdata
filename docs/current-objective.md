@@ -11,37 +11,40 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 現在のHuman priorityは、**Data Editorでcomplex fieldをraw YAML手編集なしで安全に入力・編集できるComplex Value Authoring v1を完成させる**ことである。
 
-直前のType Editor v1 Objectiveはcandidate `fc03700ad188773cee4c0b291f5661368bd44979`のfinal verificationでBlockingなしとなり、2026-09-15時点で`objective-complete`へ到達した。その後Humanが次候補比較で推薦されたcomplex field record inputについて「進める」と選択したため、本Objectiveをcurrent priorityとした。
-
-現在のApproved Data Editorは、existing recordではRequired Primitiveの非key fieldだけを通常editableとし、Nullable / Array / Enum / Flags / Value Object / Custom Type等をread-onlyとする。またAdd Rowは全fieldがRequired PrimitiveのTableだけをsupportedとする。各complex valueのdomain semantics自体はApproved Type System familyで定義済みであり、次に必要なのはそれらをData Editorのshared authoring boundaryへ安全に接続することである。
+直前のType Editor v1 Objectiveはcandidate `fc03700ad188773cee4c0b291f5661368bd44979`のfinal verificationでBlockingなしとなり、2026-09-15時点で`objective-complete`へ到達した。その後Humanがcomplex field record inputを次priorityとして選択した。
 
 ## Why now
 
-Table EditorとType Editorによりschema / type authoringはGUIから行えるようになったが、定義したcomplex typeをrecord値として入力する場面ではData Editorの初期scopeに戻り、raw YAML手編集が必要になる断点が残っている。
+Table EditorとType Editorによりschema / type authoringはGUIから行えるようになったが、定義したcomplex typeをrecord値として入力する場面ではData Editorの初期scopeに戻りraw YAML手編集が必要になる断点が残っている。
 
-Product VisionはYAMLをSource of Truthとして保ちながらschema-aware editingとshared Rust semanticsをDesktop / Web / CLIで共有する方向を示している。Complex Value Authoringは、既にApprovedなType Systemを実際のrecord authoring UXへ接続し、authoring surfaceの縦切りを閉じる次のwork packageである。
+Approved Type SystemはValue Object、Enum、Flags Enum、Custom Type、Required / Nullable / Arrayのsemanticsを既に所有する。次に必要なのはdomain semanticsをfrontendへ複製せず、shared Rust authoring boundaryからData Editorへ接続することである。
 
 ## Completion boundary
 
-本Objectiveは、Human-approvedなcomplex value authoring contractに従い、少なくとも次を満たしたfinal candidateがverificationでBlockingなしとなった時点で完了する。
+本ObjectiveはHuman-approvedなcomplex value authoring contractに従い、少なくとも次を満たしたfinal candidateがverificationでBlockingなしとなった時点で完了する。
 
 - Data EditorがApproved Type Systemからresolvedされたcomplex field shapeをshared application snapshotとして受け取り、frontendがYAML parseやtype resolutionを独自実装しない。
-- v1でsupportするfield category / modifierと、existing record edit・Added record draftのどちらへ適用するかがcanonical specificationで明示される。
+- v1でsupportするfield category / modifierとexisting record edit・Added record draftの適用範囲がcanonical specificationで明示される。
 - supported complex valueの入力はlosslessで、`long` / `ulong`を含むnested valueでもfrontendのlossy numeric representationへ強制変換しない。
 - source mutationはYAML Source of Truth、source provenance、source-preserving candidate、file単位dirty / Save、lost-update prevention、Conflict / Failure / Outcome Unknownの既存安全境界と整合する。
-- validation resultはediting / Save可否のdomain gateにせず、現在bufferに対するshared validation diagnosticとして表示する既存Data Editor方針を維持する。
+- validation resultはediting / Save可否のdomain gateにせず、current bufferに対するshared validation diagnosticとして表示する。
 - existing recordのPrimary / Secondary Key mutation、schema/type mutation、Build / Publish / Gitの暗黙実行を本Objectiveへ混入しない。
 - focused core/application regression、Tauri adapter test、React workflow test、repository required checks、final verificationでBlockingがないことを確認する。
 
 ## Current design decision
 
-**Complex field record inputを次priorityとして選択済み。authoring strategyは未選択。**
+**Shared schema-driven value authoring modelをexisting editとAdd Rowで共用するOption Cを採用済み。**
 
-[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)で、初期sliceの境界とshared authoring modelを比較している。現在は`decision-required`であり、RFCのdesign directionをHumanが選択するまでcanonical specification変更や本格実装へ進まない。
+Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)の推薦Option Cに対して「進める」と回答し、initial strategyを選択した。
+
+採用方向をcanonical behaviorへ移すため、[spec-change 0015](spec-changes/0015-complex-value-authoring.md)をDraft化した。現在は次の2点がobservable source behaviorを変えるHuman decisionとして残っている。
+
+- structural complex editでtarget value subtree内部をfine-grained source-preserving patchするか、target-subtree replacementを許すか。
+- Added record draftの未入力typed valueをYAML `null`としてsourceへ表現するか、local-only `Unset`としてSave前に解消を要求するか。
+
+この2点が解決し、spec-changeがreview可能な`Proposed`となってHuman Approvalを受け、canonical specificationへAppliedされるまで本格実装へ進まない。
 
 ## Explicit non-scope
-
-現Objectiveでは次を含めない。
 
 - existing recordのPrimary / Secondary Key構成field mutation。
 - Table schema field add / rename / drop、Primary / Secondary Key editing。
@@ -63,7 +66,8 @@ Product VisionはYAMLをSource of Truthとして保ちながらschema-aware edit
 ## Relevant authorities
 
 - [Product vision](product/vision.md)
-- [Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md) — current design comparison。implementation authorityではない
+- [Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md) — Accepted design rationale。implementation authorityではない
+- [Complex Value Authoring specification change](spec-changes/0015-complex-value-authoring.md) — current unapproved semantic delta
 - [Data Editor](gui/data-editor/spec.md)
 - [Data Editor Record Mutation](gui/data-editor/record-mutation.md)
 - [Source Record Edit](specs/source-edit.md)

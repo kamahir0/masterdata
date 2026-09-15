@@ -33,16 +33,16 @@ Approved Type SystemはValue Object、Enum、Flags Enum、Custom Type、Required
 
 ## Current design decision
 
-**Shared schema-driven value authoring modelをexisting editとAdd Rowで共用するOption Cを採用済み。**
+**Shared schema-driven value authoring modelをexisting editとAdd Rowで共用するOption Cを採用し、source behaviorはP1 + D1を採用済み。**
 
-Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)の推薦Option Cに対して「進める」と回答し、initial strategyを選択した。
+Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)のOption Cを選択し、その後のdesign gateで次も選択した。
 
-採用方向をcanonical behaviorへ移すため、[spec-change 0015](spec-changes/0015-complex-value-authoring.md)をDraft化した。現在は次の2点がobservable source behaviorを変えるHuman decisionとして残っている。
+- **P1 Fine-grained preservation**: structural complex editでもtarget subtree全体を再renderせず、必要なsource rangeだけをpatchし、安全にlocalizeできなければfail closedする。
+- **D1 YAML `null` placeholder**: Added record draftの未入力typed valueはSave candidate上で`null`として表現し、Required / Array等でinvalidな場合はshared validation diagnosticとして扱う。validationだけを理由にSaveを禁止しない。
 
-- structural complex editでtarget value subtree内部をfine-grained source-preserving patchするか、target-subtree replacementを許すか。
-- Added record draftの未入力typed valueをYAML `null`としてsourceへ表現するか、local-only `Unset`としてSave前に解消を要求するか。
+これらを[spec-change 0015](spec-changes/0015-complex-value-authoring.md)へ反映し、現在は`Status: Proposed`で独立`review-spec`済みである。review recommendationは`Approved as Proposed: Yes`、Blocking / Non-blocking / QuestionsはいずれもNoneである。
 
-この2点が解決し、spec-changeがreview可能な`Proposed`となってHuman Approvalを受け、canonical specificationへAppliedされるまで本格実装へ進まない。
+次のgateはproposal全体に対するHuman Approvalである。Human Approval後にdeltaをcanonical specificationへatomicに適用し、spec-changeを`Applied`へ進め、implementation readinessを確認する。それまでは本格実装へ進まない。
 
 ## Explicit non-scope
 
@@ -67,7 +67,7 @@ Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0
 
 - [Product vision](product/vision.md)
 - [Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md) — Accepted design rationale。implementation authorityではない
-- [Complex Value Authoring specification change](spec-changes/0015-complex-value-authoring.md) — current unapproved semantic delta
+- [Complex Value Authoring specification change](spec-changes/0015-complex-value-authoring.md) — current Proposed semantic delta。Human Approval前はimplementation authorityではない
 - [Data Editor](gui/data-editor/spec.md)
 - [Data Editor Record Mutation](gui/data-editor/record-mutation.md)
 - [Source Record Edit](specs/source-edit.md)

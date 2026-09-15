@@ -9,60 +9,46 @@ Approved behaviorは[仕様index](specs/README.md)の各canonical specification�
 
 ## Objective
 
-現在のHuman priorityは、**既存Value Object / Enum / Flags Enum / Custom TypeをGUIからraw YAML手編集なしで安全に変更できるType Editor v1を完成させる**ことである。
+現在のHuman priorityは、**Data Editorでcomplex fieldをraw YAML手編集なしで安全に入力・編集できるComplex Value Authoring v1を完成させる**ことである。
 
-直前のTable Editor Objectiveはcandidate `d765f40d225130b29a44427dd8cc1a536ce168a6`のfinal verificationでBlockingなしとなり、2026-09-14時点で`objective-complete`へ到達した。その後Humanが次候補比較で推薦されたType Editorについて「進める」と選択したため、本Objectiveをcurrent priorityとした。
+直前のType Editor v1 Objectiveはcandidate `fc03700ad188773cee4c0b291f5661368bd44979`のfinal verificationでBlockingなしとなり、2026-09-15時点で`objective-complete`へ到達した。その後Humanが次候補比較で推薦されたcomplex field record inputについて「進める」と選択したため、本Objectiveをcurrent priorityとした。
 
-2026-09-14、Humanは[Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md)の比較から、**Shared Type Migration v1 + Plan / Diff**を採用することを明示的に選択した。したがって、selected type fileだけのdirect editやdependency-free subsetではなく、project-wide dependency rewriteとsource mutation safetyをshared semantic boundaryへ置く方向で本Objectiveを完成させる。
-
-各type categoryの静的なschema/data/generated C# semanticsはApproved [Type System](specs/type-system/README.md) familyが所有する。採用decisionをcanonical behaviorへ移した[Type Migration v1](specs/type-migration.md)と[GUI Type Editor](gui/type-editor/spec.md)は、2026-09-14にHuman maintainerが明示的に承認したApproved implementation authorityである。
+現在のApproved Data Editorは、existing recordではRequired Primitiveの非key fieldだけを通常editableとし、Nullable / Array / Enum / Flags / Value Object / Custom Type等をread-onlyとする。またAdd Rowは全fieldがRequired PrimitiveのTableだけをsupportedとする。各complex valueのdomain semantics自体はApproved Type System familyで定義済みであり、次に必要なのはそれらをData Editorのshared authoring boundaryへ安全に接続することである。
 
 ## Why now
 
-現在のGUIはWorkspace ExplorerからTable / Data / Value Object / Enum / Flags Enum / Custom Typeを新規作成できる。Data documentはData Editorでrecord authoringでき、Table schemaはTable EditorでSchema Migration v1のAdd/Rename/Drop FieldをPlan / Diff付きで実行できる。一方、作成済みtype documentは専用editorを持たず、definition変更ではYAML手編集へ戻る断点が残っている。
+Table EditorとType Editorによりschema / type authoringはGUIから行えるようになったが、定義したcomplex typeをrecord値として入力する場面ではData Editorの初期scopeに戻り、raw YAML手編集が必要になる断点が残っている。
 
-Product Visionはschema-aware editingとshared Rust semanticsを長期方向としている。Type System自体はApproved済みなので、次に必要なのはtype-definition mutationをshared Type Migrationとして安全に扱い、そのboundaryへGUIを接続することである。
+Product VisionはYAMLをSource of Truthとして保ちながらschema-aware editingとshared Rust semanticsをDesktop / Web / CLIで共有する方向を示している。Complex Value Authoringは、既にApprovedなType Systemを実際のrecord authoring UXへ接続し、authoring surfaceの縦切りを閉じる次のwork packageである。
 
 ## Completion boundary
 
-本Objectiveは、Human-approvedなType Migration v1 / Type Editor v1 contractに従い、少なくとも次を満たしたfinal candidateがverificationでBlockingなしとなった時点で完了する。
+本Objectiveは、Human-approvedなcomplex value authoring contractに従い、少なくとも次を満たしたfinal candidateがverificationでBlockingなしとなった時点で完了する。
 
-- Workspace Explorerで`kind: type` documentを選択した場合、shared source semanticsからtype categoryをresolveし、Value Object / Enum / Flags Enum / Custom Typeの専用Type Editorを開ける。
-- Type Editorはtype identity、source provenance、category-specific declarationをshared application snapshotから表示し、frontendがYAMLを独自parseしてdomain meaningを再構成しない。
-- v1 mutation operation setはValue Object conversion setting、Enum/Flags member Add/Rename/Drop、Custom Type field Add/Rename/Dropに限定する。
-- type declaration rename、underlying変更、Enum/Flags member numeric value変更/reorder、Custom Type field type/modifier/key変更/reorder、type category conversionをv1へ含めない。
-- mutation前にdeterministic Planとaffected-file Diffを生成し、dependent source rewrite、source preservation、postcondition、stale-plan prevention、destructive authorization、multi-file rollback / Recovery Requiredをshared core/application boundaryが所有する。
-- Enum/Flags member renameはnumeric valueを保持したままexisting symbolic occurrenceを更新し、member dropはexisting occurrenceがあればreplacementを推測せずfail closedする。
-- Custom Type field addはexisting value occurrenceがある場合にexplicit constant initializerを要求し、rename/dropはnested occurrenceを含むdependent mappingへshared semanticsで適用する。
-- Migration Planがaffected sourceとして示すfileにData Editorのdirty bufferがある場合はApplyをblockし、unrelated dirty bufferは保持する。
-- successful type mutationはBuild / Publish / Git / generated artifact更新を暗黙に開始しない。
+- Data EditorがApproved Type Systemからresolvedされたcomplex field shapeをshared application snapshotとして受け取り、frontendがYAML parseやtype resolutionを独自実装しない。
+- v1でsupportするfield category / modifierと、existing record edit・Added record draftのどちらへ適用するかがcanonical specificationで明示される。
+- supported complex valueの入力はlosslessで、`long` / `ulong`を含むnested valueでもfrontendのlossy numeric representationへ強制変換しない。
+- source mutationはYAML Source of Truth、source provenance、source-preserving candidate、file単位dirty / Save、lost-update prevention、Conflict / Failure / Outcome Unknownの既存安全境界と整合する。
+- validation resultはediting / Save可否のdomain gateにせず、現在bufferに対するshared validation diagnosticとして表示する既存Data Editor方針を維持する。
+- existing recordのPrimary / Secondary Key mutation、schema/type mutation、Build / Publish / Gitの暗黙実行を本Objectiveへ混入しない。
 - focused core/application regression、Tauri adapter test、React workflow test、repository required checks、final verificationでBlockingがないことを確認する。
 
 ## Current design decision
 
-**Shared Type Migration v1 + Plan / Diffを採用済み。**
+**Complex field record inputを次priorityとして選択済み。authoring strategyは未選択。**
 
-RFC 0006で比較した3案のうち、Humanはshared Type Migrationを導入しType Editorをthin GUI adapterにする案を選択した。selected-file direct editとdependency-free subsetは本Objectiveのdesign directionとしては採用しない。
-
-採用decisionを具体化したcanonical implementation authorityは次の2文書である。
-
-- [Type Migration v1](specs/type-migration.md) — operation set、dependency resolution、Plan / Diff、source rewrite、stale preflight、authorization、commit / rollback。
-- [GUI Type Editor](gui/type-editor/spec.md) — category-specific editor、guided input、Plan / Diff / Apply、dirty-buffer / recovery composition、thin adapter boundary。
-
-両文書は2026-09-14にHuman maintainerが明示的に承認し、`Status: Approved`となった。未解決のSpecification Gap / Human decisionは現時点でなく、本Objectiveはimplementation work packageへ進める。
+[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)で、初期sliceの境界とshared authoring modelを比較している。現在は`decision-required`であり、RFCのdesign directionをHumanが選択するまでcanonical specification変更や本格実装へ進まない。
 
 ## Explicit non-scope
 
 現Objectiveでは次を含めない。
 
-- type declaration name rename。
-- Value Object / Enum / Flagsのunderlying変更。
-- Enum / Flags member numeric value変更・reorder。
-- Custom Type field type / modifier / MessagePack key変更・reorder。
-- type category conversion。
-- Table Primary / Secondary Key editing。
-- Data Editorのcomplex field input拡張。
+- existing recordのPrimary / Secondary Key構成field mutation。
+- Table schema field add / rename / drop、Primary / Secondary Key editing。
+- type declaration / member / Custom Type field mutation。
 - source file / folder rename、delete、move、duplicate。
+- `$tags` authoring、record reorder / duplicate、bulk add / bulk delete。
+- spreadsheet range selection、一括paste、fill handle、general Undo/Redo。
 - arbitrary raw YAML editor、formatter、general text editor。
 - released-version compatibility system全体。
 - Build Profile / Publish、Standalone / Connected Web全体。
@@ -70,32 +56,26 @@ RFC 0006で比較した3案のうち、Humanはshared Type Migrationを導入し
 
 ## Next candidate
 
-本Objective完了後は、complex fieldを含むrecord入力、Primary / Secondary Key editingを含む次段schema authoring、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
+本Objective完了後は、Primary / Secondary Key editingを含む次段schema authoring、source rename / delete / move、spreadsheet操作拡張、Programmable View、Build Profile / Publish、Standalone / Connected Webへのauthoring surface展開を候補として比較する。
 
 次priorityは自動昇格せず、current realityとproduct valueを確認してHumanが選択する。
 
 ## Relevant authorities
 
 - [Product vision](product/vision.md)
-- [Type Editor v1 mutation strategy RFC](rfcs/0006-type-editor-mutation-strategy.md) — Accepted design rationale。implementation authorityではない
-- [Type Migration v1](specs/type-migration.md) — Approved implementation authority
-- [GUI Type Editor](gui/type-editor/spec.md) — Approved implementation authority
-- [GUI specification index](gui/README.md)
-- [GUI app shell](gui/app-shell.md)
-- [Workspace Explorer](gui/explorer/spec.md)
-- [Source Creation](gui/source-creation/spec.md)
+- [Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md) — current design comparison。implementation authorityではない
 - [Data Editor](gui/data-editor/spec.md)
-- [Table Editor](gui/table-editor/spec.md)
-- [Schema Migration v1](specs/schema-migration.md)
-- [Masterdata YAML subset](specs/yaml-subset.md)
-- [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
+- [Data Editor Record Mutation](gui/data-editor/record-mutation.md)
+- [Source Record Edit](specs/source-edit.md)
+- [Source Record Mutation](specs/source-record-mutation.md)
 - [Type System](specs/type-system/README.md)
 - [Primitive Types](specs/type-system/primitives.md)
 - [Field Modifiers](specs/type-system/field-modifiers.md)
 - [Value Objects](specs/type-system/value-objects.md)
 - [Enum / Flags](specs/type-system/enums.md)
 - [Custom Types](specs/type-system/custom-types.md)
-- [C# naming](specs/type-system/csharp-naming.md)
+- [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
+- [Masterdata YAML subset](specs/yaml-subset.md)
 - [Runtime hosts / capability](specs/runtime-hosts.md)
 - [YAML Source of Truth ADR](adr/0001-yaml-is-source-of-truth.md)
 - [shared core ADR](adr/0002-rust-core-shared-by-cli-and-gui.md)

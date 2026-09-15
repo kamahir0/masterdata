@@ -8,9 +8,9 @@ Domain: Source Editing
 
 本仕様は、既存Data documentにrecord occurrenceを追加・削除し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
 
-既存record member valueの変更は[Source Record Edit](source-edit.md)、Table / record validityは[Table / Primary Key / Secondary Key](table-and-keys.md)、Primitive value domainは[Primitive Types](type-system/primitives.md)、host I/O boundaryは[Runtime hosts](runtime-hosts.md)が所有する。本仕様はそれらを再定義せず、record sequenceのstructural mutation、source-preserving insertion/removal、および既存value editとのcompositionを所有する。
+既存record member valueの変更は[Source Record Edit](source-edit.md)、Table / record validityは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、host I/O boundaryは[Runtime hosts](runtime-hosts.md)が所有する。本仕様はそれらを再定義せず、record sequenceのstructural mutation、source-preserving insertion/removal、および既存value editとのcompositionを所有する。
 
-Source Record Editの`SOURCE-EDIT-007`から`SOURCE-EDIT-014`が定義するfile単位commit、lost-update preflight、Conflict / Failure / Outcome Unknown、explicit Overwrite、Build非連動、およびpatch derivationとhost I/Oの分離は、本仕様のSaveにも適用する。
+Source Record Editの`SOURCE-EDIT-007`から`SOURCE-EDIT-016`が定義するfile単位commit、lost-update preflight、Conflict / Failure / Outcome Unknown、explicit Overwrite、Build非連動、resolved value authoring boundary、およびpatch derivationとhost I/Oの分離は、本仕様のSaveにも適用する。
 
 ## 用語
 
@@ -29,9 +29,9 @@ record追加・削除はexactなbase snapshotとselected source data fileに対�
 
 ### SOURCE-RECORD-002
 
-初期Add Record operationは、選択Data documentがexactly 1つのTable schemaへresolveし、そのschemaの全fieldがRequired Primitiveである場合だけsupportedでなければならない（MUST）。Nullable、Array、Enum、Flags Enum、Value Object、Custom Type、unknown typeを1つでも含むTableについて、初期Add Record operationをsupportedとして扱ってはならない（MUST NOT）。
+Add Record operationは、選択Data documentがexactly 1つのTable schemaへresolveし、そのschemaの全fieldが[Source Record Edit](source-edit.md)の`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくv1 supported resolved value shapeへ安全にresolveできる場合にsupportedでなければならない（MUST）。Primitive、Value Object、Enum、Flags Enum、Custom Typeと、それらに対するRequired / Nullable / Array shapeを対象に含める。
 
-この制限はexisting recordのDelete capabilityや、既存[Source Record Edit](source-edit.md)が許可するfield編集 capabilityを自動的に無効化してはならない（MUST NOT）。
+unknown、unresolved、またはshared applicationがlosslessなtyped authoring stateとして安全に扱えないfield shapeを1つでも含むTableについて、Add Record operationをsupportedとして扱ってはならない（MUST NOT）。この制限はexisting recordのDelete capabilityや、既存[Source Record Edit](source-edit.md)が許可するfield編集 capabilityを自動的に無効化してはならない（MUST NOT）。
 
 ### SOURCE-RECORD-003
 
@@ -41,9 +41,11 @@ Primary Key / Secondary Key構成fieldをaddition requestから省略しては�
 
 ### SOURCE-RECORD-004
 
-Added record draftの各Primitive inputはlosslessなtext representationとしてapplication boundaryを通らなければならない（MUST）。特に`long` / `ulong`は全64-bit rangeをroundingなしで保持しなければならず（MUST）、frontend等でIEEE-754 `number`へ強制変換してはならない（MUST NOT）。
+Added record draftのfield valueは[Source Record Edit](source-edit.md)の`SOURCE-EDIT-016`と同じlossless typed value representationをapplication boundaryで使用しなければならない（MUST）。特に任意のnested positionにある`long` / `ulong`は全64-bit rangeをroundingなしで保持しなければならず（MUST）、frontend等でIEEE-754 `number`へ強制変換してはならない（MUST NOT）。
 
-Stringは入力textをString valueとして扱う。他Primitiveでは、入力が安全なYAML scalarとして解釈可能ならそのscalarを使用してよく（MAY）、解釈不能またはdomain-invalidな入力はYAML-validなString scalarとして保持してshared validationへ渡してよい（MAY）。record additionをdomain validation errorだけで拒否してはならない（MUST NOT）。
+Added record draftのまだ入力されていないtyped valueはSave candidate上でYAML `null`として表現しなければならない（MUST）。field entry自体を省略してはならず（MUST NOT）、first Enum member、numeric zero、empty string、empty Array、Custom Type default等のdomain valueを暗黙defaultとして発明してはならない（MUST NOT）。Nullable fieldの`null`はApproved Type Systemに従ってvalidであり、Required / Arrayまたはnon-nullを要求するvalue positionの`null`はdomain-invalidとしてshared validation diagnosticへ渡さなければならない（MUST）。そのvalidation errorだけを理由にSave candidate生成またはfile Saveを禁止してはならない（MUST NOT）。
+
+Custom Type等のcompound draftを利用者が具体的なmapping valueとしてmaterializeした場合、そのmappingはdeclared field entryを保持し、まだ入力されていないnested typed valueにも同じ`null` placeholder ruleを再帰的に適用しなければならない（MUST）。Array value自体が未入力なら`null` placeholderであり、利用者がArray valueをmaterializeした後のempty sequence `[]`はApproved Type Systemが定めるvalid empty Arrayとして扱う。
 
 ### SOURCE-RECORD-005
 
@@ -79,37 +81,44 @@ Add patchは既存record、comment、blank lineのbytesを再serializeしては�
 
 base snapshotから`records` region、record sequence boundary、またはdelete対象occurrenceを安全かつ一意に再特定できない場合、candidate生成を失敗させなければならない（MUST）。full-file reserialization、Primary Key search、近似text search、別recordへのfallbackで成功扱いしてはならない（MUST NOT）。このfailureではworkspace sourceを変更してはならない（MUST NOT）。
 
-初期implementationが安全に扱えないYAML sequence styleを無理にrewriteしてはならず（MUST NOT）、unsupported source shapeとして明示的に失敗してよい（MAY）。
+implementationが安全に扱えないYAML sequence styleを無理にrewriteしてはならず（MUST NOT）、unsupported source shapeとして明示的に失敗してよい（MAY）。
 
 ### SOURCE-RECORD-011
 
 Record mutation後のvalidationは現在のSave candidateをshared Table / Type semanticsで評価しなければならない（MUST）。Added recordのinvalid value、Primary Key / Secondary Key constraint violation、またはDeleteによって変化したproject validationをdiagnosticとして返してよい（MAY）が、validation errorだけを理由にfile Saveを禁止してはならない（MUST NOT）。
 
-Save successはproject validation successを意味しない。
+未入力placeholderとしてcandidateへ置かれた`null`がRequired / Array等でinvalidな場合も同じruleを適用しなければならない（MUST）。Save successはproject validation successを意味しない。
 
 ### SOURCE-RECORD-012
 
-Record mutation Saveは[Source Record Edit](source-edit.md)の`SOURCE-EDIT-007`から`SOURCE-EDIT-014`に従わなければならない（MUST）。したがってcommit unitは1 source data fileであり、mutation開始直前のexact-content preflight、explicit Overwrite recheck、`Success / Conflict / Failure / Outcome Unknown`の区別、Outcome Unknown後のactual source再取得、およびpartial/truncated contentをsuccess扱いしないことが必要である。
+Record mutation Saveは[Source Record Edit](source-edit.md)の`SOURCE-EDIT-007`から`SOURCE-EDIT-016`に従わなければならない（MUST）。したがってcommit unitは1 source data fileであり、mutation開始直前のexact-content preflight、explicit Overwrite recheck、`Success / Conflict / Failure / Outcome Unknown`の区別、Outcome Unknown後のactual source再取得、およびpartial/truncated contentをsuccess扱いしないことが必要である。
 
 Record addition / deletionを理由に別dirty fileを暗黙Saveしてはならない（MUST NOT）。
 
 ### SOURCE-RECORD-013
 
-Record mutationはBuild、Publish、Git stage / commit / push、schema Migration、generated C#更新、binary更新を暗黙に開始してはならない（MUST NOT）。Buildは保存済みworkspace sourceを入力とする別operationのままでなければならない（MUST）。
+Record mutationはBuild、Publish、Git stage / commit / push、schema Migration、Type Migration、generated C#更新、binary更新を暗黙に開始してはならない（MUST NOT）。Buildは保存済みworkspace sourceを入力とする別operationのままでなければならない（MUST）。
 
 ### SOURCE-RECORD-014
 
-record sequence location resolution、candidate derivation、Primitive input conversion、existing value editとのcomposition、validationとのcomposition等のshared semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。source patch derivationはhost commit I/Oから分離できなければならない（MUST）。
+record sequence location resolution、candidate derivation、resolved value authoring state、typed value conversion、existing value editとのcomposition、validationとのcomposition等のshared semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。source patch derivationはhost commit I/Oから分離できなければならない（MUST）。
 
 Native filesystem write等のhost-specific mutationは[Runtime hosts](runtime-hosts.md)のcapability boundaryへ委譲する。
+
+### SOURCE-RECORD-015
+
+Added record draftとexisting record editは、base snapshot presenceやkey editability等のlifecycle差を除き、同じresolved value shapeとvalue authoring semanticsを使用しなければならない（MUST）。record addition専用にfrontend-owned YAML rendering、Enum lookup、Flags resolution、Custom Type reconstructionを持ってはならない（MUST NOT）。
 
 ## 検証ルール
 
 少なくとも次をfocused unit / integration / GUI workflow evidenceで検証する。
 
 - `records: []`のData documentへ最初のrecordを追加でき、schema declaration orderでfieldがrenderされる。
+- Primitive / Value Object / Enum / Flags / Custom TypeとRequired / Nullable / Arrayを含むsupported TableでAdd Recordが利用できる。
 - 既存block sequenceの末尾へAddしても既存record、comments、blank lines、line endings、quote / indentationが保持される。
-- `long` / `ulong` boundary valueがaddition boundaryでroundingされない。
+- nested `long` / `ulong` boundary valueがaddition boundaryでroundingされない。
+- 未入力fieldはcandidateで`null`となり、Nullableではvalid、Required / Array等ではdiagnosticとなるがvalidationだけを理由にSave拒否されない。
+- materialized Custom Type内の未入力nested valueにも`null` placeholderが適用され、Arrayの未入力`null`とmaterialized empty `[]`が区別される。
 - domain-invalidなnew record valueでもvalidationだけを理由にSave拒否されない。
 - 同一PK valueのrecordが複数存在してもselected occurrenceだけをDeleteする。
 - Deleteがtarget record外のstandalone comment / blank lineを削除しない。
@@ -125,19 +134,20 @@ fixtureを使用する場合、既存fixture sourceを通常GUI/CLI executionで
 
 ## 互換性
 
-既存YAML syntax、Table identity、field semantics、MessagePack key、generated C#、binary formatを変更しない。record addition / deletionはexisting Data documentの`records` sequenceへ新しいauthoring operationを追加するだけであり、source record orderを新しいdomain identityへ昇格させない。
+既存YAML syntax、Table identity、field semantics、MessagePack key、generated C#、binary formatを変更しない。record addition / deletionはexisting Data documentの`records` sequenceへauthoring operationを追加するだけであり、source record orderを新しいdomain identityへ昇格させない。
 
-既存[Source Record Edit](source-edit.md)のRequirement IDとmeaningは変更しない。本仕様は`SOURCE-EDIT-002`が禁止する「既存member edit operationへの暗黙なadd/delete混入」を維持したまま、別operationとしてstructural mutationを導入する。
+Add Recordのvalue category対応をApproved Type System全体へ拡張するが、保存後のvalue semanticsやkey semanticsを変更しない。Added record draftの未入力typed valueはYAML `null`としてcandidateへ含め、Nullable以外でのinvalidityは既存validation non-blocking contractに従う。
+
+既存[Source Record Edit](source-edit.md)の`SOURCE-EDIT-002`が禁止する「既存member edit operationへの暗黙なadd/delete混入」を維持したまま、record addition / deletionは別operationとして扱う。
 
 wire/API serialized shape、internal patch structure、exact diagnostic codeは固定しない。
 
 ## Open Questions
 
-None identified for the initial Required-Primitive-only Add / source-occurrence Delete slice.
+None identified. Exact typed DTO shape、draft data structure、editor component structureはimplementation detailとして固定しない。
 
 ## 非目標
 
-- Nullable / Array / Enum / Flags / Value Object / Custom Typeを含むTableへのrecord addition。
 - `$tags`の追加・編集。
 - record duplicate、move / reorder、bulk add / bulk delete。
 - schema / field / key / type mutation。

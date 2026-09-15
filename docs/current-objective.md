@@ -31,18 +31,20 @@ Approved Type SystemはValue Object、Enum、Flags Enum、Custom Type、Required
 - existing recordのPrimary / Secondary Key mutation、schema/type mutation、Build / Publish / Gitの暗黙実行を本Objectiveへ混入しない。
 - focused core/application regression、Tauri adapter test、React workflow test、repository required checks、final verificationでBlockingがないことを確認する。
 
-## Current design decision
+## Current approved direction
 
-**Shared schema-driven value authoring modelをexisting editとAdd Rowで共用するOption Cを採用し、source behaviorはP1 + D1を採用済み。**
+**Shared schema-driven value authoring modelをexisting editとAdd Rowで共用するOption C、P1 Fine-grained preservation、D1 YAML `null` placeholderはHuman Approval済みである。**
 
-Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)のOption Cを選択し、その後のdesign gateで次も選択した。
+Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md)のOption Cを選択し、その後P1 / D1を選択した。さらに独立reviewでBlocking / Non-blocking / QuestionsがNone、`Approved as Proposed: Yes`となった[spec-change 0015](spec-changes/0015-complex-value-authoring.md)をproposal全体として明示Approveした。
 
-- **P1 Fine-grained preservation**: structural complex editでもtarget subtree全体を再renderせず、必要なsource rangeだけをpatchし、安全にlocalizeできなければfail closedする。
-- **D1 YAML `null` placeholder**: Added record draftの未入力typed valueはSave candidate上で`null`として表現し、Required / Array等でinvalidな場合はshared validation diagnosticとして扱う。validationだけを理由にSaveを禁止しない。
+承認済みdeltaは同じcanonical mergeで次のApproved specificationへ適用する。
 
-これらを[spec-change 0015](spec-changes/0015-complex-value-authoring.md)へ反映し、現在は`Status: Proposed`で独立`review-spec`済みである。review recommendationは`Approved as Proposed: Yes`、Blocking / Non-blocking / QuestionsはいずれもNoneである。
+- [Source Record Edit](specs/source-edit.md): shared resolved value authoring boundary、lossless nested value、fine-grained source preservation / fail-closed。
+- [Source Record Mutation](specs/source-record-mutation.md): complex Add Record capability、Added record draftのD1 `null` placeholder、existing/new recordのshared value semantics。
+- [Data Editor](gui/data-editor/spec.md): existing non-key complex field edit、schema-aware complex editor、nested diagnostic / focus。
+- [Data Editor Record Mutation](gui/data-editor/record-mutation.md): complex TableのAdd Row、typed draft input、existing/new record共通editor semantics。
 
-次のgateはproposal全体に対するHuman Approvalである。Human Approval後にdeltaをcanonical specificationへatomicに適用し、spec-changeを`Applied`へ進め、implementation readinessを確認する。それまでは本格実装へ進まない。
+spec-change 0015は`Applied`のaudit recordとなり、implementation authorityは上記canonical specificationが所有する。現在のApproved authorityから実装に必要なobservable semanticsをrecoverでき、追加のHuman decision / Approval / Specification Gapは確認されていない。
 
 ## Explicit non-scope
 
@@ -67,11 +69,11 @@ Human maintainerは2026-09-16、[Complex Value Authoring v1 strategy RFC](rfcs/0
 
 - [Product vision](product/vision.md)
 - [Complex Value Authoring v1 strategy RFC](rfcs/0007-complex-value-authoring-strategy.md) — Accepted design rationale。implementation authorityではない
-- [Complex Value Authoring specification change](spec-changes/0015-complex-value-authoring.md) — current Proposed semantic delta。Human Approval前はimplementation authorityではない
-- [Data Editor](gui/data-editor/spec.md)
-- [Data Editor Record Mutation](gui/data-editor/record-mutation.md)
-- [Source Record Edit](specs/source-edit.md)
-- [Source Record Mutation](specs/source-record-mutation.md)
+- [Complex Value Authoring specification change](spec-changes/0015-complex-value-authoring.md) — Applied audit record。current semanticsのownerではない
+- [Data Editor](gui/data-editor/spec.md) — Approved implementation authority
+- [Data Editor Record Mutation](gui/data-editor/record-mutation.md) — Approved implementation authority
+- [Source Record Edit](specs/source-edit.md) — Approved implementation authority
+- [Source Record Mutation](specs/source-record-mutation.md) — Approved implementation authority
 - [Type System](specs/type-system/README.md)
 - [Primitive Types](specs/type-system/primitives.md)
 - [Field Modifiers](specs/type-system/field-modifiers.md)

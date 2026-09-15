@@ -4,7 +4,7 @@ Status: Approved
 
 ## 目的
 
-record Data documentをsource textへ直接触れずtable形式で編集できるmain editor surfaceとして提供する。初期sliceでは、選択中source data fileに含まれるrecordsをspreadsheet形式で表示・編集し、file単位でdirty / Saveを管理する。
+record Data documentをsource textへ直接触れずtable形式で編集できるmain editor surfaceとして提供する。選択中source data fileに含まれるrecordsをspreadsheet形式で表示・編集し、file単位でdirty / Saveを管理する。
 
 source保存のcanonical contractは[Source Record Edit](../../specs/source-edit.md)が所有し、Data EditorはそのGUI interactionを定義する。
 
@@ -20,7 +20,7 @@ fieldの表示順は[Table / Key](../../specs/table-and-keys.md)のschema declar
 
 ### GUI-DATA-LAYOUT-003
 
-同じlogical Tableが複数source data fileへ分割されていても、初期sliceのgridは選択中fileに属するrecordsだけを表示しなければならない（MUST）。rowは選択file内のsource record orderで表示し、同一Primary Key valueを持つ複数source recordが存在してもdeduplicateしてはならない（MUST NOT）。この表示順をdomain / binary semanticsへ昇格させてはならない（MUST NOT）。
+同じlogical Tableが複数source data fileへ分割されていても、gridは選択中fileに属するrecordsだけを表示しなければならない（MUST）。rowは選択file内のsource record orderで表示し、同一Primary Key valueを持つ複数source recordが存在してもdeduplicateしてはならない（MUST NOT）。この表示順をdomain / binary semanticsへ昇格させてはならない（MUST NOT）。
 
 ### GUI-DATA-LAYOUT-004
 
@@ -34,7 +34,9 @@ source diffはmain gridとは別のfile単位`Diff` view / editorとして表示
 
 ### GUI-DATA-STATE-001
 
-base snapshotに存在するexisting recordの通常cell editで編集可能なのはRequired Primitiveの非key fieldでなければならない（MUST）。Primary / Secondary Key構成field、Enum、Value Object、Nullable、Array、Custom Type等はexisting recordではread-onlyとして表示しなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
+base snapshotに存在するexisting recordでは、Primary / Secondary Key構成fieldをread-onlyとして表示しなければならない（MUST）。non-key fieldは、shared applicationが[Source Record Edit](../../specs/source-edit.md)の`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくv1 supported resolved value shapeとして安全にauthoring可能と報告する場合、Primitiveに限定せずValue Object / Enum / Flags Enum / Custom Type / Nullable / Arrayを含めeditableとして扱わなければならない（MUST）。
+
+unsupported、unresolved、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldはread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
 
 base snapshotに存在しないAdded record draftについては、別のApproved GUI specificationが初回Save前のediting scopeを定義してよい（MAY）。この例外からexisting recordのkey field editabilityを導出してはならない（MUST NOT）。Added record draftがSave成功して新しいbase snapshotのexisting recordになった後は、通常の本requirementのscopeへ戻らなければならない（MUST）。
 
@@ -70,13 +72,19 @@ dirty stateは「一度編集したか」ではなく、現在のlocal bufferと
 
 ### GUI-DATA-EDIT-001
 
-利用者は編集可能cellを直接変更できなければならない（MUST）。初期sliceではsingle-cell editingを提供する。range selection、一括paste、fill handle、複数record同時編集、履歴付きUndo/Redo等の高度なspreadsheet操作は必須としない。
+利用者は編集可能cellを直接変更できなければならない（MUST）。single-cell editingを提供する。range selection、一括paste、fill handle、複数record同時編集、履歴付きUndo/Redo等の高度なspreadsheet操作は必須としない。
 
 ### GUI-DATA-EDIT-002
 
-Primitive cell editorは入力をlosslessにshared application boundaryへ渡せなければならない（MUST）。特に`long` / `ulong`をfrontendのlossy numeric representationへ変換してはならず（MUST NOT）、[SOURCE-EDIT-003](../../specs/source-edit.md)に従わなければならない（MUST）。
+scalar leaf editorは入力をlosslessにshared application boundaryへ渡せなければならない（MUST）。特に`long` / `ulong`をfrontendのlossy numeric representationへ変換してはならず（MUST NOT）、[SOURCE-EDIT-003](../../specs/source-edit.md)および[SOURCE-EDIT-016](../../specs/source-edit.md)に従わなければならない（MUST）。
 
-active cell editを確定した時点でlocal bufferへ反映し、domain validation上invalidな入力であってもvalidationだけを理由に編集確定を拒否してはならない（MUST NOT）。exact widget種別やscalar formatting controlはimplementation detailとする。
+active editを確定した時点でlocal bufferへ反映し、domain validation上invalidな入力であってもvalidationだけを理由に編集確定を拒否してはならない（MUST NOT）。exact widget種別やscalar formatting controlはimplementation detailとする。
+
+### GUI-DATA-EDIT-003
+
+Complex value editorはshared resolved value authoring stateから構成しなければならない（MUST）。Nullableのnull/non-null transition、Array element add/remove/order、Enum single-member selection、Flags member set、Custom Type nested field editをschema-aware controlとして扱い、general-purpose raw YAML / JSON fragment editorを通常編集経路として使用してはならない（MUST NOT）。
+
+frontendはeditorを構成するためにYAML parse、type lookup、Enum / Flags resolution、Custom Type shape reconstructionをdomain authorityとして再実装してはならない（MUST NOT）。exact inline / popover / drawer component、spacing、routine focus stylingはdata safety / accessibilityを変えない範囲でimplementation detailとする。
 
 ### GUI-DATA-SAVE-001
 
@@ -134,11 +142,11 @@ file Saveにはplatform標準のSave shortcut（macOSではCmd+S、その他一�
 
 ### GUI-DATA-KEY-002
 
-gridはkeyboardだけでcell selectionとsingle-cell editingを行えなければならない（MUST）。Arrow keysでselection移動、EnterまたはF2相当でedit開始、Escapeで現在のcell edit cancel、Enter / Tab相当でedit確定と移動を可能にする。platform / component library差によりexact keyを追加してもよいが（MAY）、keyboard-only編集経路を失ってはならない（MUST NOT）。
+gridはkeyboardだけでcell selectionとsingle-cell editingを行えなければならない（MUST）。Arrow keysでselection移動、EnterまたはF2相当でedit開始、Escapeで現在のcell edit cancel、Enter / Tab相当でedit確定と移動を可能にする。platform / component library差によりexact keyを追加してもよいが（MAY）、keyboard-only編集経路を失ってはならない（MUST NOT）。complex editor内のnested controlもkeyboardで到達・操作可能でなければならない（MUST）。
 
 ## フォーカス（Focus）
 
-selected cell、editing cell、Problems panel、Diff view間はkeyboardでも移動可能でなければならない（MUST）。Problems entryから対応cellへ移動した場合はそのcellをselection / focus対象にしなければならない（MUST）。Diff viewからgridへ戻る場合は可能な範囲で直前のselection / focus contextを復元しなければならない（MUST）。
+selected cell、editing cell、nested complex editor control、Problems panel、Diff view間はkeyboardでも移動可能でなければならない（MUST）。Problems entryから対応cellまたはnested editor controlへ移動した場合はその対象をselection / focus対象にしなければならない（MUST）。Diff viewからgridへ戻る場合は可能な範囲で直前のselection / focus contextを復元しなければならない（MUST）。
 
 ## 検証（Validation）
 
@@ -152,11 +160,11 @@ validationは現在のeditor bufferに対して自動実行し、buffer変更後
 
 ### GUI-DATA-VAL-003
 
-cellへ対応づけられるdiagnosticが存在する場合、該当cellはgrid内でvalidation状態を識別できるinline marker / decorationを持たなければならない（MUST）。状態伝達を背景色・文字色など色だけに依存させてはならない（MUST NOT）。
+cellまたはnested value pathへ対応づけられるdiagnosticが存在する場合、該当cellはgrid内でvalidation状態を識別できるinline marker / decorationを持たなければならない（MUST）。nested value pathへ対応するeditor controlが表示されている場合は、そのcontrolにも対応するmarkerまたは状態を提供しなければならない（MUST）。状態伝達を背景色・文字色など色だけに依存させてはならない（MUST NOT）。
 
 ### GUI-DATA-VAL-004
 
-Problems panelはdiagnosticsを一覧表示し、cellへ対応づけ可能なentryを選択した場合は該当file / record / fieldのcellへ移動できなければならない（MUST）。cellへ一意に対応づけられないfile / project-level diagnosticもProblems panelから失ってはならない（MUST NOT）。
+Problems panelはdiagnosticsを一覧表示し、cellまたはnested value pathへ対応づけ可能なentryを選択した場合は該当file / record / fieldのcellへ移動し、nested editor controlを一意に特定できる場合はそのcontrolへfocus / navigationを提供しなければならない（MUST）。cellへ一意に対応づけられないfile / project-level diagnosticもProblems panelから失ってはならない（MUST NOT）。
 
 ### GUI-DATA-VAL-005
 
@@ -178,7 +186,7 @@ Save failure時に未保存入力を失ってはならない（MUST NOT）。Fai
 
 ## アクセシビリティ（Accessibility）
 
-gridのrow / column / cell関係、editable / read-only、selected / editing、dirty、validation、Conflict等の状態をassistive technologyから識別可能にしなければならない（MUST）。Problems entryと対応cellの関係もkeyboard / screen reader利用時に辿れる必要がある。状態伝達を色だけに依存させてはならない（MUST NOT）。
+gridのrow / column / cell関係、editable / read-only、selected / editing、dirty、validation、Conflict等の状態をassistive technologyから識別可能にしなければならない（MUST）。complex editorのnested field / element / nullable state / enum selection等の関係とeditable stateもassistive technologyから識別可能でなければならない（MUST）。Problems entryと対応cellまたはnested controlの関係もkeyboard / screen reader利用時に辿れる必要がある。状態伝達を色だけに依存させてはならない（MUST NOT）。
 
 ## 参照artifact（Reference Artifacts）
 
@@ -186,9 +194,9 @@ None.
 
 ## 初期sliceの非目標
 
-- recordの追加・削除。
+- recordの追加・削除（別のApproved Record Mutation仕様が所有する）。
 - schema、Table、Value Object、Enum等の編集・作成。
-- key fieldの編集。
+- existing recordのkey field編集。
 - logical Table全体を複数file横断で一括編集するview。
 - range operation、一括paste、fill handle、multi-cell editing、履歴付きUndo/Redo。
 - Git stage / commit / push。
@@ -215,4 +223,4 @@ annotation / computed / presentation情報をTable schemaやMasterMemory runtime
 
 ## 未解決事項（Open Questions）
 
-None identified for the initial existing-record Data Editor. Programmable View / Computed / Annotation column、Table横断view、高度なspreadsheet操作、layout customization等はcurrent Objective外の将来機能として別途仕様化する。
+None identified for the existing-record Data Editor contract. Programmable View / Computed / Annotation column、Table横断view、高度なspreadsheet操作、layout customization等はcurrent Objective外の将来機能として別途仕様化する。

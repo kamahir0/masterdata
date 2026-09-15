@@ -8,7 +8,7 @@ Domain: Source Editing
 
 本仕様は、GUI等のauthoring surfaceから既存Data document内のrecord valueを変更し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
 
-YAML syntax / scalar classificationは[Masterdata YAML subset](yaml-subset.md)、Table / record semanticsは[Table / Primary Key / Secondary Key](table-and-keys.md)、Primitive value domainは[Primitive Types](type-system/primitives.md)、host compositionは[Runtime hosts](runtime-hosts.md)が所有する。本仕様はそれらを再定義せず、source snapshot、record provenance、source-preserving patch、file commit、lost-update防止、およびsave resultを所有する。
+YAML syntax / scalar classificationは[Masterdata YAML subset](yaml-subset.md)、Table / record semanticsは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、host compositionは[Runtime hosts](runtime-hosts.md)が所有する。本仕様はそれらを再定義せず、source snapshot、record provenance、resolved value authoring boundary、source-preserving patch、file commit、lost-update防止、およびsave resultを所有する。
 
 Schema Migrationはproject-wideなschema transformationであり、通常のrecord value editのauthorityではない。ただし[Schema Migration v1](schema-migration.md)のsource-preserving rewriteとlost-update safetyを、この単一file edit contractの既存安全性evidenceとして参照する。
 
@@ -31,13 +31,13 @@ Schema Migrationはproject-wideなschema transformationであり、通常のreco
 
 ### SOURCE-EDIT-002
 
-本仕様の初期operationは、既存Data document内の既存record member valueの変更だけを対象としなければならない（MUST）。recordの追加・削除、schema変更、field追加・削除・rename、`$tags`変更、Table identity変更、source file rename/moveをこのoperationへ暗黙に含めてはならない（MUST NOT）。
+本仕様のoperationは、既存Data document内の既存record member valueの変更だけを対象としなければならない（MUST）。recordの追加・削除、schema変更、field追加・削除・rename、`$tags`変更、Table identity変更、source file rename/moveをこのoperationへ暗黙に含めてはならない（MUST NOT）。
 
-GUIの初期編集可能field範囲はGUI specificationが所有する。本source-edit contractの対象が既存record memberであることから、将来の別typed editor capabilityを自動的に許可してはならない（MUST NOT）。
+GUIの編集可能field範囲はGUI specificationが所有する。本source-edit contractがvalue shapeを安全に表現できることだけから、GUIでのeditabilityやkey mutationを自動的に許可してはならない（MUST NOT）。
 
 ### SOURCE-EDIT-003
 
-editor / host / application boundaryを通るscalar edit representationは、対象Primitive valueまたは入力textをlosslessに保持できなければならない（MUST）。特に`long`と`ulong`は、それぞれApproved Primitive Typesが定める全64-bit rangeをroundingなしで往復できなければならず（MUST）、frontendのIEEE-754 `number`等、全rangeをexactに表現できないrepresentationへ強制変換してはならない（MUST NOT）。
+editor / host / application boundaryを通るscalar leaf representationは、対象Primitive value、Value Object underlying scalar、または入力textをlosslessに保持できなければならない（MUST）。特に`long`と`ulong`は、それぞれApproved Primitive Typesが定める全64-bit rangeをroundingなしで往復できなければならず（MUST）、frontendのIEEE-754 `number`等、全rangeをexactに表現できないrepresentationへ強制変換してはならない（MUST NOT）。
 
 wire JSON shape、Rust type、TypeScript type、RPC field名は本仕様で固定しない。
 
@@ -53,11 +53,15 @@ Save candidateの生成はsource-preservingかつdeterministicでなければな
 
 変更不要なsource fileはbyte-for-byte unchangedでなければならない（MUST）。対象fileでも、編集対象valueと無関係なcomments、quote style、indentation、blank lines、line ending / newline style、mapping / sequence formatting、record order、mapping member order、およびunrelated source textを変更または削除してはならない（MUST NOT）。
 
-編集対象scalar自身のquote / styleは、新しい入力を安全に表現するために必要な場合だけ変更してよい（MAY）。semantic AST全体を通常serializerで全面再出力する方式を通常Save pathとして使用してはならない（MUST NOT）。
+scalar editでは、編集対象scalar自身のquote / styleは新しい入力を安全に表現するために必要な場合だけ変更してよい（MAY）。semantic AST全体を通常serializerで全面再出力する方式を通常Save pathとして使用してはならない（MUST NOT）。
+
+Array element add/remove、Nullable state transition、Custom Type nested edit、Flags member add/remove等のstructural complex editでも、Save candidateは変更対象のlogical value pathとそのsyntaxを成立させるために必要な最小source rangeだけをpatchしなければならない（MUST）。target value subtree内であっても、直接変更対象ではないsibling value、comment、quote/style、flow/block style、blank line、member/element source textをbroad subtree renderingによって置き換えてはならない（MUST NOT）。
+
+valid YAMLを維持するためにseparator、indentation、collection marker等の周辺syntaxを挿入・除去する必要がある場合、その必要範囲だけをpatchへ含めてよい（MAY）。structural operationにより削除されるnode自身の内部source textはnodeとともに除去してよい（MAY）が、そのnodeの外側にあるstandalone comment等をownership推測だけで削除してはならない（MUST NOT）。
 
 ### SOURCE-EDIT-006
 
-base snapshotに対して編集対象source locationを安全かつ一意に再特定できない場合、Save candidate生成を失敗させなければならず（MUST）、full-file reserialization、Primary Keyだけによる別record探索、または近似的なtext searchへfallbackして成功扱いしてはならない（MUST NOT）。
+base snapshotに対して編集対象source location、nested logical value path、および必要な周辺syntax rangeを安全かつ一意に再特定できない場合、Save candidate生成を失敗させなければならず（MUST）、full-file reserialization、target subtree全体のcanonical rendering、Primary Keyだけによる別record探索、または近似的なtext searchへfallbackして成功扱いしてはならない（MUST NOT）。
 
 このfailureではworkspace sourceを変更してはならない（MUST NOT）。
 
@@ -104,24 +108,36 @@ process crash、OS crash、browser crash、power lossを含むglobal filesystem 
 
 ### SOURCE-EDIT-013
 
-record SaveはBuild、Publish、Git stage / commit / push、schema Migration、generated C#更新、binary更新を暗黙に開始してはならない（MUST NOT）。Buildは保存済みsourceを入力とする既存Build operationとして別に実行する。
+record SaveはBuild、Publish、Git stage / commit / push、schema Migration、Type Migration、generated C#更新、binary更新を暗黙に開始してはならない（MUST NOT）。Buildは保存済みsourceを入力とする既存Build operationとして別に実行する。
 
 ### SOURCE-EDIT-014
 
-source patch derivationとsource commit I/Oの責務は分離できなければならない（MUST）。source location resolution、candidate derivation、validationとのcomposition等のshared application/domain semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。
+source patch derivationとsource commit I/Oの責務は分離できなければならない（MUST）。source location resolution、resolved value authoring state、candidate derivation、validationとのcomposition等のshared application/domain semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。
 
 Native filesystem write、Browser workspace write、permission、path safety、exact file identityの取得等は[Runtime hosts](runtime-hosts.md)のhost boundaryに従う。
+
+### SOURCE-EDIT-015
+
+Data Editor向けのshared application boundaryは、fieldのresolved base type category、Required / Nullable / Array shape、Custom Typeのnested field shape、Enum / Flagsのdeclared member set、およびcurrent source valueを、frontendがYAMLまたはtype declarationを再解釈せずeditorを構成できる形で提供しなければならない（MUST）。exact wire/API shapeは固定しない。frontendはこの情報からYAML domain semanticsを再構築してはならない（MUST NOT）。
+
+current source valueがdomain-invalidでも、shared boundaryがsource valueをlosslessに保持できる場合はそのvalueを黙ってvalid valueへcoerceしてはならない（MUST NOT）。安全にtyped authoring stateへ投影できないsource shapeでは、fieldを近似編集可能として扱わず、original sourceを保持したままread-only reasonとshared diagnosticを提示できなければならない（MUST）。
+
+### SOURCE-EDIT-016
+
+Complex value edit requestはnested scalarを含むvalue treeをlosslessに表現しなければならない（MUST）。特に任意のnested positionにある`long` / `ulong`は全64-bit rangeをroundingなしで往復できなければならず（MUST）、frontendのIEEE-754 `number`へ強制変換してはならない（MUST NOT）。Value ObjectはApproved underlying scalar representation、Enumはsymbolic member、Flagsはsymbolic member sequence、Custom Typeはdeclared field mapping、Nullable / ArrayはApproved Type Systemのshape semanticsを使用しなければならない（MUST）。
 
 ## 検証ルール
 
 少なくとも次をfocused unit / integration / GUI workflow evidenceで検証する。
 
 - 同一PK valueを持つ別source recordが存在しても、選択したsource occurrenceだけが変更される。
-- `long` / `ulong` boundary valueがfrontend/application boundaryでroundingされない。
+- Primitiveおよびnested complex value内の`long` / `ulong` boundary valueがfrontend/application boundaryでroundingされない。
+- Primitive / Value Object / Enum / Flags / Custom TypeとRequired / Nullable / Arrayのresolved authoring stateがfrontendでYAML/type再解釈なしに利用できる。
+- domain-invalidなexisting sourceを黙ってcoerceせず、安全にtyped stateへ投影できないfieldはoriginal sourceを保持してread-onlyになる。
 - 同一fileの複数cell変更は1 candidateへ入り、別fileは変更されない。
 - domain-invalidなedited valueでもvalidationだけを理由にSave拒否されない。
-- comment、blank line、line ending、unrelated quote / indentation / order、およびunchanged file bytesが保持される。
-- source locationを再特定できない場合にfull serializationへfallbackしない。
+- nested leaf edit、Nullable transition、Array add/remove/reorder、Flags member add/remove、Custom Type nested editで、変更対象外sibling/comment/styleおよび別field / record / file bytesが保持される。
+- nested source locationを安全にlocalizeできない場合にsubtree/full serializationへfallbackしない。
 - base snapshot後のexternal editを通常SaveがConflictとして拒否し、external bytesを上書きしない。
 - explicit Overwrite前にもcurrent external identityを再確認する。
 - Success / Conflict / Failure / Outcome Unknownが混同されず、unknown resultでstale automatic retryしない。
@@ -131,9 +147,11 @@ fixtureを使用する場合、既存fixture sourceを通常GUI/CLI executionで
 
 ## 互換性
 
-既存YAML syntax、Table identity、Field semantics、MessagePack key、generated C#、binary formatを変更しない。source-preserving editは既存source textとGit workflowとの互換性を守るための新しいauthoring contractである。
+既存YAML syntax、Table identity、Field semantics、MessagePack key、generated C#、binary formatを変更しない。source-preserving editは既存source textとGit workflowとの互換性を守るauthoring contractである。
 
-本仕様はsource file pathを新しいdomain identityへ昇格させず、source provenanceとしてのみ使用する。wire/API serialized shapeを固定しないため、このproposal単体ではpublic protocol compatibilityを追加しない。
+complex value authoringはApproved Type Systemの既存data representationを編集対象へ拡張するだけであり、保存後のdomain semanticsを変更しない。structural complex editでも直接変更対象と必要syntax以外のsource bytesを保持し、安全にlocalizeできないsource shapeはbroad rewriteせずfail closedする。
+
+本仕様はsource file pathを新しいdomain identityへ昇格させず、source provenanceとしてのみ使用する。wire/API serialized shapeを固定しないため、この仕様単体ではpublic protocol compatibilityを追加しない。
 
 ## 例
 
@@ -153,7 +171,7 @@ records:
 
 ## 未解決事項（Open Questions）
 
-None identified for the initial existing-record save contract. Exact library、patch data structure、wire shape、atomic replace mechanism、debounce interval、diagnostic codeはimplementation / GUI refinement detailとして本仕様では固定しない。
+None identified. Exact library、patch data structure、wire shape、atomic replace mechanism、debounce interval、diagnostic code、editor component structureはimplementation / GUI refinement detailとして本仕様では固定しない。
 
 ## 非目標
 

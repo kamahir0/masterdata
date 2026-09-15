@@ -1,6 +1,6 @@
 # Development State
 
-Stage: verification-ready
+Stage: objective-complete
 Candidate: fc03700ad188773cee4c0b291f5661368bd44979
 
 ## Blocking findings
@@ -16,15 +16,18 @@ None.
 
 RFC 0006のShared Type Migration v1 + Plan / Diff decisionは、このApproved contractへ反映済みである。
 
-## Candidate evidence
+## Final verification evidence
 
-旧candidate `0d4105eff8613fec605903f6184185274382a4e3`のfinal verificationではsemantic boundaryに新たなBlockingはなく、CI run #270のType Editor dirty-buffer regression timeoutがBlockingとなった。
+Candidate `fc03700ad188773cee4c0b291f5661368bd44979`をfreshな別passでCurrent ObjectiveとApproved Type Migration / GUI Type Editor contractへ照合した。
 
-新candidateでは該当testを2ケースへ分離し、ケースごとの10秒timeoutとApply完了待ちを設定した。runtimeとApproved semanticsは変更していない。
-Type Editor 12 tests、`npm ci`後の修正2ケースの3回連続実行、`cargo xtask check-all`、`review-code` self-reviewを完了した。
-3 OSのremote CI再確認はfinal verificationへ残す。
+旧candidate `0d4105eff8613fec605903f6184185274382a4e3`のfinal verificationではsemantic boundary、stale preflight、source preservation、rollback / Recovery Required、dirty-buffer compositionに新たなBlockingはなく、clean CIのType Editor dirty-buffer regression timeoutだけがBlockingだった。
+
+correction candidateはそのBlockingだけをnarrow scopeで修正し、`apps/gui/tests/type-editor.test.tsx`のaffected dirty / unrelated dirtyを独立したtestへ分離した。affected dirtyではApply disabled、識別可能なwarning、mutation未開始を確認し、unrelated dirtyではApply許可、affected path authorization、backend Apply、result callback、finally完了を確認する。runtimeとApproved semanticsは変更していない。
+
+CI run #272はtransition commit `9b8def51b3b8abe61378918f5a95afe73a56ac51`（candidate直後のDevelopment State metadata-only commit）で完了し、Windows、Ubuntu、macOSの3 jobすべてsuccessとなった。各OSの`cargo xtask check-all`が成功し、Ubuntuの`cargo xtask check-wasm`も成功した。
+
+`review-code` final verification verdictはSpecification Conformance: Pass、Tests and Regression Evidence: sufficient、Rationale Freshness: Fresh、Evidence Integrity: intact、Architecture: boundary violationなし、Findings: None identified、Ready to merge: Yes。
 
 ## Next activity
 
-記録されたexact Candidate SHAをfreshな別passでfinal verificationし、修正範囲とremote CIの結果を確認する。
-[Current Objective](current-objective.md)のcompletion boundaryとApproved authorityに対してBlockingがない場合だけ`objective-complete`へ進める。
+Type Editor v1 Objectiveは完了した。次priorityは自動昇格せず、[Current Objective](current-objective.md)のNext candidateとcurrent reality / product valueを比較してHumanが選択する。

@@ -156,6 +156,7 @@ fn development_workflow_keeps_structural_contracts() {
         "## Implementation readiness gate",
         "## Activity class and continuation boundary",
         "## Decision presentation gate for `decision-required`",
+        "## Priority presentation gate for `objective-complete`",
         "## Candidate / state transition",
         "## Human-facing execution summary",
         "## Post-action report verification",

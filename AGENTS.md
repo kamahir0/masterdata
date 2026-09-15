@@ -55,7 +55,7 @@ Development Stateはworkの現在地点だけを表し、agent identity、sessio
 
 Stage routingと短い「進める」のauthorization boundaryは`docs/execution-workflow.md`が唯一のowner。`NON_IMPLEMENTATION`と`IMPLEMENTATION`を短いcontinuationだけで同一turnに跨がない（MUST NOT）。
 
-Current Objectiveのdevelopment/status responseは同workflowのHuman-facing execution summaryを使う。presentation stateはDevelopment Stateへ保存しない。
+Current Objectiveのdevelopment/status/priority responseは同workflowのHuman-facing execution summaryを使う。`objective-complete`で次候補を比較・推薦するresponseもpriority responseに含む。Human selection前に推薦をselected priorityとして扱わない。presentation stateはDevelopment Stateへ保存しない。
 
 ## Activity-specific procedures
 

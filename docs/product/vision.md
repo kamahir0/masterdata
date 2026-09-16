@@ -31,6 +31,9 @@ specificationで承認されるまで固定しない。
 将来候補として、Generated C# Preview、explicit C# export、read-only binary inspect/query、formatter、SQL-like UXを検討し得る。
 これらはProduct Direction上のcandidateであり、現時点のApproved RequirementやCLI grammarではない。
 
+このdirectionを日常の制作workflowと実装packageへ展開した未承認の設計案は、
+[Authoring system v1 RFC](../rfcs/0008-authoring-system-v1.md)を参照する。RFCの提案をApproved behaviorとは扱わない。
+
 ## 成功条件
 
 - developerがUnityを開かずにprojectをdiscoverし、validateできる。

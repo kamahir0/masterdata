@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+const authoringTypes = await readFile(new URL("../src/data-editor-types.ts", import.meta.url), "utf8");
 
 test("GUI keeps filesystem and YAML semantics behind Tauri commands", () => {
   assert.match(source, /invoke<AuthoringWorkspace>\("authoring_workspace"/);
@@ -43,8 +44,8 @@ test("GUI uses shared manual validation and full canonical build", () => {
 });
 
 test("GUI keeps 64-bit primitive edits as text at the frontend boundary", () => {
-  assert.match(source, /value: string/);
-  assert.match(source, /<Input[\s\S]*value=\{value\}/);
+  assert.match(source, /value: AuthoringValue/);
+  assert.match(authoringTypes, /kind: "number"; value: string/);
   assert.doesNotMatch(source, /parseInt\(|parseFloat\(|Number\(value\)|valueAsNumber/);
 });
 

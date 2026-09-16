@@ -37,6 +37,8 @@ pub struct Diagnostic {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schema_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub record_identity: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
@@ -57,6 +59,7 @@ impl Diagnostic {
             line: None,
             column: None,
             schema_path: None,
+            value_path: None,
             record_identity: None,
             suggestion: None,
             related_requirements: Vec::new(),
@@ -70,6 +73,11 @@ impl Diagnostic {
 
     pub fn with_schema_path(mut self, schema_path: impl Into<String>) -> Self {
         self.schema_path = Some(schema_path.into());
+        self
+    }
+
+    pub fn with_value_path(mut self, value_path: impl Into<String>) -> Self {
+        self.value_path = Some(value_path.into());
         self
     }
 

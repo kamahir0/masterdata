@@ -776,20 +776,20 @@ fn validate_record(
             continue;
         };
         if let Err(error) = type_system.validate_field_value(field, value) {
-            diagnostics.push(
-                record_diagnostic(
-                    "E-TABLE-INVALID-RECORD-VALUE",
-                    format!(
-                        "field `{}` is invalid: {}",
-                        field.name,
-                        error.diagnostic().message
-                    ),
-                    path,
-                    record_index,
-                    "SCHEMA-TABLE-006",
-                )
-                .with_related_requirement(requirement_for_field_modifier(field.modifier)),
-            );
+            let mut diagnostic = record_diagnostic(
+                "E-TABLE-INVALID-RECORD-VALUE",
+                format!(
+                    "field `{}` is invalid: {}",
+                    field.name,
+                    error.diagnostic().message
+                ),
+                path,
+                record_index,
+                "SCHEMA-TABLE-006",
+            )
+            .with_related_requirement(requirement_for_field_modifier(field.modifier));
+            diagnostic.value_path = type_system.invalid_field_value_path(field, value);
+            diagnostics.push(diagnostic);
             valid = false;
         }
         if field.name != "$tags" {

@@ -2,12 +2,14 @@ import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from '../src/App';
+import { authoringValuesEqual, type AuthoringValue } from '../src/data-editor-types';
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 const validation = { valid: true, diagnostics: [] };
+const numberShape = { name: 'weight', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } };
 const snapshot = () => ({ path: 'data.yaml', table: 'item', baseSource: 'weight: 10', baseContentIdentity: 'base',
-  columns: [{ name: 'weight', typeName: 'ulong', editable: true, keyField: false }],
-  rows: [{ recordIndex: 0, cells: [{ field: 'weight', text: '10', editable: true }] }], validation });
+  columns: [{ name: 'weight', typeName: 'ulong', editable: true, keyField: false, shape: numberShape, readOnlyReason: null }],
+  rows: [{ recordIndex: 0, cells: [{ field: 'weight', text: '10', value: { kind: 'number', value: '10' }, editable: true, readOnlyReason: null }] }], validation });
 const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
   { field: 'id', text: '1', editable: false },
   { field: 'weight', text: '10', editable: true },
@@ -15,15 +17,67 @@ const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
 ] }]) => ({
   path: 'data.yaml', table: 'item', baseSource: 'kind: data\ntable: item\nrecords: []\n', baseContentIdentity: 'base',
   columns: [
-    { name: 'id', typeName: 'ulong', editable: false, keyField: true },
-    { name: 'weight', typeName: 'ulong', editable: true, keyField: false },
-    { name: 'note', typeName: 'string', editable: true, keyField: false },
+    { name: 'id', typeName: 'ulong', editable: false, keyField: true, shape: { name: 'id', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } }, readOnlyReason: null },
+    { name: 'weight', typeName: 'ulong', editable: true, keyField: false, shape: numberShape, readOnlyReason: null },
+    { name: 'note', typeName: 'string', editable: true, keyField: false, shape: { name: 'note', typeName: 'string', modifier: 'required', shape: { kind: 'primitive', primitive: 'string' } }, readOnlyReason: null },
   ],
-  rows, addRow: { supported: true, reason: null }, validation,
+  rows: rows.map((row) => ({ ...row, cells: row.cells.map((cell) => ({
+    ...cell,
+    value: cell.value ?? (cell.field === 'note'
+      ? { kind: 'string', value: cell.text }
+      : { kind: 'number', value: cell.text }),
+    readOnlyReason: null,
+  })) })),
+  addRow: { supported: true, reason: null }, validation,
 });
+const complexSnapshot = (rows: any[] = [{
+  recordIndex: 0,
+  cells: [
+    { field: 'id', text: '1', value: { kind: 'number', value: '1' }, editable: false },
+    { field: 'profile', text: '', value: { kind: 'mapping', entries: [
+      { name: 'credits', value: { kind: 'number', value: '18446744073709551615' } },
+      { name: 'label', value: { kind: 'string', value: 'kept' } },
+      { name: 'alias', value: { kind: 'string', value: 'current' } },
+    ] }, editable: true },
+    { field: 'tags', text: '', value: { kind: 'sequence', sourceIdentity: true, items: [
+      { sourceIndex: 0, value: { kind: 'string', value: 'first' } },
+      { sourceIndex: 1, value: { kind: 'string', value: 'second' } },
+    ] }, editable: true },
+    { field: 'status', text: 'Ready', value: { kind: 'string', value: 'Ready' }, editable: true },
+    { field: 'access', text: '[None]', value: { kind: 'sequence', sourceIdentity: true, items: [
+      { sourceIndex: 0, value: { kind: 'string', value: 'None' } },
+    ] }, editable: true },
+    { field: 'bonus', text: 'null', value: { kind: 'null' }, editable: true },
+  ],
+}]) => {
+  const profile = { kind: 'custom', name: 'Profile', fields: [
+    { name: 'credits', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } },
+    { name: 'label', typeName: 'string', modifier: 'required', shape: { kind: 'primitive', primitive: 'string' } },
+    { name: 'alias', typeName: 'string', modifier: 'nullable', shape: { kind: 'primitive', primitive: 'string' } },
+  ] };
+  const fields = [
+    { name: 'id', typeName: 'ulong', editable: false, keyField: true, shape: { name: 'id', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } }, readOnlyReason: null },
+    { name: 'profile', typeName: 'Profile', editable: true, keyField: false, shape: { name: 'profile', typeName: 'Profile', modifier: 'required', shape: profile }, readOnlyReason: null },
+    { name: 'tags', typeName: 'string', editable: true, keyField: false, shape: { name: 'tags', typeName: 'string', modifier: 'array', shape: { kind: 'primitive', primitive: 'string' } }, readOnlyReason: null },
+    { name: 'status', typeName: 'Status', editable: true, keyField: false, shape: { name: 'status', typeName: 'Status', modifier: 'required', shape: { kind: 'enum', name: 'Status', underlying: 'int', members: ['Ready', 'Paused'] } }, readOnlyReason: null },
+    { name: 'access', typeName: 'Permissions', editable: true, keyField: false, shape: { name: 'access', typeName: 'Permissions', modifier: 'required', shape: { kind: 'flags', name: 'Permissions', underlying: 'int', members: ['None', 'Read', 'Write', 'Execute'] } }, readOnlyReason: null },
+    { name: 'bonus', typeName: 'Profile', editable: true, keyField: false, shape: { name: 'bonus', typeName: 'Profile', modifier: 'nullable', shape: profile }, readOnlyReason: null },
+  ];
+  return {
+    path: 'data.yaml', table: 'item', baseSource: 'kind: data\ntable: item\nrecords: []\n', baseContentIdentity: 'base',
+    columns: fields,
+    rows: rows.map((row) => ({ ...row, cells: row.cells.map((cell: any) => ({ ...cell, readOnlyReason: null })) })),
+    addRow: { supported: true, reason: null }, validation,
+  };
+};
 const workspace = { project: { project_root: '/project', name: 'Demo', project_id: 'demo' }, sourceRoots: ['.'],
   files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data' }],
   capabilities: { workspaceRead: true, workspaceWrite: true, validate: true, build: true } };
+async function chooseOption(label: string, option: string) {
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: label }));
+  const options = await screen.findAllByText(option, { selector: '.ant-select-item-option-content' });
+  fireEvent.click(options.at(-1)!);
+}
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
 beforeEach(() => {
@@ -42,7 +96,18 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
-async function open() { render(<App />); return await screen.findByRole('textbox', { name: 'record 1 weight' }); }
+async function open(label = 'record 1 weight') { render(<App />); return await screen.findByRole('textbox', { name: label }); }
+
+test('sequence equality treats source occurrence order as an authoring change', () => {
+  const items = [
+    { sourceIndex: 0, value: { kind: 'string', value: 'same' } },
+    { sourceIndex: 1, value: { kind: 'string', value: 'same' } },
+  ];
+  const original: AuthoringValue = { kind: 'sequence', sourceIdentity: true, items };
+  const moved: AuthoringValue = { kind: 'sequence', sourceIdentity: true, items: [items[1], items[0]] };
+  expect(authoringValuesEqual(original, moved)).toBe(false);
+  expect(authoringValuesEqual(original, structuredClone(original))).toBe(true);
+});
 
 test('late pre-save no-op preview cannot discard a new edit after Save resets revision', async () => {
   let resolveOld!: (value: unknown) => void;
@@ -181,6 +246,135 @@ test('Add Row creates an editable draft, validates it through the shared preview
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
   expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(true);
 }, 20_000);
+
+test('schema-aware controls edit nested exact integers, nullable fields, arrays, Enum, and Flags', async () => {
+  openSnapshot = complexSnapshot();
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return { candidateSource: 'candidate', changed: true, validation };
+  };
+  render(<App />);
+
+  const credits = await screen.findByRole('textbox', { name: 'credits' }) as HTMLInputElement;
+  expect(credits.value).toBe('18446744073709551615');
+  fireEvent.change(screen.getByRole('textbox', { name: 'label' }), { target: { value: 'updated' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Move record 1 tags item 2 up' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add record 1 tags item' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'record 1 tags item 3' }), { target: { value: 'third' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Set alias to null' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Materialize record 1 bonus (Profile) fields' }));
+  fireEvent.change(screen.getAllByRole('textbox', { name: 'credits' })[1], { target: { value: '7' } });
+  await chooseOption('record 1 status', 'Paused');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'record 1 access Write' }));
+
+  await waitFor(() => expect(previewArgs?.edits?.map((edit: any) => edit.field).sort())
+    .toEqual(['access', 'bonus', 'profile', 'status', 'tags']));
+  const edits = Object.fromEntries(previewArgs.edits.map((edit: any) => [edit.field, edit.value]));
+  const profile = edits.profile;
+  expect(profile.entries.find((entry: any) => entry.name === 'credits').value)
+    .toEqual({ kind: 'number', value: '18446744073709551615' });
+  expect(profile.entries.find((entry: any) => entry.name === 'label').value)
+    .toEqual({ kind: 'string', value: 'updated' });
+  expect(profile.entries.find((entry: any) => entry.name === 'alias').value)
+    .toEqual({ kind: 'null' });
+  expect(edits.bonus.entries.find((entry: any) => entry.name === 'credits').value)
+    .toEqual({ kind: 'number', value: '7' });
+  expect(edits.bonus.entries.find((entry: any) => entry.name === 'label').value)
+    .toEqual({ kind: 'null' });
+  expect(edits.tags.items).toEqual([
+    { sourceIndex: 1, value: { kind: 'string', value: 'second' } },
+    { sourceIndex: 0, value: { kind: 'string', value: 'first' } },
+    { sourceIndex: null, value: { kind: 'string', value: 'third' } },
+  ]);
+  expect(edits.status).toEqual({ kind: 'string', value: 'Paused' });
+  expect(edits.access.items).toEqual([{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }]);
+}, 15_000);
+
+test('Value Object editor sends its ulong underlying as exact decimal text', async () => {
+  const base = snapshot();
+  openSnapshot = {
+    ...base,
+    columns: [{
+      ...base.columns[0],
+      typeName: 'ItemId',
+      shape: {
+        name: 'weight',
+        typeName: 'ItemId',
+        modifier: 'required',
+        shape: { kind: 'value_object', name: 'ItemId', underlying: 'ulong' },
+      },
+    }],
+    rows: [{ ...base.rows[0], cells: [{
+      ...base.rows[0].cells[0],
+      text: '18446744073709551615',
+      value: { kind: 'number', value: '18446744073709551615' },
+    }] }],
+  } as any;
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return { candidateSource: 'candidate', changed: true, validation };
+  };
+  const input = await open();
+  expect((input as HTMLInputElement).value).toBe('18446744073709551615');
+  fireEvent.change(input, { target: { value: '18446744073709551614' } });
+  await waitFor(() => expect(previewArgs?.edits?.[0]?.value)
+    .toEqual({ kind: 'number', value: '18446744073709551614' }));
+});
+
+test('Add Row starts with null placeholders and materializes complex values only after explicit choices', async () => {
+  openSnapshot = complexSnapshot([]);
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return { candidateSource: openSnapshot.baseSource, changed: true, validation };
+  };
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
+  await screen.findByRole('textbox', { name: 'new record id' });
+  await waitFor(() => expect(previewArgs?.addedRecords).toHaveLength(1));
+  expect(previewArgs.addedRecords[0].fields.map((field: any) => field.value.kind))
+    .toEqual(['null', 'null', 'null', 'null', 'null', 'null']);
+  expect(screen.getByText('No flags value selected yet.')).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Materialize new record profile (Profile) fields' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Make empty array for new record tags' }));
+  await chooseOption('new record status', 'Paused');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'new record access Write' }));
+  await waitFor(() => {
+    const values = Object.fromEntries(previewArgs?.addedRecords?.[0]?.fields?.map((field: any) => [field.field, field.value]) ?? []);
+    expect(values.profile?.kind).toBe('mapping');
+    expect(values.status).toEqual({ kind: 'string', value: 'Paused' });
+    expect(values.access).toEqual({ kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }] });
+  });
+
+  const fields = Object.fromEntries(previewArgs.addedRecords[0].fields.map((field: any) => [field.field, field.value]));
+  expect(fields.profile.entries.map((entry: any) => entry.value.kind)).toEqual(['null', 'null', 'null']);
+  expect(fields.tags).toEqual({ kind: 'sequence', sourceIdentity: true, items: [] });
+  expect(fields.status).toEqual({ kind: 'string', value: 'Paused' });
+  expect(fields.access).toEqual({ kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }] });
+  expect(fields.bonus).toEqual({ kind: 'null' });
+}, 15_000);
+
+test('nested value diagnostics focus the matching Custom Type field', async () => {
+  openSnapshot = complexSnapshot();
+  openSnapshot.validation = {
+    valid: false,
+    diagnostics: [{
+      code: 'E-TABLE-INVALID-RECORD-VALUE',
+      source: '/project/data.yaml',
+      record_identity: 'record[0]',
+      value_path: '/credits',
+      message: 'field \`profile\` is invalid',
+    }],
+  } as any;
+  render(<App />);
+  const credits = await screen.findByRole('textbox', { name: 'credits' });
+  fireEvent.click(screen.getByRole('button', { name: /E-TABLE-INVALID-RECORD-VALUE/ }));
+  await waitFor(() => expect(document.activeElement).toBe(credits));
+  expect(credits.getAttribute('aria-invalid')).toBe('true');
+}, 10_000);
 
 test('deleting a new draft cancels the addition and returns the file to clean', async () => {
   openSnapshot = mutationSnapshot([]);

@@ -335,3 +335,46 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .migration-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .migration-diff section { min-width: 0; }
 .migration-diff pre { overflow: auto; white-space: pre; max-height: 360px; padding: 12px; background: #111723; }
+
+/* Schema-aware values can contain nested fields or collection controls. Keep
+   the surrounding grid compact for scalar rows while allowing complex cells
+   to grow vertically without clipping their controls. */
+.record-grid tbody td { vertical-align: top; }
+.cell-wrap { display: grid; align-content: start; gap: 3px; height: auto; min-height: 36px; padding: 4px; }
+.cell-wrap:focus-within { outline: 2px solid #8b7cf7; outline-offset: -2px; }
+.value-editor {
+  min-width: 0; margin: 0; padding: 5px 7px;
+  border: 1px solid #2a3545; border-radius: 5px;
+  color: #cbd5e2; background: rgba(10, 16, 24, .36);
+}
+.value-editor legend { padding: 0 4px; color: #d5ddec; font-size: 10px; font-weight: 650; }
+.value-editor-type { margin-left: 4px; color: #8391a5; font-size: 9px; font-weight: 450; }
+.value-editor.invalid, .flags-editor[aria-invalid="true"] { border-color: #a9505b; }
+.field-value-editor > .ant-input, .field-value-editor > .ant-select,
+.enum-editor > .ant-select { width: 100%; }
+.cell-wrap .value-editor .ant-input { height: 28px; padding: 3px 7px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.value-editor-actions, .array-item-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.value-editor .ant-btn { min-height: 23px; height: auto; padding: 2px 6px; font-size: 10px; }
+.array-value-list, .custom-field-list { display: grid; gap: 6px; }
+.array-value-item { display: grid; grid-template-columns: auto minmax(110px, 1fr); gap: 4px 7px; align-items: start; }
+.array-item-label { padding-top: 6px; color: #8391a5; font-size: 9px; white-space: nowrap; }
+.array-value-item > .value-editor, .custom-field-list > .value-editor { grid-column: 1 / -1; }
+.array-item-actions { grid-column: 2; margin-top: 0; }
+.array-add-item { margin-top: 5px; }
+.custom-editor { display: grid; gap: 6px; }
+.custom-editor > .value-editor-type { margin: 0; }
+.value-object-editor { display: grid; gap: 2px; }
+.enum-editor { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: 6px; align-items: center; }
+.flags-editor { display: grid; gap: 5px; }
+.flags-member-list { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.flags-member-list .ant-checkbox-wrapper { color: #cbd5e2; font-size: 10px; }
+.unmaterialized-value { display: grid; gap: 4px; }
+.value-editor-hint { color: #8391a5; font-size: 9px; }
+.unmaterialized-value > output, .unknown-custom-member output,
+.unknown-flag-member output, .read-only-value output { color: #b8c4d3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
+.unknown-custom-members { display: grid; gap: 4px; padding-top: 5px; border-top: 1px solid #2a3545; }
+.unknown-custom-members strong, .read-only-value span { color: #bd9c67; font-size: 9px; }
+.unknown-custom-member, .unknown-flag-member { display: flex; gap: 7px; align-items: flex-start; justify-content: space-between; }
+.nested-value-error { display: block; margin-top: 4px; color: #ff9fa5; font-size: 9px; }
+.read-only-value { display: grid; gap: 4px; min-height: 24px; padding: 4px 5px; }
+.cell-error { z-index: 3; }

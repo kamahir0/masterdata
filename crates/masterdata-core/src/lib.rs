@@ -5,6 +5,7 @@
 //! here so that the two frontends cannot gradually grow different semantics.
 
 mod application;
+mod authoring_value;
 mod config;
 pub mod diagnostics;
 mod document;
@@ -20,6 +21,10 @@ mod type_system;
 mod validation;
 
 pub use application::{NativeProjectService, ProjectService};
+pub use authoring_value::{
+    AuthoringMember, AuthoringSequenceItem, AuthoringValue, project_source_value,
+    project_typed_source_value,
+};
 pub use config::{
     BuildConfig, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget, PublishTargetKind,
     SourceConfig,
@@ -60,9 +65,10 @@ pub use table::{
     TableBuild, resolve_tables, table_csharp_name,
 };
 pub use type_system::{
-    FieldModifier, NormalizedValue, PrimitiveType, ResolvedConversions, ResolvedEnumMember,
-    ResolvedField, ResolvedType, TypeCategory, TypeReference, TypeSystem, TypeSystemBuild,
-    build_type_system, csharp_property_name, is_csharp_reserved_keyword, resolve_type_system,
+    FieldModifier, NormalizedValue, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,
+    ResolvedConversions, ResolvedEnumMember, ResolvedField, ResolvedType, TypeCategory,
+    TypeReference, TypeSystem, TypeSystemBuild, build_type_system, csharp_property_name,
+    is_csharp_reserved_keyword, resolve_authoring_field_shape, resolve_type_system,
 };
 pub use validation::{ValidationReport, validate_documents, validate_documents_with_selection};
 

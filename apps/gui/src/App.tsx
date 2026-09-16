@@ -4,6 +4,14 @@ import { Alert, Button, Empty, Input, Modal, Tabs } from "antd";
 import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type CreationReport } from "./SourceCreation";
+import ValueEditor from "./ValueEditor";
+import {
+  authoringValueSummary,
+  authoringValuesEqual,
+  nullAuthoringValue,
+  type AuthoringValue,
+  type ResolvedAuthoringField,
+} from "./data-editor-types";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -28,6 +36,7 @@ type Diagnostic = {
   line?: number | null;
   column?: number | null;
   schema_path?: string | null;
+  value_path?: string | null;
   record_identity?: string | null;
   suggestion?: string | null;
   related_requirements?: string[];
@@ -41,6 +50,7 @@ type ApiDiagnostic = {
   line: number | null;
   column: number | null;
   schemaPath: string | null;
+  valuePath: string | null;
   recordIdentity: string | null;
   suggestion: string | null;
   relatedRequirements: string[];
@@ -77,12 +87,16 @@ type DataEditorColumn = {
   typeName: string;
   editable: boolean;
   keyField: boolean;
+  shape: ResolvedAuthoringField | null;
+  readOnlyReason: string | null;
 };
 
 type DataEditorCell = {
   field: string;
   text: string;
+  value: AuthoringValue;
   editable: boolean;
+  readOnlyReason: string | null;
 };
 
 type DataEditorRow = {
@@ -120,12 +134,12 @@ type DataFileSnapshot = {
 type AuthoringEdit = {
   recordIndex: number;
   field: string;
-  value: string;
+  value: AuthoringValue;
 };
 
 type AuthoringRecordField = {
   field: string;
-  value: string;
+  value: AuthoringValue;
 };
 
 type AuthoringRecordDraft = {
@@ -140,7 +154,7 @@ type AuthoringRecordMutation = {
 
 type AddedRecordDraft = {
   draftId: string;
-  values: Record<string, string>;
+  values: Record<string, AuthoringValue>;
 };
 
 type SourceEditPreview = {
@@ -227,6 +241,7 @@ function asApiError(error: unknown): ApiError {
       line: null,
       column: null,
       schemaPath: null,
+      valuePath: null,
       recordIdentity: null,
       suggestion: null,
       relatedRequirements: [],
@@ -262,14 +277,14 @@ function editorFromSnapshot(snapshot: DataFileSnapshot): EditorState {
   };
 }
 
-function baseCellText(snapshot: DataFileSnapshot, recordIndex: number, field: string): string {
+function baseCellValue(snapshot: DataFileSnapshot, recordIndex: number, field: string): AuthoringValue {
   return snapshot.rows
     .find((row) => row.recordIndex === recordIndex)
-    ?.cells.find((cell) => cell.field === field)?.text ?? "";
+    ?.cells.find((cell) => cell.field === field)?.value ?? nullAuthoringValue();
 }
 
-function currentCellText(editor: EditorState, recordIndex: number, field: string): string {
-  return editor.edits[cellKey(recordIndex, field)]?.value ?? baseCellText(editor.snapshot, recordIndex, field);
+function currentCellValue(editor: EditorState, recordIndex: number, field: string): AuthoringValue {
+  return editor.edits[cellKey(recordIndex, field)]?.value ?? baseCellValue(editor.snapshot, recordIndex, field);
 }
 
 function editorIsDirty(editor: EditorState): boolean {
@@ -295,7 +310,7 @@ function mutationForEditor(editor: EditorState): AuthoringRecordMutation {
     addedRecords: editor.addedRecords.map((draft) => ({
       fields: editor.snapshot.columns.map((column) => ({
         field: column.name,
-        value: draft.values[column.name] ?? "",
+        value: draft.values[column.name] ?? nullAuthoringValue(),
       })),
     })),
     deletedRecordIndices: [...editor.pendingDeletes].sort((left, right) => left - right),
@@ -328,6 +343,24 @@ function diagnosticCellKey(editor: EditorState, candidateRecordIndex: number, fi
   }
   const draft = editor.addedRecords[remaining];
   return draft ? draftCellKey(draft.draftId, field) : null;
+}
+
+function focusElement(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  const focusable = element.matches("input, select, textarea, button, [tabindex='0']")
+    ? element
+    : element.querySelector<HTMLElement>("input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex='0']");
+  if (!focusable) return false;
+  focusable.focus();
+  return true;
+}
+
+function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
+  if (valuePath !== null) {
+    const nested = document.querySelector<HTMLElement>(`[data-value-path="${CSS.escape(valuePath)}"]`);
+    if (focusElement(nested)) return true;
+  }
+  return focusElement(document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`));
 }
 
 function App() {
@@ -366,8 +399,9 @@ function App() {
   const workspaceStateRef = useRef(workspaceState);
   const workspaceGeneration = useRef(0);
   const draftSequence = useRef(0);
-  const cellFocusStart = useRef(new Map<string, string>());
+  const cellFocusStart = useRef(new Map<string, AuthoringValue>());
   const pendingCellFocus = useRef<string | null>(null);
+  const pendingValueFocus = useRef<string | null>(null);
 
   useEffect(() => {
     editorsRef.current = editors;
@@ -380,10 +414,9 @@ function App() {
   useEffect(() => {
     const key = pendingCellFocus.current;
     if (!key || !activePath || loadingPaths.has(activePath)) return;
-    const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);
-    if (cell) {
-      cell.focus();
+    if (focusValuePathOrCell(key, pendingValueFocus.current)) {
       pendingCellFocus.current = null;
+      pendingValueFocus.current = null;
     }
   }, [activePath, editors, loadingPaths]);
 
@@ -568,14 +601,14 @@ function App() {
     previewTimers.current.set(path, timer);
   }, []);
 
-  const updateCell = useCallback((path: string, recordIndex: number, field: string, value: string) => {
+  const updateCell = useCallback((path: string, recordIndex: number, field: string, value: AuthoringValue) => {
     if (!projectRoot) return;
     setEditors((current) => {
       const editor = current[path];
       if (!editor || editor.saving || editor.pendingDeletes.includes(recordIndex)) return current;
       const nextEdits = { ...editor.edits };
       const key = cellKey(recordIndex, field);
-      if (value === baseCellText(editor.snapshot, recordIndex, field)) {
+      if (authoringValuesEqual(value, baseCellValue(editor.snapshot, recordIndex, field))) {
         delete nextEdits[key];
       } else {
         nextEdits[key] = { recordIndex, field, value };
@@ -600,8 +633,8 @@ function App() {
       if (!editor || editor.saving || !addCapability(editor.snapshot).supported) return current;
       const draftId = `draft-${draftSequence.current + 1}`;
       draftSequence.current += 1;
-      const values: Record<string, string> = {};
-      for (const column of editor.snapshot.columns) values[column.name] = "";
+      const values: Record<string, AuthoringValue> = {};
+      for (const column of editor.snapshot.columns) values[column.name] = nullAuthoringValue();
       const next: EditorState = {
         ...editor,
         addedRecords: [...editor.addedRecords, { draftId, values }],
@@ -611,13 +644,16 @@ function App() {
         saveDiagnostic: null,
       };
       const firstField = editor.snapshot.columns[0]?.name;
-      if (firstField) pendingCellFocus.current = draftCellKey(draftId, firstField);
+      if (firstField) {
+        pendingCellFocus.current = draftCellKey(draftId, firstField);
+        pendingValueFocus.current = null;
+      }
       schedulePreview(projectRoot, path, next);
       return { ...current, [path]: next };
     });
   }, [projectRoot, schedulePreview]);
 
-  const updateDraftCell = useCallback((path: string, draftId: string, field: string, value: string) => {
+  const updateDraftCell = useCallback((path: string, draftId: string, field: string, value: AuthoringValue) => {
     if (!projectRoot) return;
     setEditors((current) => {
       const editor = current[path];
@@ -1017,17 +1053,19 @@ function App() {
     if (file.kind === "data" && record !== null && field) {
       const editor = editorsRef.current[file.path];
       const target = editor && diagnosticCellKey(editor, record, field);
-      if (target) pendingCellFocus.current = target;
+      if (target) {
+        pendingCellFocus.current = target;
+        pendingValueFocus.current = diagnostic.value_path == null ? null : `${target}${diagnostic.value_path}`;
+      }
     }
     selectFile(file);
     if (pendingCellFocus.current) {
       window.requestAnimationFrame(() => {
         const key = pendingCellFocus.current;
         if (!key) return;
-        const cell = document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`);
-        if (cell) {
-          cell.focus();
+        if (focusValuePathOrCell(key, pendingValueFocus.current)) {
           pendingCellFocus.current = null;
+          pendingValueFocus.current = null;
         }
       });
     }
@@ -1595,8 +1633,8 @@ function DataEditor({
   file: WorkspaceSourceFile;
   projectRoot: string;
   editor: EditorState;
-  onCellChange: (recordIndex: number, field: string, value: string) => void;
-  onDraftCellChange: (draftId: string, field: string, value: string) => void;
+  onCellChange: (recordIndex: number, field: string, value: AuthoringValue) => void;
+  onDraftCellChange: (draftId: string, field: string, value: AuthoringValue) => void;
   onAddRow: () => void;
   onDeleteExistingRow: (recordIndex: number) => void;
   onUndoExistingDelete: (recordIndex: number) => void;
@@ -1606,7 +1644,7 @@ function DataEditor({
   onSwitchView: (view: EditorState["view"]) => void;
   onReloadConflict: () => void;
   onOverwriteConflict: () => void;
-  cellFocusStart: React.MutableRefObject<Map<string, string>>;
+  cellFocusStart: React.MutableRefObject<Map<string, AuthoringValue>>;
 }) {
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
@@ -1633,7 +1671,7 @@ function DataEditor({
     if (editor.view !== "grid" || !lastFocusedCell.current) return;
     const key = lastFocusedCell.current;
     window.requestAnimationFrame(() => {
-      document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();
+      focusElement(document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`));
     });
   }, [editor.view]);
 
@@ -1709,7 +1747,7 @@ function DataEditor({
                       <strong>{column.name}</strong>
                       <span>{column.typeName}</span>
                       {column.keyField && <em>KEY</em>}
-                      {!column.editable && !column.keyField && <em>READ ONLY</em>}
+                      {!column.editable && !column.keyField && <em title={column.readOnlyReason ?? undefined}>READ ONLY</em>}
                     </div>
                   </th>
                 ))}
@@ -1763,44 +1801,67 @@ function DataEditor({
                   </th>
                   {editor.snapshot.columns.map((column, columnIndex) => {
                     const key = gridCellKeys[gridRowIndex][columnIndex];
+                    const snapshotCell = gridRow.kind === "existing"
+                      ? editor.snapshot.rows.find((row) => row.recordIndex === gridRow.recordIndex)
+                        ?.cells.find((cell) => cell.field === column.name)
+                      : undefined;
                     const value = gridRow.kind === "existing"
-                      ? currentCellText(editor, gridRow.recordIndex, column.name)
-                      : gridRow.draft.values[column.name] ?? "";
-                    const hasDiagnostic = diagnostics.some((diagnostic) =>
+                      ? currentCellValue(editor, gridRow.recordIndex, column.name)
+                      : gridRow.draft.values[column.name] ?? nullAuthoringValue();
+                    const cellDiagnostics = diagnostics.filter((diagnostic) =>
                       diagnostic.source != null &&
                       normalizePath(diagnostic.source) === normalizePath(`${projectRoot}/${file.path}`) &&
                       diagnosticField(diagnostic) === column.name &&
                       diagnosticRecordIndex(diagnostic) !== null &&
                       diagnosticCellKey(editor, diagnosticRecordIndex(diagnostic)!, column.name) === key);
+                    const hasDiagnostic = cellDiagnostics.length > 0;
+                    const invalidPaths = new Set(cellDiagnostics.map((diagnostic) => diagnostic.value_path ?? ""));
                     const changed = gridRow.kind === "added" || key in editor.edits;
                     const editable = !mutationBlocked && (gridRow.kind === "added"
-                      ? !editor.saving
-                      : column.editable && !gridRow.pendingDelete && !editor.saving);
+                      ? !editor.saving && column.shape !== null
+                      : column.editable && snapshotCell?.editable === true && !gridRow.pendingDelete && !editor.saving);
+                    const readOnlyReason = gridRow.kind === "added"
+                      ? undefined
+                      : snapshotCell?.readOnlyReason ?? (column.keyField
+                        ? "Key fields are read-only on saved records."
+                        : column.readOnlyReason ?? undefined);
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""}`}>
-                        <div className="cell-wrap">
-                          <Input
-                            data-cell={key}
-                            aria-label={`${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`}
-                            value={value}
-                            readOnly={!editable}
-                            onFocus={() => {
-                              cellFocusStart.current.set(key, value);
-                              lastFocusedCell.current = key;
-                            }}
-                            onChange={(event) => gridRow.kind === "added"
-                              ? onDraftCellChange(gridRow.draft.draftId, column.name, event.target.value)
-                              : onCellChange(gridRow.recordIndex, column.name, event.target.value)}
-                            onKeyDown={(event) => handleGridKey(event, gridRowIndex, columnIndex, gridCellKeys, () => {
-                              const initial = cellFocusStart.current.get(key);
-                              if (initial === undefined) return;
-                              if (gridRow.kind === "added") {
-                                onDraftCellChange(gridRow.draft.draftId, column.name, initial);
-                              } else {
-                                onCellChange(gridRow.recordIndex, column.name, initial);
-                              }
-                            })}
-                          />
+                        <div
+                          className="cell-wrap"
+                          data-cell={key}
+                          onFocusCapture={() => {
+                            cellFocusStart.current.set(key, value);
+                            lastFocusedCell.current = key;
+                          }}
+                          onKeyDown={(event) => handleGridKey(event, gridRowIndex, columnIndex, gridCellKeys, () => {
+                            const initial = cellFocusStart.current.get(key);
+                            if (initial === undefined) return;
+                            if (gridRow.kind === "added") {
+                              onDraftCellChange(gridRow.draft.draftId, column.name, initial);
+                            } else {
+                              onCellChange(gridRow.recordIndex, column.name, initial);
+                            }
+                          })}
+                        >
+                          {column.shape && (editable || column.keyField || snapshotCell?.editable === true) ? (
+                            <ValueEditor
+                              field={column.shape}
+                              value={value}
+                              label={`${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`}
+                              cellKey={key}
+                              editable={editable}
+                              invalidPaths={invalidPaths}
+                              onChange={(next) => gridRow.kind === "added"
+                                ? onDraftCellChange(gridRow.draft.draftId, column.name, next)
+                                : onCellChange(gridRow.recordIndex, column.name, next)}
+                            />
+                          ) : (
+                            <div className="read-only-value">
+                              <output data-value-path={key}>{authoringValueSummary(value)}</output>
+                              {readOnlyReason && <span>{readOnlyReason}</span>}
+                            </div>
+                          )}
                           {hasDiagnostic && <span className="cell-error" title="Validation diagnostic">!</span>}
                         </div>
                       </td>
@@ -1846,24 +1907,27 @@ function validationLabel(editor: EditorState): string {
 }
 
 function handleGridKey(
-  event: React.KeyboardEvent<HTMLInputElement>,
+  event: React.KeyboardEvent<HTMLDivElement>,
   rowIndex: number,
   columnIndex: number,
   cellKeys: string[][],
   cancel: () => void,
 ) {
-  const input = event.currentTarget;
+  const input = event.target instanceof HTMLInputElement ? event.target : null;
   if (event.key === "Escape") {
     event.preventDefault();
     cancel();
-    input.blur();
+    input?.blur();
     return;
   }
   if (event.key === "F2") {
-    event.preventDefault();
-    input.select();
+    if (input?.type === "text") {
+      event.preventDefault();
+      input.select();
+    }
     return;
   }
+  if (!input || input.type !== "text") return;
   let nextRow = rowIndex;
   let nextColumn = columnIndex;
   if (event.key === "ArrowUp") nextRow -= 1;
@@ -1874,7 +1938,7 @@ function handleGridKey(
   if (nextRow < 0 || nextRow >= cellKeys.length || nextColumn < 0 || nextColumn >= (cellKeys[nextRow]?.length ?? 0)) return;
   event.preventDefault();
   const next = cellKeys[nextRow][nextColumn];
-  document.querySelector<HTMLInputElement>(`[data-cell="${CSS.escape(next)}"]`)?.focus();
+  focusValuePathOrCell(next, null);
 }
 
 function DiffView({
@@ -1957,6 +2021,7 @@ function apiDiagnosticToDiagnostic(diagnostic: ApiDiagnostic): Diagnostic {
     line: diagnostic.line,
     column: diagnostic.column,
     schema_path: diagnostic.schemaPath,
+    value_path: diagnostic.valuePath,
     record_identity: diagnostic.recordIdentity,
     suggestion: diagnostic.suggestion,
     related_requirements: diagnostic.relatedRequirements,

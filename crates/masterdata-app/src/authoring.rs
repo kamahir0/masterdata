@@ -4,10 +4,12 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use masterdata_core::{
-    AddedRecordDraft, AddedRecordField, Diagnostic, ErrorKind, MasterdataError, PrimitiveType,
-    Project, ProjectDocuments, ProjectInfo, RecordValueEdit, SchemaDocument, SourceDocument,
-    SourceRecordMutation, ValidationReport, dry_run_source_record_mutation, parse_yaml_document,
-    source_content_identity, validate_documents,
+    AddedRecordDraft, AddedRecordField, AuthoringValue, Diagnostic, ErrorKind, MasterdataError,
+    Project, ProjectDocuments, ProjectInfo, RecordValueEdit, ResolvedAuthoringField,
+    SchemaDocument, SourceDocument, SourceRecordMutation, ValidationReport,
+    dry_run_source_record_mutation, parse_yaml_document, project_source_value,
+    project_typed_source_value, resolve_authoring_field_shape, source_content_identity,
+    validate_documents,
 };
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
@@ -58,6 +60,8 @@ pub struct DataEditorColumn {
     pub type_name: String,
     pub editable: bool,
     pub key_field: bool,
+    pub shape: Option<ResolvedAuthoringField>,
+    pub read_only_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,7 +69,9 @@ pub struct DataEditorColumn {
 pub struct DataEditorCell {
     pub field: String,
     pub text: String,
+    pub value: AuthoringValue,
     pub editable: bool,
+    pub read_only_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,7 +106,7 @@ pub struct DataFileSnapshot {
 pub struct AuthoringEdit {
     pub record_index: usize,
     pub field: String,
-    pub value: String,
+    pub value: AuthoringValue,
 }
 
 impl From<&AuthoringEdit> for RecordValueEdit {
@@ -117,7 +123,7 @@ impl From<&AuthoringEdit> for RecordValueEdit {
 #[serde(rename_all = "camelCase")]
 pub struct AuthoringRecordField {
     pub field: String,
-    pub value: String,
+    pub value: AuthoringValue,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -562,14 +568,24 @@ fn data_file_snapshot(
         .iter()
         .map(|field| {
             let key_field = key_fields.contains(field.name.as_str());
+            let shape = resolve_authoring_field_shape(documents, field);
+            let read_only_reason = if key_field {
+                None
+            } else if shape.is_none() {
+                Some(format!(
+                    "The shared Type System could not resolve `{}` as a supported authoring shape.",
+                    field.type_name
+                ))
+            } else {
+                None
+            };
             DataEditorColumn {
                 name: field.name.clone(),
                 type_name: field.type_name.clone(),
-                editable: !key_field
-                    && !field.nullable
-                    && !field.array
-                    && PrimitiveType::parse(&field.type_name).is_some(),
+                editable: !key_field && shape.is_some(),
                 key_field,
+                shape,
+                read_only_reason,
             }
         })
         .collect::<Vec<_>>();
@@ -587,12 +603,39 @@ fn data_file_snapshot(
                         .get(&column.name)
                         .map(display_value)
                         .unwrap_or_default(),
-                    editable: column.editable,
+                    value: match record.get(&column.name) {
+                        Some(value) => column
+                            .shape
+                            .as_ref()
+                            .and_then(|shape| project_typed_source_value(shape, value).ok())
+                            .or_else(|| project_source_value(value).ok())
+                            .unwrap_or_else(|| AuthoringValue::String {
+                                value: display_value(value),
+                            }),
+                        None => AuthoringValue::Null,
+                    },
+                    editable: column.editable
+                        && record.get(&column.name).is_some_and(|value| {
+                            column.shape.as_ref().is_some_and(|shape| {
+                                project_typed_source_value(shape, value).is_ok()
+                            })
+                        }),
+                    read_only_reason: if !record.contains_key(&column.name) {
+                        Some(format!("The source record is missing `{}`.", column.name))
+                    } else if let Some(shape) = &column.shape {
+                        record
+                            .get(&column.name)
+                            .and_then(|value| project_typed_source_value(shape, value).err())
+                            .map(|error| error.diagnostic().message.clone())
+                            .or_else(|| column.read_only_reason.clone())
+                    } else {
+                        column.read_only_reason.clone()
+                    },
                 })
                 .collect(),
         })
         .collect();
-    let add_row = data_editor_add_capability(schema);
+    let add_row = data_editor_add_capability(documents, schema);
     let mut validation = validate_documents(documents);
     merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
     Ok(DataFileSnapshot {
@@ -607,23 +650,25 @@ fn data_file_snapshot(
     })
 }
 
-fn data_editor_add_capability(schema: &SchemaDocument) -> DataEditorAddCapability {
+fn data_editor_add_capability(
+    documents: &ProjectDocuments,
+    schema: &SchemaDocument,
+) -> DataEditorAddCapability {
     if schema.fields.is_empty() {
         return DataEditorAddCapability {
             supported: false,
-            reason: Some(
-                "Add Row requires a Table with at least one Required Primitive field.".to_owned(),
-            ),
+            reason: Some("Add Row requires a Table with at least one field.".to_owned()),
         };
     }
-    let unsupported = schema.fields.iter().find(|field| {
-        field.nullable || field.array || PrimitiveType::parse(&field.type_name).is_none()
-    });
+    let unsupported = schema
+        .fields
+        .iter()
+        .find(|field| resolve_authoring_field_shape(documents, field).is_none());
     match unsupported {
         Some(field) => DataEditorAddCapability {
             supported: false,
             reason: Some(format!(
-                "Add Row currently supports Required Primitive fields only; `{}` is outside this scope.",
+                "Field `{}` does not have a supported resolved authoring shape.",
                 field.name
             )),
         },
@@ -1024,6 +1069,7 @@ mod tests {
         SourceSaveStatus, install_source_candidate_with_pre_replace_hook,
     };
     use crate::NativeApplicationService;
+    use masterdata_core::AuthoringValue;
     use std::fs;
     use tempfile::TempDir;
 
@@ -1096,6 +1142,261 @@ secondaryKeys: []
     }
 
     #[test]
+    fn unresolved_unrelated_types_do_not_block_supported_field_editing() {
+        let temp = project();
+        fs::write(
+            temp.path().join("sources/schemas/item.yaml"),
+            r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: weight
+    type: ulong
+  - key: 2
+    name: profile
+    type: Profile
+  - key: 3
+    name: broken
+    type: MissingType
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+"#,
+        )
+        .expect("mixed schema");
+        fs::write(
+            temp.path().join("sources/types/profile.yaml"),
+            r#"kind: type
+name: Profile
+custom:
+  fields:
+    - key: 0
+      name: credits
+      type: ulong
+    - key: 1
+      name: label
+      type: string
+"#,
+        )
+        .expect("valid referenced type");
+        fs::write(
+            temp.path().join("sources/types/unrelated.yaml"),
+            "kind: type\nname: Unrelated\nvalueObject:\n  underlying: byte\n",
+        )
+        .expect("unrelated invalid type");
+        fs::write(
+            temp.path().join("sources/data/items.yaml"),
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    profile:\n      credits: 18446744073709551614 # exact integer\n      label: 'baseline' # source style\n    broken: retained\n",
+        )
+        .expect("data");
+
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot despite unsupported fields");
+        assert!(!snapshot.validation.valid);
+        assert!(snapshot.columns[1].editable);
+        assert!(snapshot.columns[2].editable);
+        assert!(!snapshot.columns[3].editable);
+        assert!(!snapshot.add_row.supported);
+        assert!(
+            snapshot
+                .add_row
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("broken")
+        );
+
+        let preview = service
+            .preview_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &AuthoringRecordMutation {
+                    edits: vec![
+                        AuthoringEdit {
+                            record_index: 0,
+                            field: "weight".to_owned(),
+                            value: AuthoringValue::Number {
+                                value: "11".to_owned(),
+                            },
+                        },
+                        AuthoringEdit {
+                            record_index: 0,
+                            field: "profile".to_owned(),
+                            value: AuthoringValue::Mapping {
+                                entries: vec![
+                                    masterdata_core::AuthoringMember {
+                                        name: "credits".to_owned(),
+                                        value: AuthoringValue::Number {
+                                            value: "18446744073709551615".to_owned(),
+                                        },
+                                    },
+                                    masterdata_core::AuthoringMember {
+                                        name: "label".to_owned(),
+                                        value: AuthoringValue::String {
+                                            value: "changed".to_owned(),
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                    ..AuthoringRecordMutation::default()
+                },
+            )
+            .expect("resolved fields remain editable");
+        assert!(preview.candidate_source.contains("weight: 11"));
+        assert!(
+            preview
+                .candidate_source
+                .contains("credits: 18446744073709551615 # exact integer")
+        );
+        assert!(
+            preview
+                .candidate_source
+                .contains("label: 'changed' # source style")
+        );
+        assert!(preview.candidate_source.contains("broken: retained"));
+    }
+
+    #[test]
+    fn snapshot_and_preview_share_recursive_custom_authoring_values() {
+        let temp = project();
+        fs::write(
+            temp.path().join("sources/schemas/item.yaml"),
+            r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: weight
+    type: ulong
+  - key: 2
+    name: note
+    type: Profile
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+"#,
+        )
+        .expect("complex schema");
+        fs::write(
+            temp.path().join("sources/types/profile.yaml"),
+            r#"kind: type
+name: Profile
+custom:
+  fields:
+    - key: 0
+      name: credits
+      type: ulong
+    - key: 1
+      name: label
+      type: string
+"#,
+        )
+        .expect("Custom Type");
+        fs::write(
+            temp.path().join("sources/data/items.yaml"),
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note:\n      credits: 18446744073709551614 # exact integer\n      label: 'baseline' # source style\n",
+        )
+        .expect("complex data");
+
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+        let profile = &snapshot.columns[2];
+        assert_eq!(
+            profile.shape.as_ref().unwrap().shape,
+            masterdata_core::ResolvedAuthoringType::Custom {
+                name: "Profile".to_owned(),
+                fields: vec![
+                    masterdata_core::ResolvedAuthoringField {
+                        name: "credits".to_owned(),
+                        type_name: "ulong".to_owned(),
+                        modifier: masterdata_core::FieldModifier::Required,
+                        shape: masterdata_core::ResolvedAuthoringType::Primitive {
+                            primitive: masterdata_core::PrimitiveType::ULong,
+                        },
+                    },
+                    masterdata_core::ResolvedAuthoringField {
+                        name: "label".to_owned(),
+                        type_name: "string".to_owned(),
+                        modifier: masterdata_core::FieldModifier::Required,
+                        shape: masterdata_core::ResolvedAuthoringType::Primitive {
+                            primitive: masterdata_core::PrimitiveType::String,
+                        },
+                    },
+                ],
+            }
+        );
+        let profile_value = &snapshot.rows[0].cells[2].value;
+        let masterdata_core::AuthoringValue::Mapping { entries } = profile_value else {
+            panic!("Custom Type snapshot uses a mapping");
+        };
+        let credits = entries
+            .iter()
+            .find(|entry| entry.name == "credits")
+            .unwrap();
+        assert_eq!(
+            credits.value,
+            masterdata_core::AuthoringValue::Number {
+                value: "18446744073709551614".to_owned(),
+            }
+        );
+
+        let preview = service
+            .preview_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &AuthoringRecordMutation {
+                    edits: vec![AuthoringEdit {
+                        record_index: 0,
+                        field: "note".to_owned(),
+                        value: masterdata_core::AuthoringValue::Mapping {
+                            entries: vec![
+                                masterdata_core::AuthoringMember {
+                                    name: "credits".to_owned(),
+                                    value: masterdata_core::AuthoringValue::Number {
+                                        value: "18446744073709551615".to_owned(),
+                                    },
+                                },
+                                masterdata_core::AuthoringMember {
+                                    name: "label".to_owned(),
+                                    value: masterdata_core::AuthoringValue::String {
+                                        value: "changed".to_owned(),
+                                    },
+                                },
+                            ],
+                        },
+                    }],
+                    ..AuthoringRecordMutation::default()
+                },
+            )
+            .expect("nested preview");
+        assert!(
+            preview
+                .candidate_source
+                .contains("credits: 18446744073709551615 # exact integer")
+        );
+        assert!(
+            preview
+                .candidate_source
+                .contains("label: 'changed' # source style")
+        );
+    }
+
+    #[test]
     fn save_preserves_unrelated_source_and_detects_conflict() {
         let temp = project();
         let service = NativeApplicationService::new();
@@ -1112,7 +1413,9 @@ secondaryKeys: []
                 &[AuthoringEdit {
                     record_index: 0,
                     field: "weight".to_owned(),
-                    value: "20".to_owned(),
+                    value: AuthoringValue::Number {
+                        value: "20".to_owned(),
+                    },
                 }],
                 None,
             )
@@ -1137,7 +1440,9 @@ secondaryKeys: []
                 &[AuthoringEdit {
                     record_index: 0,
                     field: "weight".to_owned(),
-                    value: "30".to_owned(),
+                    value: AuthoringValue::Number {
+                        value: "30".to_owned(),
+                    },
                 }],
                 None,
             )
@@ -1189,7 +1494,9 @@ secondaryKeys: []
                 &[AuthoringEdit {
                     record_index: 0,
                     field: "weight".to_owned(),
-                    value: "invalid".to_owned(),
+                    value: AuthoringValue::Number {
+                        value: "invalid".to_owned(),
+                    },
                 }],
             )
             .expect("preview");
@@ -1210,21 +1517,29 @@ secondaryKeys: []
             edits: vec![AuthoringEdit {
                 record_index: 0,
                 field: "weight".to_owned(),
-                value: "11".to_owned(),
+                value: AuthoringValue::Number {
+                    value: "11".to_owned(),
+                },
             }],
             added_records: vec![AuthoringRecordDraft {
                 fields: vec![
                     AuthoringRecordField {
                         field: "note".to_owned(),
-                        value: "new".to_owned(),
+                        value: AuthoringValue::String {
+                            value: "new".to_owned(),
+                        },
                     },
                     AuthoringRecordField {
                         field: "id".to_owned(),
-                        value: "18446744073709551614".to_owned(),
+                        value: AuthoringValue::Number {
+                            value: "18446744073709551614".to_owned(),
+                        },
                     },
                     AuthoringRecordField {
                         field: "weight".to_owned(),
-                        value: "12".to_owned(),
+                        value: AuthoringValue::Number {
+                            value: "12".to_owned(),
+                        },
                     },
                 ],
             }],
@@ -1301,7 +1616,7 @@ secondaryKeys: []
     }
 
     #[test]
-    fn snapshot_reports_add_row_scope_without_disabling_existing_data_access() {
+    fn snapshot_resolves_nullable_authoring_shape_for_add_row() {
         let temp = project();
         let schema =
             fs::read_to_string(temp.path().join("sources/schemas/item.yaml")).expect("schema");
@@ -1317,8 +1632,11 @@ secondaryKeys: []
             .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
             .expect("snapshot");
 
-        assert!(!snapshot.add_row.supported);
-        assert!(snapshot.add_row.reason.expect("reason").contains("weight"));
+        assert!(snapshot.add_row.supported);
+        assert_eq!(
+            snapshot.columns[1].shape.as_ref().unwrap().modifier,
+            masterdata_core::FieldModifier::Nullable
+        );
         assert_eq!(snapshot.rows.len(), 1);
     }
 }

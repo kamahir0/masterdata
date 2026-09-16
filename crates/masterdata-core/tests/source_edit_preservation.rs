@@ -1,5 +1,5 @@
 use masterdata_core::{
-    ProjectDocuments, RecordValueEdit, dry_run_source_edit, parse_yaml_document,
+    AuthoringValue, ProjectDocuments, RecordValueEdit, dry_run_source_edit, parse_yaml_document,
 };
 use std::path::{Path, PathBuf};
 #[test]
@@ -18,7 +18,9 @@ fn source_edit_preserves_literal_separator_blank_lines() {
         &[RecordValueEdit {
             record_index: 0,
             field: "note".into(),
-            value: "new\n".into(),
+            value: AuthoringValue::String {
+                value: "new\n".into(),
+            },
         }],
     )
     .unwrap();

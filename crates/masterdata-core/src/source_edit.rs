@@ -8,19 +8,23 @@ use crate::document::{
     DataDocument, ProjectDocuments, SchemaDocument, SourceDocument, parse_yaml_document,
 };
 use crate::error::{ErrorKind, MasterdataError, Result};
-use crate::type_system::PrimitiveType;
+use crate::type_system::{
+    FieldModifier, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,
+    resolve_authoring_field_shape,
+};
+use crate::{AuthoringSequenceItem, AuthoringValue};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordValueEdit {
     pub record_index: usize,
     pub field: String,
-    pub value: String,
+    pub value: AuthoringValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddedRecordField {
     pub field: String,
-    pub value: String,
+    pub value: AuthoringValue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +109,7 @@ pub fn dry_run_source_record_mutation(
     };
 
     let schema = unique_schema_for_table(documents, &data.table, path)?;
-    let editable = editable_fields(schema);
+    let editable = editable_fields(schema, documents);
     let deleted = deleted_record_indices(data, &mutation.deletions, path)?;
     let mut seen = BTreeSet::new();
     let mut expected = data.clone();
@@ -146,20 +150,25 @@ pub fn dry_run_source_record_mutation(
                 "SOURCE-EDIT-002",
             )
         })?;
-        let primitive = editable.get(edit.field.as_str()).copied().ok_or_else(|| {
+        let shape = editable.get(edit.field.as_str()).ok_or_else(|| {
             source_edit_error(
                 "E-SOURCE-EDIT-FIELD-READ-ONLY",
                 format!(
-                    "field `{}` is not an editable Required Primitive non-key field",
+                    "field `{}` is not an editable resolved non-key field",
                     edit.field
                 ),
                 Some(path.to_path_buf()),
                 "SOURCE-EDIT-002",
             )
         })?;
-        let desired = desired_scalar(primitive, &edit.value)?;
-        let value_changed = *current != desired.value;
-        expected.records[edit.record_index].insert(edit.field.clone(), desired.value.clone());
+        let desired = authoring_value_to_yaml(shape, &edit.value)?;
+        let source_identity_changed = crate::project_typed_source_value(shape, current)
+            .ok()
+            .is_some_and(|source_value| {
+                source_occurrence_identity_changed(&source_value, &edit.value)
+            });
+        let value_changed = *current != desired || source_identity_changed;
+        expected.records[edit.record_index].insert(edit.field.clone(), desired.clone());
 
         // A pending delete owns the final candidate. Keep the edit in the
         // in-memory expectation so Undo can restore it, but do not create an
@@ -169,20 +178,22 @@ pub fn dry_run_source_record_mutation(
         }
         let span =
             locate_record_member_value(&loaded.source, data, edit.record_index, &edit.field, path)?;
-        let replacement =
-            render_replacement(&loaded.source, &span, primitive, &edit.value, &desired)?;
-        patches.push(SourcePatch {
-            start: span.start,
-            end: span.end,
-            replacement,
-        });
+        patches.extend(value_change_patches(
+            &loaded.source,
+            &span,
+            current,
+            &desired,
+            &edit.value,
+            shape,
+            path,
+        )?);
     }
 
     let additions = mutation
         .additions
         .iter()
         .enumerate()
-        .map(|(index, draft)| added_record_plan(schema, draft, index, path))
+        .map(|(index, draft)| added_record_plan(schema, documents, draft, index, path))
         .collect::<Result<Vec<_>>>()?;
 
     let existing_records = std::mem::take(&mut expected.records);
@@ -283,17 +294,32 @@ struct AddedRecordPlan {
 
 fn added_record_plan(
     schema: &SchemaDocument,
+    documents: &ProjectDocuments,
     draft: &AddedRecordDraft,
     draft_index: usize,
     path: &Path,
 ) -> Result<AddedRecordPlan> {
-    let unsupported = schema.fields.iter().find(|field| {
-        field.nullable || field.array || PrimitiveType::parse(&field.type_name).is_none()
-    });
-    if schema.fields.is_empty() || unsupported.is_some() {
+    let shapes = schema
+        .fields
+        .iter()
+        .filter_map(|field| {
+            resolve_authoring_field_shape(documents, field)
+                .map(|shape| (field.name.as_str(), shape))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let unsupported = schema
+        .fields
+        .iter()
+        .find(|field| !shapes.contains_key(field.name.as_str()));
+    if schema.fields.is_empty() || shapes.len() != schema.fields.len() {
         let detail = unsupported.map_or_else(
-            || "the table schema declares no fields".to_owned(),
-            |field| format!("field `{}` is not a Required Primitive", field.name),
+            || "the table schema contains duplicate field declarations".to_owned(),
+            |field| {
+                format!(
+                    "field `{}` has no supported resolved value shape",
+                    field.name
+                )
+            },
         );
         return Err(source_edit_error(
             "E-SOURCE-RECORD-ADD-UNSUPPORTED",
@@ -353,14 +379,13 @@ fn added_record_plan(
     let mut values = BTreeMap::new();
     let mut rendered_fields = Vec::with_capacity(schema.fields.len());
     for field in &schema.fields {
-        let primitive = PrimitiveType::parse(&field.type_name).expect("checked above");
+        let shape = shapes
+            .get(field.name.as_str())
+            .expect("all field shapes were checked above");
         let input = inputs.get(&field.name).expect("field shape checked above");
-        let desired = desired_scalar(primitive, input)?;
-        rendered_fields.push((
-            field.name.clone(),
-            render_added_scalar(primitive, input, &desired)?,
-        ));
-        values.insert(field.name.clone(), desired.value);
+        let desired = authoring_value_to_yaml(shape, input)?;
+        rendered_fields.push((field.name.clone(), render_source_value(&desired)?));
+        values.insert(field.name.clone(), desired);
     }
     Ok(AddedRecordPlan {
         values,
@@ -398,7 +423,10 @@ fn unique_schema_for_table<'a>(
     }
 }
 
-fn editable_fields(schema: &SchemaDocument) -> BTreeMap<&str, PrimitiveType> {
+fn editable_fields<'a>(
+    schema: &'a SchemaDocument,
+    documents: &ProjectDocuments,
+) -> BTreeMap<&'a str, ResolvedAuthoringField> {
     let mut keys = BTreeSet::new();
     if let Some(primary) = &schema.primary_key {
         keys.extend(primary.fields.iter().map(String::as_str));
@@ -409,11 +437,1050 @@ fn editable_fields(schema: &SchemaDocument) -> BTreeMap<&str, PrimitiveType> {
     schema
         .fields
         .iter()
-        .filter(|field| !field.nullable && !field.array && !keys.contains(field.name.as_str()))
         .filter_map(|field| {
-            PrimitiveType::parse(&field.type_name).map(|primitive| (field.name.as_str(), primitive))
+            if keys.contains(field.name.as_str()) {
+                return None;
+            }
+            resolve_authoring_field_shape(documents, field)
+                .map(|shape| (field.name.as_str(), shape))
         })
         .collect()
+}
+
+fn authoring_value_to_yaml(
+    shape: &ResolvedAuthoringField,
+    value: &AuthoringValue,
+) -> Result<Value> {
+    if matches!(value, AuthoringValue::Null) {
+        // Added rows and nested values use null until the user supplies a
+        // value; validation reports whether that placeholder is domain-valid.
+        return Ok(Value::Null);
+    }
+    match shape.modifier {
+        FieldModifier::Array => {
+            let AuthoringValue::Sequence { items, .. } = value else {
+                return untyped_authoring_value(value);
+            };
+            items
+                .iter()
+                .map(|item| authoring_type_value_to_yaml(&shape.shape, &item.value))
+                .collect::<Result<Vec<_>>>()
+                .map(Value::Sequence)
+        }
+        FieldModifier::Required | FieldModifier::Nullable => {
+            authoring_type_value_to_yaml(&shape.shape, value)
+        }
+    }
+}
+
+fn authoring_type_value_to_yaml(
+    shape: &ResolvedAuthoringType,
+    value: &AuthoringValue,
+) -> Result<Value> {
+    match shape {
+        ResolvedAuthoringType::Primitive { primitive } => {
+            primitive_authoring_value(*primitive, value)
+        }
+        ResolvedAuthoringType::ValueObject { underlying, .. } => {
+            primitive_authoring_value(*underlying, value)
+        }
+        ResolvedAuthoringType::Enum { .. } => match value {
+            AuthoringValue::String { value } => Ok(Value::String(value.clone())),
+            _ => untyped_authoring_value(value),
+        },
+        ResolvedAuthoringType::Flags { .. } => match value {
+            AuthoringValue::Sequence { items, .. } => items
+                .iter()
+                .map(|item| untyped_authoring_value(&item.value))
+                .collect::<Result<Vec<_>>>()
+                .map(Value::Sequence),
+            _ => untyped_authoring_value(value),
+        },
+        ResolvedAuthoringType::Custom { fields, .. } => {
+            let AuthoringValue::Mapping { entries } = value else {
+                return untyped_authoring_value(value);
+            };
+            let mut result = serde_yaml::Mapping::new();
+            let mut seen = BTreeSet::new();
+            for entry in entries {
+                if !seen.insert(entry.name.as_str()) {
+                    return Err(source_edit_error(
+                        "E-SOURCE-EDIT-DUPLICATE-CUSTOM-MEMBER",
+                        format!(
+                            "Custom Type value contains member `{}` more than once",
+                            entry.name
+                        ),
+                        None,
+                        "SOURCE-EDIT-016",
+                    ));
+                }
+                let converted = match fields.iter().find(|field| field.name == entry.name) {
+                    Some(field) => authoring_value_to_yaml(field, &entry.value)?,
+                    None => untyped_authoring_value(&entry.value)?,
+                };
+                result.insert(Value::String(entry.name.clone()), converted);
+            }
+            Ok(Value::Mapping(result))
+        }
+    }
+}
+
+fn primitive_authoring_value(primitive: PrimitiveType, value: &AuthoringValue) -> Result<Value> {
+    match value {
+        AuthoringValue::Number { value } => {
+            let desired = desired_scalar(primitive, value)?;
+            Ok(desired.value)
+        }
+        AuthoringValue::Bool { value } if primitive == PrimitiveType::Bool => {
+            Ok(Value::Bool(*value))
+        }
+        AuthoringValue::String { value } if primitive == PrimitiveType::String => {
+            Ok(Value::String(value.clone()))
+        }
+        _ => untyped_authoring_value(value),
+    }
+}
+
+fn untyped_authoring_value(value: &AuthoringValue) -> Result<Value> {
+    match value {
+        AuthoringValue::Null => Ok(Value::Null),
+        AuthoringValue::Bool { value } => Ok(Value::Bool(*value)),
+        AuthoringValue::Number { value } => Ok(desired_scalar(PrimitiveType::Double, value)?.value),
+        AuthoringValue::String { value } => Ok(Value::String(value.clone())),
+        AuthoringValue::Sequence { items, .. } => items
+            .iter()
+            .map(|item| untyped_authoring_value(&item.value))
+            .collect::<Result<Vec<_>>>()
+            .map(Value::Sequence),
+        AuthoringValue::Mapping { entries } => {
+            let mut result = serde_yaml::Mapping::new();
+            let mut seen = BTreeSet::new();
+            for entry in entries {
+                if !seen.insert(entry.name.as_str()) {
+                    return Err(source_edit_error(
+                        "E-SOURCE-EDIT-DUPLICATE-CUSTOM-MEMBER",
+                        format!("mapping contains member `{}` more than once", entry.name),
+                        None,
+                        "SOURCE-EDIT-016",
+                    ));
+                }
+                result.insert(
+                    Value::String(entry.name.clone()),
+                    untyped_authoring_value(&entry.value)?,
+                );
+            }
+            Ok(Value::Mapping(result))
+        }
+    }
+}
+
+fn requested_value_shape_error(path: &Path) -> MasterdataError {
+    source_edit_error(
+        "E-SOURCE-EDIT-VALUE-SHAPE",
+        "edit request value does not match the resolved authoring shape",
+        Some(path.to_path_buf()),
+        "SOURCE-EDIT-016",
+    )
+}
+
+fn render_source_value(value: &Value) -> Result<String> {
+    match value {
+        Value::Null => Ok("null".to_owned()),
+        Value::Bool(value) => Ok(value.to_string()),
+        Value::Number(value) => Ok(value.to_string()),
+        Value::String(value) => {
+            if plain_string_round_trips(value) {
+                Ok(value.clone())
+            } else {
+                json_string(value)
+            }
+        }
+        Value::Sequence(items) => items
+            .iter()
+            .map(render_source_value)
+            .collect::<Result<Vec<_>>>()
+            .map(|items| format!("[{}]", items.join(", "))),
+        Value::Mapping(entries) => {
+            let mut rendered = Vec::with_capacity(entries.len());
+            for (key, value) in entries {
+                let key = key.as_str().ok_or_else(|| {
+                    source_edit_error(
+                        "E-SOURCE-EDIT-VALUE-UNSUPPORTED",
+                        "Custom Type mapping keys must be strings",
+                        None,
+                        "SOURCE-EDIT-015",
+                    )
+                })?;
+                let key = if plain_string_round_trips(key) {
+                    key.to_owned()
+                } else {
+                    json_string(key)?
+                };
+                rendered.push(format!("{key}: {}", render_source_value(value)?));
+            }
+            Ok(format!("{{{}}}", rendered.join(", ")))
+        }
+        Value::Tagged(_) => Err(source_edit_error(
+            "E-SOURCE-EDIT-VALUE-UNSUPPORTED",
+            "tagged YAML values cannot be rendered as typed authoring values",
+            None,
+            "SOURCE-EDIT-015",
+        )),
+    }
+}
+
+fn value_change_patches(
+    source: &str,
+    span: &ValueSpan,
+    old: &Value,
+    new: &Value,
+    requested: &AuthoringValue,
+    shape: &ResolvedAuthoringField,
+    path: &Path,
+) -> Result<Vec<SourcePatch>> {
+    let source_identity_changed = crate::project_typed_source_value(shape, old)
+        .ok()
+        .is_some_and(|source_value| source_occurrence_identity_changed(&source_value, requested));
+    if old == new && !source_identity_changed {
+        return Ok(Vec::new());
+    }
+    match (&shape.modifier, &shape.shape, old, new) {
+        (FieldModifier::Array, _, Value::Sequence(old_items), Value::Sequence(new_items)) => {
+            let AuthoringValue::Sequence {
+                items: requested_items,
+                source_identity,
+            } = requested
+            else {
+                return Err(requested_value_shape_error(path));
+            };
+            return sequence_value_change_patches(
+                source,
+                span,
+                SequenceEditRequest {
+                    old_items,
+                    new_items,
+                    requested_items,
+                    source_identity: *source_identity,
+                    element_shape: &shape.shape,
+                },
+                path,
+            );
+        }
+        (
+            FieldModifier::Required | FieldModifier::Nullable,
+            ResolvedAuthoringType::Custom { fields, .. },
+            Value::Mapping(old_entries),
+            Value::Mapping(new_entries),
+        ) => {
+            let _ = (old_entries, new_entries);
+            return mapping_value_change_patches(source, span, old, new, requested, fields, path);
+        }
+        (
+            FieldModifier::Required | FieldModifier::Nullable,
+            ResolvedAuthoringType::Flags { .. },
+            Value::Sequence(old_items),
+            Value::Sequence(new_items),
+        ) => {
+            let AuthoringValue::Sequence {
+                items: requested_items,
+                source_identity,
+            } = requested
+            else {
+                return Err(requested_value_shape_error(path));
+            };
+            return sequence_value_change_patches(
+                source,
+                span,
+                SequenceEditRequest {
+                    old_items,
+                    new_items,
+                    requested_items,
+                    source_identity: *source_identity,
+                    element_shape: &ResolvedAuthoringType::Primitive {
+                        primitive: PrimitiveType::String,
+                    },
+                },
+                path,
+            );
+        }
+        _ => {}
+    }
+    if is_scalar_value(old) && is_scalar_value(new) {
+        return scalar_value_patch(source, span, new, shape);
+    }
+    replace_value_patches(source, span, new, shape)
+}
+
+fn source_occurrence_identity_changed(source: &AuthoringValue, requested: &AuthoringValue) -> bool {
+    match (source, requested) {
+        (
+            AuthoringValue::Sequence {
+                items: source_items,
+                source_identity: source_tracks_identity,
+            },
+            AuthoringValue::Sequence {
+                items: requested_items,
+                source_identity: request_tracks_identity,
+            },
+        ) => {
+            if !request_tracks_identity {
+                return false;
+            }
+            if !source_tracks_identity || source_items.len() != requested_items.len() {
+                return true;
+            }
+            requested_items.iter().enumerate().any(|(index, item)| {
+                item.source_index != Some(index)
+                    || item.source_index.is_some_and(|source_index| {
+                        source_items.get(source_index).is_some_and(|source_item| {
+                            source_occurrence_identity_changed(&source_item.value, &item.value)
+                        })
+                    })
+            })
+        }
+        (
+            AuthoringValue::Mapping {
+                entries: source_entries,
+            },
+            AuthoringValue::Mapping {
+                entries: requested_entries,
+            },
+        ) => requested_entries.iter().any(|requested_entry| {
+            source_entries
+                .iter()
+                .find(|source_entry| source_entry.name == requested_entry.name)
+                .is_some_and(|source_entry| {
+                    source_occurrence_identity_changed(&source_entry.value, &requested_entry.value)
+                })
+        }),
+        _ => false,
+    }
+}
+
+fn scalar_value_patch(
+    source: &str,
+    span: &ValueSpan,
+    new: &Value,
+    shape: &ResolvedAuthoringField,
+) -> Result<Vec<SourcePatch>> {
+    if new.is_null() {
+        if let Some(block) = &span.block_header {
+            return Ok(vec![
+                SourcePatch {
+                    start: block.child_start,
+                    end: block.child_end,
+                    replacement: String::new(),
+                },
+                SourcePatch {
+                    start: block.insert_at,
+                    end: block.insert_at,
+                    replacement: "null".to_owned(),
+                },
+            ]);
+        }
+        return Ok(vec![SourcePatch {
+            start: span.start,
+            end: span.end,
+            replacement: "null".to_owned(),
+        }]);
+    }
+    let primitive = scalar_primitive(shape).unwrap_or(PrimitiveType::String);
+    let input = scalar_text(new);
+    let desired = desired_scalar(primitive, &input)?;
+    let replacement = if let Some(literal) = &span.literal {
+        if matches!(new, Value::String(_)) {
+            render_replacement(source, span, PrimitiveType::String, &input, &desired)?
+        } else {
+            format!(
+                "{}{}",
+                render_source_value(new)?,
+                &source[literal.header_end..literal.body_start]
+            )
+        }
+    } else if let Some(block) = &span.block_header {
+        return Ok(vec![
+            SourcePatch {
+                start: block.child_start,
+                end: block.child_end,
+                replacement: String::new(),
+            },
+            SourcePatch {
+                start: block.insert_at,
+                end: block.insert_at,
+                replacement: render_source_value(new)?,
+            },
+        ]);
+    } else {
+        render_replacement(source, span, primitive, &input, &desired)?
+    };
+    Ok(vec![SourcePatch {
+        start: span.start,
+        end: span.end,
+        replacement,
+    }])
+}
+
+fn replace_value_patches(
+    source: &str,
+    span: &ValueSpan,
+    new: &Value,
+    shape: &ResolvedAuthoringField,
+) -> Result<Vec<SourcePatch>> {
+    if is_scalar_value(new) {
+        return scalar_value_patch(source, span, new, shape);
+    }
+    let rendered = render_source_value(new)?;
+    if let Some(block) = &span.block_header {
+        return Ok(vec![
+            SourcePatch {
+                start: block.child_start,
+                end: block.child_end,
+                replacement: String::new(),
+            },
+            SourcePatch {
+                start: block.insert_at,
+                end: block.insert_at,
+                replacement: rendered,
+            },
+        ]);
+    }
+    if let Some(literal) = &span.literal {
+        return Ok(vec![SourcePatch {
+            start: span.start,
+            end: span.end,
+            replacement: format!(
+                "{rendered}{}",
+                &source[literal.header_end..literal.body_start]
+            ),
+        }]);
+    }
+    Ok(vec![SourcePatch {
+        start: span.start,
+        end: span.end,
+        replacement: rendered,
+    }])
+}
+
+#[derive(Clone, Copy)]
+struct SequenceEditRequest<'a> {
+    old_items: &'a [Value],
+    new_items: &'a [Value],
+    requested_items: &'a [AuthoringSequenceItem],
+    source_identity: bool,
+    element_shape: &'a ResolvedAuthoringType,
+}
+
+fn sequence_value_change_patches(
+    source: &str,
+    span: &ValueSpan,
+    request: SequenceEditRequest<'_>,
+    path: &Path,
+) -> Result<Vec<SourcePatch>> {
+    let SequenceEditRequest {
+        old_items,
+        new_items,
+        requested_items,
+        source_identity: requested_source_identity,
+        element_shape,
+    } = request;
+    if requested_items.len() != new_items.len() {
+        return Err(requested_value_shape_error(path));
+    }
+    let (layout, source_items) = sequence_source_layout(source, span, path)?;
+    if source_items.len() != old_items.len() {
+        return Err(source_edit_error(
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+            "sequence source item count does not match the parsed value",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        ));
+    }
+    let has_source_identity = requested_source_identity;
+    let mut seen_source_indices = BTreeSet::new();
+    for source_index in requested_items.iter().filter_map(|item| item.source_index) {
+        if source_index >= old_items.len() || !seen_source_indices.insert(source_index) {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "sequence source item identity is stale or duplicated",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            ));
+        }
+    }
+    let source_by_new = has_source_identity.then(|| {
+        requested_items
+            .iter()
+            .map(|item| item.source_index)
+            .collect::<Vec<_>>()
+    });
+    let structure_changed = if let Some(source_by_new) = &source_by_new {
+        old_items.len() != new_items.len()
+            || source_by_new
+                .iter()
+                .enumerate()
+                .any(|(index, source_index)| *source_index != Some(index))
+    } else {
+        let permutation = old_items.len() == new_items.len()
+            && sequence_match_indices(old_items, new_items)
+                .iter()
+                .all(Option::is_some);
+        old_items.len() != new_items.len() || (permutation && old_items != new_items)
+    };
+    if structure_changed {
+        return sequence_structure_patch(
+            source,
+            layout,
+            &source_items,
+            request,
+            source_by_new,
+            path,
+        );
+    }
+
+    let field_shape = ResolvedAuthoringField {
+        name: String::new(),
+        type_name: String::new(),
+        modifier: FieldModifier::Required,
+        shape: element_shape.clone(),
+    };
+    let mut patches = Vec::new();
+    for (index, (old, new)) in old_items.iter().zip(new_items).enumerate() {
+        patches.extend(value_change_patches(
+            source,
+            &source_items[index].value,
+            old,
+            new,
+            &requested_items[index].value,
+            &field_shape,
+            path,
+        )?);
+    }
+    Ok(patches)
+}
+
+fn sequence_match_indices(old_items: &[Value], new_items: &[Value]) -> Vec<Option<usize>> {
+    let mut used = vec![false; old_items.len()];
+    new_items
+        .iter()
+        .map(|new| {
+            old_items
+                .iter()
+                .enumerate()
+                .find(|(index, old)| !used[*index] && *old == new)
+                .map(|(index, _)| {
+                    used[index] = true;
+                    index
+                })
+        })
+        .collect()
+}
+
+fn sequence_structure_patch(
+    source: &str,
+    layout: SequenceSourceLayout,
+    source_items: &[SequenceItemSource],
+    request: SequenceEditRequest<'_>,
+    source_by_new: Option<Vec<Option<usize>>>,
+    path: &Path,
+) -> Result<Vec<SourcePatch>> {
+    let SequenceEditRequest {
+        old_items,
+        new_items,
+        requested_items,
+        element_shape,
+        ..
+    } = request;
+    if source_items.len() != old_items.len() {
+        return Err(source_edit_error(
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+            "sequence source item count does not match the parsed value",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        ));
+    }
+
+    let has_source_identity = source_by_new.is_some();
+    let simple_append = if let Some(source_by_new) = &source_by_new {
+        new_items.len() >= old_items.len()
+            && old_items
+                .iter()
+                .enumerate()
+                .all(|(index, old)| source_by_new[index] == Some(index) && *old == new_items[index])
+            && source_by_new[old_items.len()..].iter().all(Option::is_none)
+    } else {
+        new_items.len() >= old_items.len()
+            && old_items.iter().zip(new_items).all(|(old, new)| old == new)
+    };
+    let mut source_by_new = source_by_new.unwrap_or_else(|| {
+        if simple_append {
+            (0..new_items.len())
+                .map(|index| (index < old_items.len()).then_some(index))
+                .collect::<Vec<_>>()
+        } else {
+            sequence_match_indices(old_items, new_items)
+        }
+    });
+    let mut used_old = vec![false; old_items.len()];
+    for index in source_by_new.iter().flatten() {
+        used_old[*index] = true;
+    }
+    let unmatched_old = used_old
+        .iter()
+        .enumerate()
+        .filter_map(|(index, used)| (!used).then_some(index))
+        .collect::<Vec<_>>();
+    let unmatched_new = source_by_new
+        .iter()
+        .enumerate()
+        .filter_map(|(index, matched)| matched.is_none().then_some(index))
+        .collect::<Vec<_>>();
+    if !has_source_identity {
+        for (old_index, new_index) in unmatched_old.iter().zip(unmatched_new) {
+            source_by_new[new_index] = Some(*old_index);
+        }
+    }
+
+    let old_positions = {
+        let mut positions = vec![None; old_items.len()];
+        for (new_index, old_index) in source_by_new.iter().enumerate() {
+            if let Some(old_index) = old_index {
+                positions[*old_index] = Some(new_index);
+            }
+        }
+        positions
+    };
+    let existing_items_stay_in_place = old_positions
+        .iter()
+        .enumerate()
+        .all(|(index, position)| *position == Some(index));
+
+    // WHY: A removed/reordered block item can make separator comments or blank lines
+    // ambiguous between neighboring values; guessing would move or erase unrelated bytes.
+    // SOURCE-EDIT-006 requires failing closed when the source location is not unique.
+    // Regression: block_array_structure_rejects_ambiguous_inter_item_source.
+    if !existing_items_stay_in_place
+        && let SequenceSourceLayout::Block { separators, .. } = &layout
+        && separators.iter().any(|separator| !separator.is_empty())
+    {
+        return Err(source_edit_error(
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+            "block sequence separators contain comments or blank lines that cannot be preserved safely during this structural edit",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        ));
+    }
+
+    // Equal semantic items may carry different quotes or inline comments. When
+    // an older caller omits occurrence identities, a structural edit cannot tell
+    // which duplicate was moved or removed. Stable UI identities disambiguate it.
+    let duplicate_source_is_ambiguous = (0..old_items.len()).any(|right| {
+        (0..right).any(|left| {
+            old_items[left] == old_items[right] && source_items[left].raw != source_items[right].raw
+        })
+    });
+    if duplicate_source_is_ambiguous && !simple_append && !has_source_identity {
+        return Err(source_edit_error(
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+            "duplicate sequence values have distinct source text and cannot be identified safely",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        ));
+    }
+
+    let item_shape = ResolvedAuthoringField {
+        name: String::new(),
+        type_name: String::new(),
+        modifier: FieldModifier::Required,
+        shape: element_shape.clone(),
+    };
+    let chunks = source_by_new
+        .iter()
+        .copied()
+        .zip(new_items)
+        .enumerate()
+        .map(|(new_index, (matched, value))| match matched {
+            Some(index) if old_items[index] == *value => Ok(source_items[index].raw.clone()),
+            Some(index) => {
+                let item = &source_items[index];
+                let patches = value_change_patches(
+                    source,
+                    &item.value,
+                    &old_items[index],
+                    value,
+                    &requested_items[new_index].value,
+                    &item_shape,
+                    path,
+                )?;
+                apply_local_patches(&item.raw, item.start, &patches, path)
+            }
+            None => render_source_value(value),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let (start, end, replacement) = match layout {
+        SequenceSourceLayout::Flow {
+            start,
+            end,
+            prefix,
+            separators,
+            suffix,
+        } => {
+            let mut replacement = prefix;
+            if chunks.is_empty() {
+                let mut suffix = suffix;
+                if let Some(comma) = suffix.find(',') {
+                    suffix.remove(comma);
+                }
+                replacement.push_str(&suffix);
+            } else {
+                for (index, chunk) in chunks.iter().enumerate() {
+                    if index > 0 {
+                        replacement.push_str(
+                            separators
+                                .get(index - 1)
+                                .map(String::as_str)
+                                .unwrap_or(", "),
+                        );
+                    }
+                    replacement.push_str(chunk);
+                }
+                replacement.push_str(&suffix);
+            }
+            (start, end, replacement)
+        }
+        SequenceSourceLayout::Block {
+            start,
+            end,
+            indent,
+            empty_replacement,
+            prefix,
+            separators,
+            suffix,
+        } => {
+            let mut replacement = prefix;
+            if chunks.is_empty() {
+                replacement.push_str(&empty_replacement);
+            } else {
+                for (index, chunk) in chunks.iter().enumerate() {
+                    if index > 0 {
+                        replacement
+                            .push_str(separators.get(index - 1).map(String::as_str).unwrap_or(""));
+                    }
+                    if source_by_new[index].is_none() {
+                        replacement.push_str(&" ".repeat(indent));
+                        replacement.push_str("- ");
+                        replacement.push_str(chunk);
+                        replacement.push_str(newline_for(source));
+                    } else {
+                        replacement.push_str(chunk);
+                    }
+                }
+                replacement.push_str(&suffix);
+            }
+            (start, end, replacement)
+        }
+    };
+    if start > end {
+        return Err(source_edit_error(
+            "E-SOURCE-EDIT-PATCH-INVALID",
+            "sequence patch range is invalid",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        ));
+    }
+    Ok(vec![SourcePatch {
+        start,
+        end,
+        replacement,
+    }])
+}
+
+fn apply_local_patches(
+    item_source: &str,
+    item_start: usize,
+    patches: &[SourcePatch],
+    path: &Path,
+) -> Result<String> {
+    let mut local = Vec::with_capacity(patches.len());
+    for patch in patches {
+        if patch.start < item_start || patch.end < item_start {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-PATCH-INVALID",
+                "nested sequence patch escapes its source item",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            ));
+        }
+        local.push(SourcePatch {
+            start: patch.start - item_start,
+            end: patch.end - item_start,
+            replacement: patch.replacement.clone(),
+        });
+    }
+    apply_patches(item_source, &local, path)
+}
+
+fn mapping_value_change_patches(
+    source: &str,
+    span: &ValueSpan,
+    old: &Value,
+    new: &Value,
+    requested: &AuthoringValue,
+    fields: &[ResolvedAuthoringField],
+    path: &Path,
+) -> Result<Vec<SourcePatch>> {
+    let old_mapping = old.as_mapping().ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-EDIT-VALUE-SHAPE",
+            "existing Custom Type value is not a mapping",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-015",
+        )
+    })?;
+    let new_mapping = new.as_mapping().ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-EDIT-VALUE-SHAPE",
+            "edited Custom Type value is not a mapping",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-016",
+        )
+    })?;
+    let AuthoringValue::Mapping {
+        entries: requested_entries,
+    } = requested
+    else {
+        return Err(requested_value_shape_error(path));
+    };
+    let source_members = mapping_member_spans(source, span, path)?;
+    let mut patches = Vec::new();
+    let mut additions = Vec::<(String, Value)>::new();
+
+    for field in fields {
+        let key = Value::String(field.name.clone());
+        let old_value = old_mapping.get(&key);
+        let new_value = new_mapping.get(&key);
+        match (old_value, new_value) {
+            (Some(old_value), Some(new_value)) => {
+                let requested_value = requested_entries
+                    .iter()
+                    .find(|entry| entry.name == field.name)
+                    .map(|entry| &entry.value)
+                    .ok_or_else(|| requested_value_shape_error(path))?;
+                let source_identity_changed = crate::project_typed_source_value(field, old_value)
+                    .ok()
+                    .is_some_and(|source_value| {
+                        source_occurrence_identity_changed(&source_value, requested_value)
+                    });
+                if old_value == new_value && !source_identity_changed {
+                    continue;
+                }
+                let matches = source_members
+                    .iter()
+                    .filter(|(name, _)| name == &field.name)
+                    .map(|(_, span)| span)
+                    .collect::<Vec<_>>();
+                let [source_span] = matches.as_slice() else {
+                    return Err(source_edit_error(
+                        "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                        format!(
+                            "Custom Type member `{}` could not be located exactly once",
+                            field.name
+                        ),
+                        Some(path.to_path_buf()),
+                        "SOURCE-EDIT-006",
+                    ));
+                };
+                patches.extend(value_change_patches(
+                    source,
+                    source_span,
+                    old_value,
+                    new_value,
+                    requested_value,
+                    field,
+                    path,
+                )?);
+            }
+            (Some(_), None) => {
+                return Err(source_edit_error(
+                    "E-SOURCE-EDIT-CUSTOM-MEMBER-DROPPED",
+                    format!("Custom Type edit omitted declared member `{}`", field.name),
+                    Some(path.to_path_buf()),
+                    "SOURCE-EDIT-016",
+                ));
+            }
+            (None, Some(new_value)) => additions.push((field.name.clone(), new_value.clone())),
+            (None, None) => {}
+        }
+    }
+
+    for (key, old_value) in old_mapping {
+        let Some(name) = key.as_str() else {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-VALUE-SHAPE",
+                "Custom Type mapping contains a non-string key",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-015",
+            ));
+        };
+        if fields.iter().any(|field| field.name == name) {
+            continue;
+        }
+        let new_value = new_mapping.get(key);
+        if new_value != Some(old_value) {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-UNKNOWN-MEMBER-CHANGED",
+                format!(
+                    "unknown Custom Type member `{name}` cannot be changed through this editor"
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-015",
+            ));
+        }
+    }
+    for key in new_mapping.keys() {
+        if !old_mapping.contains_key(key)
+            && key
+                .as_str()
+                .is_none_or(|name| !fields.iter().any(|field| field.name == name))
+        {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-UNKNOWN-MEMBER-ADDED",
+                "only declared Custom Type members can be authored",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-016",
+            ));
+        }
+    }
+    if !additions.is_empty() {
+        patches.extend(insert_mapping_members(source, span, &additions, path)?);
+    }
+    Ok(patches)
+}
+
+fn insert_mapping_members(
+    source: &str,
+    span: &ValueSpan,
+    additions: &[(String, Value)],
+    path: &Path,
+) -> Result<Vec<SourcePatch>> {
+    if additions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let trimmed = span.raw.trim_start();
+    if trimmed.starts_with('{') {
+        // WHY: Inserting at the closing brace retains exact sibling tokens and
+        // spacing; rebuilding the flow map would normalize unrelated source bytes.
+        // EVIDENCE: SOURCE-EDIT-005; Regression: flow_custom_member_insertion_preserves_existing_mapping_bytes.
+        let flow_start = span.start + span.raw.len() - trimmed.len();
+        let flow_end = flow_collection_end(source, flow_start).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "Custom Type flow mapping end could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        if flow_has_comment(source, flow_start, flow_end) {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow mapping comments prevent a safe member insertion",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            ));
+        }
+        let mut chunks = Vec::with_capacity(additions.len());
+        for (name, value) in additions {
+            let key = if plain_string_round_trips(name) {
+                name.clone()
+            } else {
+                json_string(name)?
+            };
+            chunks.push(format!("{key}: {}", render_source_value(value)?));
+        }
+        let content_start = flow_start + 1;
+        let content_end = flow_end - 1;
+        let content = &source[content_start..content_end];
+        let is_empty = content.trim().is_empty();
+        let has_trailing_comma = content.trim_end().ends_with(',');
+        let insertion = if is_empty || has_trailing_comma {
+            chunks.join(", ")
+        } else {
+            format!(", {}", chunks.join(", "))
+        };
+        let insert_at = if is_empty {
+            content_start + content.len() - content.trim_start().len()
+        } else {
+            content_end
+        };
+        return Ok(vec![SourcePatch {
+            start: insert_at,
+            end: insert_at,
+            replacement: insertion,
+        }]);
+    }
+
+    let lines = source_lines(source);
+    let first_line = line_index_for_offset(&lines, span.start).ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+            "Custom Type block mapping start could not be located safely",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        )
+    })?;
+    let mapping_indent = if is_sequence_item(lines[first_line].text)
+        && mapping_span(lines[first_line].text).is_some()
+    {
+        yaml_indent(lines[first_line].text) + 2
+    } else {
+        yaml_indent(lines[first_line].text)
+    };
+    let mut replacement = String::new();
+    if span.end > 0 && !source[..span.end].ends_with('\n') {
+        replacement.push_str(newline_for(source));
+    }
+    for (name, value) in additions {
+        let key = if plain_string_round_trips(name) {
+            name.clone()
+        } else {
+            json_string(name)?
+        };
+        replacement.push_str(&" ".repeat(mapping_indent));
+        replacement.push_str(&key);
+        replacement.push_str(": ");
+        replacement.push_str(&render_source_value(value)?);
+        replacement.push_str(newline_for(source));
+    }
+    Ok(vec![SourcePatch {
+        start: span.end,
+        end: span.end,
+        replacement,
+    }])
+}
+
+fn is_scalar_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
+    )
+}
+
+fn scalar_text(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_owned(),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::String(value) => value.clone(),
+        _ => String::new(),
+    }
+}
+
+fn scalar_primitive(shape: &ResolvedAuthoringField) -> Option<PrimitiveType> {
+    match &shape.shape {
+        ResolvedAuthoringType::Primitive { primitive } => Some(*primitive),
+        ResolvedAuthoringType::ValueObject { underlying, .. } => Some(*underlying),
+        ResolvedAuthoringType::Enum { .. } => Some(PrimitiveType::String),
+        ResolvedAuthoringType::Flags { .. } | ResolvedAuthoringType::Custom { .. } => None,
+    }
 }
 
 struct DesiredScalar {
@@ -463,6 +1530,13 @@ struct ValueSpan {
     end: usize,
     raw: String,
     literal: Option<LiteralSpan>,
+    block_header: Option<BlockHeader>,
+}
+#[derive(Debug, Clone)]
+struct BlockHeader {
+    insert_at: usize,
+    child_start: usize,
+    child_end: usize,
 }
 #[derive(Debug, Clone)]
 struct LiteralSpan {
@@ -707,26 +1781,6 @@ fn render_added_records(additions: &[AddedRecordPlan], indent: usize, newline: &
     lines.join(newline)
 }
 
-fn render_added_scalar(
-    primitive: PrimitiveType,
-    input: &str,
-    desired: &DesiredScalar,
-) -> Result<String> {
-    if primitive == PrimitiveType::String {
-        if input.contains(['\n', '\r']) {
-            return json_string(input);
-        }
-        if plain_string_round_trips(input) {
-            return Ok(input.to_owned());
-        }
-        return json_string(input);
-    }
-    if let Some(source_text) = &desired.source_text {
-        return Ok(source_text.clone());
-    }
-    json_string(input)
-}
-
 fn locate_record_member_value(
     source: &str,
     data: &DataDocument,
@@ -778,18 +1832,46 @@ fn locate_record_member_value(
         .get(record_index + 1)
         .copied()
         .unwrap_or(region_end);
+    let map_indent = sequence.indent + 2;
     let mut found = Vec::new();
     for (line_index, line) in lines.iter().enumerate().take(record_end).skip(item_line) {
         if literal_content.get(line_index).copied().unwrap_or(false) {
             continue;
         }
+        let direct_entry = line_index == item_line || yaml_indent(line.text) == map_indent;
+        if !direct_entry {
+            continue;
+        }
+        if line_index == item_line
+            && let Some(parts) = sequence_item_parts(strip_yaml_comment(line.text))
+            && parts.trim_start().starts_with('{')
+        {
+            let flow_start = line.start + line.text.find('{').unwrap_or(0);
+            if let Some(flow_end) = flow_collection_end(source, flow_start) {
+                for (key, span) in flow_mapping_entries(source, flow_start, flow_end)? {
+                    if key == field {
+                        found.push((span, None));
+                    }
+                }
+            }
+            continue;
+        }
         if let Some(mapping) = mapping_span(line.text)
             && mapping.key == field
         {
-            found.push((line_index, mapping));
+            let span = mapping_value_span(
+                source,
+                &lines,
+                line_index,
+                &mapping,
+                record_end,
+                &literal_content,
+                path,
+            )?;
+            found.push((span, Some((line_index, mapping))));
         }
     }
-    let [(line_index, mapping)] = found.as_slice() else {
+    let [(span, _)] = found.as_slice() else {
         return Err(source_edit_error(
             "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
             format!(
@@ -799,23 +1881,772 @@ fn locate_record_member_value(
             "SOURCE-EDIT-006",
         ));
     };
-    let line = lines[*line_index];
+    Ok(span.clone())
+}
+
+fn mapping_value_span(
+    source: &str,
+    lines: &[SourceLine<'_>],
+    line_index: usize,
+    mapping: &MappingSpan,
+    limit_line: usize,
+    literal_content: &[bool],
+    path: &Path,
+) -> Result<ValueSpan> {
+    let line = lines[line_index];
+    let mapping_indent = yaml_indent(line.text) + usize::from(is_sequence_item(line.text)) * 2;
     let start = line.start + mapping.value_start;
-    if mapping.raw_value == "|" {
-        let literal = literal_span(source, &lines, *line_index, record_end, &literal_content)?;
+    let raw = mapping.raw_value.trim_end();
+    if raw == "|" || raw == ">" {
+        let literal = literal_span(source, lines, line_index, limit_line, literal_content)?;
         return Ok(ValueSpan {
             start: literal.header_start,
             end: literal.body_end,
             raw: mapping.raw_value.clone(),
             literal: Some(literal),
+            block_header: None,
+        });
+    }
+    if raw.starts_with(['[', '{']) {
+        let flow_end = flow_collection_end(source, start).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow collection end could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        return Ok(ValueSpan {
+            start,
+            end: flow_end,
+            raw: source[start..flow_end].to_owned(),
+            literal: None,
+            block_header: None,
+        });
+    }
+    if !raw.is_empty() {
+        return Ok(ValueSpan {
+            start,
+            end: line.start + mapping.value_end,
+            raw: mapping.raw_value.clone(),
+            literal: None,
+            block_header: None,
+        });
+    }
+
+    if let Some((child_start, child_end)) =
+        block_child_region(source, lines, line_index, mapping_indent, limit_line)
+    {
+        return Ok(ValueSpan {
+            start: child_start,
+            end: child_end,
+            raw: source[child_start..child_end].to_owned(),
+            literal: None,
+            block_header: Some(BlockHeader {
+                insert_at: start,
+                child_start,
+                child_end,
+            }),
         });
     }
     Ok(ValueSpan {
         start,
-        end: line.start + mapping.value_end,
-        raw: mapping.raw_value.clone(),
+        end: start,
+        raw: String::new(),
         literal: None,
+        block_header: None,
     })
+}
+
+fn block_child_region(
+    source: &str,
+    lines: &[SourceLine<'_>],
+    header_line: usize,
+    parent_indent: usize,
+    limit_line: usize,
+) -> Option<(usize, usize)> {
+    let first =
+        (header_line + 1..limit_line).find(|index| !is_ignorable_line(lines[*index].text))?;
+    if yaml_indent(lines[first].text) <= parent_indent {
+        return None;
+    }
+    let boundary = (first + 1..limit_line)
+        .find(|index| {
+            !is_ignorable_line(lines[*index].text)
+                && yaml_indent(lines[*index].text) <= parent_indent
+        })
+        .unwrap_or(limit_line);
+    let mut last = boundary;
+    while last > first && is_ignorable_line(lines[last - 1].text) {
+        last -= 1;
+    }
+    let end = if last > first {
+        lines[last - 1].next_start
+    } else {
+        lines[first].start
+    };
+    Some((lines[first].start, end.min(source.len())))
+}
+
+fn flow_collection_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let first = *bytes.get(start)?;
+    if !matches!(first, b'[' | b'{') {
+        return None;
+    }
+    let mut stack = vec![if first == b'[' { b']' } else { b'}' }];
+    let mut quote = None;
+    let mut index = start + 1;
+    while index < bytes.len() {
+        match quote {
+            Some(b'\'') => {
+                if bytes[index] == b'\'' && bytes.get(index + 1) == Some(&b'\'') {
+                    index += 2;
+                } else if bytes[index] == b'\'' {
+                    quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            Some(b'"') => {
+                if bytes[index] == b'\\' {
+                    index += 2;
+                } else if bytes[index] == b'"' {
+                    quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            None if bytes[index] == b'#'
+                && (index == 0 || bytes[index - 1].is_ascii_whitespace()) =>
+            {
+                while index < bytes.len() && bytes[index] != b'\n' {
+                    index += 1;
+                }
+            }
+            None => match bytes[index] {
+                b'\'' | b'"' => {
+                    quote = Some(bytes[index]);
+                    index += 1;
+                }
+                b'[' => {
+                    stack.push(b']');
+                    index += 1;
+                }
+                b'{' => {
+                    stack.push(b'}');
+                    index += 1;
+                }
+                closing @ (b']' | b'}') => {
+                    if stack.pop() != Some(closing) {
+                        return None;
+                    }
+                    index += 1;
+                    if stack.is_empty() {
+                        return Some(index);
+                    }
+                }
+                _ => index += 1,
+            },
+            _ => unreachable!(),
+        }
+    }
+    None
+}
+
+fn flow_segments(source: &str, start: usize, end: usize, delimiter: u8) -> Vec<(usize, usize)> {
+    let bytes = source.as_bytes();
+    let mut segments = Vec::new();
+    let mut segment_start = start;
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut index = start;
+    while index < end {
+        match quote {
+            Some(b'\'') => {
+                if bytes[index] == b'\'' && bytes.get(index + 1) == Some(&b'\'') {
+                    index += 2;
+                } else if bytes[index] == b'\'' {
+                    quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            Some(b'"') => {
+                if bytes[index] == b'\\' {
+                    index += 2;
+                } else if bytes[index] == b'"' {
+                    quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            None if bytes[index] == b'#'
+                && (index == 0 || bytes[index - 1].is_ascii_whitespace()) =>
+            {
+                while index < end && bytes[index] != b'\n' {
+                    index += 1;
+                }
+            }
+            None => match bytes[index] {
+                b'\'' | b'"' => {
+                    quote = Some(bytes[index]);
+                    index += 1;
+                }
+                b'[' => {
+                    stack.push(b']');
+                    index += 1;
+                }
+                b'{' => {
+                    stack.push(b'}');
+                    index += 1;
+                }
+                b']' | b'}' if stack.last() == Some(&bytes[index]) => {
+                    stack.pop();
+                    index += 1;
+                }
+                current if current == delimiter && stack.is_empty() => {
+                    segments.push((segment_start, index));
+                    segment_start = index + 1;
+                    index += 1;
+                }
+                _ => index += 1,
+            },
+            _ => unreachable!(),
+        }
+    }
+    segments.push((segment_start, end));
+    segments
+}
+
+fn flow_top_level_colon(source: &str) -> Option<usize> {
+    flow_segments(source, 0, source.len(), b':')
+        .into_iter()
+        .next()
+        .and_then(|(_, end)| (end < source.len()).then_some(end))
+}
+
+fn flow_value_span(source: &str, start: usize, end: usize) -> Option<ValueSpan> {
+    let raw = strip_yaml_comment(&source[start..end]);
+    let leading = raw.len() - raw.trim_start().len();
+    let value = raw.trim();
+    if value.is_empty() {
+        let at = start + leading;
+        return Some(ValueSpan {
+            start: at,
+            end: at,
+            raw: String::new(),
+            literal: None,
+            block_header: None,
+        });
+    }
+    let value_start = start + leading;
+    let value_end = value_start + value.len();
+    let first = source.as_bytes().get(value_start).copied()?;
+    let value_end = if matches!(first, b'[' | b'{') {
+        flow_collection_end(source, value_start)?
+    } else {
+        value_end
+    };
+    Some(ValueSpan {
+        start: value_start,
+        end: value_end,
+        raw: source[value_start..value_end].to_owned(),
+        literal: None,
+        block_header: None,
+    })
+}
+
+fn flow_sequence_entries(source: &str, start: usize, end: usize) -> Result<Vec<ValueSpan>> {
+    if source.as_bytes().get(start) != Some(&b'[') || source.as_bytes().get(end - 1) != Some(&b']')
+    {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    for (segment_start, segment_end) in flow_segments(source, start + 1, end - 1, b',') {
+        if let Some(span) = flow_value_span(source, segment_start, segment_end)
+            && !span.raw.is_empty()
+        {
+            entries.push(span);
+        }
+    }
+    Ok(entries)
+}
+
+fn flow_mapping_entries(
+    source: &str,
+    start: usize,
+    end: usize,
+) -> Result<Vec<(String, ValueSpan)>> {
+    if source.as_bytes().get(start) != Some(&b'{') || source.as_bytes().get(end - 1) != Some(&b'}')
+    {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    for (segment_start, segment_end) in flow_segments(source, start + 1, end - 1, b',') {
+        let segment = &source[segment_start..segment_end];
+        if strip_yaml_comment(segment).trim().is_empty() {
+            continue;
+        }
+        let Some(colon) = flow_top_level_colon(segment) else {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow mapping member could not be located safely",
+                None,
+                "SOURCE-EDIT-006",
+            ));
+        };
+        let raw_key = segment[..colon].trim();
+        let key = decode_mapping_key(raw_key).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow mapping key could not be decoded safely",
+                None,
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        let value_start = segment_start + colon + 1;
+        let value = flow_value_span(source, value_start, segment_end).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow mapping value could not be located safely",
+                None,
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        entries.push((key, value));
+    }
+    Ok(entries)
+}
+
+fn mapping_member_spans(
+    source: &str,
+    span: &ValueSpan,
+    path: &Path,
+) -> Result<Vec<(String, ValueSpan)>> {
+    let trimmed = span.raw.trim_start();
+    if trimmed.starts_with('{') {
+        let offset = span.raw.len() - trimmed.len();
+        let start = span.start + offset;
+        let end = flow_collection_end(source, start).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow mapping end could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        return flow_mapping_entries(source, start, end)
+            .map_err(|error| with_requirement(error, "SOURCE-EDIT-006"));
+    }
+    let lines = source_lines(source);
+    let literal_content = literal_block_scalar_content_lines(&lines);
+    let first_line = line_index_for_offset(&lines, span.start).ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+            "mapping start could not be located safely",
+            Some(path.to_path_buf()),
+            "SOURCE-EDIT-006",
+        )
+    })?;
+    let limit_line = lines
+        .iter()
+        .position(|line| line.start >= span.end)
+        .unwrap_or(lines.len());
+    let first = (first_line..limit_line).find(|index| !is_ignorable_line(lines[*index].text));
+    let Some(first) = first else {
+        return Ok(Vec::new());
+    };
+    let indent = yaml_indent(lines[first].text);
+    let mapping_indent =
+        if is_sequence_item(lines[first].text) && mapping_span(lines[first].text).is_some() {
+            indent + 2
+        } else {
+            indent
+        };
+    let mut result = Vec::new();
+    for index in first..limit_line {
+        if literal_content.get(index).copied().unwrap_or(false) {
+            continue;
+        }
+        let line = lines[index];
+        let direct = index == first && is_sequence_item(line.text)
+            || yaml_indent(line.text) == mapping_indent;
+        if !direct {
+            continue;
+        }
+        let Some(mapping) = mapping_span(line.text) else {
+            continue;
+        };
+        let child = mapping_value_span(
+            source,
+            &lines,
+            index,
+            &mapping,
+            limit_line,
+            &literal_content,
+            path,
+        )?;
+        result.push((mapping.key, child));
+    }
+    Ok(result)
+}
+
+fn line_index_for_offset(lines: &[SourceLine<'_>], offset: usize) -> Option<usize> {
+    lines
+        .iter()
+        .position(|line| line.start <= offset && offset < line.next_start)
+        .or_else(|| lines.iter().position(|line| line.start == offset))
+}
+
+#[derive(Debug, Clone)]
+struct SequenceItemSource {
+    value: ValueSpan,
+    raw: String,
+    start: usize,
+    end: usize,
+}
+
+struct SequenceItemSpanContext<'source, 'lines> {
+    source: &'source str,
+    lines: &'lines [SourceLine<'source>],
+    item_line: usize,
+    chunk_end_line: usize,
+    chunk_end: usize,
+    sequence_indent: usize,
+    dash_column: usize,
+}
+
+#[derive(Debug, Clone)]
+enum SequenceSourceLayout {
+    Flow {
+        start: usize,
+        end: usize,
+        prefix: String,
+        separators: Vec<String>,
+        suffix: String,
+    },
+    Block {
+        start: usize,
+        end: usize,
+        indent: usize,
+        empty_replacement: String,
+        prefix: String,
+        separators: Vec<String>,
+        suffix: String,
+    },
+}
+
+fn sequence_source_layout(
+    source: &str,
+    span: &ValueSpan,
+    path: &Path,
+) -> Result<(SequenceSourceLayout, Vec<SequenceItemSource>)> {
+    let trimmed = span.raw.trim_start();
+    if trimmed.starts_with('[') {
+        let offset = span.raw.len() - trimmed.len();
+        let start = span.start + offset;
+        let end = flow_collection_end(source, start).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow sequence end could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        if flow_has_comment(source, start, end) {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow sequence comments prevent a safe structural patch",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            ));
+        }
+        let value_spans = flow_sequence_entries(source, start, end)?;
+        let items = value_spans
+            .iter()
+            .map(|value| SequenceItemSource {
+                value: value.clone(),
+                raw: source[value.start..value.end].to_owned(),
+                start: value.start,
+                end: value.end,
+            })
+            .collect::<Vec<_>>();
+        let prefix_end = items.first().map_or(end - 1, |item| item.start);
+        let suffix_start = items.last().map_or(end - 1, |item| item.end);
+        let separators = items
+            .windows(2)
+            .map(|pair| source[pair[0].end..pair[1].start].to_owned())
+            .collect();
+        Ok((
+            SequenceSourceLayout::Flow {
+                start,
+                end,
+                prefix: source[start..prefix_end].to_owned(),
+                separators,
+                suffix: source[suffix_start..end].to_owned(),
+            },
+            items,
+        ))
+    } else {
+        let lines = source_lines(source);
+        let first_line = line_index_for_offset(&lines, span.start).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "block sequence start could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        let limit_line = lines
+            .iter()
+            .position(|line| line.start >= span.end)
+            .unwrap_or(lines.len());
+        let first_content_start = span.start + span.raw.len() - span.raw.trim_start().len();
+        let first_line_indent = yaml_indent(lines[first_line].text);
+        let inline_nested_sequence = first_content_start
+            > lines[first_line].start + first_line_indent
+            && source.as_bytes().get(first_content_start) == Some(&b'-')
+            && source
+                .as_bytes()
+                .get(first_content_start + 1)
+                .is_some_and(u8::is_ascii_whitespace);
+        let indent = if inline_nested_sequence {
+            first_content_start - lines[first_line].start
+        } else {
+            first_line_indent
+        };
+        let item_lines = if inline_nested_sequence {
+            std::iter::once(first_line)
+                .chain((first_line + 1..limit_line).filter(|index| {
+                    !is_ignorable_line(lines[*index].text)
+                        && is_sequence_item(lines[*index].text)
+                        && yaml_indent(lines[*index].text) == indent
+                }))
+                .collect::<Vec<_>>()
+        } else {
+            (first_line..limit_line)
+                .filter(|index| {
+                    !is_ignorable_line(lines[*index].text)
+                        && is_sequence_item(lines[*index].text)
+                        && yaml_indent(lines[*index].text) == indent
+                })
+                .collect::<Vec<_>>()
+        };
+        let Some(_first_candidate) = item_lines.first().copied() else {
+            return Ok((
+                SequenceSourceLayout::Block {
+                    start: span.start,
+                    end: span.end,
+                    indent,
+                    empty_replacement: format!("{}[]{}", " ".repeat(indent), newline_for(source)),
+                    prefix: source[span.start..span.end].to_owned(),
+                    separators: Vec::new(),
+                    suffix: String::new(),
+                },
+                Vec::new(),
+            ));
+        };
+        let mut items = Vec::with_capacity(item_lines.len());
+        for (position, item_line) in item_lines.iter().copied().enumerate() {
+            let boundary = item_lines.get(position + 1).copied().unwrap_or(limit_line);
+            let mut chunk_end_line = boundary;
+            while chunk_end_line > item_line
+                && is_ignorable_line(lines[chunk_end_line - 1].text)
+                && yaml_indent(lines[chunk_end_line - 1].text) <= indent
+            {
+                chunk_end_line -= 1;
+            }
+            let chunk_end = if chunk_end_line > item_line {
+                lines[chunk_end_line - 1].next_start
+            } else {
+                lines[item_line].start
+            };
+            let item_start = if inline_nested_sequence && position == 0 {
+                first_content_start
+            } else {
+                lines[item_line].start
+            };
+            let dash_column = if inline_nested_sequence && position == 0 {
+                first_content_start - lines[item_line].start
+            } else {
+                yaml_indent(lines[item_line].text)
+            };
+            let item_source = sequence_item_value_span(
+                SequenceItemSpanContext {
+                    source,
+                    lines: &lines,
+                    item_line,
+                    chunk_end_line,
+                    chunk_end,
+                    sequence_indent: indent,
+                    dash_column,
+                },
+                path,
+            )?;
+            items.push(SequenceItemSource {
+                value: item_source,
+                raw: source[item_start..chunk_end].to_owned(),
+                start: item_start,
+                end: chunk_end,
+            });
+        }
+        let start = span.start;
+        let first_item_start = items.first().map_or(start, |item| item.start);
+        let end = items.last().map_or(start, |item| item.end);
+        let prefix = source[start..first_item_start].to_owned();
+        let suffix = source[end..span.end].to_owned();
+        let separators = items
+            .windows(2)
+            .map(|pair| source[pair[0].end..pair[1].start].to_owned())
+            .collect();
+        Ok((
+            SequenceSourceLayout::Block {
+                start: span.start,
+                end: span.end,
+                indent,
+                empty_replacement: if inline_nested_sequence {
+                    format!("[]{}", newline_for(source))
+                } else {
+                    format!("{}[]{}", " ".repeat(indent), newline_for(source))
+                },
+                prefix,
+                separators,
+                suffix,
+            },
+            items,
+        ))
+    }
+}
+
+fn sequence_item_value_span(
+    context: SequenceItemSpanContext<'_, '_>,
+    path: &Path,
+) -> Result<ValueSpan> {
+    let SequenceItemSpanContext {
+        source,
+        lines,
+        item_line,
+        chunk_end_line,
+        chunk_end,
+        sequence_indent,
+        dash_column,
+    } = context;
+    let line = lines[item_line];
+    let code = strip_yaml_comment(line.text);
+    let dash = dash_column;
+    let after_dash = code.get(dash + 1..).unwrap_or("");
+    let leading = after_dash.len() - after_dash.trim_start().len();
+    let value_start = line.start + dash + 1 + leading;
+    let raw = after_dash.trim();
+    if raw.is_empty() {
+        if let Some((child_start, child_end)) =
+            block_child_region(source, lines, item_line, sequence_indent, chunk_end_line)
+        {
+            return Ok(ValueSpan {
+                start: child_start,
+                end: child_end,
+                raw: source[child_start..child_end].to_owned(),
+                literal: None,
+                block_header: None,
+            });
+        }
+        return Ok(ValueSpan {
+            start: value_start,
+            end: value_start,
+            raw: String::new(),
+            literal: None,
+            block_header: None,
+        });
+    }
+    if raw.starts_with(['[', '{']) {
+        let end = flow_collection_end(source, value_start).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "flow value inside a block sequence could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        return Ok(ValueSpan {
+            start: value_start,
+            end,
+            raw: source[value_start..end].to_owned(),
+            literal: None,
+            block_header: None,
+        });
+    }
+    if raw == "-" || raw.starts_with("- ") || raw.starts_with("-\t") {
+        return Ok(ValueSpan {
+            start: value_start,
+            end: chunk_end,
+            raw: source[value_start..chunk_end].to_owned(),
+            literal: None,
+            block_header: None,
+        });
+    }
+    if mapping_span(&code[dash + 1..]).is_some() {
+        return Ok(ValueSpan {
+            start: value_start,
+            end: chunk_end,
+            raw: source[value_start..chunk_end].to_owned(),
+            literal: None,
+            block_header: None,
+        });
+    }
+    let end = line.start + code.trim_end().len();
+    Ok(ValueSpan {
+        start: value_start,
+        end,
+        raw: source[value_start..end].to_owned(),
+        literal: None,
+        block_header: None,
+    })
+}
+
+fn flow_has_comment(source: &str, start: usize, end: usize) -> bool {
+    let bytes = source.as_bytes();
+    let mut quote = None;
+    let mut index = start;
+    while index < end {
+        match quote {
+            Some(b'\'') => {
+                if bytes[index] == b'\'' && bytes.get(index + 1) == Some(&b'\'') {
+                    index += 2;
+                } else if bytes[index] == b'\'' {
+                    quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            Some(b'"') => {
+                if bytes[index] == b'\\' {
+                    index += 2;
+                } else if bytes[index] == b'"' {
+                    quote = None;
+                    index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            None if bytes[index] == b'#'
+                && (index == 0 || bytes[index - 1].is_ascii_whitespace()) =>
+            {
+                return true;
+            }
+            None if matches!(bytes[index], b'\'' | b'"') => {
+                quote = Some(bytes[index]);
+                index += 1;
+            }
+            _ => index += 1,
+        }
+    }
+    false
 }
 
 fn literal_span(
@@ -1292,7 +3123,10 @@ mod tests {
         AddedRecordDraft, AddedRecordField, RecordValueEdit, SourceRecordMutation,
         dry_run_source_edit, dry_run_source_record_mutation,
     };
-    use crate::{ProjectDocuments, parse_yaml_document, validate_documents};
+    use crate::{
+        AuthoringSequenceItem, AuthoringValue, ProjectDocuments, parse_yaml_document,
+        validate_documents,
+    };
     use std::path::{Path, PathBuf};
     fn documents(schema: &str, data_path: &str, data: &str) -> ProjectDocuments {
         ProjectDocuments {
@@ -1329,12 +3163,12 @@ secondaryKeys: []
                 RecordValueEdit {
                     record_index: 0,
                     field: "weight".to_owned(),
-                    value: "18446744073709551615".to_owned(),
+                    value: number("18446744073709551615"),
                 },
                 RecordValueEdit {
                     record_index: 0,
                     field: "note".to_owned(),
-                    value: "it's ready".to_owned(),
+                    value: text("it's ready"),
                 },
             ],
         )
@@ -1363,7 +3197,7 @@ secondaryKeys: []
             &[RecordValueEdit {
                 record_index: 0,
                 field: "weight".to_owned(),
-                value: "not-a-number".to_owned(),
+                value: number("not-a-number"),
             }],
         )
         .expect("source-safe invalid domain value can be prepared");
@@ -1392,7 +3226,7 @@ secondaryKeys: []
             &[RecordValueEdit {
                 record_index: 0,
                 field: "id".to_owned(),
-                value: "2".to_owned(),
+                value: number("2"),
             }],
         )
         .expect_err("key field remains read-only");
@@ -1409,7 +3243,7 @@ secondaryKeys: []
             &[RecordValueEdit {
                 record_index: 0,
                 field: "note".to_owned(),
-                value: "same".to_owned(),
+                value: text("same"),
             }],
         )
         .expect("same semantic value needs no patch");
@@ -1417,16 +3251,210 @@ secondaryKeys: []
         assert_eq!(dry_run.plan.candidate_source, data);
     }
 
-    fn added(fields: &[(&str, &str)]) -> AddedRecordDraft {
+    fn number(value: &str) -> AuthoringValue {
+        AuthoringValue::Number {
+            value: value.to_owned(),
+        }
+    }
+
+    fn text(value: &str) -> AuthoringValue {
+        AuthoringValue::String {
+            value: value.to_owned(),
+        }
+    }
+
+    fn sequence(items: &[AuthoringValue]) -> AuthoringValue {
+        AuthoringValue::Sequence {
+            items: items
+                .iter()
+                .cloned()
+                .map(|value| AuthoringSequenceItem {
+                    source_index: None,
+                    value,
+                })
+                .collect(),
+            source_identity: false,
+        }
+    }
+
+    fn sequence_with_sources(items: &[(Option<usize>, AuthoringValue)]) -> AuthoringValue {
+        AuthoringValue::Sequence {
+            items: items
+                .iter()
+                .map(|(source_index, value)| AuthoringSequenceItem {
+                    source_index: *source_index,
+                    value: value.clone(),
+                })
+                .collect(),
+            source_identity: true,
+        }
+    }
+
+    fn mapping(entries: &[(&str, AuthoringValue)]) -> AuthoringValue {
+        AuthoringValue::Mapping {
+            entries: entries
+                .iter()
+                .map(|(name, value)| crate::AuthoringMember {
+                    name: (*name).to_owned(),
+                    value: value.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    fn complex_documents(data: &str) -> ProjectDocuments {
+        let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: profile
+    type: Profile
+  - key: 2
+    name: tags
+    type: string
+    array: true
+  - key: 3
+    name: status
+    type: Status
+  - key: 4
+    name: access
+    type: Permissions
+  - key: 5
+    name: bonus
+    type: Profile
+    nullable: true
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+"#;
+        let profile = r#"kind: type
+name: Profile
+custom:
+  fields:
+    - key: 0
+      name: credits
+      type: ulong
+    - key: 1
+      name: label
+      type: string
+    - key: 2
+      name: alias
+      type: string
+      nullable: true
+"#;
+        let status = r#"kind: type
+name: Status
+enum:
+  underlying: int
+  members:
+    - name: Ready
+      value: 0
+    - name: Paused
+      value: 1
+"#;
+        let permissions = r#"kind: type
+name: Permissions
+flags:
+  underlying: int
+  members:
+    - name: None
+      value: 0
+    - name: Read
+      value: 1
+    - name: Write
+      value: 2
+    - name: Execute
+      value: 4
+"#;
+        ProjectDocuments {
+            files: vec![
+                parse_yaml_document(PathBuf::from("schema.yaml"), schema)
+                    .expect("complex schema parses"),
+                parse_yaml_document(PathBuf::from("profile.yaml"), profile)
+                    .expect("Custom Type parses"),
+                parse_yaml_document(PathBuf::from("status.yaml"), status).expect("Enum parses"),
+                parse_yaml_document(PathBuf::from("permissions.yaml"), permissions)
+                    .expect("Flags parses"),
+                parse_yaml_document(PathBuf::from("data.yaml"), data).expect("complex data parses"),
+            ],
+        }
+    }
+
+    const COMPLEX_DATA: &str = "kind: data\ntable: item\nrecords:\n  - id: 1\n    profile:\n      credits: 18446744073709551614 # precise sibling\n      label: 'old' # label comment\n      alias: null # alias comment\n    tags: [one, 'two', three] # tags comment\n    status: Ready\n    access: [None] # access comment\n    bonus: null # bonus comment\n";
+
+    fn added(fields: &[(&str, AuthoringValue)]) -> AddedRecordDraft {
         AddedRecordDraft {
             fields: fields
                 .iter()
                 .map(|(field, value)| AddedRecordField {
                     field: (*field).to_owned(),
-                    value: (*value).to_owned(),
+                    value: value.clone(),
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn record_addition_supports_complex_shapes_and_preserves_null_placeholders_for_validation() {
+        let snapshot = complex_documents("kind: data\ntable: item\nrecords: []\n");
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                additions: vec![
+                    added(&[
+                        ("status", text("Paused")),
+                        (
+                            "profile",
+                            mapping(&[
+                                ("credits", number("18446744073709551615")),
+                                ("label", text("draft")),
+                                ("alias", AuthoringValue::Null),
+                            ]),
+                        ),
+                        ("access", sequence(&[text("Read"), text("Write")])),
+                        ("bonus", AuthoringValue::Null),
+                        ("tags", sequence(&[text("one"), text("two")])),
+                        ("id", number("1")),
+                    ]),
+                    added(&[
+                        ("id", number("2")),
+                        (
+                            "profile",
+                            mapping(&[
+                                ("credits", AuthoringValue::Null),
+                                ("label", AuthoringValue::Null),
+                                ("alias", AuthoringValue::Null),
+                            ]),
+                        ),
+                        ("tags", AuthoringValue::Null),
+                        ("status", AuthoringValue::Null),
+                        ("access", AuthoringValue::Null),
+                        ("bonus", AuthoringValue::Null),
+                    ]),
+                ],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("resolved complex shapes can be added through the shared value model");
+
+        assert!(dry_run.plan.candidate_source.contains(
+            "  - id: 1\n    profile: {credits: 18446744073709551615, label: draft, alias: null}\n    tags: [one, two]\n    status: Paused\n    access: [Read, Write]\n    bonus: null\n"
+        ));
+        assert!(dry_run.plan.candidate_source.contains(
+            "  - id: 2\n    profile: {credits: null, label: null, alias: null}\n    tags: null\n    status: null\n    access: null\n    bonus: null\n"
+        ));
+        let validation = validate_documents(&dry_run.transformed_documents);
+        assert!(!validation.valid);
+        assert!(
+            validation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "E-TABLE-INVALID-RECORD-VALUE")
+        );
     }
 
     #[test]
@@ -1438,9 +3466,9 @@ secondaryKeys: []
             Path::new("data.yaml"),
             &SourceRecordMutation {
                 additions: vec![added(&[
-                    ("note", "Potion"),
-                    ("id", "18446744073709551615"),
-                    ("weight", "10"),
+                    ("note", text("Potion")),
+                    ("id", number("18446744073709551615")),
+                    ("weight", number("10")),
                 ])],
                 ..SourceRecordMutation::default()
             },
@@ -1462,6 +3490,679 @@ secondaryKeys: []
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn complex_value_edits_preserve_sibling_source_and_exact_nested_integers() {
+        let snapshot = complex_documents(COMPLEX_DATA);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![
+                    RecordValueEdit {
+                        record_index: 0,
+                        field: "profile".to_owned(),
+                        value: mapping(&[
+                            ("credits", number("18446744073709551615")),
+                            ("label", text("updated")),
+                            ("alias", text("chosen")),
+                        ]),
+                    },
+                    RecordValueEdit {
+                        record_index: 0,
+                        field: "tags".to_owned(),
+                        value: sequence(&[text("one"), text("three")]),
+                    },
+                    RecordValueEdit {
+                        record_index: 0,
+                        field: "status".to_owned(),
+                        value: text("Paused"),
+                    },
+                    RecordValueEdit {
+                        record_index: 0,
+                        field: "access".to_owned(),
+                        value: sequence(&[text("Read"), text("Write")]),
+                    },
+                    RecordValueEdit {
+                        record_index: 0,
+                        field: "bonus".to_owned(),
+                        value: mapping(&[
+                            ("credits", AuthoringValue::Null),
+                            ("label", AuthoringValue::Null),
+                            ("alias", AuthoringValue::Null),
+                        ]),
+                    },
+                ],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("complex typed values can be edited together");
+
+        let source = &dry_run.plan.candidate_source;
+        assert!(source.contains("credits: 18446744073709551615 # precise sibling"));
+        assert!(source.contains("label: 'updated' # label comment"));
+        assert!(source.contains("alias: chosen # alias comment"));
+        assert!(source.contains("tags: [one, three] # tags comment"));
+        assert!(source.contains("status: Paused"));
+        assert!(source.contains("access: [Read, Write] # access comment"));
+        assert!(
+            source.contains("bonus: {credits: null, label: null, alias: null} # bonus comment")
+        );
+        assert!(!source.contains("'two'"));
+    }
+
+    #[test]
+    fn flow_custom_member_insertion_preserves_existing_mapping_bytes() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    profile: { credits : 18446744073709551614,  label : 'old' } # profile comment\n    tags: [one]\n    status: Ready\n    access: [None]\n    bonus: null\n";
+        let snapshot = complex_documents(data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "profile".to_owned(),
+                    value: mapping(&[
+                        ("credits", number("18446744073709551614")),
+                        ("label", text("old")),
+                        ("alias", text("new")),
+                    ]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("a missing declared Custom Type member can be inserted locally");
+
+        assert!(
+            dry_run.plan.candidate_source.contains(
+                "profile: { credits : 18446744073709551614,  label : 'old' , alias: new} # profile comment"
+            ),
+            "candidate source: {:?}",
+            dry_run.plan.candidate_source
+        );
+    }
+
+    #[test]
+    fn array_reordering_retains_each_item_source_spelling() {
+        let snapshot = complex_documents(COMPLEX_DATA);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[text("three"), text("one"), text("two")]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("array reordering is a local sequence patch");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: [three, one, 'two'] # tags comment")
+        );
+    }
+
+    #[test]
+    fn array_element_addition_preserves_existing_item_source_and_comment() {
+        let snapshot = complex_documents(COMPLEX_DATA);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[text("one"), text("two"), text("third")]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("an Array element can be appended as a local sequence patch");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: [one, 'two', third] # tags comment")
+        );
+    }
+
+    #[test]
+    fn array_edit_and_append_preserve_block_item_comments_and_quotes() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags:\n      - 'one' # first item\n      - two # second item\n      - three # third item",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[text("updated"), text("two"), text("three"), text("four")]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("editing and appending block sequence items is source preserving");
+
+        assert!(dry_run.plan.candidate_source.contains(
+            "      - 'updated' # first item\n      - two # second item\n      - three # third item\n      - four\n"
+        ));
+    }
+
+    #[test]
+    fn editing_and_reordering_uses_stable_source_occurrences() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags:\n      - \"first\" # first item\n      - 'second' # second item",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence_with_sources(&[
+                        (Some(1), text("second")),
+                        (Some(0), text("updated")),
+                    ]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("source occurrence identity keeps edits attached to the moved item");
+
+        assert!(dry_run.plan.candidate_source.contains(
+            "    tags:\n      - 'second' # second item\n      - \"updated\" # first item\n"
+        ));
+    }
+
+    #[test]
+    fn sequence_edit_rejects_stale_or_reused_source_occurrences() {
+        let snapshot = complex_documents(COMPLEX_DATA);
+        for value in [
+            sequence_with_sources(&[(Some(9), text("one"))]),
+            sequence_with_sources(&[(Some(0), text("one")), (Some(0), text("one"))]),
+        ] {
+            let error = dry_run_source_record_mutation(
+                &snapshot,
+                Path::new("data.yaml"),
+                &SourceRecordMutation {
+                    edits: vec![RecordValueEdit {
+                        record_index: 0,
+                        field: "tags".to_owned(),
+                        value,
+                    }],
+                    ..SourceRecordMutation::default()
+                },
+            )
+            .expect_err("invalid sequence occurrence identity cannot select source text");
+
+            assert_eq!(
+                error.diagnostic().code,
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE"
+            );
+            assert!(error.diagnostic().message.contains("source item identity"));
+        }
+    }
+
+    #[test]
+    fn removing_the_last_block_array_item_keeps_an_empty_array_value() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags:\n      - one",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("the last block Array item can be removed");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("    tags:\n      []\n")
+        );
+    }
+
+    #[test]
+    fn removing_the_last_flow_array_item_handles_a_trailing_comma() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags: [one, 'two', three,] # tags comment",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("the last flow Array item can be removed");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: [] # tags comment")
+        );
+    }
+
+    #[test]
+    fn block_array_structure_rejects_ambiguous_inter_item_source() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags:\n      - one\n      # keep between items\n      - two",
+        );
+        let snapshot = complex_documents(&data);
+        let error = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[text("two")]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect_err("a standalone inter-item comment cannot be reassigned safely");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE"
+        );
+        assert!(error.diagnostic().message.contains("separators"));
+    }
+
+    #[test]
+    fn duplicate_array_removal_without_source_identity_fails_closed() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags: [same, 'same'] # tags comment",
+        );
+        let snapshot = complex_documents(&data);
+        let error = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence(&[text("same")]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect_err("duplicate item source cannot be identified without occurrence metadata");
+
+        assert_eq!(
+            error.diagnostic().code,
+            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE"
+        );
+        assert!(
+            error
+                .diagnostic()
+                .message
+                .contains("duplicate sequence values")
+        );
+    }
+
+    #[test]
+    fn duplicate_array_removal_with_source_identity_preserves_the_selected_occurrence() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags: [same, 'same'] # tags comment",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence_with_sources(&[(Some(1), text("same"))]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("the request identifies the selected duplicate source occurrence");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: ['same'] # tags comment")
+        );
+    }
+
+    #[test]
+    fn reordering_semantically_equal_items_still_moves_their_source_occurrences() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags: [same, 'same'] # tags comment",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence_with_sources(&[
+                        (Some(1), text("same")),
+                        (Some(0), text("same")),
+                    ]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("source occurrence order remains meaningful when values compare equal");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: ['same', same] # tags comment")
+        );
+    }
+
+    #[test]
+    fn clearing_duplicate_array_items_uses_tracked_empty_sequence_identity() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags: [same, 'same'] # tags comment",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence_with_sources(&[]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("an explicit empty sequence identifies removal of every source item");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: [] # tags comment")
+        );
+    }
+
+    #[test]
+    fn adding_a_duplicate_value_does_not_reuse_a_removed_items_source_text() {
+        let data = COMPLEX_DATA.replace(
+            "tags: [one, 'two', three] # tags comment",
+            "tags: [same, 'same'] # tags comment",
+        );
+        let snapshot = complex_documents(&data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "tags".to_owned(),
+                    value: sequence_with_sources(&[(None, text("same"))]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("a newly added duplicate has no source occurrence to inherit");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("tags: [same] # tags comment")
+        );
+    }
+
+    #[test]
+    fn nested_custom_array_reordering_uses_requested_occurrence_identity() {
+        let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: profile
+    type: Profile
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+"#;
+        let profile = r#"kind: type
+name: Profile
+custom:
+  fields:
+    - key: 0
+      name: tags
+      type: string
+      array: true
+"#;
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    profile:\n      tags: [one, 'two']\n";
+        let snapshot = ProjectDocuments {
+            files: vec![
+                parse_yaml_document(PathBuf::from("schema.yaml"), schema).expect("schema parses"),
+                parse_yaml_document(PathBuf::from("profile.yaml"), profile)
+                    .expect("Custom Type parses"),
+                parse_yaml_document(PathBuf::from("data.yaml"), data).expect("data parses"),
+            ],
+        };
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "profile".to_owned(),
+                    value: mapping(&[(
+                        "tags",
+                        sequence_with_sources(&[(Some(1), text("two")), (Some(0), text("one"))]),
+                    )]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("nested Custom Type Array reordering is source-safe");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("      tags: ['two', one]\n")
+        );
+    }
+
+    #[test]
+    fn array_of_flags_uses_nested_block_sequence_source_paths() {
+        let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: features
+    type: Permissions
+    array: true
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+"#;
+        let permissions = r#"kind: type
+name: Permissions
+flags:
+  underlying: int
+  members:
+    - name: None
+      value: 0
+    - name: Read
+      value: 1
+    - name: Write
+      value: 2
+"#;
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    features:\n      - - Read\n        - Write\n      - - None\n";
+        let snapshot = ProjectDocuments {
+            files: vec![
+                parse_yaml_document(PathBuf::from("schema.yaml"), schema).expect("schema parses"),
+                parse_yaml_document(PathBuf::from("permissions.yaml"), permissions)
+                    .expect("Flags declaration parses"),
+                parse_yaml_document(PathBuf::from("data.yaml"), data).expect("data parses"),
+            ],
+        };
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "features".to_owned(),
+                    value: sequence_with_sources(&[
+                        (Some(0), sequence_with_sources(&[(Some(0), text("Read"))])),
+                        (Some(1), sequence_with_sources(&[(Some(0), text("None"))])),
+                    ]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("nested block Flags values can be edited");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("    features:\n      - - Read\n      - - None\n")
+        );
+
+        let emptied_inner_flags = ProjectDocuments {
+            files: vec![
+                parse_yaml_document(PathBuf::from("schema.yaml"), schema).expect("schema parses"),
+                parse_yaml_document(PathBuf::from("permissions.yaml"), permissions)
+                    .expect("Flags declaration parses"),
+                parse_yaml_document(PathBuf::from("data.yaml"), &dry_run.plan.candidate_source)
+                    .expect("edited data parses"),
+            ],
+        };
+        let empty_flags = dry_run_source_record_mutation(
+            &emptied_inner_flags,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "features".to_owned(),
+                    value: sequence_with_sources(&[
+                        (Some(0), sequence_with_sources(&[])),
+                        (Some(1), sequence_with_sources(&[(Some(0), text("None"))])),
+                    ]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("the last block member in a Flags Array can be removed");
+        assert!(
+            empty_flags
+                .plan
+                .candidate_source
+                .contains("    features:\n      - []\n      - - None\n")
+        );
+    }
+
+    #[test]
+    fn nullable_custom_value_can_return_to_null_without_touching_its_comment() {
+        let snapshot = complex_documents(COMPLEX_DATA);
+        let materialized = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "bonus".to_owned(),
+                    value: mapping(&[
+                        ("credits", AuthoringValue::Null),
+                        ("label", AuthoringValue::Null),
+                        ("alias", AuthoringValue::Null),
+                    ]),
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("nullable Custom Type can be materialized");
+        let remapped = complex_documents(&materialized.plan.candidate_source);
+        let nulled = dry_run_source_record_mutation(
+            &remapped,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                edits: vec![RecordValueEdit {
+                    record_index: 0,
+                    field: "bonus".to_owned(),
+                    value: AuthoringValue::Null,
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("nullable Custom Type can return to null");
+
+        assert!(
+            nulled
+                .plan
+                .candidate_source
+                .contains("bonus: null # bonus comment")
+        );
+    }
+
+    #[test]
+    fn nested_validation_diagnostic_identifies_the_invalid_value_path() {
+        let invalid =
+            COMPLEX_DATA.replace("credits: 18446744073709551614", "credits: outside-range");
+        let snapshot = complex_documents(&invalid);
+        let report = validate_documents(&snapshot);
+        let diagnostic = report
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "E-TABLE-INVALID-RECORD-VALUE")
+            .expect("nested type validation diagnostic");
+
+        assert_eq!(diagnostic.value_path.as_deref(), Some("/credits"));
     }
 
     #[test]
@@ -1492,9 +4193,9 @@ secondaryKeys: []
             Path::new("data.yaml"),
             &SourceRecordMutation {
                 additions: vec![added(&[
-                    ("note", "boundaries"),
-                    ("unsigned", "18446744073709551615"),
-                    ("signed", "-9223372036854775808"),
+                    ("note", text("boundaries")),
+                    ("unsigned", number("18446744073709551615")),
+                    ("signed", number("-9223372036854775808")),
                 ])],
                 ..SourceRecordMutation::default()
             },
@@ -1523,7 +4224,11 @@ secondaryKeys: []
             &snapshot,
             Path::new("data.yaml"),
             &SourceRecordMutation {
-                additions: vec![added(&[("id", "2"), ("weight", "20"), ("note", "two")])],
+                additions: vec![added(&[
+                    ("id", number("2")),
+                    ("weight", number("20")),
+                    ("note", text("two")),
+                ])],
                 ..SourceRecordMutation::default()
             },
         )
@@ -1555,7 +4260,11 @@ secondaryKeys: []
             &snapshot,
             Path::new("data.yaml"),
             &SourceRecordMutation {
-                additions: vec![added(&[("id", "1"), ("weight", "10"), ("note", "one")])],
+                additions: vec![added(&[
+                    ("id", number("1")),
+                    ("weight", number("10")),
+                    ("note", text("one")),
+                ])],
                 ..SourceRecordMutation::default()
             },
         )
@@ -1649,9 +4358,13 @@ secondaryKeys: []
                 edits: vec![RecordValueEdit {
                     record_index: 0,
                     field: "weight".to_owned(),
-                    value: "11".to_owned(),
+                    value: number("11"),
                 }],
-                additions: vec![added(&[("id", "3"), ("weight", "30"), ("note", "third")])],
+                additions: vec![added(&[
+                    ("id", number("3")),
+                    ("weight", number("30")),
+                    ("note", text("third")),
+                ])],
                 deletions: vec![1],
             },
         )
@@ -1682,9 +4395,9 @@ secondaryKeys: []
             Path::new("data.yaml"),
             &SourceRecordMutation {
                 additions: vec![added(&[
-                    ("id", "1"),
-                    ("weight", "not-a-number"),
-                    ("note", "draft"),
+                    ("id", number("1")),
+                    ("weight", number("not-a-number")),
+                    ("note", text("draft")),
                 ])],
                 ..SourceRecordMutation::default()
             },
@@ -1708,7 +4421,7 @@ secondaryKeys: []
     }
 
     #[test]
-    fn record_addition_rejects_non_required_primitive_table_without_fallback_serialization() {
+    fn record_addition_supports_nullable_fields_and_null_placeholders() {
         let schema = r#"kind: schema
 table: item
 fields:
@@ -1725,21 +4438,19 @@ secondaryKeys: []
 "#;
         let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: null\n";
         let snapshot = documents(schema, "data.yaml", data);
-        let error = dry_run_source_record_mutation(
+        let dry_run = dry_run_source_record_mutation(
             &snapshot,
             Path::new("data.yaml"),
             &SourceRecordMutation {
-                additions: vec![added(&[("id", "2"), ("weight", "3")])],
+                additions: vec![added(&[
+                    ("id", number("2")),
+                    ("weight", AuthoringValue::Null),
+                ])],
                 ..SourceRecordMutation::default()
             },
         )
-        .expect_err("nullable add is outside the initial slice");
-
-        assert_eq!(error.diagnostic().code, "E-SOURCE-RECORD-ADD-UNSUPPORTED");
-        assert_eq!(
-            error.diagnostic().related_requirements,
-            ["SOURCE-RECORD-002"]
-        );
+        .expect("nullable shape is supported by the resolved value model");
+        assert!(dry_run.plan.candidate_source.contains("weight: null"));
     }
 
     #[test]

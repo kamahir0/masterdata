@@ -6,15 +6,17 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use crate::document::{
-    ConversionDefinition, EnumDefinition, EnumMember, FlagsDefinition, IntegerLiteral,
-    ProjectDocuments, TypeDocument, TypeFieldDefinition, ValueObjectDefinition,
+    ConversionDefinition, EnumDefinition, EnumMember, FieldDefinition, FlagsDefinition,
+    IntegerLiteral, ProjectDocuments, SourceDocument, TypeDocument, TypeFieldDefinition,
+    ValueObjectDefinition,
 };
 use crate::{Diagnostic, ErrorKind, MasterdataError, Result};
 
 /// The exact primitive vocabulary owned by the Approved Primitive Types
 /// specification.  In particular, legacy width aliases are not represented
 /// here and therefore cannot accidentally become canonical type references.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
 pub enum PrimitiveType {
     Bool,
     Int,
@@ -119,7 +121,8 @@ impl TypeReference {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum FieldModifier {
     Required,
     Nullable,
@@ -166,6 +169,43 @@ pub enum ResolvedType {
         name: String,
         underlying: PrimitiveType,
         members: Vec<ResolvedEnumMember>,
+    },
+}
+
+/// Schema information required to build a Data Editor control without
+/// repeating YAML or type-resolution semantics in a frontend.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedAuthoringField {
+    pub name: String,
+    pub type_name: String,
+    pub modifier: FieldModifier,
+    pub shape: ResolvedAuthoringType,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ResolvedAuthoringType {
+    Primitive {
+        primitive: PrimitiveType,
+    },
+    ValueObject {
+        name: String,
+        underlying: PrimitiveType,
+    },
+    Enum {
+        name: String,
+        underlying: PrimitiveType,
+        members: Vec<String>,
+    },
+    Flags {
+        name: String,
+        underlying: PrimitiveType,
+        members: Vec<String>,
+    },
+    Custom {
+        name: String,
+        fields: Vec<ResolvedAuthoringField>,
     },
 }
 
@@ -270,6 +310,84 @@ impl TypeSystem {
                     .contains_key(name)
                     .then(|| TypeReference::Named(name.to_owned()))
             })
+    }
+
+    pub fn authoring_field_shape(
+        &self,
+        name: &str,
+        type_name: &str,
+        nullable: bool,
+        array: bool,
+    ) -> Option<ResolvedAuthoringField> {
+        if nullable && array {
+            return None;
+        }
+        let reference = self.resolve_reference(type_name)?;
+        Some(ResolvedAuthoringField {
+            name: name.to_owned(),
+            type_name: type_name.to_owned(),
+            modifier: if nullable {
+                FieldModifier::Nullable
+            } else if array {
+                FieldModifier::Array
+            } else {
+                FieldModifier::Required
+            },
+            shape: self.authoring_type_shape(&reference)?,
+        })
+    }
+
+    pub fn authoring_shape_for_field(
+        &self,
+        field: &ResolvedField,
+    ) -> Option<ResolvedAuthoringField> {
+        Some(ResolvedAuthoringField {
+            name: field.name.clone(),
+            type_name: field.base_type.source_name().to_owned(),
+            modifier: field.modifier,
+            shape: self.authoring_type_shape(&field.base_type)?,
+        })
+    }
+
+    fn authoring_type_shape(&self, reference: &TypeReference) -> Option<ResolvedAuthoringType> {
+        match reference {
+            TypeReference::Primitive(primitive) => Some(ResolvedAuthoringType::Primitive {
+                primitive: *primitive,
+            }),
+            TypeReference::Named(name) => match self.types.get(name)? {
+                ResolvedType::ValueObject { underlying, .. } => {
+                    Some(ResolvedAuthoringType::ValueObject {
+                        name: name.clone(),
+                        underlying: *underlying,
+                    })
+                }
+                ResolvedType::Enum {
+                    underlying,
+                    members,
+                    ..
+                } => Some(ResolvedAuthoringType::Enum {
+                    name: name.clone(),
+                    underlying: *underlying,
+                    members: members.iter().map(|member| member.name.clone()).collect(),
+                }),
+                ResolvedType::Flags {
+                    underlying,
+                    members,
+                    ..
+                } => Some(ResolvedAuthoringType::Flags {
+                    name: name.clone(),
+                    underlying: *underlying,
+                    members: members.iter().map(|member| member.name.clone()).collect(),
+                }),
+                ResolvedType::Custom { fields, .. } => Some(ResolvedAuthoringType::Custom {
+                    name: name.clone(),
+                    fields: fields
+                        .iter()
+                        .map(|field| self.authoring_shape_for_field(field))
+                        .collect::<Option<Vec<_>>>()?,
+                }),
+            },
+        }
     }
 
     pub fn is_key_compatible(&self, reference: &TypeReference) -> bool {
@@ -629,6 +747,127 @@ impl TypeSystem {
             }
         }
     }
+
+    /// Returns a JSON-pointer-like path to the first invalid nested value.
+    /// An empty path identifies the field root; a missing value returns None.
+    pub fn invalid_field_value_path(&self, field: &ResolvedField, value: &Value) -> Option<String> {
+        let segments = self.first_invalid_field_path(field, value)?;
+        Some(if segments.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "/{}",
+                segments
+                    .iter()
+                    .map(|segment| segment.replace('~', "~0").replace('/', "~1"))
+                    .collect::<Vec<_>>()
+                    .join("/")
+            )
+        })
+    }
+
+    fn first_invalid_field_path(
+        &self,
+        field: &ResolvedField,
+        value: &Value,
+    ) -> Option<Vec<String>> {
+        if self.validate_field_value(field, value).is_ok() {
+            return None;
+        }
+        if value.is_null() {
+            return Some(Vec::new());
+        }
+        match field.modifier {
+            FieldModifier::Required | FieldModifier::Nullable => {
+                self.first_invalid_type_path(&field.base_type, value)
+            }
+            FieldModifier::Array => {
+                let Some(items) = value.as_sequence() else {
+                    return Some(Vec::new());
+                };
+                items.iter().enumerate().find_map(|(index, item)| {
+                    self.first_invalid_type_path(&field.base_type, item)
+                        .map(|nested| prepend_path(index.to_string(), nested))
+                })
+            }
+        }
+    }
+
+    fn first_invalid_type_path(
+        &self,
+        reference: &TypeReference,
+        value: &Value,
+    ) -> Option<Vec<String>> {
+        if self.validate_reference_value(reference, value).is_ok() {
+            return None;
+        }
+        match reference {
+            TypeReference::Primitive(_) => Some(Vec::new()),
+            TypeReference::Named(name) => match self.types.get(name)? {
+                ResolvedType::ValueObject { .. } | ResolvedType::Enum { .. } => Some(Vec::new()),
+                ResolvedType::Flags { members, .. } => {
+                    let Some(items) = value.as_sequence() else {
+                        return Some(Vec::new());
+                    };
+                    if items.is_empty() {
+                        return Some(Vec::new());
+                    }
+                    let mut seen = BTreeSet::new();
+                    let mut has_none = false;
+                    let mut has_nonzero = false;
+                    for (index, item) in items.iter().enumerate() {
+                        let Some(member_name) = item.as_str() else {
+                            return Some(vec![index.to_string()]);
+                        };
+                        let Some(member) = members.iter().find(|member| member.name == member_name)
+                        else {
+                            return Some(vec![index.to_string()]);
+                        };
+                        if !seen.insert(member_name) {
+                            return Some(vec![index.to_string()]);
+                        }
+                        if member_name == "None" {
+                            has_none = true;
+                        } else if member.value.0 != 0 {
+                            has_nonzero = true;
+                        }
+                    }
+                    if has_none && has_nonzero {
+                        let index = items
+                            .iter()
+                            .position(|item| item.as_str() == Some("None"))
+                            .unwrap_or(0);
+                        Some(vec![index.to_string()])
+                    } else {
+                        Some(Vec::new())
+                    }
+                }
+                ResolvedType::Custom { fields, .. } => {
+                    let Some(mapping) = value.as_mapping() else {
+                        return Some(Vec::new());
+                    };
+                    for (key, _) in mapping {
+                        let Some(name) = key.as_str() else {
+                            return Some(Vec::new());
+                        };
+                        if !fields.iter().any(|field| field.name == name) {
+                            return Some(vec![name.to_owned()]);
+                        }
+                    }
+                    for field in fields {
+                        let key = Value::String(field.name.clone());
+                        let Some(child) = mapping.get(&key) else {
+                            return Some(vec![field.name.clone()]);
+                        };
+                        if let Some(nested) = self.first_invalid_field_path(field, child) {
+                            return Some(prepend_path(field.name.clone(), nested));
+                        }
+                    }
+                    Some(Vec::new())
+                }
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -652,6 +891,70 @@ pub fn resolve_type_system(documents: &ProjectDocuments) -> Result<TypeSystem> {
     Err(MasterdataError {
         diagnostic: Box::new(diagnostic),
     })
+}
+
+/// Resolve one schema field's authoring shape from its transitive type
+/// dependency closure. Invalid unrelated type declarations do not suppress a
+/// field whose own shape is safely resolved.
+// WHY: Project-wide type resolution fails as one unit, so an unrelated malformed
+// declaration would otherwise make a supported existing field read-only.
+// Regression: unresolved_unrelated_types_do_not_block_supported_field_editing.
+pub fn resolve_authoring_field_shape(
+    documents: &ProjectDocuments,
+    field: &FieldDefinition,
+) -> Option<ResolvedAuthoringField> {
+    let type_system = authoring_type_system_for_reference(documents, &field.type_name)?;
+    type_system.authoring_field_shape(&field.name, &field.type_name, field.nullable, field.array)
+}
+
+fn authoring_type_system_for_reference(
+    documents: &ProjectDocuments,
+    type_name: &str,
+) -> Option<TypeSystem> {
+    if PrimitiveType::parse(type_name).is_some() {
+        return Some(TypeSystem::default());
+    }
+
+    let mut required_types = BTreeSet::from([type_name.to_owned()]);
+    loop {
+        let previous_count = required_types.len();
+        let nested_types = documents
+            .types()
+            .filter(|(_, document)| required_types.contains(&document.name))
+            .flat_map(|(_, document)| {
+                document
+                    .custom
+                    .iter()
+                    .flat_map(|custom| custom.fields.iter())
+                    .filter(|field| PrimitiveType::parse(&field.type_name).is_none())
+                    .map(|field| field.type_name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        required_types.extend(nested_types);
+        if required_types.len() == previous_count {
+            break;
+        }
+    }
+
+    let scoped_documents = ProjectDocuments {
+        files: documents
+            .files
+            .iter()
+            .filter(|loaded| {
+                matches!(
+                    &loaded.document,
+                    SourceDocument::Type(document) if required_types.contains(&document.name)
+                )
+            })
+            .cloned()
+            .collect(),
+    };
+    let build = build_type_system(&scoped_documents);
+    if !build.diagnostics.is_empty() {
+        return None;
+    }
+    build.model
 }
 
 pub fn build_type_system(documents: &ProjectDocuments) -> TypeSystemBuild {
@@ -1404,6 +1707,11 @@ fn integer_value(value: &Value, unsigned: bool) -> Result<i128> {
             },
         )
     })
+}
+
+fn prepend_path(segment: String, mut nested: Vec<String>) -> Vec<String> {
+    nested.insert(0, segment);
+    nested
 }
 
 fn normalize_primitive_value(primitive: PrimitiveType, value: &Value) -> Result<NormalizedValue> {

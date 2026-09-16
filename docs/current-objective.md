@@ -8,7 +8,7 @@ Approved behaviorは[仕様index](specs/README.md)のcanonical specification、�
 
 ## Objective
 
-現在のHuman priorityは、**根源的な要望と既決の仕様を統合し、まとまった実装へ移れる理想のauthoring systemを設計・文書化する**ことである。
+現在のHuman priorityは、**Desktop制作v1（P1–P3）をまとまって実装するため、日常編集・Workspace設定・Build / Publishの詳細仕様を一括で具体化し承認可能にする**ことである。
 
 2026-09-16、Humanは小刻みな進め方からまとまった実装へ移る意向を示し、その準備として創造性を発揮した仕様案の作成を明示依頼した。
 直前のComplex Value Authoring v1はcandidate `fee882c2ef3c3516ded184707c6cc2d96cd4d252`のverificationを経て完了している。
@@ -23,26 +23,28 @@ Approved behaviorは[仕様index](specs/README.md)のcanonical specification、�
 - Product motivation、Approved decisions、実装evidence、未決事項を区別した文書がある。
 - 理想の操作体験と、ひと区切りになる完成条件、後段の拡張が具体化されている。
 - 提案にcanonical owner、compatibility / implementation impact、failure / acceptance scenarioがある。
-- 提案を承認済みとせず、Humanがまとまった方向選択を行える。
+- 詳細contractがstable Requirement IDと既存ownerへのdeltaを持ち、一括reviewでBlockingがない。
+- 提案を承認済みとせず、Humanが具体的な仕様一式のApprovalを判断できる。
 
-成果物は[Authoring system v1 RFC](rfcs/0008-authoring-system-v1.md)。比較・推薦・未決detailのownerは同RFCとする。
+設計方向と比較のownerは[Authoring system v1 RFC](rfcs/0008-authoring-system-v1.md)。詳細contractの承認対象は下記0016–0018であり、一括reviewとcanonical適用手順は0018が所有する。
 
 ## Current direction
 
-Human-selectedなのは設計・文書化のscopeである。RFCの**Option B: P1–P3のDesktop制作v1**は推薦であり、選択済み実装priorityではない。
+2026-09-16、Humanは直前summaryへの「進める」により、RFCの**Option B: P1–P3のDesktop制作v1**を選択した。
+file単位編集、保存前Undo、scalar一括入力を基本に詳細化し、計算列を後段とする。
 RFC採用とcanonical specificationのApprovalを区別し、未承認behaviorの実装は開始しない。
 
 ## Explicit non-scope
 
 - 本activityでのproduct feature実装。
 - Approved specificationの未承認semantic変更。
-- RFCの自動Accepted化、specificationの自動Approved化。
+- specificationの自動Approved化。
 - 後段candidateをHuman選択なしに実装priorityへ昇格すること。
 
 ## Next candidate
 
-HumanがRFCの方向を選択した場合、採用scopeのowner別spec-changeを一括で具体化・reviewし、明示Approval後にcanonicalへ適用する。
-方向選択だけで本格実装開始とはしない。代替案とtrade-offはRFCのOptions / Open Questionsを参照する。
+承認対象は[0016: 日常編集](spec-changes/0016-desktop-daily-editing.md)、[0017: Workspace・設定](spec-changes/0017-desktop-workspace-settings.md)、[0018: Project入口・Build / Publish](spec-changes/0018-desktop-build-delivery.md)の一式。
+明示Approval後にcanonicalへatomic適用する。方向選択だけで本格実装開始とはしない。
 
 ## Relevant authorities
 

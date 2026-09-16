@@ -1,6 +1,6 @@
 # RFC: 日常の制作を完結するMasterdata authoring system v1
 
-Status: Proposed
+Status: Accepted
 
 ## この文書の読み方
 
@@ -10,7 +10,9 @@ Status: Proposed
 **提案する到達点は、Desktopで「定義する → 探す → まとめて編集する → 確認する → Unityへ渡す」が完結するv1である。**
 計算列、Reference、Webまで方向を示すが、すべてを最初の出荷条件にしない。
 
-「既決」はリンク先のApproved / Implemented contractの要約、「提案」は今回設計した候補を表す。
+2026-09-16、HumanはOption Bと直前の実行summaryに示した推薦方向を選択した。詳細契約は[0016](../spec-changes/0016-desktop-daily-editing.md)・[0017](../spec-changes/0017-desktop-workspace-settings.md)・[0018](../spec-changes/0018-desktop-build-delivery.md)の未承認proposalへ具体化した。
+
+「既決」はリンク先のApproved / Implemented contractの要約、「提案」は設計時の候補を表す。
 提案節のdefault、操作、失敗時の挙動、受け入れscenarioも未承認であり、現行仕様や実装済み機能と混同しない。
 本RFCは実装authorityではない。採用時は責務ごとの仕様変更へ移し、canonical ownerに適用する。
 画面名は説明用であり、新しいCLI grammar、config key、file formatを暗黙に決定しない。
@@ -22,7 +24,8 @@ Status: Proposed
 | Requirement | 2026-09-16の依頼: 原要望と現状を把握し、使いやすい理想仕様をまとまった範囲まで創造的に文書化する |
 | Preference | 同依頼: 今後は小刻みな進行から一気に実装を進める方向 |
 | Constraint | 上記Approved authority: YAML / Git、shared Rust、.NET、identity分離、source preservation、各operationの安全性 |
-| Proposal | Option B、P1–P3、具体的UI・default・history・clipboard・expression案。Human選択済みではない |
+| Decision | 2026-09-16、Humanは直前summaryへの「進める」によりOption B / P1–P3、file単位編集、保存前Undo、scalar一括入力、計算列の後段化を選択 |
+| Proposal | codec、operator、設定保存等の具体的contractは0016–0018でreview・Approval対象。後段expressionのexact semanticsは未承認 |
 | Open Question | 性能条件、提案defaultの採否、後段exact contract。未提供の過去会話は根拠に追加しない |
 
 ## 背景（Context）
@@ -342,7 +345,7 @@ validation、memoryを別に測る。進捗表示と入力保全を先に確認�
 ## Confirmed Decisions
 
 既決表のApproved / Implemented authorityとAccepted ADRの境界。
-今回の新しいHuman決定は設計・文書化の作業scopeであり、Option Bや新behaviorのApprovalではない。
+今回のHuman決定はOption Bの方向選択と詳細化のscopeである。specificationのApprovalではない。
 
 ## New Requirements
 
@@ -384,7 +387,7 @@ None identified as applied changes. 現行canonical specificationは変更しな
 
 ## Open Questions
 
-### 今回まとめて選びたいproduct choice
+### 方向選択時の比較
 
 | Choice | 推薦 | 代替 / trade-off |
 | --- | --- | --- |
@@ -394,9 +397,9 @@ None identified as applied changes. 現行canonical specificationは変更しな
 | 一括入力 | scalar range、preview、operation単位のbuffer適用 | complex / multi-file pasteは表現とrecoveryが広がる |
 | 計算列 | P5へ分離し最初はbounded expression | 任意codeは自由だがsecurity・determinism・host互換の負担が増える |
 
-推薦を具体化したが、未回答を決定済みにしない。
+Option B、file単位、保存前Undo、scalar一括入力、計算列後段化はHuman選択済み。詳細behaviorのApprovalは0016–0018で別途行う。
 
-### P1–P3をimplementation-readyにする前に閉じるdetail
+### P1–P3の詳細化先
 
 - TSV quoting / newline / empty-cell codec、nullable入力、copy format。
 - filter / sort operator、null / invalid値、bulk target固定のstate transition。
@@ -405,9 +408,12 @@ None identified as applied changes. 現行canonical specificationは変更しな
 - Build / Publishの既存service情報と、新しいread-only preview APIが必要な情報の区別。
 - benchmarkのreference machine / latency。実利用規模が得られれば暫定入力を更新する。
 
+上記P1–P3のdetailは0016–0018へ具体化した。benchmarkは測定evidenceをcompletionに要求し、未測定latencyをproduct保証にしない。
 Reference syntax、expression grammar / numeric model、metadata format、Annotation identity、Web protocolは後段packageの開始条件であり、P1–P3に混ぜない。
 
-## レビュー（Review）
+## 初回設計時のレビュー（Review）
+
+以下は方向選択前のRFC review記録。現在の詳細package reviewは[0018](../spec-changes/0018-desktop-build-delivery.md#review)が所有する。
 
 `review-spec`の観点で別の読み直しpassによるself-reviewを実施した。独立agent reviewは実施していない。
 新規ProjectからPublishするscenarioに対しtarget設定のGUI導線が不足していたため、v1へ追加した。
@@ -440,6 +446,7 @@ No — 実装仕様のApproval recommendationではない。方向選択は可�
 
 ## 決定（Decision）
 
-未決定。`Status: Proposed`。Humanは作成を依頼しており、提案採用・specification Approvalはまだ行っていない。
-推薦はOption Bとproduct choiceの推薦一式。採用後にP1–P3のowner別spec-changeを具体化・reviewし、
-明示Approvalとcanonical適用を経て実装へ進む。
+2026-09-16、Humanは直前の自己完結した「進める」の意味に対して「進める」と回答し、Option B / P1–P3を選択した。
+file単位編集、保存前Undo、scalar一括入力を基本に詳細化し、計算列は後段とする。
+本RFCをAcceptedとするが、0016–0018のspecification Approvalではない。採用方向の詳細proposalをreviewし、
+明示Approvalとcanonical適用後に実装へ進む。

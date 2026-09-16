@@ -9,6 +9,6 @@ None.
 
 ## Human decision needed
 
-[Authoring system v1 RFC](rfcs/0008-authoring-system-v1.md)の方向を選択する。
-推薦はOption B（P1–P3のDesktop制作v1）と、Open Questionsに示すproduct choiceの推薦一式。
-採用後はowner別spec-changeを具体化・reviewする。RFC採用だけではproduct behaviorのApprovalや実装開始にならない。
+Desktop制作v1の[0016](spec-changes/0016-desktop-daily-editing.md)・[0017](spec-changes/0017-desktop-workspace-settings.md)・[0018](spec-changes/0018-desktop-build-delivery.md)を一括でApproveするか判断する。
+選択肢は一括Approval、修正内容を指定して再refinement、保留。一括Approvalを推薦する。
+Approval後はcanonicalへatomic適用してimplementation-readyまで進める。本格実装はこのNON_IMPLEMENTATION activityのscope外。

@@ -6,6 +6,10 @@ documentへsemantic changeを含めてはならない。
 
 ## lifecycle（ライフサイクル）
 
+Desktop制作v1のP1–P3一括review packageは、[0016: 日常編集](0016-desktop-daily-editing.md)、
+[0017: Workspace・設定](0017-desktop-workspace-settings.md)、[0018: Project入口・Build / Publish](0018-desktop-build-delivery.md)。
+package summary、review、canonical適用手順は0018を参照する。
+
 1. `refine-spec` がevidence、affected Requirement ID、proposed delta、compatibility impact、Open Questionsを
    新しいartifactに記録する。
 2. `review-spec` がartifactを、source request、canonical specification、ADR、terminology、current implementation、

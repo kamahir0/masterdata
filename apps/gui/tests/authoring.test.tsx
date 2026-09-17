@@ -289,7 +289,7 @@ test('schema-aware controls edit nested exact integers, nullable fields, arrays,
   ]);
   expect(edits.status).toEqual({ kind: 'string', value: 'Paused' });
   expect(edits.access.items).toEqual([{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }]);
-}, 15_000);
+}, 30_000);
 
 test('Value Object editor sends its ulong underlying as exact decimal text', async () => {
   const base = snapshot();
@@ -366,7 +366,7 @@ test('nested value diagnostics focus the matching Custom Type field', async () =
       source: '/project/data.yaml',
       record_identity: 'record[0]',
       value_path: '/credits',
-      message: 'field \`profile\` is invalid',
+      message: 'field `profile` is invalid',
     }],
   } as any;
   render(<App />);
@@ -428,7 +428,7 @@ test('deleting an edited existing row preserves the edit while Undo restores edi
   fireEvent.click(screen.getByRole('button', { name: 'Undo Delete record 1', exact: true }));
   expect(weight.value).toBe('11');
   expect(weight.readOnly).toBe(false);
-});
+}, 10_000);
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };

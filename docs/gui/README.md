@@ -13,9 +13,18 @@ behaviorを扱ってよい。shared domain operationに対するadapter boundary
 - [GUI app shell](app-shell.md) — Desktop shellとshared application boundary（Approved）
 - [Workspace Explorer](explorer/spec.md) — 左ペインのfile / folder navigationとtyped editor selection（Approved）
 - [Data Editor](data-editor/spec.md) — record data YAMLのspreadsheet型editorとfile単位dirty / Save（Approved）
+- [Data Editor Grid Authoring](data-editor/grid-authoring.md) — range selection、paste/fill preview、query composition、Undo/Redo（Approved）
+- [Data Editor Tag Authoring](data-editor/tag-authoring.md) — Record Tagのtyped authoring（Approved）
 - [Source Creation](source-creation/spec.md) — Explorerからのfolder / source artifact creation flow（Approved）
 - [Table Editor](table-editor/spec.md) — Schema Migration v1のplan / diff / Add・Rename・Drop Field GUI（Approved）
 - [Type Editor](type-editor/spec.md) — Type Migration v1のPlan / Diff / Value Object・Enum・Flags・Custom Type編集GUI（Approved）
+- [Typed Migration Initializer](typed-initializer.md) — Table / Type Add operationのshared schema-aware initializer（Approved）
+- [Table Overview](table-overview/spec.md) — 保存済みsnapshotのTable横断viewとProfile preview（Approved）
+- [Project Settings](project-settings/spec.md) — Profile / Publish targetのtyped config editing（Approved）
+- [Project Workflow](project-workflow.md) — Create Project、logical navigation、Recent Projects（Approved）
+- [Build / Publish](build-publish/spec.md) — saved-input Build、Publish preview / confirmation / result（Approved）
+
+Desktop制作v1（P1–P3）のdomain/application ownerへの導線は[canonical package index](../specs/desktop-authoring-v1/README.md)を参照する。
 
 新しいsurface specificationは [_template.md](_template.md) から始める。大きなsurfaceでは、visual artifactを
 specificationの隣に置く。

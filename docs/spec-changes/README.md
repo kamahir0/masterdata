@@ -1,14 +1,14 @@
 # 仕様変更（Specification changes）
 
-このdirectoryには、既存のcanonical specificationを変更するdurableなproposalを保存する。
+このdirectoryには、既存のcanonical specificationを変更するdurableなproposalと、その適用後audit recordを保存する。
 `docs/specs/` とは意図的に分離している。人間が承認する前に、`Approved` / `Implemented` canonical
 documentへsemantic changeを含めてはならない。
 
 ## lifecycle（ライフサイクル）
 
-Desktop制作v1のP1–P3一括review packageは、[0016: 日常編集](0016-desktop-daily-editing.md)、
+Desktop制作v1のP1–P3 packageは、[0016: 日常編集](0016-desktop-daily-editing.md)、
 [0017: Workspace・設定](0017-desktop-workspace-settings.md)、[0018: Project入口・Build / Publish](0018-desktop-build-delivery.md)。
-package summary、review、canonical適用手順は0018を参照する。
+2026-09-18にHuman Approvalを受けてcanonicalへ適用され、3 artifactは`Applied`である。implementationは各artifactが示すApproved canonical ownerを使用する。
 
 1. `refine-spec` がevidence、affected Requirement ID、proposed delta、compatibility impact、Open Questionsを
    新しいartifactに記録する。

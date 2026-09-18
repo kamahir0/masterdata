@@ -18,6 +18,7 @@ use crate::{
 pub struct PublishPreview {
     pub artifact_set_identity: String,
     pub config_content_identity: String,
+    pub publish_plan_identity: String,
     pub targets: Vec<PublishTargetPreview>,
 }
 
@@ -62,6 +63,7 @@ impl NativeApplicationService {
         current_dir: &Path,
         expected_artifact_set_identity: &str,
         expected_config_content_identity: &str,
+        expected_publish_plan_identity: &str,
     ) -> std::result::Result<PublishExecutionReport, crate::PublishExecutionFailure> {
         let project = match Project::discover(explicit_project, current_dir) {
             Ok(project) => project,
@@ -108,6 +110,16 @@ impl NativeApplicationService {
             Ok(plan) => plan,
             Err(error) => return Err(crate::PublishExecutionFailure { report, error }),
         };
+        if publish_plan_identity(&plan) != expected_publish_plan_identity {
+            return Err(crate::PublishExecutionFailure {
+                report,
+                error: delivery_stale_error(
+                    "E-PUBLISH-PREVIEW-STALE-DESTINATION",
+                    "publish destination ownership or replacement plan changed after the preview; preview again",
+                    &info.project_root,
+                ),
+            });
+        }
         crate::publish::execute_publish_plan(&info, plan, &[])
     }
 }
@@ -170,8 +182,49 @@ fn render_publish_preview(
     PublishPreview {
         artifact_set_identity: artifact_identity,
         config_content_identity: config_identity,
+        publish_plan_identity: publish_plan_identity(plan),
         targets,
     }
+}
+
+fn hash_identity_part(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_le_bytes());
+    hasher.update(value);
+}
+
+fn publish_plan_identity(plan: &PublishPreflightPlan) -> String {
+    let mut hasher = Sha256::new();
+    hash_identity_part(&mut hasher, &(plan.targets.len() as u64).to_le_bytes());
+    for target in &plan.targets {
+        let kind = match target.kind {
+            PublishTargetKind::CSharp => b"csharp".as_slice(),
+            PublishTargetKind::Binary => b"binary".as_slice(),
+        };
+        hash_identity_part(&mut hasher, kind);
+        hash_identity_part(&mut hasher, target.configured_path.as_bytes());
+        hash_identity_part(&mut hasher, target.destination.to_string_lossy().as_bytes());
+        match (&target.csharp, &target.binary) {
+            (Some(csharp), None) => {
+                hash_identity_part(&mut hasher, b"csharp-plan");
+                hash_identity_part(&mut hasher, csharp.manifest_path.to_string_lossy().as_bytes());
+                hash_identity_part(&mut hasher, &[u8::from(csharp.manifest_exists)]);
+                for path in &csharp.previous_managed_paths {
+                    hash_identity_part(&mut hasher, path.as_bytes());
+                }
+                hash_identity_part(&mut hasher, b"current");
+                for path in &csharp.current_generated_paths {
+                    hash_identity_part(&mut hasher, path.as_bytes());
+                }
+            }
+            (None, Some(binary)) => {
+                hash_identity_part(&mut hasher, b"binary-plan");
+                hash_identity_part(&mut hasher, binary.destination.to_string_lossy().as_bytes());
+                hash_identity_part(&mut hasher, &[u8::from(binary.existing_regular_file)]);
+            }
+            _ => hash_identity_part(&mut hasher, b"invalid-plan-shape"),
+        }
+    }
+    format!("sha256:{:x}", hasher.finalize())
 }
 
 fn artifact_set_identity(artifacts: &ValidatedArtifactSet) -> String {

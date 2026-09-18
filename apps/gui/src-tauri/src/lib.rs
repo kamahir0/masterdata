@@ -1021,8 +1021,13 @@ mod desktop_workflow_tests {
         assert!(
             fs::read_dir(&delivery)
                 .expect("delivery entries")
-                .filter_map(Result::ok)
-                .any(|entry| entry.path().extension().is_some_and(|extension| extension == "cs"))
+                .filter_map(|entry| entry.ok())
+                .any(|entry| {
+                    entry
+                        .path()
+                        .extension()
+                        .is_some_and(|extension| extension == std::ffi::OsStr::new("cs"))
+                })
         );
     }
 }

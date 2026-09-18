@@ -80,9 +80,7 @@ async function chooseOption(label: string, option: string) {
 }
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
-let pollingTimerSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
-  pollingTimerSpy = vi.spyOn(window, 'setInterval').mockImplementation(() => 0 as any);
   openSnapshot = snapshot();
   preview = async () => ({ candidateSource: 'weight: 20', changed: true, validation });
   invoke.mockReset();
@@ -97,11 +95,8 @@ beforeEach(() => {
     throw new Error(`Unexpected command: ${command}`);
   });
 });
-afterEach(() => {
-  cleanup();
-  pollingTimerSpy.mockRestore();
-});
-async function open(label = 'record 1 weight') { render(<App />); return await screen.findByRole('textbox', { name: label }); }
+afterEach(cleanup);
+async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} />); return await screen.findByRole('textbox', { name: label }); }
 
 test('sequence equality treats source occurrence order as an authoring change', () => {
   const items = [
@@ -233,7 +228,7 @@ test('Add Row creates an editable draft, validates it through the shared preview
       ]) }
     : normalInvoke(command, args));
 
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
   fireEvent.click(add);
   const id = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
@@ -259,7 +254,7 @@ test('schema-aware controls edit nested exact integers, nullable fields, arrays,
     previewArgs = args;
     return { candidateSource: 'candidate', changed: true, validation };
   };
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
 
   const credits = await screen.findByRole('textbox', { name: 'credits' }) as HTMLInputElement;
   expect(credits.value).toBe('18446744073709551615');
@@ -335,7 +330,7 @@ test('Add Row starts with null placeholders and materializes complex values only
     previewArgs = args;
     return { candidateSource: openSnapshot.baseSource, changed: true, validation };
   };
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   await screen.findByRole('textbox', { name: 'new record id' });
   await waitFor(() => expect(previewArgs?.addedRecords).toHaveLength(1));
@@ -374,7 +369,7 @@ test('nested value diagnostics focus the matching Custom Type field', async () =
       message: 'field `profile` is invalid',
     }],
   } as any;
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const credits = await screen.findByRole('textbox', { name: 'credits' });
   fireEvent.click(screen.getByRole('button', { name: /E-TABLE-INVALID-RECORD-VALUE/ }));
   await waitFor(() => expect(document.activeElement).toBe(credits));
@@ -384,7 +379,7 @@ test('nested value diagnostics focus the matching Custom Type field', async () =
 test('deleting a new draft cancels the addition and returns the file to clean', async () => {
   openSnapshot = mutationSnapshot([]);
   preview = async (args) => ({ candidateSource: openSnapshot.baseSource, changed: Boolean(args.addedRecords?.length || args.deletedRecordIndices?.length), validation });
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   await screen.findByRole('textbox', { name: 'new record id' });
   fireEvent.click(screen.getByRole('button', { name: 'Delete new row 1', exact: true }));
@@ -396,7 +391,7 @@ test('deleting a new draft cancels the addition and returns the file to clean', 
 test('shared no-op preview normalizes structural mutation state back to clean', async () => {
   openSnapshot = mutationSnapshot();
   preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
 
   fireEvent.click(await screen.findByRole('button', { name: 'Delete record 1', exact: true }));
   expect(screen.getByText('Pending delete')).toBeTruthy();
@@ -423,7 +418,7 @@ test('deleting an edited existing row preserves the edit while Undo restores edi
       { field: 'note', text: 'second', editable: true },
     ] },
   ]);
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const weight = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
   fireEvent.change(weight, { target: { value: '11' } });
   fireEvent.click(screen.getByRole('button', { name: 'Delete record 1', exact: true }));
@@ -437,7 +432,7 @@ test('deleting an edited existing row preserves the edit while Undo restores edi
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
   expect((add as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
@@ -456,7 +451,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
     return normalInvoke(command, args);
   });
 
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   const draftId = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
   fireEvent.change(draftId, { target: { value: '1' } });

@@ -561,7 +561,6 @@ fn batch_error(code: &str, message: impl Into<String>) -> MasterdataError {
         .with_related_requirement("AUTHORING-BATCH-001")
 }
 
-
 #[cfg(test)]
 mod clipboard_shape_tests {
     use super::*;

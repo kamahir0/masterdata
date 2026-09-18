@@ -360,12 +360,16 @@ fn value_state_type(shape: &ResolvedAuthoringType, value: &AuthoringValue) -> Va
         ResolvedAuthoringType::Flags { members, .. } => match value {
             AuthoringValue::Sequence { items, .. } => {
                 let mut seen = BTreeSet::new();
-                if items.iter().all(|item| match &item.value {
-                    AuthoringValue::String { value } => {
-                        members.iter().any(|member| member == value) && seen.insert(value.as_str())
-                    }
-                    _ => false,
-                }) {
+                let valid_members = !items.is_empty()
+                    && items.iter().all(|item| match &item.value {
+                        AuthoringValue::String { value } => {
+                            members.iter().any(|member| member == value)
+                                && seen.insert(value.as_str())
+                        }
+                        _ => false,
+                    });
+                let none_mixed = seen.contains("None") && seen.len() > 1;
+                if valid_members && !none_mixed {
                     ValueState::Valid
                 } else {
                     ValueState::Invalid
@@ -755,7 +759,7 @@ mod tests {
             shape: ResolvedAuthoringType::Flags {
                 name: "Permission".into(),
                 underlying: PrimitiveType::Int,
-                members: vec!["Read".into(), "Write".into()],
+                members: vec!["None".into(), "Read".into(), "Write".into()],
             },
         };
         let custom = ResolvedAuthoringField {
@@ -800,6 +804,49 @@ mod tests {
                     .is_empty()
             );
         }
+    }
+
+    #[test]
+    fn flags_invalid_filter_rejects_empty_duplicate_and_none_mixed_sequences() {
+        let flags = ResolvedAuthoringField {
+            name: "permissions".into(),
+            type_name: "Permission".into(),
+            modifier: FieldModifier::Required,
+            shape: ResolvedAuthoringType::Flags {
+                name: "Permission".into(),
+                underlying: PrimitiveType::Int,
+                members: vec!["None".into(), "Read".into(), "Write".into()],
+            },
+        };
+        let seq = |values: &[&str]| AuthoringValue::Sequence {
+            source_identity: true,
+            items: values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| crate::AuthoringSequenceItem {
+                    source_index: Some(index),
+                    value: string(value),
+                })
+                .collect(),
+        };
+        let rows = vec![
+            QueryRow { source_order: 0, values: vec![seq(&[])] },
+            QueryRow { source_order: 1, values: vec![seq(&["Read", "Read"])] },
+            QueryRow { source_order: 2, values: vec![seq(&["None", "Read"])] },
+            QueryRow { source_order: 3, values: vec![seq(&["None"])] },
+        ];
+        let query = AuthoringQuery {
+            filters: vec![ColumnFilter {
+                field: "permissions".into(),
+                operator: QueryOperator::IsInvalid,
+                value: None,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            apply_authoring_query(&[flags], &rows, &query).unwrap(),
+            vec![0, 1, 2]
+        );
     }
 
     #[test]

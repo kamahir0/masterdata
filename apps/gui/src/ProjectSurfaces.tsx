@@ -499,8 +499,8 @@ export function ProjectSettingsPanel({
       const request = requestForProfile();
       const committed = await previewRequest(request);
       if (committed) {
-        rememberProfileDraft(request.name);
-        setSelectedProfile(request.name);
+        rememberProfileDraft(profileName);
+        setSelectedProfile(profileName.trim());
       }
       return committed;
     }
@@ -618,8 +618,8 @@ export function ProjectSettingsPanel({
                 const request = requestForProfile();
                 void previewRequest(request).then((committed) => {
                   if (committed) {
-                    rememberProfileDraft(request.name);
-                    setSelectedProfile(request.name);
+                    rememberProfileDraft(profileName);
+                    setSelectedProfile(profileName.trim());
                   }
                 });
               }}

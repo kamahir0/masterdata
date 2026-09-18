@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Form, Input, InputNumber, Select, Space, Spin, Table, Tabs, Tag } from "antd";
 import { invoke } from "@tauri-apps/api/core";
+import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
+import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";
 
 type Field = { key:number; name:string; type:string; nullable:boolean; array:boolean };
-type Snapshot = { path:string; schema:{ table:string; fields:Field[]; primaryKey:{fields:string[]}; secondaryKeys:{fields:string[];nonUnique:boolean}[] }; fieldTypes:string[] };
+type Snapshot = { path:string; schema:{ table:string; fields:Field[]; primaryKey:{fields:string[]}; secondaryKeys:{fields:string[];nonUnique:boolean}[] }; fieldTypes:string[]; initializerShapes:Record<string,ResolvedAuthoringType> };
 type Plan = { token:string; table:string; operation:string; field:string; destructive:boolean; affectedRecordCount:number; files:{path:string;before:string;after:string}[]; diagnostics:{code:string;message:string}[] };
 export type MigrationResult = { state:string; files:string[]; fileStates?:{path:string;state:string}[]; diagnostic?:{code:string;message:string}|null; recoveryWorkspace?:string|null };
 const message = (error:unknown):string => {
@@ -19,7 +21,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
   const [selected,setSelected]=useState("");
   const [operation,setOperation]=useState<"add"|"rename"|"drop"|null>(null);
   const [name,setName]=useState("");const [key,setKey]=useState<number|null>(0);const [type,setType]=useState("int");const [modifier,setModifier]=useState("required");
-  const [hasInitializer,setHasInitializer]=useState(false);const [initializer,setInitializer]=useState("");
+  const [hasInitializer,setHasInitializer]=useState(false);const [initializer,setInitializer]=useState<AuthoringValue>(resetInitializer());
   const [plan,setPlan]=useState<Plan|null>(null);const [confirmed,setConfirmed]=useState(false);
   const [busy,setBusy]=useState(false);const [error,setError]=useState<string|null>(null);const [result,setResult]=useState<MigrationResult|null>(null);
   const revision=useRef(0);const inFlight=useRef(false);const mounted=useRef(true);
@@ -29,12 +31,12 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
     return ()=>{disposed=true;mounted.current=false;revision.current+=1;};
   },[projectPath,path]);
   const change=(fn:()=>void)=>{revision.current+=1;fn();setPlan(null);setConfirmed(false);setError(null);setResult(null);};
-  const start=(value:"add"|"rename"|"drop")=>{change(()=>{setOperation(value);setName(value==="rename"?selected:"");setKey(snapshot?.schema.fields.length?Math.max(...snapshot.schema.fields.map(field=>field.key))+1:0);});window.requestAnimationFrame(()=>document.getElementById(value==="drop"?"migration-plan":"migration-name")?.focus());};
+  const start=(value:"add"|"rename"|"drop")=>{change(()=>{setOperation(value);setName(value==="rename"?selected:"");setKey(snapshot?.schema.fields.length?Math.max(...snapshot.schema.fields.map(field=>field.key))+1:0);if(value==="add"){setHasInitializer(false);setInitializer(resetInitializer());}});window.requestAnimationFrame(()=>document.getElementById(value==="drop"?"migration-plan":"migration-name")?.focus());};
   const cancel=()=>{change(()=>setOperation(null));window.requestAnimationFrame(()=>document.getElementById(operation === "rename" ? "table-rename" : operation === "drop" ? "table-drop" : "table-add")?.focus());};
   const getPlan=async()=>{
     if(inFlight.current||!snapshot||!operation)return;
     const current=revision.current;inFlight.current=true;setBusy(true);setError(null);
-    const input=operation==="add"?{operation,table:snapshot.schema.table,field:{key,name,type,nullable:modifier==="nullable",array:modifier==="array"},initializer:hasInitializer?initializer:null}:operation==="rename"?{operation,table:snapshot.schema.table,field:selected,newName:name}:{operation,table:snapshot.schema.table,field:selected};
+    const input=operation==="add"?{operation,table:snapshot.schema.table,field:{key,name,type,nullable:modifier==="nullable",array:modifier==="array"},initializer:hasInitializer?initializerJson(initializer):null}:operation==="rename"?{operation,table:snapshot.schema.table,field:selected,newName:name}:{operation,table:snapshot.schema.table,field:selected};
     try {const next=await invoke<Plan>("plan_table_migration",{projectPath,input});if(mounted.current&&current===revision.current){setPlan(next);setResult(null);setConfirmed(false);}}
     catch(error){if(mounted.current&&current===revision.current)setError(message(error));}
     finally{inFlight.current=false;if(mounted.current)setBusy(false);}
@@ -77,10 +79,18 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
         {operation!=="drop"&&<Form.Item label="Field name" htmlFor="migration-name"><Input id="migration-name" value={name} onChange={event=>change(()=>setName(event.target.value))}/></Form.Item>}
         {operation==="add"&&<>
           <Form.Item label="MessagePack key"><InputNumber aria-label="MessagePack key" value={key} onChange={value=>change(()=>setKey(value))}/></Form.Item>
-          <Form.Item label="Field type"><Select aria-label="Field type" value={type} options={snapshot.fieldTypes.map(value=>({value,label:value}))} onChange={value=>change(()=>setType(value))}/></Form.Item>
-          <Form.Item label="Modifier"><Select aria-label="Field modifier" value={modifier} options={["required","nullable","array"].map(value=>({value,label:value}))} onChange={value=>change(()=>setModifier(value))}/></Form.Item>
-          <Checkbox checked={hasInitializer} onChange={event=>change(()=>setHasInitializer(event.target.checked))}>Explicit constant initializer</Checkbox>
-          {hasInitializer&&<Form.Item label="Initializer (JSON value)"><Input.TextArea aria-label="Initializer (JSON value)" value={initializer} onChange={event=>change(()=>setInitializer(event.target.value))} placeholder={'42, "text", null, [], or an object'}/><p>Parsed by the shared service. 64-bit integers stay exact.</p></Form.Item>}
+          <Form.Item label="Field type"><Select aria-label="Field type" value={type} options={snapshot.fieldTypes.map(value=>({value,label:value}))} onChange={value=>change(()=>{setType(value);setHasInitializer(false);setInitializer(resetInitializer());})}/></Form.Item>
+          <Form.Item label="Modifier"><Select aria-label="Field modifier" value={modifier} options={["required","nullable","array"].map(value=>({value,label:value}))} onChange={value=>change(()=>{setModifier(value);setHasInitializer(false);setInitializer(resetInitializer());})}/></Form.Item>
+          <TypedInitializer
+            typeName={type}
+            modifier={modifier as "required"|"nullable"|"array"}
+            shape={snapshot.initializerShapes[type]??null}
+            enabled={hasInitializer}
+            value={initializer}
+            disabled={busy}
+            onEnabledChange={enabled=>change(()=>{setHasInitializer(enabled);if(!enabled)setInitializer(resetInitializer());})}
+            onChange={value=>change(()=>setInitializer(value))}
+          />
         </>}
         {operation==="drop"&&<Alert type="warning" title={`Destructive: remove ${snapshot.schema.table}.${selected} and its values from every record.`}/>}
         <Space><Button id="migration-plan" onClick={()=>void getPlan()} loading={busy} disabled={!canWrite}>Plan / Re-plan</Button><Button onClick={cancel}>Cancel</Button></Space>

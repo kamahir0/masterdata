@@ -622,7 +622,17 @@ test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of f
     if (command === 'authoring_clipboard_shape') return { rows: 2, columns: 2 };
     if (command === 'preview_data_file_batch') {
       batchArgs = args;
-      return { source: openSnapshot.baseSource, changedCellCount: 0, changes: [], validation };
+      return {
+        source: {
+          candidateSource: openSnapshot.baseSource,
+          candidateContentIdentity: 'batch-preview',
+          changed: false,
+          validation,
+        },
+        targetCount: 4,
+        changedCellCount: 0,
+        changes: [],
+      };
     }
     return normalInvoke(command, args);
   });

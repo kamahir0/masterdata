@@ -244,6 +244,56 @@ impl Project {
         Ok(documents)
     }
 
+    /// Capture the exact config/source membership and bytes used by a Build
+    /// Plan. The second read closes the capture window: changes observed while
+    /// the snapshot is being assembled fail before artifact publication,
+    /// while later changes are intentionally outside this captured Plan.
+    pub fn load_build_documents_snapshot(&self) -> Result<ProjectDocuments> {
+        let paths = self.source_files()?;
+        let mut captured = Vec::with_capacity(paths.len());
+        for path in &paths {
+            let bytes = fs::read(path).map_err(|error| io_error(path, error))?;
+            let content = String::from_utf8(bytes.clone()).map_err(|error| {
+                build_snapshot_error(
+                    path,
+                    format!("source is not valid UTF-8 while capturing Build input: {error}"),
+                )
+            })?;
+            captured.push((path.clone(), bytes, content));
+        }
+
+        let config_after = fs::read(&self.config_path)
+            .map_err(|error| io_error(&self.config_path, error))?;
+        if config_after != self.config_source {
+            return Err(build_snapshot_error(
+                &self.config_path,
+                "masterdata.toml changed while the Build snapshot was being captured",
+            ));
+        }
+        let paths_after = self.source_files()?;
+        if paths_after != paths {
+            return Err(build_snapshot_error(
+                &self.root,
+                "source membership changed while the Build snapshot was being captured",
+            ));
+        }
+        for (path, bytes, _) in &captured {
+            let after = fs::read(path).map_err(|error| io_error(path, error))?;
+            if &after != bytes {
+                return Err(build_snapshot_error(
+                    path,
+                    "source bytes changed while the Build snapshot was being captured",
+                ));
+            }
+        }
+
+        let mut documents = ProjectDocuments::default();
+        for (path, _, content) in captured {
+            documents.files.push(parse_yaml_document(path, &content)?);
+        }
+        Ok(documents)
+    }
+
     pub fn validate(&self) -> Result<ValidationReport> {
         let documents = self.load_documents()?;
         Ok(validate_documents(&documents))
@@ -290,6 +340,16 @@ impl Project {
     pub fn config_content_identity(&self) -> String {
         crate::source_content_identity(std::str::from_utf8(&self.config_source).unwrap_or_default())
     }
+}
+
+fn build_snapshot_error(path: &Path, message: impl Into<String>) -> MasterdataError {
+    MasterdataError::new(
+        "E-BUILD-SNAPSHOT-STALE",
+        ErrorKind::Validation,
+        message,
+    )
+    .with_source(path.to_path_buf())
+    .with_related_requirement("BUILD-REQUEST-001")
 }
 
 /// Create a new project marker and the default source scaffold.

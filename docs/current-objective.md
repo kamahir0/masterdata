@@ -3,54 +3,79 @@
 ## Role
 
 この文書はHuman-selectedなcurrent priorityとwork package boundaryの唯一のownerである。
-Approved behaviorは[仕様index](specs/README.md)のcanonical specification、現在のStageは
-[Development State](execution-state.md)、implementation realityはcode / tests / Gitで確認する。
+Approved behaviorはcanonical specification、現在のStageは[Development State](execution-state.md)、implementation realityはcode / tests / Gitで確認する。
 
 ## Objective
 
-現在のHuman priorityは、**Desktop制作v1（P1–P3）をまとまって実装するため、日常編集・Workspace設定・Build / Publishの詳細仕様を一括で具体化し承認可能にする**ことである。
+現在のHuman priorityは、**ApprovedとなったDesktop制作v1（P1–P3）をまとまったwork packageとして実装し、日常制作をDesktop GUIだけで完遂できるcandidateを作る**ことである。
 
-2026-09-16、Humanは小刻みな進め方からまとまった実装へ移る意向を示し、その準備として創造性を発揮した仕様案の作成を明示依頼した。
-直前のComplex Value Authoring v1はcandidate `fee882c2ef3c3516ded184707c6cc2d96cd4d252`のverificationを経て完了している。
+2026-09-18、Human maintainerは仕様変更0016–0018を一括Approvalし、44の新Requirementをcanonical ownerへ適用した。Stageは`implementation-ready`であり、次の作業はApproved contractからの実装である。
 
 ## Why now
 
-型・Table・recordのauthoringとBuild / Publishの既存基盤を、日常制作が完結する体験へまとめる時期にある。
-個別機能の順番だけでなく、完成像、scope、失敗時の境界、受け入れscenario、実装packageを先に共有する。
+Complex Value Authoring v1までで型・Table・record authoringとBuild / Publishの基盤は成立した。次は個別機能追加ではなく、Project作成から編集・確認・Build・Publishまでの日常workflowを一つの完成単位として接続する。
 
 ## Completion boundary
 
-- Product motivation、Approved decisions、実装evidence、未決事項を区別した文書がある。
-- 理想の操作体験と、ひと区切りになる完成条件、後段の拡張が具体化されている。
-- 提案にcanonical owner、compatibility / implementation impact、failure / acceptance scenarioがある。
-- 詳細contractがstable Requirement IDと既存ownerへのdeltaを持ち、一括reviewでBlockingがない。
-- 提案を承認済みとせず、Humanが具体的な仕様一式のApprovalを判断できる。
+Desktop制作v1の完了候補は、少なくとも次を満たす。
 
-設計方向と比較のownerは[Authoring system v1 RFC](rfcs/0008-authoring-system-v1.md)。詳細contractの承認対象は下記0016–0018であり、一括reviewとcanonical適用手順は0018が所有する。
+- 新規ProjectをGUIから安全に作成し、型・Table・Data file・recordを作成できる。
+- Data Editorでsearch/filter/sort、scalar range paste/fill、preview、Undo/Redo、Tag編集をsource-preservingに行える。
+- Table Overviewで分割fileを横断して保存済みsnapshotとProfile selectionを確認し、source occurrenceへ安全に戻れる。
+- Project SettingsでProfile / Publish targetをlossless TOML editとして変更・保存できる。
+- Buildは保存済みsource/configだけを使用し、明示Profileでcanonical artifact setを生成できる。
+- Publishはreceipt validationとpreview / all-target preflightを経てC# / binary targetへ配置できる。
+- external conflict、stale preview、Save All部分失敗、Migration Recovery Required、Publish部分失敗でlocal inputやunmanaged fileを誤って失わない。
+- focused tests、repository required checks、Desktop実機制作scenarioを通す。
+- 10万record（分割file）、20列Table、1万cell pasteの固定生成inputについてload/query/preview/validation時間とpeak memoryを測定し、環境情報とともにevidenceを残す。
 
-## Current direction
+完成時はcandidate SHAをDevelopment Stateへ記録し、独立verificationへ進める。
 
-2026-09-16、Humanは直前summaryへの「進める」により、RFCの**Option B: P1–P3のDesktop制作v1**を選択した。
-file単位編集、保存前Undo、scalar一括入力を基本に詳細化し、計算列を後段とする。
-RFC採用とcanonical specificationのApprovalを区別し、未承認behaviorの実装は開始しない。
+## Canonical implementation inputs
+
+### P1 — 日常編集
+
+- [Authoring Batch](specs/authoring-batch.md)
+- [Authoring Query / Overview](specs/authoring-query.md)
+- [Data Editor Grid Authoring](gui/data-editor/grid-authoring.md)
+- [Typed Migration Initializer](gui/typed-initializer.md)
+
+### P2 — Workspace・Tag・設定
+
+- [Source Tag Edit](specs/source-tag-edit.md)
+- [Data Editor Tag Authoring](gui/data-editor/tag-authoring.md)
+- [Table Overview](gui/table-overview/spec.md)
+- [Project Config Edit](specs/project-config-edit.md)
+- [Project Settings](gui/project-settings/spec.md)
+
+### P3 — Project入口・Build / Publish
+
+- [Project Initialization](specs/project-init.md)
+- [Project Workflow](gui/project-workflow.md)
+- [Build Request / Publish Preview](specs/build-request-preview.md)
+- [Build / Publish GUI](gui/build-publish/spec.md)
+
+既存のSource Edit、Record Mutation、Build Selection、Build pipeline、Migration、Runtime host等のApproved ownerも引き続き適用する。仕様変更0016–0018はApplied audit recordであり、implementation authorityではない。
+
+## Implementation order
+
+依存を壊さず一つのcandidateへ収束させるため、shared semantics / application service → Tauri adapter → React surface → cross-surface lifecycle → end-to-end / performance evidenceの順を基本とする。内部task分割はこの順序を満たす範囲でimplementation側に委ねる。
 
 ## Explicit non-scope
 
-- 本activityでのproduct feature実装。
-- Approved specificationの未承認semantic変更。
-- specificationの自動Approved化。
-- 後段candidateをHuman選択なしに実装priorityへ昇格すること。
-
-## Next candidate
-
-承認対象は[0016: 日常編集](spec-changes/0016-desktop-daily-editing.md)、[0017: Workspace・設定](spec-changes/0017-desktop-workspace-settings.md)、[0018: Project入口・Build / Publish](spec-changes/0018-desktop-build-delivery.md)の一式。
-明示Approval後にcanonicalへatomic適用する。方向選択だけで本格実装開始とはしない。
+- P4: existing key編集、source file rename/move等。
+- P5: expression / computed / programmable view。
+- P6: Referenceの完成、Web authoring完成。
+- Git stage / commit / pushの自動化。
+- arbitrary YAML/TOML raw editorを通常制作経路にすること。
+- product latency SLAやrecord上限を今回の測定だけから発明すること。
+- Approved specificationにないobservable behaviorをimplementation convenienceで追加すること。
 
 ## Relevant authorities
 
-- [Product vision](product/vision.md)
 - [Authoring system v1 RFC](rfcs/0008-authoring-system-v1.md)
-- [Specification index](specs/README.md)
-- [GUI index](gui/README.md)
+- [0016 Applied record](spec-changes/0016-desktop-daily-editing.md)
+- [0017 Applied record](spec-changes/0017-desktop-workspace-settings.md)
+- [0018 Applied record](spec-changes/0018-desktop-build-delivery.md)
 - [Specification workflow](contributing/specification-workflow.md)
 - [Development workflow](execution-workflow.md)

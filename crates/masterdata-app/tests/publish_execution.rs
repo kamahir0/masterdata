@@ -40,11 +40,13 @@ fn preview_rejects_destination_plan_changed_before_confirmation_without_mutation
         failure.error.diagnostic().code,
         "E-PUBLISH-PREVIEW-STALE-DESTINATION"
     );
-    assert!(failure
-        .report
-        .targets
-        .iter()
-        .all(|target| target.status == PublishTargetStatus::NotAttempted));
+    assert!(
+        failure
+            .report
+            .targets
+            .iter()
+            .all(|target| target.status == PublishTargetStatus::NotAttempted)
+    );
     assert_eq!(snapshot(&target), before);
     assert_eq!(
         fs::read(target.join("External.g.cs")).expect("external file"),

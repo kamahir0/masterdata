@@ -692,14 +692,32 @@ fn update_commented_string_array(
             "profile array token identity is ambiguous",
         ));
     }
+    let mut result = source[span.start..span.end].to_owned();
     if desired.len() < existing.len() {
-        return Err(config_edit_error(
-            "E-CONFIG-EDIT-UNSUPPORTED",
-            "removing entries from a commented profile array requires an unambiguous source layout",
-        ));
+        let mut removals = tokens[desired.len()..]
+            .iter()
+            .map(|token| (token.start, token.end))
+            .collect::<Vec<_>>();
+        let scan_start = desired
+            .last()
+            .and_then(|_| tokens.get(desired.len().saturating_sub(1)))
+            .map_or(span.start + 1, |token| token.end);
+        removals.extend(commented_array_commas(source, scan_start, span.end - 1));
+        removals.sort_unstable_by_key(|(start, _)| *start);
+        for (start, end) in removals.into_iter().rev() {
+            result.replace_range(start - span.start..end - span.start, "");
+        }
+        for index in (0..desired.len()).rev() {
+            let token = &tokens[index];
+            let replacement = render_toml_string_with_quote(&desired[index], token.quote);
+            result.replace_range(
+                token.start - span.start..token.end - span.start,
+                &replacement,
+            );
+        }
+        return Ok(result);
     }
 
-    let mut result = source[span.start..span.end].to_owned();
     for index in (0..existing.len()).rev() {
         let token = &tokens[index];
         let replacement = render_toml_string_with_quote(&desired[index], token.quote);
@@ -743,6 +761,45 @@ fn update_commented_string_array(
         .join(&format!(",{newline}"));
     result.insert_str(close_line_start, &format!("{addition}{newline}"));
     Ok(result)
+}
+
+fn commented_array_commas(source: &str, start: usize, end: usize) -> Vec<(usize, usize)> {
+    let bytes = source.as_bytes();
+    let mut index = start;
+    let mut quote = None;
+    let mut in_comment = false;
+    let mut commas = Vec::new();
+    while index < end {
+        let byte = bytes[index];
+        if in_comment {
+            if byte == b'\n' {
+                in_comment = false;
+            }
+            index += 1;
+            continue;
+        }
+        match quote {
+            Some(b'"') => {
+                if byte == b'\\' {
+                    index = (index + 2).min(end);
+                    continue;
+                }
+                if byte == b'"' {
+                    quote = None;
+                }
+            }
+            Some(b'\'') if byte == b'\'' => quote = None,
+            Some(_) => {}
+            None => match byte {
+                b'#' => in_comment = true,
+                b'"' | b'\'' => quote = Some(byte),
+                b',' => commas.push((index, index + 1)),
+                _ => {}
+            },
+        }
+        index += 1;
+    }
+    commas
 }
 
 fn array_entries(source: &str, span: ArraySpan) -> Result<Vec<ArrayEntry>> {
@@ -1140,6 +1197,31 @@ mod tests {
         assert!(extended.candidate_source.contains("\"a\", # keep a"));
         assert!(extended.candidate_source.contains("\"b\""));
         assert!(toml::from_str::<toml::Value>(&extended.candidate_source).is_ok());
+    }
+
+    #[test]
+    fn commented_array_removal_preserves_comments_and_valid_toml() {
+        let source = "[build.profiles.prod]\ninclude_tags = [\n  \"a\", # keep a\n  \"b\", # keep b\n  \"c\" # keep c\n]\n";
+        let preview = preview_project_config_edit(
+            source,
+            &ProjectConfigEditOperation::UpdateProfile {
+                name: "prod".into(),
+                include_tags: vec!["a".into()],
+                exclude_tags: Vec::new(),
+            },
+        )
+        .expect("remove entries");
+        assert!(preview.candidate_source.contains("# keep a"));
+        assert!(preview.candidate_source.contains("# keep b"));
+        assert!(preview.candidate_source.contains("# keep c"));
+        assert!(!preview.candidate_source.contains("\"b\""));
+        assert!(!preview.candidate_source.contains("\"c\""));
+        let parsed = toml::from_str::<toml::Value>(&preview.candidate_source).expect("valid TOML");
+        let tags = parsed["build"]["profiles"]["prod"]["include_tags"]
+            .as_array()
+            .expect("tags");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].as_str(), Some("a"));
     }
 
     #[test]

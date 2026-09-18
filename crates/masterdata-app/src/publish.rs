@@ -64,6 +64,10 @@ impl PublishExecutionFailure {
     pub fn diagnostic(&self) -> &Diagnostic {
         self.error.diagnostic()
     }
+
+    pub fn into_error(self) -> MasterdataError {
+        self.error
+    }
 }
 
 impl fmt::Display for PublishExecutionFailure {

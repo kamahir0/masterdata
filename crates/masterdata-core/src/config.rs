@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{ErrorKind, MasterdataError, Result};
@@ -39,6 +41,8 @@ impl<'de> Deserialize<'de> for ProjectConfig {
             output: Option<toml::Value>,
             #[serde(default)]
             binary_output: Option<toml::Value>,
+            #[serde(default)]
+            profiles: BTreeMap<String, BuildProfile>,
         }
 
         impl Default for RawBuildConfig {
@@ -48,6 +52,7 @@ impl<'de> Deserialize<'de> for ProjectConfig {
                     cache: default_cache_directory(),
                     output: None,
                     binary_output: None,
+                    profiles: BTreeMap::new(),
                 }
             }
         }
@@ -69,6 +74,7 @@ impl<'de> Deserialize<'de> for ProjectConfig {
             build: BuildConfig {
                 artifact_dir: raw.build.artifact_dir,
                 cache: raw.build.cache,
+                profiles: raw.build.profiles,
             },
             publish: raw.publish,
         })
@@ -94,6 +100,19 @@ pub struct BuildConfig {
     pub artifact_dir: String,
     #[serde(default = "default_cache_directory")]
     pub cache: String,
+    #[serde(default)]
+    pub profiles: BTreeMap<String, BuildProfile>,
+}
+
+/// A named, project-scoped Build Selection.  The collection order is source
+/// formatting only; selection resolves both members as sets.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct BuildProfile {
+    #[serde(default)]
+    pub include_tags: Vec<String>,
+    #[serde(default)]
+    pub exclude_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -134,6 +153,7 @@ impl Default for BuildConfig {
         Self {
             artifact_dir: default_artifact_directory(),
             cache: default_cache_directory(),
+            profiles: BTreeMap::new(),
         }
     }
 }
@@ -190,8 +210,69 @@ impl ProjectConfig {
                 ),
             ));
         }
+        for (name, profile) in &self.build.profiles {
+            if !is_profile_or_tag_name(name) {
+                return Err(MasterdataError::new(
+                    "E-BUILD-PROFILE-INVALID-NAME",
+                    ErrorKind::Config,
+                    format!("Build Profile name `{name}` is not lowercase kebab-case"),
+                ));
+            }
+            validate_profile_tags(name, "include_tags", &profile.include_tags)?;
+            validate_profile_tags(name, "exclude_tags", &profile.exclude_tags)?;
+            if profile
+                .include_tags
+                .iter()
+                .any(|tag| profile.exclude_tags.iter().any(|other| other == tag))
+            {
+                return Err(MasterdataError::new(
+                    "E-BUILD-PROFILE-TAG-OVERLAP",
+                    ErrorKind::Config,
+                    format!("Build Profile `{name}` includes and excludes the same tag"),
+                ));
+            }
+        }
         Ok(())
     }
+}
+
+fn validate_profile_tags(profile: &str, member: &str, tags: &[String]) -> Result<()> {
+    let mut seen = std::collections::BTreeSet::new();
+    for tag in tags {
+        if !is_profile_or_tag_name(tag) {
+            return Err(MasterdataError::new(
+                "E-BUILD-PROFILE-INVALID-TAG",
+                ErrorKind::Config,
+                format!("Build Profile `{profile}` {member} contains invalid tag `{tag}`"),
+            ));
+        }
+        if !seen.insert(tag) {
+            return Err(MasterdataError::new(
+                "E-BUILD-PROFILE-DUPLICATE-TAG",
+                ErrorKind::Config,
+                format!("Build Profile `{profile}` {member} contains duplicate tag `{tag}`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_profile_or_tag_name(value: &str) -> bool {
+    let mut segments = value.split('-');
+    let Some(first) = segments.next() else {
+        return false;
+    };
+    !first.is_empty()
+        && first.as_bytes()[0].is_ascii_lowercase()
+        && first
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && segments.all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
 }
 
 fn default_source_roots() -> Vec<String> {

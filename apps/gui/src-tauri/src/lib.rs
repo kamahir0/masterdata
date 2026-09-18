@@ -1,9 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use masterdata_app::{
-    AuthoringEdit, AuthoringRecordDraft, AuthoringRecordMutation, AuthoringWorkspace,
-    CreationContext, CreationDestinationState, CreationReport, CreationRequest, DataFileSnapshot,
-    NativeApplicationService, SourceContentState, SourceEditPreview, SourceSaveReport,
+    AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
+    AuthoringBatchRequest, AuthoringEdit, AuthoringRecordDraft, AuthoringRecordMutation,
+    AuthoringWorkspace, ConfigSaveReport, CreationContext, CreationDestinationState,
+    CreationReport, CreationRequest, DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot,
+    NativeApplicationService, ProjectConfigEditPreviewView, ProjectConfigEditRequest,
+    ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest, PublishExecutionReport,
+    PublishPreview, RecordTagEditRequest, SourceContentState, SourceEditPreview, SourceSaveReport,
+    TableOverviewRequest, TableOverviewSnapshot,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -69,6 +74,45 @@ fn configured_project_path(project_path: Option<String>) -> Option<String> {
     project_path.or_else(|| std::env::var("MASTERDATA_PROJECT_PATH").ok())
 }
 
+fn active_operations() -> &'static std::sync::Mutex<std::collections::BTreeSet<PathBuf>> {
+    static ACTIVE: std::sync::OnceLock<std::sync::Mutex<std::collections::BTreeSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    ACTIVE.get_or_init(Default::default)
+}
+
+struct OperationGuard {
+    project_root: PathBuf,
+}
+
+impl Drop for OperationGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = active_operations().lock() {
+            active.remove(&self.project_root);
+        }
+    }
+}
+
+fn operation_guard(project_root: &Path) -> std::result::Result<OperationGuard, ApiError> {
+    let key = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    let mut active = active_operations().lock().map_err(|_| {
+        ApiError::from(MasterdataError::new(
+            "E-GUI-OPERATION-BUSY",
+            ErrorKind::Io,
+            "project operation guard is unavailable",
+        ))
+    })?;
+    if !active.insert(key.clone()) {
+        return Err(ApiError::from(MasterdataError::new(
+            "E-GUI-OPERATION-BUSY",
+            ErrorKind::Validation,
+            "another operation is in progress for this project; retry after it completes",
+        )));
+    }
+    Ok(OperationGuard { project_root: key })
+}
+
 fn table_session() -> std::result::Result<
     std::sync::MutexGuard<'static, masterdata_app::TableAuthoringSession>,
     ApiError,
@@ -89,6 +133,22 @@ fn table_root(project_path: Option<String>) -> std::result::Result<PathBuf, ApiE
         .project_info(path.as_deref().map(Path::new), &current_directory()?)
         .map_err(ApiError::from)?
         .project_root)
+}
+
+fn config_binding_root(project_path: Option<String>) -> std::result::Result<PathBuf, ApiError> {
+    let configured = configured_project_path(project_path);
+    let current = current_directory()?;
+    let path = configured.map(PathBuf::from).unwrap_or(current.clone());
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        current.join(path)
+    };
+    if absolute.file_name().and_then(|name| name.to_str()) == Some("masterdata.toml") {
+        Ok(absolute.parent().map(Path::to_path_buf).unwrap_or(absolute))
+    } else {
+        Ok(absolute)
+    }
 }
 #[tauri::command(rename_all = "camelCase")]
 fn open_table(
@@ -146,8 +206,10 @@ fn apply_table_migration(
     token: String,
     allow_destructive: bool,
 ) -> std::result::Result<masterdata_app::TableApplyView, ApiError> {
+    let root = table_root(project_path)?;
+    let _operation = operation_guard(&root)?;
     table_session()?
-        .apply(&table_root(project_path)?, &token, allow_destructive)
+        .apply(&root, &token, allow_destructive)
         .map_err(ApiError::from)
 }
 #[tauri::command(rename_all = "camelCase")]
@@ -173,6 +235,15 @@ fn project_info(project_path: Option<String>) -> std::result::Result<ProjectInfo
     let configured_path = configured_project_path(project_path);
     NativeApplicationService::new()
         .project_info(configured_path.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn create_project(request: ProjectInitRequest) -> std::result::Result<ProjectInitReport, ApiError> {
+    let current = current_directory()?;
+    let _operation = operation_guard(&current)?;
+    NativeApplicationService::new()
+        .create_project(&current, &request)
         .map_err(ApiError::from)
 }
 
@@ -212,11 +283,13 @@ fn create_source(
             format!("invalid creation input: {error}"),
         ))
     })?;
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
     // Hold the shared session guard across mutation so Apply cannot race another
     // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
     let session = table_session()?;
     session
-        .ensure_mutation_allowed(&table_root(project_path.clone())?)
+        .ensure_mutation_allowed(&root)
         .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured = configured_project_path(project_path);
@@ -253,6 +326,118 @@ fn open_data_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+fn open_project_config(
+    project_path: Option<String>,
+) -> std::result::Result<ProjectConfigSnapshot, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .open_project_config(configured_path.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn preview_project_config_edit(
+    base_source: String,
+    base_content_identity: String,
+    request: ProjectConfigEditRequest,
+) -> std::result::Result<ProjectConfigEditPreviewView, ApiError> {
+    NativeApplicationService::new()
+        .preview_project_config_edit(&base_source, &base_content_identity, &request)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn save_project_config_edit(
+    project_path: Option<String>,
+    base_source: String,
+    base_content_identity: String,
+    request: ProjectConfigEditRequest,
+    overwrite_expected_identity: Option<String>,
+) -> std::result::Result<ConfigSaveReport, ApiError> {
+    let root = config_binding_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
+    table_session()?
+        .ensure_mutation_allowed_at_root(&root)
+        .map_err(ApiError::from)?;
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .save_project_config_edit(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &base_source,
+            &base_content_identity,
+            &request,
+            overwrite_expected_identity.as_deref(),
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn query_data_file(
+    project_path: Option<String>,
+    request: DataFileQueryRequest,
+) -> std::result::Result<DataFileQueryResult, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .query_data_file(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &request,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn table_overview(
+    project_path: Option<String>,
+    request: TableOverviewRequest,
+) -> std::result::Result<TableOverviewSnapshot, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .table_overview(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &request,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn publish_preview(project_path: Option<String>) -> std::result::Result<PublishPreview, ApiError> {
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .publish_preview(configured_path.as_deref().map(Path::new), &current_dir)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn publish_from_preview(
+    project_path: Option<String>,
+    artifact_set_identity: String,
+    config_content_identity: String,
+) -> std::result::Result<PublishExecutionReport, ApiError> {
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .publish_from_preview(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &artifact_set_identity,
+            &config_content_identity,
+        )
+        .map_err(|failure| ApiError::from(failure.into_error()))
+}
+
+#[tauri::command(rename_all = "camelCase")]
 fn preview_data_file(
     project_path: Option<String>,
     relative_path: String,
@@ -260,6 +445,7 @@ fn preview_data_file(
     edits: Vec<AuthoringEdit>,
     added_records: Option<Vec<AuthoringRecordDraft>>,
     deleted_record_indices: Option<Vec<usize>>,
+    tag_edits: Option<Vec<RecordTagEditRequest>>,
 ) -> std::result::Result<SourceEditPreview, ApiError> {
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
@@ -267,6 +453,7 @@ fn preview_data_file(
         edits,
         added_records: added_records.unwrap_or_default(),
         deleted_record_indices: deleted_record_indices.unwrap_or_default(),
+        tag_edits: tag_edits.unwrap_or_default(),
     };
     NativeApplicationService::new()
         .preview_data_file_mutation(
@@ -275,6 +462,48 @@ fn preview_data_file(
             &relative_path,
             &base_source,
             &mutation,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn preview_data_file_batch(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    current_mutation: AuthoringRecordMutation,
+    request: AuthoringBatchRequest,
+) -> std::result::Result<AuthoringBatchPreview, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .preview_data_file_batch(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &current_mutation,
+            &request,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn copy_data_file_batch(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    request: AuthoringBatchCopyRequest,
+) -> std::result::Result<AuthoringBatchCopyResult, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .copy_data_file_batch(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &request,
         )
         .map_err(ApiError::from)
 }
@@ -305,13 +534,16 @@ fn save_data_file(
     edits: Vec<AuthoringEdit>,
     added_records: Option<Vec<AuthoringRecordDraft>>,
     deleted_record_indices: Option<Vec<usize>>,
+    tag_edits: Option<Vec<RecordTagEditRequest>>,
     overwrite_expected_identity: Option<String>,
 ) -> std::result::Result<SourceSaveReport, ApiError> {
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
     // Hold the shared session guard across mutation so Apply cannot race another
     // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
     let session = table_session()?;
     session
-        .ensure_mutation_allowed(&table_root(project_path.clone())?)
+        .ensure_mutation_allowed(&root)
         .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
@@ -319,6 +551,7 @@ fn save_data_file(
         edits,
         added_records: added_records.unwrap_or_default(),
         deleted_record_indices: deleted_record_indices.unwrap_or_default(),
+        tag_edits: tag_edits.unwrap_or_default(),
     };
     NativeApplicationService::new()
         .save_data_file_mutation(
@@ -346,6 +579,7 @@ fn validate(project_path: Option<String>) -> std::result::Result<ValidationRepor
 #[serde(rename_all = "camelCase")]
 struct BuildResponse {
     project: ProjectInfo,
+    profile: Option<String>,
     schema_source_content_hash: String,
     artifact_root: PathBuf,
     csharp_output: PathBuf,
@@ -359,24 +593,29 @@ struct BuildResponse {
 fn build(
     project_path: Option<String>,
     dry_run: bool,
+    profile: Option<String>,
 ) -> std::result::Result<BuildResponse, ApiError> {
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
     // Hold the shared session guard across mutation so Apply cannot race another
     // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
     let session = table_session()?;
     session
-        .ensure_mutation_allowed(&table_root(project_path.clone())?)
+        .ensure_mutation_allowed(&root)
         .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
     let execution = NativeApplicationService::new()
-        .build(
+        .build_with_profile(
             configured_path.as_deref().map(Path::new),
             &current_dir,
+            profile.as_deref(),
             dry_run,
         )
         .map_err(ApiError::from)?;
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
+        profile,
         schema_source_content_hash: execution.plan.schema_source_content_hash,
         artifact_root: execution.plan.artifact_root,
         csharp_output: execution.plan.csharp_output,
@@ -398,12 +637,22 @@ pub fn run() {
             migration_recovery_status,
             recheck_migration,
             project_info,
+            create_project,
             authoring_workspace,
             creation_context,
             create_source,
             recheck_creation,
+            open_project_config,
+            preview_project_config_edit,
+            save_project_config_edit,
             open_data_file,
+            query_data_file,
+            table_overview,
+            publish_preview,
+            publish_from_preview,
             preview_data_file,
+            preview_data_file_batch,
+            copy_data_file_batch,
             source_content,
             save_data_file,
             validate,
@@ -578,7 +827,7 @@ mod tests {
     #[test]
     fn build_command_uses_shared_build_service() {
         let project = minimal_project();
-        let response = super::build(Some(project.to_string_lossy().into_owned()), true)
+        let response = super::build(Some(project.to_string_lossy().into_owned()), true, None)
             .expect("dry-run build command succeeds");
         let value = serde_json::to_value(&response).expect("build response serializes");
 

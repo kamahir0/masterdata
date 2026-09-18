@@ -3,7 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::config::{ProjectConfig, PublishTargetKind};
+use crate::config::{BuildProfile, ProjectConfig, PublishTargetKind};
 use crate::document::{ProjectDocuments, parse_yaml_document};
 use crate::error::{ErrorKind, MasterdataError, Result, io_error};
 use crate::validation::{ValidationReport, validate_documents};
@@ -45,7 +45,15 @@ pub struct ProjectInfo {
     pub csharp_output: PathBuf,
     pub binary_output: PathBuf,
     pub cache: PathBuf,
+    pub profiles: Vec<BuildProfileInfo>,
     pub publish_targets: Vec<PublishTargetInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct BuildProfileInfo {
+    pub name: String,
+    pub include_tags: Vec<String>,
+    pub exclude_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -180,6 +188,17 @@ impl Project {
             csharp_output: self.csharp_output_path(),
             binary_output: self.binary_output_path(),
             cache: self.cache_path(),
+            profiles: self
+                .config
+                .build
+                .profiles
+                .iter()
+                .map(|(name, profile)| BuildProfileInfo {
+                    name: name.clone(),
+                    include_tags: profile.include_tags.clone(),
+                    exclude_tags: profile.exclude_tags.clone(),
+                })
+                .collect(),
             publish_targets: self
                 .config
                 .publish
@@ -245,6 +264,32 @@ impl Project {
     pub fn cache_path(&self) -> PathBuf {
         resolve_project_path(&self.root, &self.config.build.cache)
     }
+
+    /// Resolve the named project profile through the same BuildSelection
+    /// object used by CLI, GUI, and the Table resolver.
+    pub fn build_selection(&self, profile: Option<&str>) -> Result<crate::BuildSelection> {
+        let Some(profile) = profile else {
+            return Ok(crate::BuildSelection::unfiltered());
+        };
+        let Some(BuildProfile {
+            include_tags,
+            exclude_tags,
+        }) = self.config.build.profiles.get(profile)
+        else {
+            return Err(MasterdataError::new(
+                "E-BUILD-PROFILE-NOT-FOUND",
+                ErrorKind::Config,
+                format!("Build Profile `{profile}` does not exist"),
+            )
+            .with_source(self.config_path.clone())
+            .with_related_requirement("BUILD-SELECT-009"));
+        };
+        crate::BuildSelection::new(include_tags.clone(), exclude_tags.clone())
+    }
+
+    pub fn config_content_identity(&self) -> String {
+        crate::source_content_identity(std::str::from_utf8(&self.config_source).unwrap_or_default())
+    }
 }
 
 /// Create a new project marker and the default source scaffold.
@@ -291,6 +336,161 @@ pub fn initialize_project(root: &Path, options: &InitOptions) -> Result<ProjectI
     }
     create_default_gitignore(&root)?;
     Project::from_config_path(config_path).map(|project| project.info())
+}
+
+/// Initialize a project from the Desktop Create Project entrypoint.
+///
+/// Unlike the CLI-compatible [`initialize_project`], this function accepts
+/// only an existing empty directory or one new directory directly below an
+/// existing real parent. Every created entry is exclusive so a race cannot
+/// turn a Create operation into an overwrite.
+pub fn initialize_gui_project(root: &Path, options: &InitOptions) -> Result<ProjectInfo> {
+    let current_dir = std::env::current_dir().map_err(|error| io_error(Path::new("."), error))?;
+    let root = absolute_path(root, &current_dir);
+    validate_gui_init_target(&root)?;
+
+    let root_exists = match fs::symlink_metadata(&root) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(io_error(&root, error)),
+    };
+    if !root_exists {
+        fs::create_dir(&root).map_err(|error| {
+            MasterdataError::new(
+                "E-PROJECT-INIT-CONFLICT",
+                ErrorKind::Config,
+                format!("could not exclusively create project directory: {error}"),
+            )
+            .with_source(root.clone())
+            .with_related_requirement("PROJECT-INIT-001")
+        })?;
+    }
+
+    let config = ProjectConfig {
+        project: crate::ProjectMetadata {
+            id: options.project_id.clone(),
+            name: options.name.clone(),
+            version: options.version.clone(),
+        },
+        sources: Default::default(),
+        build: Default::default(),
+        publish: Default::default(),
+    };
+    config.validate()?;
+    let content = toml::to_string_pretty(&config).map_err(|error| {
+        MasterdataError::new(
+            "E-PROJECT-CONFIG-SERIALIZE",
+            ErrorKind::Config,
+            format!("could not serialize project config: {error}"),
+        )
+        .with_related_requirement("PROJECT-CONFIG-008")
+    })?;
+    let config_path = root.join(PROJECT_CONFIG_FILENAME);
+    let mut config_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&config_path)
+        .map_err(|error| {
+            MasterdataError::new(
+                "E-PROJECT-INIT-CONFLICT",
+                ErrorKind::Config,
+                format!("could not exclusively create project config: {error}"),
+            )
+            .with_source(config_path.clone())
+            .with_related_requirement("PROJECT-INIT-001")
+        })?;
+    config_file.write_all(content.as_bytes()).map_err(|error| {
+        io_error(&config_path, error).with_related_requirement("PROJECT-INIT-002")
+    })?;
+    config_file.sync_all().map_err(|error| {
+        io_error(&config_path, error).with_related_requirement("PROJECT-INIT-002")
+    })?;
+
+    let source_root = root.join("sources");
+    fs::create_dir(&source_root).map_err(|error| io_error(&source_root, error))?;
+    for directory in DEFAULT_SOURCE_DIRECTORIES {
+        let path = source_root.join(directory);
+        fs::create_dir(&path).map_err(|error| io_error(&path, error))?;
+    }
+    create_default_gitignore(&root)?;
+    Project::from_config_path(config_path).map(|project| project.info())
+}
+
+fn validate_gui_init_target(root: &Path) -> Result<()> {
+    let parent = root.parent().ok_or_else(|| {
+        MasterdataError::new(
+            "E-PROJECT-INIT-PATH",
+            ErrorKind::Config,
+            "project target must have an existing parent directory",
+        )
+        .with_source(root.to_path_buf())
+        .with_related_requirement("PROJECT-INIT-001")
+    })?;
+    validate_real_directory_path(parent)?;
+    match fs::symlink_metadata(root) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(MasterdataError::new(
+            "E-PROJECT-INIT-SYMLINK",
+            ErrorKind::Config,
+            "project target must not be a symlink or reparse point",
+        )
+        .with_source(root.to_path_buf())
+        .with_related_requirement("PROJECT-INIT-001")),
+        Ok(metadata) if !metadata.is_dir() => Err(MasterdataError::new(
+            "E-PROJECT-INIT-NOT-DIRECTORY",
+            ErrorKind::Config,
+            "existing project target must be a directory",
+        )
+        .with_source(root.to_path_buf())
+        .with_related_requirement("PROJECT-INIT-001")),
+        Ok(_) => {
+            let mut entries = fs::read_dir(root).map_err(|error| io_error(root, error))?;
+            if entries.next().is_some() {
+                return Err(MasterdataError::new(
+                    "E-PROJECT-INIT-NONEMPTY",
+                    ErrorKind::Config,
+                    "project target must be empty before Create Project",
+                )
+                .with_source(root.to_path_buf())
+                .with_related_requirement("PROJECT-INIT-001"));
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(io_error(root, error)),
+    }
+}
+
+fn validate_real_directory_path(path: &Path) -> Result<()> {
+    let mut current = if path.has_root() {
+        PathBuf::from(
+            path.components()
+                .next()
+                .unwrap_or(std::path::Component::RootDir)
+                .as_os_str(),
+        )
+    } else {
+        PathBuf::new()
+    };
+    for component in path.components() {
+        if matches!(
+            component,
+            std::path::Component::RootDir | std::path::Component::Prefix(_)
+        ) {
+            continue;
+        }
+        current.push(component.as_os_str());
+        let metadata = fs::symlink_metadata(&current).map_err(|error| io_error(&current, error))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(MasterdataError::new(
+                "E-PROJECT-INIT-SYMLINK",
+                ErrorKind::Config,
+                "project parent path must contain only real directories",
+            )
+            .with_source(current)
+            .with_related_requirement("PROJECT-INIT-001"));
+        }
+    }
+    Ok(())
 }
 
 fn create_default_gitignore(root: &Path) -> Result<()> {

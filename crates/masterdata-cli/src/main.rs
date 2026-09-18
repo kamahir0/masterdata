@@ -69,6 +69,9 @@ struct BuildArgs {
     /// Publish the newly built canonical artifact set after a successful full build.
     #[arg(long, conflicts_with = "dry_run")]
     publish: bool,
+    /// Use one explicitly named saved Build Profile.
+    #[arg(long, value_name = "NAME")]
+    profile: Option<String>,
 }
 
 fn main() {
@@ -181,7 +184,11 @@ fn run() -> Result<()> {
         }
         Command::Build(args) => {
             if args.publish {
-                match service.build_and_publish(cli.project.as_deref(), &current_dir) {
+                match service.build_and_publish_with_profile(
+                    cli.project.as_deref(),
+                    &current_dir,
+                    args.profile.as_deref(),
+                ) {
                     Ok(execution) => {
                         render_build_execution(&execution.build, false);
                         println!("{}", render_publish_report(&execution.publish, "succeeded"));
@@ -192,8 +199,12 @@ fn run() -> Result<()> {
                     }
                 }
             } else {
-                let execution =
-                    service.build(cli.project.as_deref(), &current_dir, args.dry_run)?;
+                let execution = service.build_with_profile(
+                    cli.project.as_deref(),
+                    &current_dir,
+                    args.profile.as_deref(),
+                    args.dry_run,
+                )?;
                 render_build_execution(&execution, args.dry_run);
             }
         }

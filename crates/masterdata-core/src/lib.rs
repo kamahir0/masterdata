@@ -5,8 +5,11 @@
 //! here so that the two frontends cannot gradually grow different semantics.
 
 mod application;
+mod authoring_batch;
+mod authoring_query;
 mod authoring_value;
 mod config;
+mod config_edit;
 pub mod diagnostics;
 mod document;
 mod error;
@@ -21,13 +24,24 @@ mod type_system;
 mod validation;
 
 pub use application::{NativeProjectService, ProjectService};
+pub use authoring_batch::{
+    authoring_value_from_clipboard, authoring_value_to_clipboard, decode_clipboard_tsv,
+    encode_clipboard_tsv, is_scalar_batch_field,
+};
+pub use authoring_query::{
+    AuthoringQuery, ColumnFilter, QueryOperator, QueryRow, QuerySort, SortDirection,
+    apply_authoring_query,
+};
 pub use authoring_value::{
     AuthoringMember, AuthoringSequenceItem, AuthoringValue, project_source_value,
     project_typed_source_value,
 };
 pub use config::{
-    BuildConfig, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget, PublishTargetKind,
-    SourceConfig,
+    BuildConfig, BuildProfile, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget,
+    PublishTargetKind, SourceConfig,
+};
+pub use config_edit::{
+    ProjectConfigEditOperation, ProjectConfigEditPreview, preview_project_config_edit,
 };
 pub use document::{
     ConversionDefinition, CustomTypeDefinition, DataDocument, EnumDefinition, EnumMember,
@@ -52,17 +66,17 @@ pub use pipeline::{
     prepare_build_from_documents, prepare_build_with_selection, prepare_semantic_build,
 };
 pub use project::{
-    InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo, PublishTargetInfo,
-    initialize_project,
+    BuildProfileInfo, InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo,
+    PublishTargetInfo, initialize_gui_project, initialize_project,
 };
 pub use source_edit::{
-    AddedRecordDraft, AddedRecordField, RecordValueEdit, SourceEditDryRun, SourceEditPlan,
-    SourceRecordMutation, dry_run_source_edit, dry_run_source_record_mutation,
+    AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceEditDryRun,
+    SourceEditPlan, SourceRecordMutation, dry_run_source_edit, dry_run_source_record_mutation,
     source_content_identity,
 };
 pub use table::{
     BuildSelection, ResolvedPrimaryKey, ResolvedRecord, ResolvedSecondaryKey, ResolvedTable,
-    TableBuild, resolve_tables, table_csharp_name,
+    TableBuild, is_tag_name, record_tags, resolve_tables, table_csharp_name,
 };
 pub use type_system::{
     FieldModifier, NormalizedValue, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,

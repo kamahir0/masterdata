@@ -22,6 +22,18 @@ use tempfile::TempDir;
 
 mod table_authoring;
 pub use table_authoring::*;
+mod batch;
+pub use batch::*;
+mod config;
+pub use config::*;
+mod query;
+pub use query::*;
+mod project_init;
+pub use project_init::*;
+mod overview;
+pub use overview::*;
+mod delivery;
+pub use delivery::*;
 mod authoring;
 mod creation;
 pub use creation::*;
@@ -291,6 +303,21 @@ impl NativeApplicationService {
         )
     }
 
+    /// Run a canonical build using the explicitly named saved project
+    /// profile. A missing profile is a hard failure; it never falls back to
+    /// the unfiltered selector.
+    pub fn build_with_profile(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        profile: Option<&str>,
+        dry_run: bool,
+    ) -> Result<BuildExecution> {
+        let project = masterdata_core::Project::discover(explicit_project, current_dir)?;
+        let selection = project.build_selection(profile)?;
+        self.build_with_selection(explicit_project, current_dir, &selection, dry_run)
+    }
+
     pub fn build_with_selection(
         &self,
         explicit_project: Option<&Path>,
@@ -395,6 +422,30 @@ impl NativeApplicationService {
             written_files,
             binary,
         })
+    }
+
+    /// Compose an explicitly profiled build with the standalone publish
+    /// operation. Publish still consumes the resulting receipt-valid
+    /// canonical artifact set and does not receive profile semantics.
+    pub fn build_and_publish_with_profile(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        profile: Option<&str>,
+    ) -> std::result::Result<BuildAndPublishExecution, BuildAndPublishFailure> {
+        let build = self
+            .build_with_profile(explicit_project, current_dir, profile, false)
+            .map_err(BuildAndPublishFailure::Build)?;
+        let publish = match self.publish(explicit_project, current_dir) {
+            Ok(report) => report,
+            Err(failure) => {
+                return Err(BuildAndPublishFailure::Publish {
+                    build: Box::new(build),
+                    failure,
+                });
+            }
+        };
+        Ok(BuildAndPublishExecution { build, publish })
     }
 
     pub fn bridge_smoke_test(&self, repository_root: &Path) -> Result<BridgeSmokeReport> {

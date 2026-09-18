@@ -279,10 +279,18 @@ impl TableAuthoringSession {
     }
     pub fn ensure_mutation_allowed(&self, root: &Path) -> Result<()> {
         if self.recovery_status(root)?.is_some() {
-            Err(error(
-                "E-MIGRATION-RECOVERY-REQUIRED",
-                "Project requires source recovery before further mutation or Build",
-            ))
+            Err(recovery_required_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Config repair must remain possible while TOML is domain-invalid.  This
+    /// raw-root gate checks only the in-memory migration recovery marker and
+    /// therefore does not rediscover/parse the project configuration.
+    pub fn ensure_mutation_allowed_at_root(&self, root: &Path) -> Result<()> {
+        if self.recovery.contains_key(root) {
+            Err(recovery_required_error())
         } else {
             Ok(())
         }
@@ -336,4 +344,11 @@ impl TableAuthoringSession {
         }
         self.recovery_status(root)
     }
+}
+
+fn recovery_required_error() -> MasterdataError {
+    error(
+        "E-MIGRATION-RECOVERY-REQUIRED",
+        "Project requires source recovery before further mutation or Build",
+    )
 }

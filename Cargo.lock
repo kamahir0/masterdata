@@ -1979,6 +1979,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
+ "toml 0.8.23",
 ]
 
 [[package]]

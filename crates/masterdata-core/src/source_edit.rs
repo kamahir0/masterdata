@@ -30,6 +30,17 @@ pub struct AddedRecordField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddedRecordDraft {
     pub fields: Vec<AddedRecordField>,
+    /// Record Tags are source metadata and are rendered after declared fields.
+    /// They never enter the resolved Table/domain field set.
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordTagEdit {
+    pub record_index: usize,
+    /// The requested ordered tag entries. Order is preserved in source text,
+    /// while Build Selection later treats the membership as a set.
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -37,6 +48,7 @@ pub struct SourceRecordMutation {
     pub edits: Vec<RecordValueEdit>,
     pub additions: Vec<AddedRecordDraft>,
     pub deletions: Vec<usize>,
+    pub tag_edits: Vec<RecordTagEdit>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +84,7 @@ pub fn dry_run_source_edit(
             edits: edits.to_vec(),
             additions: Vec::new(),
             deletions: Vec::new(),
+            tag_edits: Vec::new(),
         },
     )
 }
@@ -114,6 +127,7 @@ pub fn dry_run_source_record_mutation(
     let mut seen = BTreeSet::new();
     let mut expected = data.clone();
     let mut patches = Vec::new();
+    let mut member_source = None;
 
     for edit in &mutation.edits {
         if !seen.insert((edit.record_index, edit.field.clone())) {
@@ -176,8 +190,13 @@ pub fn dry_run_source_record_mutation(
         if deleted.contains(&edit.record_index) || !value_changed {
             continue;
         }
-        let span =
-            locate_record_member_value(&loaded.source, data, edit.record_index, &edit.field, path)?;
+        let member_source = if let Some(member_source) = member_source.as_ref() {
+            member_source
+        } else {
+            member_source = Some(RecordMemberSource::new(&loaded.source, data, path)?);
+            member_source.as_ref().expect("member source initialized")
+        };
+        let span = member_source.locate(&loaded.source, edit.record_index, &edit.field, path)?;
         patches.extend(value_change_patches(
             &loaded.source,
             &span,
@@ -187,6 +206,96 @@ pub fn dry_run_source_record_mutation(
             shape,
             path,
         )?);
+    }
+
+    let mut seen_tag_targets = BTreeSet::new();
+    for tag_edit in &mutation.tag_edits {
+        if !seen_tag_targets.insert(tag_edit.record_index) {
+            return Err(source_edit_error(
+                "E-SOURCE-TAG-DUPLICATE-TARGET",
+                format!(
+                    "source tag edit contains record[{}] more than once",
+                    tag_edit.record_index
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-TAG-001",
+            ));
+        }
+        let record = data.records.get(tag_edit.record_index).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-TAG-RECORD-NOT-FOUND",
+                format!("record[{}] does not exist", tag_edit.record_index),
+                Some(path.to_path_buf()),
+                "SOURCE-TAG-001",
+            )
+        })?;
+        if deleted.contains(&tag_edit.record_index) {
+            return Err(source_edit_error(
+                "E-SOURCE-TAG-PENDING-DELETE",
+                format!(
+                    "record[{}] is pending delete and cannot receive a tag edit",
+                    tag_edit.record_index
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-TAG-001",
+            ));
+        }
+        let tag_shape = tag_field_shape();
+        match record.get("$tags") {
+            None => {
+                if !tag_edit.tags.is_empty() {
+                    expected.records[tag_edit.record_index]
+                        .insert("$tags".to_owned(), tag_sequence_yaml(&tag_edit.tags));
+                    patches.push(insert_record_tags_patch(
+                        &loaded.source,
+                        data,
+                        tag_edit.record_index,
+                        &tag_edit.tags,
+                        path,
+                    )?);
+                }
+            }
+            Some(Value::Sequence(items)) => {
+                if items.iter().any(|item| item.as_str().is_none()) {
+                    return Err(source_edit_error(
+                        "E-SOURCE-TAG-SHAPE",
+                        "$tags contains a non-string entry and cannot be safely localized",
+                        Some(path.to_path_buf()),
+                        "SOURCE-TAG-002",
+                    ));
+                }
+                let old = Value::Sequence(items.clone());
+                let desired = tag_sequence_value(&tag_edit.tags, Some(items));
+                let desired_yaml = tag_sequence_yaml(&tag_edit.tags);
+                expected.records[tag_edit.record_index]
+                    .insert("$tags".to_owned(), desired_yaml.clone());
+                let member_source = if let Some(member_source) = member_source.as_ref() {
+                    member_source
+                } else {
+                    member_source = Some(RecordMemberSource::new(&loaded.source, data, path)?);
+                    member_source.as_ref().expect("member source initialized")
+                };
+                let span =
+                    member_source.locate(&loaded.source, tag_edit.record_index, "$tags", path)?;
+                patches.extend(value_change_patches(
+                    &loaded.source,
+                    &span,
+                    &old,
+                    &desired_yaml,
+                    &desired,
+                    &tag_shape,
+                    path,
+                )?);
+            }
+            Some(_) => {
+                return Err(source_edit_error(
+                    "E-SOURCE-TAG-SHAPE",
+                    "$tags is not a string sequence and cannot be safely localized",
+                    Some(path.to_path_buf()),
+                    "SOURCE-TAG-002",
+                ));
+            }
+        }
     }
 
     let additions = mutation
@@ -377,7 +486,8 @@ fn added_record_plan(
     }
 
     let mut values = BTreeMap::new();
-    let mut rendered_fields = Vec::with_capacity(schema.fields.len());
+    let mut rendered_fields =
+        Vec::with_capacity(schema.fields.len() + usize::from(!draft.tags.is_empty()));
     for field in &schema.fields {
         let shape = shapes
             .get(field.name.as_str())
@@ -387,9 +497,125 @@ fn added_record_plan(
         rendered_fields.push((field.name.clone(), render_source_value(&desired)?));
         values.insert(field.name.clone(), desired);
     }
+    if !draft.tags.is_empty() {
+        let tags = tag_sequence_yaml(&draft.tags);
+        rendered_fields.push(("$tags".to_owned(), render_source_value(&tags)?));
+        values.insert("$tags".to_owned(), tags);
+    }
     Ok(AddedRecordPlan {
         values,
         rendered_fields,
+    })
+}
+
+fn tag_sequence_yaml(tags: &[String]) -> Value {
+    Value::Sequence(tags.iter().cloned().map(Value::String).collect::<Vec<_>>())
+}
+
+fn tag_sequence_value(tags: &[String], old: Option<&[Value]>) -> AuthoringValue {
+    let old = old.unwrap_or_default();
+    let old_strings = old.iter().map(Value::as_str).collect::<Vec<_>>();
+    let mut used = BTreeSet::new();
+    let items = tags
+        .iter()
+        .enumerate()
+        .map(|(index, tag)| {
+            let source_index = old_strings
+                .iter()
+                .enumerate()
+                .find(|(old_index, old_tag)| {
+                    !used.contains(old_index) && old_tag.is_some_and(|value| value == tag)
+                })
+                .map(|(old_index, _)| old_index)
+                .or_else(|| (index < old.len() && used.insert(index)).then_some(index));
+            if let Some(source_index) = source_index {
+                used.insert(source_index);
+            }
+            AuthoringSequenceItem {
+                source_index,
+                value: AuthoringValue::String { value: tag.clone() },
+            }
+        })
+        .collect();
+    AuthoringValue::Sequence {
+        items,
+        source_identity: true,
+    }
+}
+
+fn tag_field_shape() -> ResolvedAuthoringField {
+    ResolvedAuthoringField {
+        name: "$tags".to_owned(),
+        type_name: "string".to_owned(),
+        modifier: FieldModifier::Array,
+        shape: ResolvedAuthoringType::Primitive {
+            primitive: PrimitiveType::String,
+        },
+    }
+}
+
+fn insert_record_tags_patch(
+    source: &str,
+    data: &DataDocument,
+    record_index: usize,
+    tags: &[String],
+    path: &Path,
+) -> Result<SourcePatch> {
+    let location = locate_record_sequence(source, data, path)?;
+    let Some(sequence) = &location.sequence else {
+        return Err(source_edit_error(
+            "E-SOURCE-TAG-SOURCE-UNCLASSIFIABLE",
+            "record tag property cannot be added because the records sequence is unavailable",
+            Some(path.to_path_buf()),
+            "SOURCE-TAG-002",
+        ));
+    };
+    let lines = source_lines(source);
+    let item_line = *sequence.items.get(record_index).ok_or_else(|| {
+        source_edit_error(
+            "E-SOURCE-TAG-RECORD-NOT-FOUND",
+            format!("record[{record_index}] does not exist"),
+            Some(path.to_path_buf()),
+            "SOURCE-TAG-001",
+        )
+    })?;
+    if sequence_item_parts(strip_yaml_comment(lines[item_line].text))
+        .is_some_and(|parts| parts.trim_start().starts_with('{'))
+    {
+        return Err(source_edit_error(
+            "E-SOURCE-TAG-SOURCE-UNCLASSIFIABLE",
+            "flow record mappings are not safe for adding a missing `$tags` property",
+            Some(path.to_path_buf()),
+            "SOURCE-TAG-002",
+        ));
+    }
+    let record_end = sequence
+        .items
+        .get(record_index + 1)
+        .copied()
+        .unwrap_or(location.region_end);
+    let insert_at = lines
+        .get(record_end)
+        .map_or(source.len(), |line| line.start);
+    let newline = newline_for(source);
+    let prefix = if insert_at > 0 && !source[..insert_at].ends_with('\n') {
+        newline
+    } else {
+        ""
+    };
+    let suffix = if insert_at < source.len() || source.ends_with('\n') {
+        newline
+    } else {
+        ""
+    };
+    let rendered = render_source_value(&tag_sequence_yaml(tags))?;
+    Ok(SourcePatch {
+        start: insert_at,
+        end: insert_at,
+        replacement: format!(
+            "{prefix}{}$tags: {rendered}{suffix}",
+            " ".repeat(sequence.indent + 2)
+        ),
     })
 }
 
@@ -1566,6 +1792,18 @@ struct SequenceRegion {
     indent: usize,
 }
 
+// WHY: Reuse the source line/literal/record boundaries for every scalar or tag
+// cell in one preview; reparsing the same YAML for each pasted cell made the
+// fixed Desktop authoring scenario scale quadratically with the edit count.
+// EVIDENCE: docs/evidence/desktop-v1-performance.md
+#[derive(Debug, Clone)]
+struct RecordMemberSource<'source> {
+    lines: Vec<SourceLine<'source>>,
+    literal_content: Vec<bool>,
+    region_end: usize,
+    sequence: SequenceRegion,
+}
+
 #[derive(Debug, Clone)]
 struct RecordSequenceLocation {
     records_line: usize,
@@ -1781,107 +2019,130 @@ fn render_added_records(additions: &[AddedRecordPlan], indent: usize, newline: &
     lines.join(newline)
 }
 
-fn locate_record_member_value(
-    source: &str,
-    data: &DataDocument,
-    record_index: usize,
-    field: &str,
-    path: &Path,
-) -> Result<ValueSpan> {
-    let lines = source_lines(source);
-    let literal_content = literal_block_scalar_content_lines(&lines);
-    let records_line = find_top_level_key(&lines, "records").ok_or_else(|| {
-        source_edit_error(
-            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
-            "data `records` source shape could not be located safely",
-            Some(path.to_path_buf()),
-            "SOURCE-EDIT-006",
-        )
-    })?;
-    let region_end = block_region_end(&lines, records_line);
-    let sequence = find_block_sequence(&lines, records_line, region_end).ok_or_else(|| {
-        source_edit_error(
-            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
-            "data `records` block sequence could not be located safely",
-            Some(path.to_path_buf()),
-            "SOURCE-EDIT-006",
-        )
-    })?;
-    if sequence.items.len() != data.records.len() {
-        return Err(source_edit_error(
-            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
-            format!(
-                "data `records` source has {} sequence item(s), but semantic parsing found {}",
-                sequence.items.len(),
-                data.records.len()
-            ),
-            Some(path.to_path_buf()),
-            "SOURCE-EDIT-006",
-        ));
+impl<'source> RecordMemberSource<'source> {
+    fn new(source: &'source str, data: &DataDocument, path: &Path) -> Result<Self> {
+        let lines = source_lines(source);
+        let literal_content = literal_block_scalar_content_lines(&lines);
+        let records_line = find_top_level_key(&lines, "records").ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "data `records` source shape could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        let region_end = block_region_end(&lines, records_line);
+        let sequence = find_block_sequence(&lines, records_line, region_end).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                "data `records` block sequence could not be located safely",
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            )
+        })?;
+        if sequence.items.len() != data.records.len() {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                format!(
+                    "data `records` source has {} sequence item(s), but semantic parsing found {}",
+                    sequence.items.len(),
+                    data.records.len()
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            ));
+        }
+        Ok(Self {
+            lines,
+            literal_content,
+            region_end,
+            sequence,
+        })
     }
-    let item_line = *sequence.items.get(record_index).ok_or_else(|| {
-        source_edit_error(
-            "E-SOURCE-EDIT-RECORD-NOT-FOUND",
-            format!("record[{record_index}] does not exist"),
-            Some(path.to_path_buf()),
-            "SOURCE-EDIT-001",
-        )
-    })?;
-    let record_end = sequence
-        .items
-        .get(record_index + 1)
-        .copied()
-        .unwrap_or(region_end);
-    let map_indent = sequence.indent + 2;
-    let mut found = Vec::new();
-    for (line_index, line) in lines.iter().enumerate().take(record_end).skip(item_line) {
-        if literal_content.get(line_index).copied().unwrap_or(false) {
-            continue;
-        }
-        let direct_entry = line_index == item_line || yaml_indent(line.text) == map_indent;
-        if !direct_entry {
-            continue;
-        }
-        if line_index == item_line
-            && let Some(parts) = sequence_item_parts(strip_yaml_comment(line.text))
-            && parts.trim_start().starts_with('{')
+
+    fn locate(
+        &self,
+        source: &str,
+        record_index: usize,
+        field: &str,
+        path: &Path,
+    ) -> Result<ValueSpan> {
+        let item_line = *self.sequence.items.get(record_index).ok_or_else(|| {
+            source_edit_error(
+                "E-SOURCE-EDIT-RECORD-NOT-FOUND",
+                format!("record[{record_index}] does not exist"),
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-001",
+            )
+        })?;
+        let record_end = self
+            .sequence
+            .items
+            .get(record_index + 1)
+            .copied()
+            .unwrap_or(self.region_end);
+        let map_indent = self.sequence.indent + 2;
+        let mut found = Vec::new();
+        for (line_index, line) in self
+            .lines
+            .iter()
+            .enumerate()
+            .take(record_end)
+            .skip(item_line)
         {
-            let flow_start = line.start + line.text.find('{').unwrap_or(0);
-            if let Some(flow_end) = flow_collection_end(source, flow_start) {
-                for (key, span) in flow_mapping_entries(source, flow_start, flow_end)? {
-                    if key == field {
-                        found.push((span, None));
+            if self
+                .literal_content
+                .get(line_index)
+                .copied()
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            let direct_entry = line_index == item_line || yaml_indent(line.text) == map_indent;
+            if !direct_entry {
+                continue;
+            }
+            if line_index == item_line
+                && let Some(parts) = sequence_item_parts(strip_yaml_comment(line.text))
+                && parts.trim_start().starts_with('{')
+            {
+                let flow_start = line.start + line.text.find('{').unwrap_or(0);
+                if let Some(flow_end) = flow_collection_end(source, flow_start) {
+                    for (key, span) in flow_mapping_entries(source, flow_start, flow_end)? {
+                        if key == field {
+                            found.push((span, None));
+                        }
                     }
                 }
+                continue;
             }
-            continue;
+            if let Some(mapping) = mapping_span(line.text)
+                && mapping.key == field
+            {
+                let span = mapping_value_span(
+                    source,
+                    &self.lines,
+                    line_index,
+                    &mapping,
+                    record_end,
+                    &self.literal_content,
+                    path,
+                )?;
+                found.push((span, Some((line_index, mapping))));
+            }
         }
-        if let Some(mapping) = mapping_span(line.text)
-            && mapping.key == field
-        {
-            let span = mapping_value_span(
-                source,
-                &lines,
-                line_index,
-                &mapping,
-                record_end,
-                &literal_content,
-                path,
-            )?;
-            found.push((span, Some((line_index, mapping))));
-        }
+        let [(span, _)] = found.as_slice() else {
+            return Err(source_edit_error(
+                "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
+                format!(
+                    "record[{record_index}] member `{field}` could not be located exactly once in source"
+                ),
+                Some(path.to_path_buf()),
+                "SOURCE-EDIT-006",
+            ));
+        };
+        Ok(span.clone())
     }
-    let [(span, _)] = found.as_slice() else {
-        return Err(source_edit_error(
-            "E-SOURCE-EDIT-SOURCE-UNCLASSIFIABLE",
-            format!(
-                "record[{record_index}] member `{field}` could not be located exactly once in source"
-            ),
-            Some(path.to_path_buf()),
-            "SOURCE-EDIT-006",
-        ));
-    };
-    Ok(span.clone())
 }
 
 fn mapping_value_span(
@@ -3120,7 +3381,7 @@ fn with_requirement(error: MasterdataError, requirement: &str) -> MasterdataErro
 #[cfg(test)]
 mod tests {
     use super::{
-        AddedRecordDraft, AddedRecordField, RecordValueEdit, SourceRecordMutation,
+        AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceRecordMutation,
         dry_run_source_edit, dry_run_source_record_mutation,
     };
     use crate::{
@@ -3263,6 +3524,121 @@ secondaryKeys: []
         }
     }
 
+    #[test]
+    fn record_tag_edit_adds_metadata_without_making_it_a_domain_field() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n  - id: 2\n    weight: 20\n    note: second\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                tag_edits: vec![RecordTagEdit {
+                    record_index: 0,
+                    tags: vec!["debug".to_owned(), "event-summer".to_owned()],
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("missing tags can be added to a block record mapping");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("$tags: [debug, event-summer]")
+        );
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("    note: first\n    $tags: [debug, event-summer]\n")
+        );
+        assert!(dry_run.plan.candidate_source.contains("  - id: 2"));
+        let record = &dry_run
+            .transformed_documents
+            .data()
+            .next()
+            .unwrap()
+            .1
+            .records[0];
+        assert_eq!(
+            record
+                .get("$tags")
+                .and_then(serde_yaml::Value::as_sequence)
+                .unwrap()
+                .len(),
+            2
+        );
+        let report = validate_documents(&dry_run.transformed_documents);
+        assert!(
+            report.valid,
+            "tag metadata should not invalidate domain fields: {report:?}"
+        );
+    }
+
+    #[test]
+    fn record_tag_edit_preserves_existing_sequence_spelling_and_comments() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n    $tags: [old, 'keep'] # tags comment\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                tag_edits: vec![RecordTagEdit {
+                    record_index: 0,
+                    tags: vec!["new".to_owned(), "keep".to_owned()],
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("existing string sequence can be patched entry by entry");
+
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("$tags: [new, 'keep'] # tags comment")
+        );
+    }
+
+    #[test]
+    fn record_tag_edit_keeps_explicit_empty_sequence_and_composes_with_added_tags() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n    $tags: [old, keep]\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                tag_edits: vec![RecordTagEdit {
+                    record_index: 0,
+                    tags: Vec::new(),
+                }],
+                additions: vec![AddedRecordDraft {
+                    fields: vec![
+                        AddedRecordField {
+                            field: "id".to_owned(),
+                            value: number("2"),
+                        },
+                        AddedRecordField {
+                            field: "weight".to_owned(),
+                            value: number("20"),
+                        },
+                        AddedRecordField {
+                            field: "note".to_owned(),
+                            value: text("second"),
+                        },
+                    ],
+                    tags: vec!["debug".to_owned()],
+                }],
+                ..SourceRecordMutation::default()
+            },
+        )
+        .expect("tag and record changes compose");
+
+        assert!(dry_run.plan.candidate_source.contains("$tags: []"));
+        assert!(dry_run.plan.candidate_source.contains("$tags: [debug]"));
+    }
+
     fn sequence(items: &[AuthoringValue]) -> AuthoringValue {
         AuthoringValue::Sequence {
             items: items
@@ -3394,6 +3770,7 @@ flags:
                     value: value.clone(),
                 })
                 .collect(),
+            tags: Vec::new(),
         }
     }
 
@@ -4366,6 +4743,7 @@ secondaryKeys: []
                     ("note", text("third")),
                 ])],
                 deletions: vec![1],
+                tag_edits: Vec::new(),
             },
         )
         .expect("all mutation kinds compose");

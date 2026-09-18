@@ -649,45 +649,70 @@ fn validate_key_uniqueness(
     table_name: &str,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    for left_index in 0..records.len() {
-        for right_index in (left_index + 1)..records.len() {
-            if compare_record_key(
-                &records[left_index].record,
-                &records[right_index].record,
-                primary,
-                type_system,
-            )
-            .is_ok_and(|ordering| ordering == Ordering::Equal)
-            {
+    // Key fields are validated before this point and are comparison-capable.
+    // Materialize their canonical semantic values once per record so duplicate
+    // detection remains linear for large authoring datasets. The previous
+    // pairwise comparison made the fixed 100k-record Desktop scenario
+    // infeasible while adding no diagnostic information.
+    // EVIDENCE: docs/evidence/desktop-v1-performance.md
+    let mut primary_seen = BTreeMap::<Vec<String>, usize>::new();
+    let mut secondary_seen = secondary
+        .iter()
+        .filter(|(_, non_unique, _)| !non_unique)
+        .map(|(_, _, index_no)| (*index_no, BTreeMap::<Vec<String>, usize>::new()))
+        .collect::<BTreeMap<_, _>>();
+
+    for record in records {
+        if let Some(key) = canonical_record_key(&record.record, primary, type_system) {
+            let previous_count = primary_seen.entry(key).or_default();
+            for _ in 0..*previous_count {
                 diagnostics.push(key_duplicate_diagnostic(
                     "E-TABLE-DUPLICATE-PRIMARY-VALUE",
                     format!("table `{table_name}` contains duplicate Primary Key values"),
-                    &records[right_index],
+                    record,
                     "INDEX-PRIMARY-001",
                 ));
             }
-            for (fields, non_unique, _) in secondary {
-                if !non_unique
-                    && compare_record_key(
-                        &records[left_index].record,
-                        &records[right_index].record,
-                        fields,
-                        type_system,
-                    )
-                    .is_ok_and(|ordering| ordering == Ordering::Equal)
-                {
-                    diagnostics.push(key_duplicate_diagnostic(
-                        "E-TABLE-DUPLICATE-UNIQUE-SECONDARY-VALUE",
-                        format!(
-                            "table `{table_name}` contains duplicate unique Secondary Key values"
-                        ),
-                        &records[right_index],
-                        "INDEX-UNIQUE-001",
-                    ));
-                }
+            *previous_count += 1;
+        }
+
+        for (fields, non_unique, index_no) in secondary {
+            if *non_unique {
+                continue;
             }
+            let Some(key) = canonical_record_key(&record.record, fields, type_system) else {
+                continue;
+            };
+            let Some(seen) = secondary_seen.get_mut(index_no) else {
+                continue;
+            };
+            let previous_count = seen.entry(key).or_default();
+            for _ in 0..*previous_count {
+                diagnostics.push(key_duplicate_diagnostic(
+                    "E-TABLE-DUPLICATE-UNIQUE-SECONDARY-VALUE",
+                    format!("table `{table_name}` contains duplicate unique Secondary Key values"),
+                    record,
+                    "INDEX-UNIQUE-001",
+                ));
+            }
+            *previous_count += 1;
         }
     }
+}
+
+fn canonical_record_key(
+    record: &ResolvedRecord,
+    fields: &[ResolvedField],
+    type_system: &TypeSystem,
+) -> Option<Vec<String>> {
+    fields
+        .iter()
+        .map(|field| {
+            let value = record.fields.get(&field.name)?;
+            let normalized = type_system.normalize_field_value(field, value).ok()?;
+            serde_json::to_string(&normalized).ok()
+        })
+        .collect()
 }
 
 fn sort_records_by_primary_key(
@@ -813,7 +838,7 @@ fn validate_record_tags(data: &DataDocument, path: &Path, diagnostics: &mut Vec<
     }
 }
 
-fn record_tags(
+pub fn record_tags(
     record: &BTreeMap<String, Value>,
     path: &Path,
     record_index: usize,
@@ -935,7 +960,7 @@ fn is_lower_alphanumeric_segment(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
 }
 
-fn is_tag_name(value: &str) -> bool {
+pub fn is_tag_name(value: &str) -> bool {
     let mut segments = value.split('-');
     let Some(first) = segments.next() else {
         return false;

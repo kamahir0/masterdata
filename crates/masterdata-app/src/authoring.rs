@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 
 use masterdata_core::{
     AddedRecordDraft, AddedRecordField, AuthoringValue, Diagnostic, ErrorKind, MasterdataError,
-    Project, ProjectDocuments, ProjectInfo, RecordValueEdit, ResolvedAuthoringField,
+    Project, ProjectDocuments, ProjectInfo, RecordTagEdit, RecordValueEdit, ResolvedAuthoringField,
     SchemaDocument, SourceDocument, SourceRecordMutation, ValidationReport,
     dry_run_source_record_mutation, parse_yaml_document, project_source_value,
     project_typed_source_value, resolve_authoring_field_shape, source_content_identity,
@@ -79,6 +79,12 @@ pub struct DataEditorCell {
 pub struct DataEditorRow {
     pub record_index: usize,
     pub cells: Vec<DataEditorCell>,
+    /// `$tags` is record metadata, not a domain column.  Keep it alongside
+    /// the row so adapters can offer a separate tag editor without teaching
+    /// the domain-field grid about the reserved metadata key.
+    pub tags: Vec<String>,
+    pub tags_editable: bool,
+    pub tags_read_only_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,6 +103,8 @@ pub struct DataFileSnapshot {
     pub base_content_identity: String,
     pub columns: Vec<DataEditorColumn>,
     pub rows: Vec<DataEditorRow>,
+    pub tag_candidates: Vec<String>,
+    pub tag_candidates_complete: bool,
     pub add_row: DataEditorAddCapability,
     pub validation: ValidationReport,
 }
@@ -130,6 +138,8 @@ pub struct AuthoringRecordField {
 #[serde(rename_all = "camelCase")]
 pub struct AuthoringRecordDraft {
     pub fields: Vec<AuthoringRecordField>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -141,6 +151,16 @@ pub struct AuthoringRecordMutation {
     pub added_records: Vec<AuthoringRecordDraft>,
     #[serde(default)]
     pub deleted_record_indices: Vec<usize>,
+    #[serde(default)]
+    pub tag_edits: Vec<RecordTagEditRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordTagEditRequest {
+    pub record_index: usize,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 impl From<&AuthoringRecordMutation> for SourceRecordMutation {
@@ -159,9 +179,18 @@ impl From<&AuthoringRecordMutation> for SourceRecordMutation {
                             value: field.value.clone(),
                         })
                         .collect(),
+                    tags: draft.tags.clone(),
                 })
                 .collect(),
             deletions: value.deleted_record_indices.clone(),
+            tag_edits: value
+                .tag_edits
+                .iter()
+                .map(|edit| RecordTagEdit {
+                    record_index: edit.record_index,
+                    tags: edit.tags.clone(),
+                })
+                .collect(),
         }
     }
 }
@@ -535,7 +564,7 @@ impl NativeApplicationService {
     }
 }
 
-fn data_file_snapshot(
+pub(super) fn data_file_snapshot(
     project: &Project,
     documents: &ProjectDocuments,
     mut parse_diagnostics: Vec<Diagnostic>,
@@ -593,50 +622,104 @@ fn data_file_snapshot(
         .records
         .iter()
         .enumerate()
-        .map(|(record_index, record)| DataEditorRow {
-            record_index,
-            cells: columns
-                .iter()
-                .map(|column| DataEditorCell {
-                    field: column.name.clone(),
-                    text: record
-                        .get(&column.name)
-                        .map(display_value)
-                        .unwrap_or_default(),
-                    value: match record.get(&column.name) {
-                        Some(value) => column
-                            .shape
-                            .as_ref()
-                            .and_then(|shape| project_typed_source_value(shape, value).ok())
-                            .or_else(|| project_source_value(value).ok())
-                            .unwrap_or_else(|| AuthoringValue::String {
-                                value: display_value(value),
-                            }),
-                        None => AuthoringValue::Null,
-                    },
-                    editable: column.editable
-                        && record.get(&column.name).is_some_and(|value| {
-                            column.shape.as_ref().is_some_and(|shape| {
-                                project_typed_source_value(shape, value).is_ok()
-                            })
-                        }),
-                    read_only_reason: if !record.contains_key(&column.name) {
-                        Some(format!("The source record is missing `{}`.", column.name))
-                    } else if let Some(shape) = &column.shape {
-                        record
-                            .get(&column.name)
-                            .and_then(|value| project_typed_source_value(shape, value).err())
-                            .map(|error| error.diagnostic().message.clone())
-                            .or_else(|| column.read_only_reason.clone())
-                    } else {
-                        column.read_only_reason.clone()
-                    },
+        .map(|(record_index, record)| {
+            let mut tag_diagnostics = Vec::new();
+            let tags =
+                masterdata_core::record_tags(record, target, record_index, &mut tag_diagnostics);
+            let tags_read_only_reason = tags.is_none().then(|| {
+                tag_diagnostics
+                    .first()
+                    .map(|diagnostic| diagnostic.message.clone())
+                    .unwrap_or_else(|| {
+                        "The source `$tags` value is invalid or ambiguous.".to_owned()
+                    })
+            });
+            let source_tags = record
+                .get("$tags")
+                .and_then(serde_yaml::Value::as_sequence)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(serde_yaml::Value::as_str)
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
                 })
-                .collect(),
+                .unwrap_or_default();
+            DataEditorRow {
+                record_index,
+                tags: source_tags,
+                tags_editable: tags_read_only_reason.is_none(),
+                tags_read_only_reason,
+                cells: columns
+                    .iter()
+                    .map(|column| DataEditorCell {
+                        field: column.name.clone(),
+                        text: record
+                            .get(&column.name)
+                            .map(display_value)
+                            .unwrap_or_default(),
+                        value: match record.get(&column.name) {
+                            Some(value) => column
+                                .shape
+                                .as_ref()
+                                .and_then(|shape| project_typed_source_value(shape, value).ok())
+                                .or_else(|| project_source_value(value).ok())
+                                .unwrap_or_else(|| AuthoringValue::String {
+                                    value: display_value(value),
+                                }),
+                            None => AuthoringValue::Null,
+                        },
+                        editable: column.editable
+                            && record.get(&column.name).is_some_and(|value| {
+                                column.shape.as_ref().is_some_and(|shape| {
+                                    project_typed_source_value(shape, value).is_ok()
+                                })
+                            }),
+                        read_only_reason: if !record.contains_key(&column.name) {
+                            Some(format!("The source record is missing `{}`.", column.name))
+                        } else if let Some(shape) = &column.shape {
+                            record
+                                .get(&column.name)
+                                .and_then(|value| project_typed_source_value(shape, value).err())
+                                .map(|error| error.diagnostic().message.clone())
+                                .or_else(|| column.read_only_reason.clone())
+                        } else {
+                            column.read_only_reason.clone()
+                        },
+                    })
+                    .collect(),
+            }
         })
         .collect();
     let add_row = data_editor_add_capability(documents, schema);
+    let tag_candidates = project
+        .info()
+        .profiles
+        .iter()
+        .flat_map(|profile| profile.include_tags.iter().chain(&profile.exclude_tags))
+        .cloned()
+        .chain(documents.data().flat_map(|(_, data)| {
+            data.records.iter().flat_map(|record| {
+                record
+                    .get("$tags")
+                    .and_then(serde_yaml::Value::as_sequence)
+                    .into_iter()
+                    .flat_map(|items| {
+                        items
+                            .iter()
+                            .filter_map(serde_yaml::Value::as_str)
+                            .map(str::to_owned)
+                    })
+            })
+        }))
+        .collect::<BTreeSet<_>>();
+    let parse_complete = parse_diagnostics.is_empty();
     let mut validation = validate_documents(documents);
+    let tag_candidates_complete = parse_complete
+        && !validation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code.starts_with("E-BUILD-RECORD-TAGS"));
     merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
     Ok(DataFileSnapshot {
         path: project_relative_string(project.root(), target),
@@ -645,6 +728,8 @@ fn data_file_snapshot(
         base_content_identity: source_content_identity(&loaded.source),
         columns,
         rows,
+        tag_candidates: tag_candidates.into_iter().collect(),
+        tag_candidates_complete,
         add_row,
         validation,
     })
@@ -733,7 +818,10 @@ fn merge_parse_diagnostics(report: &mut ValidationReport, diagnostics: &mut Vec<
     }
 }
 
-fn resolve_source_file(project: &Project, relative_path: &str) -> masterdata_core::Result<PathBuf> {
+pub(super) fn resolve_source_file(
+    project: &Project,
+    relative_path: &str,
+) -> masterdata_core::Result<PathBuf> {
     let requested = normalized_logical_path(relative_path).ok_or_else(|| {
         authoring_error(
             "E-GUI-SOURCE-PATH-UNSAFE",
@@ -1542,8 +1630,10 @@ custom:
                         },
                     },
                 ],
+                tags: Vec::new(),
             }],
             deleted_record_indices: Vec::new(),
+            tag_edits: Vec::new(),
         };
         let preview = service
             .preview_data_file_mutation(

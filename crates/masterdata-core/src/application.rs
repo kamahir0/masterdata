@@ -64,6 +64,18 @@ impl NativeProjectService {
         prepare_build_from_documents(project.info(), documents, selection)
     }
 
+    pub fn prepare_build_with_profile(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        profile: Option<&str>,
+    ) -> Result<BuildPlan> {
+        let project = Project::discover(explicit_project, current_dir)?;
+        let selection = project.build_selection(profile)?;
+        let documents = project.load_documents()?;
+        prepare_build_from_documents(project.info(), documents, &selection)
+    }
+
     /// Prepare a frontend-independent migration from a native project snapshot.
     pub fn prepare_migration(
         &self,

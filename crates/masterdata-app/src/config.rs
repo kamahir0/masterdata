@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use masterdata_core::{
     BuildProfileInfo, Diagnostic, ErrorKind, MasterdataError, Project, ProjectConfigEditOperation,
-    ProjectConfigEditPreview, ProjectInfo, PublishTargetInfo, PublishTargetKind, Result,
+    ProjectConfigEditPreview, ProjectInfo, PublishTargetKind, Result,
     preview_project_config_edit, source_content_identity,
 };
 use serde::{Deserialize, Serialize};

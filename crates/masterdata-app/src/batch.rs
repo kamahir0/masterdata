@@ -80,7 +80,10 @@ pub struct AuthoringClipboardShape {
 }
 
 impl NativeApplicationService {
-    pub fn authoring_clipboard_shape(&self, clipboard_text: &str) -> Result<AuthoringClipboardShape> {
+    pub fn authoring_clipboard_shape(
+        &self,
+        clipboard_text: &str,
+    ) -> Result<AuthoringClipboardShape> {
         let decoded = decode_clipboard_tsv(clipboard_text).map_err(|error| {
             batch_error(
                 "E-AUTHORING-BATCH-CODEC",

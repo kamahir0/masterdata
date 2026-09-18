@@ -638,9 +638,17 @@ function App() {
     try {
       const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
       if (next.project.project_root !== root) return false;
+      const bindingChanged = current.project.project_id !== next.project.project_id
+        || current.sourceRoots.length !== next.sourceRoots.length
+        || current.sourceRoots.some((sourceRoot, index) => sourceRoot !== next.sourceRoots[index]);
+      const dirtySources = Object.values(editorsRef.current).some(editorIsDirty);
       setWorkspaceState({ kind: "ready", workspace: next });
       setConfigRevision((revision) => revision + 1);
       setSelectedProfile((selected) => selected && next.project.profiles?.some((item) => item.name === selected) ? selected : "");
+      if (bindingChanged && dirtySources) {
+        showNotice("Project binding changed after Settings Save. Dirty source buffers were kept, and Save All stopped for review.");
+        return false;
+      }
       return true;
     } catch (error) {
       setWorkspaceState({ kind: "error", diagnostic: asApiError(error).diagnostic, previous: current });

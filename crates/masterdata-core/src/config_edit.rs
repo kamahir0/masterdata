@@ -721,10 +721,7 @@ fn update_commented_string_array(
     let raw = &source[span.start..span.end];
     let relative_last_end = last.end - span.start;
     let tail = &raw[relative_last_end..raw.len() - 1];
-    let before_comment_or_newline = tail
-        .split(['#', '\n', '\r'])
-        .next()
-        .unwrap_or_default();
+    let before_comment_or_newline = tail.split(['#', '\n', '\r']).next().unwrap_or_default();
     if !before_comment_or_newline.contains(',') {
         result.insert(relative_last_end, ',');
     }

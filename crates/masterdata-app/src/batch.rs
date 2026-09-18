@@ -560,3 +560,26 @@ fn batch_error(code: &str, message: impl Into<String>) -> MasterdataError {
     MasterdataError::new(code, masterdata_core::ErrorKind::Validation, message)
         .with_related_requirement("AUTHORING-BATCH-001")
 }
+
+
+#[cfg(test)]
+mod clipboard_shape_tests {
+    use super::*;
+
+    #[test]
+    fn clipboard_shape_preserves_two_dimensional_geometry() {
+        let shape = NativeApplicationService::new()
+            .authoring_clipboard_shape("a\tb\nc\td")
+            .expect("2x2 clipboard");
+        assert_eq!(shape.rows, 2);
+        assert_eq!(shape.columns, 2);
+    }
+
+    #[test]
+    fn clipboard_shape_rejects_ragged_tsv() {
+        let error = NativeApplicationService::new()
+            .authoring_clipboard_shape("a\tb\nc")
+            .expect_err("ragged clipboard");
+        assert_eq!(error.diagnostic().code, "E-AUTHORING-BATCH-SHAPE");
+    }
+}

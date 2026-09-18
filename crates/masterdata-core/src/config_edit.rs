@@ -244,7 +244,7 @@ fn section_line_code(line: &str, multiline: &mut Option<MultilineString>) -> Str
         if quote.is_none() && bytes[index] == b'#' {
             return line[..index].to_owned();
         }
-        if quote.is_none() && line[index..].starts_with("\"\"\"") {
+        if quote.is_none() && bytes[index..].starts_with(b"\"\"\"") {
             if let Some(close) = multiline_delimiter_position(line, "\"\"\"", index + 3) {
                 index = close + 3;
                 continue;
@@ -252,7 +252,7 @@ fn section_line_code(line: &str, multiline: &mut Option<MultilineString>) -> Str
             *multiline = Some(MultilineString::Basic);
             return line[..index].to_owned();
         }
-        if quote.is_none() && line[index..].starts_with("'''") {
+        if quote.is_none() && bytes[index..].starts_with(b"'''") {
             if let Some(close) = multiline_delimiter_position(line, "'''", index + 3) {
                 index = close + 3;
                 continue;

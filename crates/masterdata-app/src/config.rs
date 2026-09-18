@@ -797,6 +797,45 @@ mod tests {
     }
 
     #[test]
+    fn invalid_publish_target_keeps_original_occurrence_for_later_editable_target() {
+        let temp = project();
+        fs::OpenOptions::new()
+            .append(true)
+            .open(temp.path().join("masterdata.toml"))
+            .expect("open")
+            .write_all(
+                b"\n[[publish.targets]]\nkind = \"unsupported\"\npath = \"first\"\n\n[[publish.targets]]\nkind = \"csharp\"\npath = \"second\"\n",
+            )
+            .expect("targets");
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_project_config(Some(temp.path()), temp.path())
+            .expect("raw snapshot");
+        assert_eq!(snapshot.publish_targets.len(), 2);
+        assert_eq!(snapshot.publish_targets[0].occurrence, 0);
+        assert!(!snapshot.publish_targets[0].editable);
+        assert_eq!(snapshot.publish_targets[1].occurrence, 1);
+        assert!(snapshot.publish_targets[1].editable);
+
+        let report = service
+            .save_project_config_edit(
+                Some(temp.path()),
+                temp.path(),
+                &snapshot.base_source,
+                &snapshot.base_content_identity,
+                &[ProjectConfigEditRequest::UpdatePublishTargetPath {
+                    index: snapshot.publish_targets[1].occurrence,
+                    path: "updated".into(),
+                }],
+            )
+            .expect("save");
+        assert_eq!(report.status, ConfigSaveStatus::Success);
+        let saved = fs::read_to_string(temp.path().join("masterdata.toml")).expect("read");
+        assert!(saved.contains("kind = \"unsupported\"\npath = \"first\""));
+        assert!(saved.contains("kind = \"csharp\"\npath = \"updated\""));
+    }
+
+    #[test]
     fn domain_invalid_profile_is_saved_and_reported() {
         let temp = project();
         let service = NativeApplicationService::new();

@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use masterdata_core::{
     BuildProfileInfo, Diagnostic, ErrorKind, MasterdataError, Project, ProjectConfigEditOperation,
-    ProjectConfigEditPreview, ProjectInfo, PublishTargetKind, Result,
-    preview_project_config_edit, source_content_identity,
+    ProjectConfigEditPreview, ProjectInfo, PublishTargetKind, Result, preview_project_config_edit,
+    source_content_identity,
 };
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
@@ -759,9 +759,11 @@ mod tests {
             )
             .expect("conflict report");
         assert_eq!(report.status, ConfigSaveStatus::Conflict);
-        assert!(fs::read_to_string(temp.path().join("masterdata.toml"))
-            .expect("read")
-            .contains("# external"));
+        assert!(
+            fs::read_to_string(temp.path().join("masterdata.toml"))
+                .expect("read")
+                .contains("# external")
+        );
     }
 
     #[test]

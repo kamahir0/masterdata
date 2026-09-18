@@ -1108,7 +1108,7 @@ mod tests {
         assert!(
             preview
                 .candidate_source
-                .contains("exclude_tags = [\r\n  \"debug\"\r\n]")
+                .contains("exclude_tags = [\r\n  \"debug\",\r\n]")
         );
         assert!(!preview.candidate_source.replace("\r\n", "").contains('\n'));
     }

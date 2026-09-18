@@ -555,3 +555,49 @@ test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   await waitFor(()=>expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(false));
   expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
 }, 20_000);
+
+
+test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML editor', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  const config = {
+    projectRoot: '/project',
+    configPath: '/project/masterdata.toml',
+    baseSource: 'base0',
+    baseContentIdentity: 'config0',
+    configValid: true,
+    profiles: [{ name: 'prod', include_tags: ['old'], exclude_tags: [] }],
+    publishTargets: [],
+    diagnostics: [],
+  };
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'open_project_config') return structuredClone(config);
+    if (command === 'preview_project_config_edit') {
+      return {
+        baseContentIdentity: args.baseContentIdentity,
+        candidateContentIdentity: 'config1',
+        candidateSource: 'base1',
+        changed: true,
+        configValid: true,
+        diagnostics: [],
+      };
+    }
+    if (command === 'save_project_config_edit') {
+      return {
+        status: 'success',
+        snapshot: { ...structuredClone(config), baseSource: 'base1', baseContentIdentity: 'config1', profiles: [{ name: 'prod', include_tags: ['new'], exclude_tags: [] }] },
+        current: null,
+        diagnostic: null,
+      };
+    }
+    return normalInvoke(command, args);
+  });
+
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }));
+  await screen.findByRole('heading', { name: 'Project Settings' });
+  fireEvent.change(screen.getByLabelText('Include tags'), { target: { value: 'new' } });
+  fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_project_config_edit')).toBe(true));
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+});

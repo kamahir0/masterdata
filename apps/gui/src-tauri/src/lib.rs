@@ -884,3 +884,145 @@ mod tests {
         );
     }
 }
+
+
+#[cfg(test)]
+mod desktop_workflow_tests {
+    use super::*;
+    use masterdata_app::{ConfigSaveStatus, SourceSaveStatus};
+    use masterdata_core::{AuthoringValue, PublishTargetKind};
+    use std::fs;
+
+    #[test]
+    fn desktop_workflow_reaches_build_publish_and_stale_recovery() {
+        let temp = tempfile::tempdir().expect("desktop scenario");
+        let root = temp.path();
+        fs::create_dir(root.join("sources")).expect("sources");
+        fs::write(
+            root.join("masterdata.toml"),
+            "[project]\nid = \"desktop.scenario\"\nname = \"Desktop Scenario\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
+        )
+        .expect("config");
+        fs::write(
+            root.join("sources/item-schema.yaml"),
+            "kind: schema\ntable: item\ncsharpName: ItemMaster\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: name\n    type: string\nprimaryKey:\n  fields: [id]\n",
+        )
+        .expect("schema");
+        fs::write(
+            root.join("sources/items.yaml"),
+            "kind: data\ntable: item\nrecords:\n  - id: 1001\n    name: Potion\n",
+        )
+        .expect("data");
+        let project_path = root.to_string_lossy().into_owned();
+
+        let config = open_project_config(Some(project_path.clone())).expect("open settings");
+        let config_report = save_project_config_edit(
+            Some(project_path.clone()),
+            config.base_source,
+            config.base_content_identity,
+            vec![
+                ProjectConfigEditRequest::AddProfile {
+                    name: "prod".into(),
+                    include_tags: Vec::new(),
+                    exclude_tags: Vec::new(),
+                },
+                ProjectConfigEditRequest::AddPublishTarget {
+                    kind: PublishTargetKind::CSharp,
+                    path: "delivery".into(),
+                },
+            ],
+        )
+        .expect("save settings");
+        assert_eq!(config_report.status, ConfigSaveStatus::Success);
+
+        let data = open_data_file(Some(project_path.clone()), "sources/items.yaml".into())
+            .expect("open data");
+        let source_report = save_data_file(
+            Some(project_path.clone()),
+            "sources/items.yaml".into(),
+            data.base_source,
+            data.base_content_identity,
+            vec![AuthoringEdit {
+                record_index: 0,
+                field: "name".into(),
+                value: AuthoringValue::String {
+                    value: "Mega Potion".into(),
+                },
+            }],
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("save data");
+        assert_eq!(source_report.status, SourceSaveStatus::Success);
+        assert!(
+            fs::read_to_string(root.join("sources/items.yaml"))
+                .expect("saved data")
+                .contains("Mega Potion")
+        );
+
+        let build = build(Some(project_path.clone()), false, Some("prod".into()))
+            .expect("desktop build");
+        assert!(!build.generated_files.is_empty());
+        assert!(build.artifact_root.join("masterdata.bytes").is_file());
+
+        let stale_preview = publish_preview(Some(project_path.clone())).expect("publish preview");
+        let delivery = root.join("delivery");
+        fs::create_dir_all(&delivery).expect("delivery");
+        fs::write(delivery.join("External.g.cs"), b"external").expect("external file");
+        fs::write(
+            delivery.join(masterdata_app::PUBLISH_MANIFEST_FILENAME),
+            br#"{"version":1,"files":["External.g.cs"]}"#,
+        )
+        .expect("external manifest");
+
+        let stale = publish_from_preview(
+            Some(project_path.clone()),
+            stale_preview.artifact_set_identity,
+            stale_preview.config_content_identity,
+            stale_preview.publish_plan_identity,
+        )
+        .expect("structured stale result");
+        assert_eq!(stale.status, "failure");
+        assert_eq!(
+            stale.diagnostic.as_ref().map(|diagnostic| diagnostic.code.as_str()),
+            Some("E-PUBLISH-PREVIEW-STALE-DESTINATION")
+        );
+        assert_eq!(
+            fs::read(delivery.join("External.g.cs")).expect("stale preview is non-mutating"),
+            b"external"
+        );
+
+        let fresh = publish_preview(Some(project_path.clone())).expect("fresh preview");
+        assert!(
+            fresh
+                .targets
+                .iter()
+                .flat_map(|target| target.removals.iter())
+                .any(|path| path == "External.g.cs")
+        );
+        let published = publish_from_preview(
+            Some(project_path),
+            fresh.artifact_set_identity,
+            fresh.config_content_identity,
+            fresh.publish_plan_identity,
+        )
+        .expect("publish result");
+        assert_eq!(published.status, "success");
+        assert!(
+            published
+                .report
+                .targets
+                .iter()
+                .all(|target| target.status == masterdata_app::PublishTargetStatus::Succeeded)
+        );
+        assert!(!delivery.join("External.g.cs").exists());
+        assert!(
+            fs::read_dir(&delivery)
+                .expect("delivery entries")
+                .filter_map(Result::ok)
+                .any(|entry| entry.path().extension().is_some_and(|extension| extension == "cs"))
+        );
+    }
+}

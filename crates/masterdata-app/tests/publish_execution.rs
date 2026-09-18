@@ -11,6 +11,48 @@ use serde_json::json;
 use tempfile::{Builder, TempDir};
 
 #[test]
+fn preview_rejects_destination_plan_changed_before_confirmation_without_mutation() {
+    let project = project_with_targets(&[("csharp", "dist")]);
+    let service = NativeApplicationService::new();
+    let preview = service
+        .publish_preview(Some(project.path()), project.path())
+        .expect("preview");
+
+    let target = project.path().join("dist");
+    prepare_managed_target(
+        &target,
+        &[("External.g.cs", b"external")],
+        &["External.g.cs"],
+    );
+    let before = snapshot(&target);
+
+    let failure = service
+        .publish_from_preview(
+            Some(project.path()),
+            project.path(),
+            &preview.artifact_set_identity,
+            &preview.config_content_identity,
+            &preview.publish_plan_identity,
+        )
+        .expect_err("destination plan changed after preview");
+
+    assert_eq!(
+        failure.error.diagnostic().code,
+        "E-PUBLISH-PREVIEW-STALE-DESTINATION"
+    );
+    assert!(failure
+        .report
+        .targets
+        .iter()
+        .all(|target| target.status == PublishTargetStatus::NotAttempted));
+    assert_eq!(snapshot(&target), before);
+    assert_eq!(
+        fs::read(target.join("External.g.cs")).expect("external file"),
+        b"external"
+    );
+}
+
+#[test]
 fn execution_failure_continues_to_later_targets() {
     let project = project_with_targets(&[("csharp", "first"), ("csharp", "second")]);
 

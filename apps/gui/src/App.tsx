@@ -447,7 +447,7 @@ function mutationHistoryState(editor: EditorState): MutationHistoryState {
 
 const HISTORY_LIMIT = 50;
 
-function boundedHistoryPush(history: MutationHistoryState[], state: MutationHistoryState): MutationHistoryState[] {
+export function boundedHistoryPush(history: MutationHistoryState[], state: MutationHistoryState): MutationHistoryState[] {
   if (history.length >= HISTORY_LIMIT) {
     window.alert("Undo history is full. The oldest undo entry will be discarded after this edit; the current buffer is preserved.");
   }

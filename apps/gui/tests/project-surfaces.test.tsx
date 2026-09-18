@@ -190,7 +190,7 @@ test("Delivery clears an old Build success when the next operation fails", async
 });
 
 test("Delivery retains target-level Publish failure results and expires the old confirmation", async () => {
-  invoke.mockImplementation(async (command) => {
+  invoke.mockImplementation(async (command, args) => {
     if (command === "publish_preview") {
       return {
         artifactSetIdentity: "artifact",
@@ -203,7 +203,7 @@ test("Delivery retains target-level Publish failure results and expires the old 
       };
     }
     if (command === "publish_from_preview") {
-      expect(argsOfLastInvoke().publishPlanIdentity).toBe("plan");
+      expect(args.publishPlanIdentity).toBe("plan");
       return {
         status: "failure",
         report: {
@@ -240,6 +240,43 @@ test("Delivery retains target-level Publish failure results and expires the old 
   expect(screen.getByText("succeeded")).toBeTruthy();
   expect(screen.getByText("failed")).toBeTruthy();
   expect(screen.getByText(/E-PUBLISH: target failed/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Confirm Publish" })).toBeNull();
+});
+
+test("Publish transport failure is shown as unknown and cannot reuse the old confirmation", async () => {
+  invoke.mockImplementation(async (command) => {
+    if (command === "publish_preview") {
+      return {
+        artifactSetIdentity: "artifact",
+        configContentIdentity: "config",
+        publishPlanIdentity: "plan",
+        targets: [{ index: 0, kind: "binary", configuredPath: "dist", destination: "/dist", additions: [], updates: [], removals: [], binaryReplacement: true, preflightOk: true }],
+      };
+    }
+    if (command === "publish_from_preview") {
+      throw { diagnostic: { code: "E-TRANSPORT", message: "connection lost" } };
+    }
+    throw new Error(`Unexpected command: ${command}`);
+  });
+
+  render(
+    <DeliveryPanel
+      active
+      projectRoot="/project"
+      workspace={workspace}
+      dirtySourceCount={0}
+      dirtyConfig={false}
+      profile=""
+      onProfileChange={() => {}}
+      buildBlocked={false}
+      publishBlocked={false}
+      onBusyChange={() => {}}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Publish preview" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm Publish" }));
+  expect(await screen.findByText("Publish outcome unknown")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Confirm Publish" })).toBeNull();
 });
 
@@ -301,7 +338,3 @@ test("Delivery shares busy state while a Build is unresolved", async () => {
   resolveBuild({ profile: null, generatedFiles: [], artifactRoot: "/project/.masterdata/output" });
   await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
 });
-
-function argsOfLastInvoke(): any {
-  return invoke.mock.calls.at(-1)?.[1];
-}

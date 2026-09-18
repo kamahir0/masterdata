@@ -49,11 +49,7 @@ impl NativeApplicationService {
         let artifacts = validate_artifact_set(&info.artifact_root, &info.project_id)?;
         let artifact_identity = artifact_set_identity(&artifacts);
         let plan = preflight_publish(&info, artifacts)?;
-        render_publish_preview(
-            artifact_identity,
-            project.config_content_identity(),
-            &plan,
-        )
+        render_publish_preview(artifact_identity, project.config_content_identity(), &plan)
     }
 
     /// Confirm a previously rendered preview.  Both the canonical artifact
@@ -240,7 +236,8 @@ fn hash_path_state(hasher: &mut Sha256, path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             hash_identity_part(hasher, b"symlink");
-            let target = fs::read_link(path).map_err(|error| destination_identity_error(path, error))?;
+            let target =
+                fs::read_link(path).map_err(|error| destination_identity_error(path, error))?;
             hash_identity_part(hasher, target.to_string_lossy().as_bytes());
         }
         Ok(metadata) if metadata.is_file() => {
@@ -264,7 +261,10 @@ fn destination_identity_error(path: &Path, error: std::io::Error) -> MasterdataE
     MasterdataError::new(
         "E-PUBLISH-PREVIEW-DESTINATION-IDENTITY",
         ErrorKind::Io,
-        format!("could not bind publish preview to {}: {error}", path.display()),
+        format!(
+            "could not bind publish preview to {}: {error}",
+            path.display()
+        ),
     )
     .with_source(path.to_path_buf())
     .with_related_requirement("PUBLISH-PREVIEW-002")

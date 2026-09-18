@@ -128,6 +128,52 @@ test("Settings composes profile and target edits in one file buffer before Save"
   expect(invoke.mock.calls.filter(([command]) => command === "save_project_config_edit")).toHaveLength(1);
 });
 
+test("Settings profile navigation restores the buffered draft instead of the saved snapshot", async () => {
+  const snapshot = {
+    ...structuredClone(configSnapshot),
+    profiles: [
+      { name: "prod", include_tags: ["old"], exclude_tags: [] },
+      { name: "staging", include_tags: ["stage"], exclude_tags: [] },
+    ],
+  };
+  invoke.mockImplementation(async (command, args) => {
+    if (command === "open_project_config") return snapshot;
+    if (command === "preview_project_config_edit") {
+      expect(args.request.operation).toBe("update_profile");
+      return {
+        baseContentIdentity: args.baseContentIdentity,
+        candidateContentIdentity: "id1",
+        candidateSource: "base1",
+        changed: true,
+        configValid: true,
+        diagnostics: [],
+      };
+    }
+    throw new Error(`Unexpected command: ${command}`);
+  });
+
+  render(
+    <ProjectSettingsPanel
+      active
+      projectRoot="/project"
+      mutationBlocked={false}
+      onDirtyChange={() => {}}
+      onRegisterSave={() => {}}
+      onSaved={async () => true}
+    />,
+  );
+  await screen.findByDisplayValue("old");
+  fireEvent.change(screen.getByLabelText("Include tags"), { target: { value: "new" } });
+
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Settings profile" }));
+  fireEvent.click((await screen.findAllByText("staging", { selector: ".ant-select-item-option-content" })).at(-1)!);
+  await waitFor(() => expect((screen.getByLabelText("Include tags") as HTMLInputElement).value).toBe("stage"));
+
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Settings profile" }));
+  fireEvent.click((await screen.findAllByText("prod", { selector: ".ant-select-item-option-content" })).at(-1)!);
+  await waitFor(() => expect((screen.getByLabelText("Include tags") as HTMLInputElement).value).toBe("new"));
+});
+
 test("Settings Reload requires explicit discard while a form draft is dirty", async () => {
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   invoke.mockImplementation(async (command) => {

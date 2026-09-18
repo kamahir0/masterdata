@@ -379,7 +379,9 @@ fn value_state_type(shape: &ResolvedAuthoringType, value: &AuthoringValue) -> Va
                     entries
                         .iter()
                         .find(|entry| entry.name == field.name)
-                        .is_some_and(|entry| value_state(field, &entry.value) != ValueState::Invalid)
+                        .is_some_and(|entry| {
+                            value_state(field, &entry.value) != ValueState::Invalid
+                        })
                 }) {
                     ValueState::Valid
                 } else {
@@ -435,22 +437,22 @@ fn is_sort_capable(shape: &ResolvedAuthoringField) -> bool {
         shape.modifier,
         FieldModifier::Required | FieldModifier::Nullable
     ) && matches!(
-            shape.shape,
-            ResolvedAuthoringType::Primitive {
-                primitive: PrimitiveType::Int
-                    | PrimitiveType::UInt
-                    | PrimitiveType::Long
-                    | PrimitiveType::ULong
-                    | PrimitiveType::String
-            } | ResolvedAuthoringType::ValueObject {
-                underlying: PrimitiveType::Int
-                    | PrimitiveType::UInt
-                    | PrimitiveType::Long
-                    | PrimitiveType::ULong
-                    | PrimitiveType::String,
-                ..
-            }
-        )
+        shape.shape,
+        ResolvedAuthoringType::Primitive {
+            primitive: PrimitiveType::Int
+                | PrimitiveType::UInt
+                | PrimitiveType::Long
+                | PrimitiveType::ULong
+                | PrimitiveType::String
+        } | ResolvedAuthoringType::ValueObject {
+            underlying: PrimitiveType::Int
+                | PrimitiveType::UInt
+                | PrimitiveType::Long
+                | PrimitiveType::ULong
+                | PrimitiveType::String,
+            ..
+        }
+    )
 }
 
 fn is_string_shape(shape: &ResolvedAuthoringField) -> bool {
@@ -804,21 +806,45 @@ mod tests {
     fn nullable_scalar_sort_keeps_valid_then_null_then_invalid_in_both_directions() {
         let columns = vec![nullable_field("id", PrimitiveType::Int)];
         let rows = vec![
-            QueryRow { source_order: 0, values: vec![AuthoringValue::Null] },
-            QueryRow { source_order: 1, values: vec![number("2")] },
-            QueryRow { source_order: 2, values: vec![string("bad")] },
-            QueryRow { source_order: 3, values: vec![number("1")] },
+            QueryRow {
+                source_order: 0,
+                values: vec![AuthoringValue::Null],
+            },
+            QueryRow {
+                source_order: 1,
+                values: vec![number("2")],
+            },
+            QueryRow {
+                source_order: 2,
+                values: vec![string("bad")],
+            },
+            QueryRow {
+                source_order: 3,
+                values: vec![number("1")],
+            },
         ];
         let asc = AuthoringQuery {
-            sort: Some(QuerySort { field: "id".into(), direction: SortDirection::Ascending }),
+            sort: Some(QuerySort {
+                field: "id".into(),
+                direction: SortDirection::Ascending,
+            }),
             ..Default::default()
         };
         let desc = AuthoringQuery {
-            sort: Some(QuerySort { field: "id".into(), direction: SortDirection::Descending }),
+            sort: Some(QuerySort {
+                field: "id".into(),
+                direction: SortDirection::Descending,
+            }),
             ..Default::default()
         };
-        assert_eq!(apply_authoring_query(&columns, &rows, &asc).unwrap(), vec![3, 1, 0, 2]);
-        assert_eq!(apply_authoring_query(&columns, &rows, &desc).unwrap(), vec![1, 3, 0, 2]);
+        assert_eq!(
+            apply_authoring_query(&columns, &rows, &asc).unwrap(),
+            vec![3, 1, 0, 2]
+        );
+        assert_eq!(
+            apply_authoring_query(&columns, &rows, &desc).unwrap(),
+            vec![1, 3, 0, 2]
+        );
     }
 
     #[test]

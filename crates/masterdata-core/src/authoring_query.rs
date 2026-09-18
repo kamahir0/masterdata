@@ -830,10 +830,22 @@ mod tests {
                 .collect(),
         };
         let rows = vec![
-            QueryRow { source_order: 0, values: vec![seq(&[])] },
-            QueryRow { source_order: 1, values: vec![seq(&["Read", "Read"])] },
-            QueryRow { source_order: 2, values: vec![seq(&["None", "Read"])] },
-            QueryRow { source_order: 3, values: vec![seq(&["None"])] },
+            QueryRow {
+                source_order: 0,
+                values: vec![seq(&[])],
+            },
+            QueryRow {
+                source_order: 1,
+                values: vec![seq(&["Read", "Read"])],
+            },
+            QueryRow {
+                source_order: 2,
+                values: vec![seq(&["None", "Read"])],
+            },
+            QueryRow {
+                source_order: 3,
+                values: vec![seq(&["None"])],
+            },
         ];
         let query = AuthoringQuery {
             filters: vec![ColumnFilter {

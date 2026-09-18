@@ -127,7 +127,7 @@ impl<'de> Deserialize<'de> for UniqueObject {
 // it before the Type System sees it. RawValue retains scalar category and exact
 // integer digits, including -0 and integers nested inside objects/arrays.
 // EVIDENCE: GUI-TYPE-INT-009; TYPE-PRIMITIVE-003.
-fn parse_constant(text: &str) -> Result<serde_yaml::Value> {
+pub(crate) fn parse_constant(text: &str) -> Result<serde_yaml::Value> {
     use serde_yaml::Value;
     let raw: Box<serde_json::value::RawValue> =
         serde_json::from_str(text).map_err(|e| error(format!("constant must be JSON: {e}")))?;
@@ -184,6 +184,7 @@ pub struct TypeSnapshot {
     pub members: Vec<TypeMemberView>,
     pub fields: Vec<TypeFieldDefinition>,
     pub field_types: Vec<String>,
+    pub initializer_shapes: std::collections::BTreeMap<String, ResolvedAuthoringType>,
 }
 #[derive(Debug, Serialize)]
 pub struct TypeMemberView {
@@ -215,6 +216,8 @@ impl TableAuthoringSession {
             return Err(error("source is not a type"));
         };
         let ty = migration_type_declaration(&docs, &ty.name)?;
+        let field_types = creation_choices(&docs).field_types;
+        let initializer_shapes = crate::table_authoring::initializer_shapes(&docs, &field_types);
         let mut result = TypeSnapshot {
             path: path.into(),
             name: ty.name,
@@ -223,7 +226,8 @@ impl TableAuthoringSession {
             conversions: None,
             members: vec![],
             fields: vec![],
-            field_types: creation_choices(&docs).field_types,
+            field_types,
+            initializer_shapes,
         };
         if let Some(vo) = ty.value_object {
             result.category = "Value Object".into();

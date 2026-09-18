@@ -885,7 +885,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod desktop_workflow_tests {
     use super::*;
@@ -962,8 +961,8 @@ mod desktop_workflow_tests {
                 .contains("Mega Potion")
         );
 
-        let build = build(Some(project_path.clone()), false, Some("prod".into()))
-            .expect("desktop build");
+        let build =
+            build(Some(project_path.clone()), false, Some("prod".into())).expect("desktop build");
         assert!(!build.generated_files.is_empty());
         assert!(build.artifact_root.join("masterdata.bytes").is_file());
 
@@ -986,7 +985,10 @@ mod desktop_workflow_tests {
         .expect("structured stale result");
         assert_eq!(stale.status, "failure");
         assert_eq!(
-            stale.diagnostic.as_ref().map(|diagnostic| diagnostic.code.as_str()),
+            stale
+                .diagnostic
+                .as_ref()
+                .map(|diagnostic| diagnostic.code.as_str()),
             Some("E-PUBLISH-PREVIEW-STALE-DESTINATION")
         );
         assert_eq!(

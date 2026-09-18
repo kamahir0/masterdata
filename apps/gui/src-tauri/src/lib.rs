@@ -3,13 +3,12 @@ use std::path::{Path, PathBuf};
 use masterdata_app::{
     AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
     AuthoringBatchRequest, AuthoringClipboardShape, AuthoringEdit, AuthoringRecordDraft,
-    AuthoringRecordMutation,
-    AuthoringWorkspace, ConfigSaveReport, CreationContext, CreationDestinationState,
-    CreationReport, CreationRequest, DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot,
-    NativeApplicationService, ProjectConfigEditPreviewView, ProjectConfigEditRequest,
-    ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest, PublishExecutionReport,
-    PublishPreview, RecordTagEditRequest, SourceContentState, SourceEditPreview, SourceSaveReport,
-    TableOverviewRequest, TableOverviewSnapshot,
+    AuthoringRecordMutation, AuthoringWorkspace, ConfigSaveReport, CreationContext,
+    CreationDestinationState, CreationReport, CreationRequest, DataFileQueryRequest,
+    DataFileQueryResult, DataFileSnapshot, NativeApplicationService, ProjectConfigEditPreviewView,
+    ProjectConfigEditRequest, ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest,
+    PublishExecutionReport, PublishPreview, RecordTagEditRequest, SourceContentState,
+    SourceEditPreview, SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -643,7 +642,9 @@ fn build(
             )
             .map_err(ApiError::from)?
     };
-    let execution = service.build_from_plan(plan, dry_run).map_err(ApiError::from)?;
+    let execution = service
+        .build_from_plan(plan, dry_run)
+        .map_err(ApiError::from)?;
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
         profile,

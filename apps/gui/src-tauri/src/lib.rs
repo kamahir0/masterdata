@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use masterdata_app::{
     AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
-    AuthoringBatchRequest, AuthoringEdit, AuthoringRecordDraft, AuthoringRecordMutation,
+    AuthoringBatchRequest, AuthoringClipboardShape, AuthoringEdit, AuthoringRecordDraft,
+    AuthoringRecordMutation,
     AuthoringWorkspace, ConfigSaveReport, CreationContext, CreationDestinationState,
     CreationReport, CreationRequest, DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot,
     NativeApplicationService, ProjectConfigEditPreviewView, ProjectConfigEditRequest,
@@ -352,8 +353,7 @@ fn save_project_config_edit(
     project_path: Option<String>,
     base_source: String,
     base_content_identity: String,
-    request: ProjectConfigEditRequest,
-    overwrite_expected_identity: Option<String>,
+    requests: Vec<ProjectConfigEditRequest>,
 ) -> std::result::Result<ConfigSaveReport, ApiError> {
     let root = config_binding_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
@@ -368,9 +368,17 @@ fn save_project_config_edit(
             &current_dir,
             &base_source,
             &base_content_identity,
-            &request,
-            overwrite_expected_identity.as_deref(),
+            &requests,
         )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn authoring_clipboard_shape(
+    clipboard_text: String,
+) -> std::result::Result<AuthoringClipboardShape, ApiError> {
+    NativeApplicationService::new()
+        .authoring_clipboard_shape(&clipboard_text)
         .map_err(ApiError::from)
 }
 
@@ -417,24 +425,46 @@ fn publish_preview(project_path: Option<String>) -> std::result::Result<PublishP
         .map_err(ApiError::from)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublishExecutionView {
+    status: &'static str,
+    report: PublishExecutionReport,
+    diagnostic: Option<DiagnosticDto>,
+}
+
 #[tauri::command(rename_all = "camelCase")]
 fn publish_from_preview(
     project_path: Option<String>,
     artifact_set_identity: String,
     config_content_identity: String,
-) -> std::result::Result<PublishExecutionReport, ApiError> {
+    publish_plan_identity: String,
+) -> std::result::Result<PublishExecutionView, ApiError> {
     let root = table_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .publish_from_preview(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &artifact_set_identity,
-            &config_content_identity,
-        )
-        .map_err(|failure| ApiError::from(failure.into_error()))
+    match NativeApplicationService::new().publish_from_preview(
+        configured_path.as_deref().map(Path::new),
+        &current_dir,
+        &artifact_set_identity,
+        &config_content_identity,
+        &publish_plan_identity,
+    ) {
+        Ok(report) => Ok(PublishExecutionView {
+            status: "success",
+            report,
+            diagnostic: None,
+        }),
+        Err(failure) => {
+            let diagnostic = DiagnosticDto::from(failure.diagnostic());
+            Ok(PublishExecutionView {
+                status: "failure",
+                report: failure.report,
+                diagnostic: Some(diagnostic),
+            })
+        }
+    }
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -538,9 +568,9 @@ fn save_data_file(
     overwrite_expected_identity: Option<String>,
 ) -> std::result::Result<SourceSaveReport, ApiError> {
     let root = table_root(project_path.clone())?;
-    let _operation = operation_guard(&root)?;
-    // Hold the shared session guard across mutation so Apply cannot race another
-    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
+    // A normal source Save participates in the migration/session gate but not
+    // the long-lived Build/Publish operation guard. Build capture holds this
+    // session only until its immutable Plan is complete.
     let session = table_session()?;
     session
         .ensure_mutation_allowed(&root)
@@ -597,22 +627,23 @@ fn build(
 ) -> std::result::Result<BuildResponse, ApiError> {
     let root = table_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
-    // Hold the shared session guard across mutation so Apply cannot race another
-    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
-    let session = table_session()?;
-    session
-        .ensure_mutation_allowed(&root)
-        .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
-    let execution = NativeApplicationService::new()
-        .build_with_profile(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            profile.as_deref(),
-            dry_run,
-        )
-        .map_err(ApiError::from)?;
+    let service = NativeApplicationService::new();
+    let plan = {
+        let session = table_session()?;
+        session
+            .ensure_mutation_allowed(&root)
+            .map_err(ApiError::from)?;
+        service
+            .prepare_build_with_profile(
+                configured_path.as_deref().map(Path::new),
+                &current_dir,
+                profile.as_deref(),
+            )
+            .map_err(ApiError::from)?
+    };
+    let execution = service.build_from_plan(plan, dry_run).map_err(ApiError::from)?;
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
         profile,
@@ -645,6 +676,7 @@ pub fn run() {
             open_project_config,
             preview_project_config_edit,
             save_project_config_edit,
+            authoring_clipboard_shape,
             open_data_file,
             query_data_file,
             table_overview,

@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Form, Input, InputNumber, Select, Space, Spin, Table, Tabs, Tag } from "antd";
 import { invoke } from "@tauri-apps/api/core";
 import type { MigrationResult } from "./TableEditor";
+import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
+import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";
 
 type Field = { key: number; name: string; type: string; nullable: boolean; array: boolean };
-type Snapshot = { path: string; name: string; category: string; underlying: string | null; conversions: { fromUnderlyingImplicit: boolean; toUnderlyingImplicit: boolean } | null; members: { name: string; value: string }[]; fields: Field[]; fieldTypes: string[] };
+type Snapshot = { path: string; name: string; category: string; underlying: string | null; conversions: { fromUnderlyingImplicit: boolean; toUnderlyingImplicit: boolean } | null; members: { name: string; value: string }[]; fields: Field[]; fieldTypes: string[]; initializerShapes: Record<string, ResolvedAuthoringType> };
 type Diagnostic = { code: string; message: string; source?: string; schemaPath?: string; schema_path?: string };
 type Plan = { token: string; target: string; operation: string; selector: string; destructive: boolean; affectedOccurrenceCount: number; files: { path: string; before: string; after: string }[]; diagnostics: Diagnostic[] };
 type Operation = "conversions" | "add" | "rename" | "drop";
@@ -25,7 +27,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
   const [from, setFrom] = useState(false);
   const [to, setTo] = useState(false);
   const [hasInitializer, setHasInitializer] = useState(false);
-  const [initializer, setInitializer] = useState("");
+  const [initializer, setInitializer] = useState<AuthoringValue>(resetInitializer());
   const [plan, setPlan] = useState<Plan | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
   const custom = snapshot?.category === "Custom Type";
   const protectedMember = snapshot?.category === "Flags Enum" && selected === "None";
   const start = (op: Operation) => {
-    change(() => { setOperation(op); setName(op === "rename" ? selected : ""); setValue(""); setFrom(snapshot?.conversions?.fromUnderlyingImplicit ?? false); setTo(snapshot?.conversions?.toUnderlyingImplicit ?? false); });
+    change(() => { setOperation(op); setName(op === "rename" ? selected : ""); setValue(""); setFrom(snapshot?.conversions?.fromUnderlyingImplicit ?? false); setTo(snapshot?.conversions?.toUnderlyingImplicit ?? false); if (op === "add") { setHasInitializer(false); setInitializer(resetInitializer()); } });
     window.requestAnimationFrame(() => document.getElementById(op === "drop" ? "type-plan" : op === "conversions" ? "type-from" : "type-name")?.focus());
   };
   const cancel = () => { const old = operation; change(() => setOperation(null)); window.requestAnimationFrame(() => document.getElementById(`type-${old}-action`)?.focus()); };
@@ -57,7 +59,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
     const current = revision.current;
     inFlight.current = true; setBusy(true); setError(null); setPlan(null);
     const input = operation === "conversions" ? { operation, target: snapshot.name, fromUnderlyingImplicit: from, toUnderlyingImplicit: to }
-      : operation === "add" ? custom ? { operation: "add_custom", target: snapshot.name, field: { key, name, type, nullable: modifier === "nullable", array: modifier === "array" }, initializer: hasInitializer ? initializer : null }
+      : operation === "add" ? custom ? { operation: "add_custom", target: snapshot.name, field: { key, name, type, nullable: modifier === "nullable", array: modifier === "array" }, initializer: hasInitializer ? initializerJson(initializer) : null }
         : { operation: "add_enum", target: snapshot.name, name, value }
         : { operation: `${operation}_${custom ? "custom" : "enum"}`, target: snapshot.name, [custom ? "field" : "member"]: selected, ...(operation === "rename" ? { newName: name } : {}) };
     try { const next = await invoke<Plan>("plan_type_migration", { projectPath, input }); if (mounted.current && current === revision.current) { setPlan(next); setResult(null); setConfirmed(false); } }
@@ -114,10 +116,18 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
           : operation !== "drop" && <Form.Item label={custom ? "Field name" : "Member name"} htmlFor="type-name"><Input id="type-name" value={name} onChange={event => change(() => setName(event.target.value))} /></Form.Item>}
         {operation === "add" && (custom ? <>
           <Form.Item label="MessagePack key"><InputNumber aria-label="MessagePack key" value={key} onChange={value => change(() => setKey(value))} /></Form.Item>
-          <Form.Item label="Field type"><Select aria-label="Field type" value={type} options={snapshot.fieldTypes.map(value => ({ value, label: value }))} onChange={value => change(() => setType(value))} /></Form.Item>
-          <Form.Item label="Modifier"><Select aria-label="Field modifier" value={modifier} options={["required", "nullable", "array"].map(value => ({ value, label: value }))} onChange={value => change(() => setModifier(value))} /></Form.Item>
-          <Checkbox checked={hasInitializer} onChange={event => change(() => setHasInitializer(event.target.checked))}>Explicit constant initializer</Checkbox>
-          {hasInitializer && <Form.Item label="Initializer (JSON value)"><Input.TextArea aria-label="Initializer (JSON value)" value={initializer} onChange={event => change(() => setInitializer(event.target.value))} /></Form.Item>}
+          <Form.Item label="Field type"><Select aria-label="Field type" value={type} options={snapshot.fieldTypes.map(value => ({ value, label: value }))} onChange={value => change(() => { setType(value); setHasInitializer(false); setInitializer(resetInitializer()); })} /></Form.Item>
+          <Form.Item label="Modifier"><Select aria-label="Field modifier" value={modifier} options={["required", "nullable", "array"].map(value => ({ value, label: value }))} onChange={value => change(() => { setModifier(value); setHasInitializer(false); setInitializer(resetInitializer()); })} /></Form.Item>
+          <TypedInitializer
+            typeName={type}
+            modifier={modifier as "required" | "nullable" | "array"}
+            shape={snapshot.initializerShapes[type] ?? null}
+            enabled={hasInitializer}
+            value={initializer}
+            disabled={busy}
+            onEnabledChange={enabled => change(() => { setHasInitializer(enabled); if (!enabled) setInitializer(resetInitializer()); })}
+            onChange={value => change(() => setInitializer(value))}
+          />
         </> : <Form.Item label="Numeric value" htmlFor="type-number"><Input id="type-number" value={value} onChange={event => change(() => setValue(event.target.value))} /></Form.Item>)}
         {operation === "drop" && <Alert type="warning" title={`Destructive: drop ${snapshot.name}.${selected}${custom ? " and its values" : ""}.`} />}
         <Space><Button id="type-plan" onClick={() => void getPlan()} loading={busy} disabled={!canWrite}>Plan / Re-plan</Button><Button onClick={cancel}>Cancel</Button></Space>

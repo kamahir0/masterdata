@@ -542,6 +542,10 @@ export function ProjectSettingsPanel({
         requests = applied.requests;
         source = applied.source;
         identity = applied.identity;
+        if (draftKind === "profile") {
+          rememberProfileDraft(profileName);
+          setSelectedProfile(profileName.trim());
+        }
       }
       if (requests.length === 0) {
         onDirtyChange(false);
@@ -575,7 +579,7 @@ export function ProjectSettingsPanel({
     }
   }, [
     applyRequestToBuffer, bufferIdentity, bufferSource, draftKind, installSnapshot, mutationBlocked,
-    onDirtyChange, onSaved, pendingRequests, profileName, projectRoot, requestForProfile,
+    onDirtyChange, onSaved, pendingRequests, profileName, projectRoot, rememberProfileDraft, requestForProfile,
     requestForTarget, snapshot, targetPath,
   ]);
 

@@ -367,6 +367,7 @@ export function ProjectSettingsPanel({
   const [bufferIdentity, setBufferIdentity] = useState("");
   const [pendingRequests, setPendingRequests] = useState<ConfigEditRequest[]>([]);
   const [selectedProfile, setSelectedProfile] = useState("");
+  const [profileDrafts, setProfileDrafts] = useState<Record<string, { name: string; includeTags: string; excludeTags: string }>>({});
   const [profileName, setProfileName] = useState("");
   const [includeTags, setIncludeTags] = useState("");
   const [excludeTags, setExcludeTags] = useState("");
@@ -382,12 +383,13 @@ export function ProjectSettingsPanel({
   const isDirty = pendingRequests.length > 0 || draftKind !== null;
 
   const populateProfile = useCallback((next: ConfigSnapshot, name: string) => {
+    const draft = profileDrafts[name];
     const profile = next.profiles.find((item) => item.name === name);
     setSelectedProfile(name);
-    setProfileName(profile?.name ?? name);
-    setIncludeTags(profile?.include_tags.join(", ") ?? "");
-    setExcludeTags(profile?.exclude_tags.join(", ") ?? "");
-  }, []);
+    setProfileName(draft?.name ?? profile?.name ?? name);
+    setIncludeTags(draft?.includeTags ?? profile?.include_tags.join(", ") ?? "");
+    setExcludeTags(draft?.excludeTags ?? profile?.exclude_tags.join(", ") ?? "");
+  }, [profileDrafts]);
 
   const installSnapshot = useCallback((next: ConfigSnapshot) => {
     setSnapshot(next);
@@ -399,10 +401,14 @@ export function ProjectSettingsPanel({
     setTargetEditOccurrence(null);
     setTargetPath("");
     setConfigConflict(null);
+    setProfileDrafts({});
     const first = next.profiles[0];
-    populateProfile(next, first?.name ?? "");
+    setSelectedProfile(first?.name ?? "");
+    setProfileName(first?.name ?? "");
+    setIncludeTags(first?.include_tags.join(", ") ?? "");
+    setExcludeTags(first?.exclude_tags.join(", ") ?? "");
     onDirtyChange(false);
-  }, [onDirtyChange, populateProfile]);
+  }, [onDirtyChange]);
 
   const load = useCallback(async (discardDirty = false) => {
     if (!projectRoot) return false;
@@ -464,6 +470,15 @@ export function ProjectSettingsPanel({
     return { requests, source: next.candidateSource, identity: next.candidateContentIdentity, preview: next };
   }, [bufferIdentity, bufferSource, onDirtyChange, pendingRequests]);
 
+  const rememberProfileDraft = useCallback((name: string) => {
+    const normalized = name.trim();
+    if (!normalized) return;
+    setProfileDrafts((current) => ({
+      ...current,
+      [normalized]: { name: normalized, includeTags, excludeTags },
+    }));
+  }, [excludeTags, includeTags]);
+
   const previewRequest = useCallback(async (request: ConfigEditRequest) => {
     setLoading(true);
     setDiagnostic(null);
@@ -481,14 +496,20 @@ export function ProjectSettingsPanel({
   const commitCurrentDraft = useCallback(async () => {
     if (draftKind === "profile") {
       if (!profileName.trim()) return false;
-      return previewRequest(requestForProfile());
+      const request = requestForProfile();
+      const committed = await previewRequest(request);
+      if (committed) {
+        rememberProfileDraft(request.name);
+        setSelectedProfile(request.name);
+      }
+      return committed;
     }
     if (draftKind === "target") {
       if (!targetPath.trim()) return false;
       return previewRequest(requestForTarget());
     }
     return true;
-  }, [draftKind, previewRequest, profileName, requestForProfile, requestForTarget, targetPath]);
+  }, [draftKind, previewRequest, profileName, rememberProfileDraft, requestForProfile, requestForTarget, targetPath]);
 
   const selectProfile = useCallback(async (name: string) => {
     if (draftKind && !(await commitCurrentDraft())) return;
@@ -562,7 +583,10 @@ export function ProjectSettingsPanel({
     onRegisterSave(save);
   }, [onRegisterSave, save]);
 
-  const profileOptions = snapshot?.profiles.map((profile) => ({ value: profile.name, label: profile.name })) ?? [];
+  const profileOptions = Array.from(new Set([
+    ...(snapshot?.profiles.map((profile) => profile.name) ?? []),
+    ...Object.keys(profileDrafts),
+  ])).map((name) => ({ value: name, label: name }));
 
   if (!active) return <div hidden aria-hidden="true" />;
 
@@ -586,7 +610,20 @@ export function ProjectSettingsPanel({
             <Input aria-label="Profile name" placeholder="Profile name" value={profileName} onChange={(event) => { setProfileName(event.target.value); markDirty("profile"); }} />
             <Input aria-label="Include tags" placeholder="Include tags, comma separated" value={includeTags} onChange={(event) => { setIncludeTags(event.target.value); markDirty("profile"); }} />
             <Input aria-label="Exclude tags" placeholder="Exclude tags, comma separated" value={excludeTags} onChange={(event) => { setExcludeTags(event.target.value); markDirty("profile"); }} />
-            <Button htmlType="button" type="primary" disabled={!profileName.trim() || loading} onClick={() => void previewRequest(requestForProfile())}>Apply Profile to buffer</Button>
+            <Button
+              htmlType="button"
+              type="primary"
+              disabled={!profileName.trim() || loading}
+              onClick={() => {
+                const request = requestForProfile();
+                void previewRequest(request).then((committed) => {
+                  if (committed) {
+                    rememberProfileDraft(request.name);
+                    setSelectedProfile(request.name);
+                  }
+                });
+              }}
+            >Apply Profile to buffer</Button>
             {snapshot.profiles.map((profile) => <div className="settings-line" key={profile.name}><strong>{profile.name}</strong><span>include: {profile.include_tags.join(", ") || "∅"}</span><span>exclude: {profile.exclude_tags.join(", ") || "∅"}</span></div>)}
           </section>
           <section className="settings-card" aria-label="Publish Targets">

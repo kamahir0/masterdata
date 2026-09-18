@@ -1150,6 +1150,11 @@ mod build_snapshot_tests {
             })
             .expect_err("stale config snapshot");
         assert_eq!(error.diagnostic().code, "E-BUILD-SNAPSHOT-STALE");
-        assert!(error.diagnostic().message.contains("masterdata.toml changed"));
+        assert!(
+            error
+                .diagnostic()
+                .message
+                .contains("masterdata.toml changed")
+        );
     }
 }

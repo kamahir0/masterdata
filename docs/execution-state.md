@@ -1,7 +1,7 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: 43c99fc5884f908d0061c2b615d0f0f968c82aca
 
 ## Blocking findings
 

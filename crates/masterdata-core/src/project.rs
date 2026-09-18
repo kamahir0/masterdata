@@ -262,8 +262,8 @@ impl Project {
             captured.push((path.clone(), bytes, content));
         }
 
-        let config_after = fs::read(&self.config_path)
-            .map_err(|error| io_error(&self.config_path, error))?;
+        let config_after =
+            fs::read(&self.config_path).map_err(|error| io_error(&self.config_path, error))?;
         if config_after != self.config_source {
             return Err(build_snapshot_error(
                 &self.config_path,
@@ -343,13 +343,9 @@ impl Project {
 }
 
 fn build_snapshot_error(path: &Path, message: impl Into<String>) -> MasterdataError {
-    MasterdataError::new(
-        "E-BUILD-SNAPSHOT-STALE",
-        ErrorKind::Validation,
-        message,
-    )
-    .with_source(path.to_path_buf())
-    .with_related_requirement("BUILD-REQUEST-001")
+    MasterdataError::new("E-BUILD-SNAPSHOT-STALE", ErrorKind::Validation, message)
+        .with_source(path.to_path_buf())
+        .with_related_requirement("BUILD-REQUEST-001")
 }
 
 /// Create a new project marker and the default source scaffold.

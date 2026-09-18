@@ -888,31 +888,58 @@ mod tests {
 #[cfg(test)]
 mod desktop_workflow_tests {
     use super::*;
-    use masterdata_app::{ConfigSaveStatus, SourceSaveStatus};
+    use masterdata_app::{
+        AuthoringRecordField, ConfigSaveStatus, CreationStatus, ProjectInitStatus, SourceSaveStatus,
+    };
     use masterdata_core::{AuthoringValue, PublishTargetKind};
     use std::fs;
 
     #[test]
     fn desktop_workflow_reaches_build_publish_and_stale_recovery() {
         let temp = tempfile::tempdir().expect("desktop scenario");
-        let root = temp.path();
-        fs::create_dir(root.join("sources")).expect("sources");
-        fs::write(
-            root.join("masterdata.toml"),
-            "[project]\nid = \"desktop.scenario\"\nname = \"Desktop Scenario\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
-        )
-        .expect("config");
-        fs::write(
-            root.join("sources/item-schema.yaml"),
-            "kind: schema\ntable: item\ncsharpName: ItemMaster\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: name\n    type: string\nprimaryKey:\n  fields: [id]\n",
-        )
-        .expect("schema");
-        fs::write(
-            root.join("sources/items.yaml"),
-            "kind: data\ntable: item\nrecords:\n  - id: 1001\n    name: Potion\n",
-        )
-        .expect("data");
+        let root = temp.path().join("project");
+        let init = create_project(ProjectInitRequest {
+            destination: root.clone(),
+            project_id: "desktop.scenario".into(),
+            name: "Desktop Scenario".into(),
+            version: "0.1.0".into(),
+        })
+        .expect("Create Project command");
+        assert_eq!(init.status, ProjectInitStatus::Success);
         let project_path = root.to_string_lossy().into_owned();
+
+        let context = creation_context(Some(project_path.clone())).expect("creation context");
+        let source_root = context.roots.first().expect("source root").label.clone();
+        let table = create_source(
+            Some(project_path.clone()),
+            serde_json::json!({
+                "sourceRoot": source_root,
+                "destination": "schemas/item-schema.yaml",
+                "artifact": {
+                    "category": "table",
+                    "table": "item",
+                    "csharpName": "ItemMaster",
+                    "fields": [
+                        {"key": 0, "name": "id", "type": "int"},
+                        {"key": 1, "name": "name", "type": "string"}
+                    ],
+                    "primaryKey": {"fields": ["id"]},
+                    "secondaryKeys": []
+                }
+            }),
+        )
+        .expect("Create Table source");
+        assert_eq!(table.status, CreationStatus::Success);
+        let data_creation = create_source(
+            Some(project_path.clone()),
+            serde_json::json!({
+                "sourceRoot": source_root,
+                "destination": "data/items.yaml",
+                "artifact": {"category": "data", "table": "item"}
+            }),
+        )
+        .expect("Create Data source");
+        assert_eq!(data_creation.status, CreationStatus::Success);
 
         let config = open_project_config(Some(project_path.clone())).expect("open settings");
         let config_report = save_project_config_edit(
@@ -934,29 +961,39 @@ mod desktop_workflow_tests {
         .expect("save settings");
         assert_eq!(config_report.status, ConfigSaveStatus::Success);
 
-        let data = open_data_file(Some(project_path.clone()), "sources/items.yaml".into())
-            .expect("open data");
+        let data = open_data_file(Some(project_path.clone()), data_creation.path.clone())
+            .expect("open created data");
         let source_report = save_data_file(
             Some(project_path.clone()),
-            "sources/items.yaml".into(),
+            data_creation.path.clone(),
             data.base_source,
             data.base_content_identity,
-            vec![AuthoringEdit {
-                record_index: 0,
-                field: "name".into(),
-                value: AuthoringValue::String {
-                    value: "Mega Potion".into(),
-                },
-            }],
-            None,
+            Vec::new(),
+            Some(vec![AuthoringRecordDraft {
+                fields: vec![
+                    AuthoringRecordField {
+                        field: "id".into(),
+                        value: AuthoringValue::Number {
+                            value: "1001".into(),
+                        },
+                    },
+                    AuthoringRecordField {
+                        field: "name".into(),
+                        value: AuthoringValue::String {
+                            value: "Mega Potion".into(),
+                        },
+                    },
+                ],
+                tags: Vec::new(),
+            }]),
             None,
             None,
             None,
         )
-        .expect("save data");
+        .expect("save new record");
         assert_eq!(source_report.status, SourceSaveStatus::Success);
         assert!(
-            fs::read_to_string(root.join("sources/items.yaml"))
+            fs::read_to_string(root.join(&data_creation.path))
                 .expect("saved data")
                 .contains("Mega Potion")
         );

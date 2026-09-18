@@ -654,7 +654,7 @@ export function DeliveryPanel({
   const [buildState, setBuildState] = useState<"idle" | "running" | "succeeded" | "failed">("idle");
   const [build, setBuild] = useState<BuildResponse | null>(null);
   const [publishPreview, setPublishPreview] = useState<PublishPreview | null>(null);
-  const [publishState, setPublishState] = useState<"idle" | "loading" | "succeeded" | "failed">("idle");
+  const [publishState, setPublishState] = useState<"idle" | "loading" | "succeeded" | "failed" | "unknown">("idle");
   const [publishExecution, setPublishExecution] = useState<PublishExecutionView | null>(null);
   const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
 
@@ -722,7 +722,7 @@ export function DeliveryPanel({
       setPublishState(result.status === "success" ? "succeeded" : "failed");
       if (result.diagnostic) setDiagnostic(result.diagnostic);
     } catch (error) {
-      setPublishState("failed");
+      setPublishState("unknown");
       setDiagnostic(errorDiagnostic(error));
     }
   };
@@ -759,6 +759,7 @@ export function DeliveryPanel({
       )}
       {publishState === "succeeded" && <Alert type="success" title="Publish completed" />}
       {publishState === "failed" && <Alert type="warning" title="Publish did not complete" description="The previous confirmation is expired. Review target results and create a new preview before retrying." />}
+      {publishState === "unknown" && <Alert type="error" title="Publish outcome unknown" description="The previous confirmation is expired. Recheck destination state and create a fresh preview before any retry." />}
     </section>
   );
 }

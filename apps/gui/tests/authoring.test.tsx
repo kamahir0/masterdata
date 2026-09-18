@@ -80,7 +80,9 @@ async function chooseOption(label: string, option: string) {
 }
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
+let pollingTimerSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  pollingTimerSpy = vi.spyOn(window, 'setInterval').mockImplementation(() => 0 as any);
   openSnapshot = snapshot();
   preview = async () => ({ candidateSource: 'weight: 20', changed: true, validation });
   invoke.mockReset();
@@ -95,7 +97,10 @@ beforeEach(() => {
     throw new Error(`Unexpected command: ${command}`);
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  pollingTimerSpy.mockRestore();
+});
 async function open(label = 'record 1 weight') { render(<App />); return await screen.findByRole('textbox', { name: label }); }
 
 test('sequence equality treats source occurrence order as an authoring change', () => {

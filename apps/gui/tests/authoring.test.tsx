@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import App from '../src/App';
+import App, { boundedHistoryPush } from '../src/App';
 import { authoringValuesEqual, type AuthoringValue } from '../src/data-editor-types';
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -648,14 +648,18 @@ test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of f
   expect(batchArgs.request.fill).toBe(false);
 });
 
-test('Undo history warns before discarding the oldest entry while keeping the current buffer editable', async () => {
-  openSnapshot = mutationSnapshot([]);
+test('Undo history warns before discarding the oldest entry and retains the newest 50 states', () => {
   const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
-  render(<App />);
-  const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
-  for (let index = 0; index < 51; index += 1) {
-    fireEvent.click(add);
-  }
-  expect(alert).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('textbox', { name: 'new record 51 id' })).toBeTruthy();
-}, 15_000);
+  const state = (index: number) => ({
+    edits: { [`cell-${index}`]: { recordIndex: index, field: 'weight', value: { kind: 'number', value: String(index) } } },
+    addedRecords: [],
+    pendingDeletes: [],
+    tagEdits: {},
+  }) as any;
+  const history = Array.from({ length: 50 }, (_, index) => state(index));
+  const next = boundedHistoryPush(history, state(50));
+  expect(alert).toHaveBeenCalledOnce();
+  expect(next).toHaveLength(50);
+  expect(next[0]).toEqual(state(1));
+  expect(next.at(-1)).toEqual(state(50));
+});

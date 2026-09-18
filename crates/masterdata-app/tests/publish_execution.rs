@@ -55,6 +55,42 @@ fn preview_rejects_destination_plan_changed_before_confirmation_without_mutation
 }
 
 #[test]
+fn preview_rejects_binary_replacement_state_changed_before_confirmation() {
+    let project = project_with_targets(&[("binary", "dist/masterdata.bytes")]);
+    let service = NativeApplicationService::new();
+    let preview = service
+        .publish_preview(Some(project.path()), project.path())
+        .expect("preview");
+    let destination = project.path().join("dist/masterdata.bytes");
+    fs::create_dir_all(destination.parent().expect("binary parent")).expect("binary parent");
+    fs::write(&destination, b"external").expect("external binary");
+    let before = fs::read(&destination).expect("before");
+
+    let failure = service
+        .publish_from_preview(
+            Some(project.path()),
+            project.path(),
+            &preview.artifact_set_identity,
+            &preview.config_content_identity,
+            &preview.publish_plan_identity,
+        )
+        .expect_err("binary replacement state changed after preview");
+
+    assert_eq!(
+        failure.error.diagnostic().code,
+        "E-PUBLISH-PREVIEW-STALE-DESTINATION"
+    );
+    assert_eq!(fs::read(&destination).expect("unchanged"), before);
+    assert!(
+        failure
+            .report
+            .targets
+            .iter()
+            .all(|target| target.status == PublishTargetStatus::NotAttempted)
+    );
+}
+
+#[test]
 fn execution_failure_continues_to_later_targets() {
     let project = project_with_targets(&[("csharp", "first"), ("csharp", "second")]);
 

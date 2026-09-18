@@ -130,6 +130,16 @@ impl NativeApplicationService {
             .prepare_build_with_selection(explicit_project, current_dir, selection)
     }
 
+    pub fn prepare_build_with_profile(
+        &self,
+        explicit_project: Option<&Path>,
+        current_dir: &Path,
+        profile: Option<&str>,
+    ) -> Result<BuildPlan> {
+        self.project
+            .prepare_build_with_profile(explicit_project, current_dir, profile)
+    }
+
     pub fn prepare_migration(
         &self,
         explicit_project: Option<&Path>,
@@ -313,9 +323,8 @@ impl NativeApplicationService {
         profile: Option<&str>,
         dry_run: bool,
     ) -> Result<BuildExecution> {
-        let project = masterdata_core::Project::discover(explicit_project, current_dir)?;
-        let selection = project.build_selection(profile)?;
-        self.build_with_selection(explicit_project, current_dir, &selection, dry_run)
+        let plan = self.prepare_build_with_profile(explicit_project, current_dir, profile)?;
+        self.build_from_plan(plan, dry_run)
     }
 
     pub fn build_with_selection(
@@ -326,6 +335,12 @@ impl NativeApplicationService {
         dry_run: bool,
     ) -> Result<BuildExecution> {
         let plan = self.prepare_build_with_selection(explicit_project, current_dir, selection)?;
+        self.build_from_plan(plan, dry_run)
+    }
+
+    /// Execute an already captured BuildPlan. Source/config reads are complete
+    /// before this boundary; later source edits cannot enter the captured build.
+    pub fn build_from_plan(&self, plan: BuildPlan, dry_run: bool) -> Result<BuildExecution> {
         let generation = self.generator.plan(&plan)?;
         let (written_files, binary) = if dry_run {
             (Vec::new(), None)

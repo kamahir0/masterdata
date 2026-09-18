@@ -601,3 +601,61 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
   await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_project_config_edit')).toBe(true));
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 });
+
+
+test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of flattening the selection', async () => {
+  openSnapshot = mutationSnapshot([
+    { recordIndex: 0, cells: [
+      { field: 'id', text: '1', editable: false },
+      { field: 'weight', text: '10', editable: true },
+      { field: 'note', text: 'a', editable: true },
+    ] },
+    { recordIndex: 1, cells: [
+      { field: 'id', text: '2', editable: false },
+      { field: 'weight', text: '20', editable: true },
+      { field: 'note', text: 'b', editable: true },
+    ] },
+  ]);
+  const normalInvoke = invoke.getMockImplementation()!;
+  let batchArgs: any;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_clipboard_shape') return { rows: 2, columns: 2 };
+    if (command === 'preview_data_file_batch') {
+      batchArgs = args;
+      return { source: openSnapshot.baseSource, changedCellCount: 0, changes: [], validation };
+    }
+    return normalInvoke(command, args);
+  });
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { readText: vi.fn(async () => '11\tx\n22\ty'), writeText: vi.fn(async () => {}) },
+  });
+
+  const input = await open('record 1 weight');
+  const cell = input.closest('.cell-wrap');
+  expect(cell).toBeTruthy();
+  fireEvent.mouseDown(cell!, { button: 0 });
+  fireEvent.keyDown(input, { key: 'v', ctrlKey: true });
+
+  await waitFor(() => expect(batchArgs).toBeDefined());
+  expect(batchArgs.request.targets).toEqual([
+    { recordIndex: 0, field: 'weight' },
+    { recordIndex: 0, field: 'note' },
+    { recordIndex: 1, field: 'weight' },
+    { recordIndex: 1, field: 'note' },
+  ]);
+  expect(batchArgs.request.clipboardText).toBe('11\tx\n22\ty');
+  expect(batchArgs.request.fill).toBe(false);
+});
+
+test('Undo history warns before discarding the oldest entry while keeping the current buffer editable', async () => {
+  openSnapshot = mutationSnapshot([]);
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  render(<App />);
+  const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
+  for (let index = 0; index < 51; index += 1) {
+    fireEvent.click(add);
+  }
+  expect(alert).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('textbox', { name: 'new record 51 id' })).toBeTruthy();
+}, 15_000);

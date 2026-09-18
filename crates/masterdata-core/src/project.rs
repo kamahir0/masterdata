@@ -249,6 +249,14 @@ impl Project {
     /// the snapshot is being assembled fail before artifact publication,
     /// while later changes are intentionally outside this captured Plan.
     pub fn load_build_documents_snapshot(&self) -> Result<ProjectDocuments> {
+        self.load_build_documents_snapshot_with_hook(|| {})
+    }
+
+    #[doc(hidden)]
+    pub fn load_build_documents_snapshot_with_hook(
+        &self,
+        after_capture: impl FnOnce(),
+    ) -> Result<ProjectDocuments> {
         let paths = self.source_files()?;
         let mut captured = Vec::with_capacity(paths.len());
         for path in &paths {
@@ -261,6 +269,8 @@ impl Project {
             })?;
             captured.push((path.clone(), bytes, content));
         }
+
+        after_capture();
 
         let config_after =
             fs::read(&self.config_path).map_err(|error| io_error(&self.config_path, error))?;
@@ -1097,3 +1107,49 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 use std::path::Component as PathComponent;
+
+#[cfg(test)]
+mod build_snapshot_tests {
+    use super::*;
+
+    fn snapshot_project() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().expect("temp project");
+        fs::create_dir(temp.path().join("sources")).expect("sources");
+        fs::write(
+            temp.path().join(PROJECT_CONFIG_FILENAME),
+            "[project]\nid = \"snapshot.test\"\nname = \"Snapshot\"\nversion = \"0.1.0\"\n\n[sources]\nroots = [\"sources\"]\n\n[build]\nartifact_dir = \".masterdata/output\"\ncache = \".masterdata/cache\"\n",
+        )
+        .expect("config");
+        fs::write(temp.path().join("sources/data.yaml"), "before").expect("source");
+        temp
+    }
+
+    #[test]
+    fn build_snapshot_rejects_source_bytes_changed_during_capture() {
+        let temp = snapshot_project();
+        let project = Project::discover(Some(temp.path()), temp.path()).expect("project");
+        let source = temp.path().join("sources/data.yaml");
+        let error = project
+            .load_build_documents_snapshot_with_hook(|| {
+                fs::write(&source, "after").expect("mutate source");
+            })
+            .expect_err("stale source snapshot");
+        assert_eq!(error.diagnostic().code, "E-BUILD-SNAPSHOT-STALE");
+        assert!(error.diagnostic().message.contains("source bytes changed"));
+    }
+
+    #[test]
+    fn build_snapshot_rejects_config_changed_during_capture() {
+        let temp = snapshot_project();
+        let project = Project::discover(Some(temp.path()), temp.path()).expect("project");
+        let config = temp.path().join(PROJECT_CONFIG_FILENAME);
+        let original = fs::read_to_string(&config).expect("read config");
+        let error = project
+            .load_build_documents_snapshot_with_hook(|| {
+                fs::write(&config, format!("{original}\n# external\n")).expect("mutate config");
+            })
+            .expect_err("stale config snapshot");
+        assert_eq!(error.diagnostic().code, "E-BUILD-SNAPSHOT-STALE");
+        assert!(error.diagnostic().message.contains("masterdata.toml changed"));
+    }
+}

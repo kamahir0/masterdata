@@ -1102,13 +1102,22 @@ mod tests {
             },
         )
         .expect("profile edit");
-        assert!(preview.candidate_source.contains("include_tags = [\"decoy\"]"));
-        assert!(preview.candidate_source.contains("include_tags = [\"updated\"]"));
+        assert!(
+            preview
+                .candidate_source
+                .contains("include_tags = [\"decoy\"]")
+        );
+        assert!(
+            preview
+                .candidate_source
+                .contains("include_tags = [\"updated\"]")
+        );
     }
 
     #[test]
     fn commented_multiline_array_noop_preserves_exact_bytes_and_extension_keeps_comment() {
-        let source = "[build.profiles.prod]\ninclude_tags = [\n  \"a\", # keep a\n  \"b\", # keep b\n]\n";
+        let source =
+            "[build.profiles.prod]\ninclude_tags = [\n  \"a\", # keep a\n  \"b\", # keep b\n]\n";
         let noop = preview_project_config_edit(
             source,
             &ProjectConfigEditOperation::UpdateProfile {

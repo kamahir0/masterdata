@@ -72,7 +72,37 @@ pub struct AuthoringBatchCopyResult {
     pub target_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoringClipboardShape {
+    pub rows: usize,
+    pub columns: usize,
+}
+
 impl NativeApplicationService {
+    pub fn authoring_clipboard_shape(&self, clipboard_text: &str) -> Result<AuthoringClipboardShape> {
+        let decoded = decode_clipboard_tsv(clipboard_text).map_err(|error| {
+            batch_error(
+                "E-AUTHORING-BATCH-CODEC",
+                format!(
+                    "clipboard text is not valid rectangular TSV: {}",
+                    error.diagnostic().message
+                ),
+            )
+        })?;
+        let columns = decoded.first().map_or(0, Vec::len);
+        if decoded.is_empty() || columns == 0 || decoded.iter().any(|row| row.len() != columns) {
+            return Err(batch_error(
+                "E-AUTHORING-BATCH-SHAPE",
+                "clipboard must contain a non-empty rectangular TSV matrix",
+            ));
+        }
+        Ok(AuthoringClipboardShape {
+            rows: decoded.len(),
+            columns,
+        })
+    }
+
     /// Prepare a paste/fill candidate against the caller's current local
     /// mutation. The method never writes the source file.
     pub fn preview_data_file_batch(
@@ -162,7 +192,7 @@ impl NativeApplicationService {
         };
         let snapshot =
             super::authoring::data_file_snapshot(&project, &documents, parse_diagnostics, &target)?;
-        validate_target_layout(
+        let _ = validate_target_layout(
             &snapshot,
             &AuthoringBatchRequest {
                 targets: request.targets.clone(),
@@ -238,7 +268,8 @@ fn build_batch_mutation(
     current: &AuthoringRecordMutation,
     request: &AuthoringBatchRequest,
 ) -> Result<(AuthoringRecordMutation, Vec<BatchCellChange>)> {
-    validate_target_layout(snapshot, request, snapshot.rows.len())?;
+    let (target_height, target_width) =
+        validate_target_layout(snapshot, request, snapshot.rows.len())?;
     let decoded = decode_clipboard_tsv(&request.clipboard_text).map_err(|error| {
         batch_error(
             "E-AUTHORING-BATCH-CODEC",
@@ -264,13 +295,12 @@ fn build_batch_mutation(
                 "clipboard rows do not form a rectangle",
             ));
         }
-        let cell_count = decoded.len().saturating_mul(width);
-        if cell_count != request.targets.len() {
+        if decoded.len() != target_height || width != target_width {
             return Err(batch_error(
                 "E-AUTHORING-BATCH-SHAPE",
                 format!(
-                    "clipboard rectangle has {cell_count} cell(s), but the selected range has {}",
-                    request.targets.len()
+                    "clipboard rectangle is {}x{width}, but the target rectangle is {target_height}x{target_width}",
+                    decoded.len()
                 ),
             ));
         }
@@ -399,7 +429,7 @@ fn validate_target_layout(
     snapshot: &DataFileSnapshot,
     request: &AuthoringBatchRequest,
     added_record_base: usize,
-) -> Result<()> {
+) -> Result<(usize, usize)> {
     let mut seen = BTreeSet::new();
     let mut positions = Vec::with_capacity(request.targets.len());
     for target in &request.targets {
@@ -441,7 +471,7 @@ fn validate_target_layout(
             "batch targets must be a contiguous row-major rectangle",
         ));
     }
-    Ok(())
+    Ok((height, width))
 }
 
 fn target_position(

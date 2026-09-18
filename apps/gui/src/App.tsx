@@ -507,7 +507,7 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
   return focusElement(document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`));
 }
 
-function App() {
+function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: number | null } = {}) {
   const [recoveries, setRecoveries] = useState<Record<string, MigrationResult>>({});
   const recoveryRef = useRef<Record<string, MigrationResult>>({});
   const [tableEpoch, setTableEpoch] = useState(0);
@@ -1260,6 +1260,7 @@ function App() {
   }, [activePath, deliveryBusy, redoBuffer, saveFile, showNotice, surface, undoBuffer]);
 
   useEffect(() => {
+    if (sourcePollingIntervalMs == null) return;
     const timer = window.setInterval(() => {
       const state = workspaceStateRef.current;
       const root = state.kind === "ready" ? state.workspace.project.project_root : null;
@@ -1309,9 +1310,9 @@ function App() {
           // A transient polling failure must not discard an editor buffer.
         });
       }
-    }, 1600);
+    }, sourcePollingIntervalMs);
     return () => window.clearInterval(timer);
-  }, [openDataFile]);
+  }, [openDataFile, sourcePollingIntervalMs]);
 
   const validateDisk = useCallback(async () => {
     if (!workspace?.capabilities.validate || !projectRoot) return;

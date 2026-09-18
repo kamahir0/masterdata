@@ -28,8 +28,19 @@ pub struct ProjectConfigSnapshot {
     pub config_valid: bool,
     pub project: Option<ProjectInfo>,
     pub profiles: Vec<BuildProfileInfo>,
-    pub publish_targets: Vec<PublishTargetInfo>,
+    pub publish_targets: Vec<ConfigPublishTargetInfo>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConfigPublishTargetInfo {
+    pub occurrence: usize,
+    pub kind: Option<PublishTargetKind>,
+    pub path: Option<String>,
+    pub resolved_path: Option<PathBuf>,
+    pub editable: bool,
+    pub reason: Option<String>,
+    pub location: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -161,8 +172,7 @@ impl NativeApplicationService {
         current_dir: &Path,
         base_source: &str,
         base_content_identity: &str,
-        request: &ProjectConfigEditRequest,
-        overwrite_expected_identity: Option<&str>,
+        requests: &[ProjectConfigEditRequest],
     ) -> Result<ConfigSaveReport> {
         let path = resolve_config_path(explicit_project, current_dir)?;
         if source_content_identity(base_source) != base_content_identity {
@@ -172,11 +182,10 @@ impl NativeApplicationService {
                 Some(path),
             ));
         }
-        let preview = preview_project_config_edit(base_source, &request.operation())?;
+        let preview = preview_project_config_edits(base_source, requests)?;
         let current_source = read_config_source(&path)?;
         let current_identity = source_content_identity(&current_source);
-        let expected = overwrite_expected_identity.unwrap_or(base_content_identity);
-        if current_identity != expected {
+        if current_identity != base_content_identity {
             return Ok(ConfigSaveReport {
                 status: ConfigSaveStatus::Conflict,
                 snapshot: None,
@@ -270,6 +279,24 @@ impl NativeApplicationService {
     }
 }
 
+fn preview_project_config_edits(
+    base_source: &str,
+    requests: &[ProjectConfigEditRequest],
+) -> Result<ProjectConfigEditPreview> {
+    let base_content_identity = source_content_identity(base_source);
+    let mut candidate_source = base_source.to_owned();
+    for request in requests {
+        candidate_source =
+            preview_project_config_edit(&candidate_source, &request.operation())?.candidate_source;
+    }
+    Ok(ProjectConfigEditPreview {
+        base_content_identity,
+        candidate_content_identity: source_content_identity(&candidate_source),
+        changed: candidate_source != base_source,
+        candidate_source,
+    })
+}
+
 fn config_preview_view(preview: ProjectConfigEditPreview) -> ProjectConfigEditPreviewView {
     let diagnostics = config_diagnostics(&preview.candidate_source, None);
     ProjectConfigEditPreviewView {
@@ -291,7 +318,21 @@ fn config_snapshot(path: PathBuf, source: String) -> ProjectConfigSnapshot {
         .as_ref()
         .map(|project| {
             let info = project.info();
-            (info.profiles, info.publish_targets)
+            let targets = info
+                .publish_targets
+                .into_iter()
+                .enumerate()
+                .map(|(occurrence, target)| ConfigPublishTargetInfo {
+                    occurrence,
+                    kind: Some(target.kind),
+                    path: Some(target.path.clone()),
+                    resolved_path: Some(target.resolved_path),
+                    editable: true,
+                    reason: None,
+                    location: format!("publish.targets[{occurrence}]"),
+                })
+                .collect();
+            (info.profiles, targets)
         })
         .unwrap_or_else(|| raw_settings(&source, &project_root));
     ProjectConfigSnapshot {
@@ -307,7 +348,10 @@ fn config_snapshot(path: PathBuf, source: String) -> ProjectConfigSnapshot {
     }
 }
 
-fn raw_settings(source: &str, root: &Path) -> (Vec<BuildProfileInfo>, Vec<PublishTargetInfo>) {
+fn raw_settings(
+    source: &str,
+    root: &Path,
+) -> (Vec<BuildProfileInfo>, Vec<ConfigPublishTargetInfo>) {
     let Ok(value) = toml::from_str::<toml::Value>(source) else {
         return (Vec::new(), Vec::new());
     };
@@ -335,19 +379,39 @@ fn raw_settings(source: &str, root: &Path) -> (Vec<BuildProfileInfo>, Vec<Publis
         .map(|targets| {
             targets
                 .iter()
-                .filter_map(|target| {
-                    let table = target.as_table()?;
-                    let kind = match table.get("kind").and_then(toml::Value::as_str) {
-                        Some("csharp") => PublishTargetKind::CSharp,
-                        Some("binary") => PublishTargetKind::Binary,
-                        _ => return None,
+                .enumerate()
+                .map(|(occurrence, target)| {
+                    let table = target.as_table();
+                    let kind = table
+                        .and_then(|table| table.get("kind"))
+                        .and_then(toml::Value::as_str)
+                        .and_then(|kind| match kind {
+                            "csharp" => Some(PublishTargetKind::CSharp),
+                            "binary" => Some(PublishTargetKind::Binary),
+                            _ => None,
+                        });
+                    let path = table
+                        .and_then(|table| table.get("path"))
+                        .and_then(toml::Value::as_str)
+                        .map(str::to_owned);
+                    let reason = if table.is_none() {
+                        Some("target is not a TOML table".to_owned())
+                    } else if kind.is_none() {
+                        Some("target kind is unsupported; preserve and repair it outside this v1 form".to_owned())
+                    } else if path.is_none() {
+                        Some("target path is not a directly editable string".to_owned())
+                    } else {
+                        None
                     };
-                    let path = table.get("path")?.as_str()?.to_owned();
-                    Some(PublishTargetInfo {
+                    ConfigPublishTargetInfo {
+                        occurrence,
                         kind,
-                        resolved_path: root.join(&path),
+                        resolved_path: path.as_ref().map(|path| root.join(path)),
                         path,
-                    })
+                        editable: reason.is_none(),
+                        reason,
+                        location: format!("publish.targets[{occurrence}]"),
+                    }
                 })
                 .collect()
         })
@@ -653,12 +717,11 @@ mod tests {
                 temp.path(),
                 &snapshot.base_source,
                 &snapshot.base_content_identity,
-                &ProjectConfigEditRequest::AddProfile {
+                &[ProjectConfigEditRequest::AddProfile {
                     name: "prod".into(),
                     include_tags: vec!["release".into()],
                     exclude_tags: Vec::new(),
-                },
-                None,
+                }],
             )
             .expect("conflict report");
         assert_eq!(report.status, ConfigSaveStatus::Conflict);
@@ -667,6 +730,70 @@ mod tests {
                 .expect("read")
                 .contains("# external")
         );
+    }
+
+    #[test]
+    fn config_save_does_not_accept_external_identity_as_overwrite_authority() {
+        let temp = project();
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_project_config(Some(temp.path()), temp.path())
+            .expect("snapshot");
+        fs::OpenOptions::new()
+            .append(true)
+            .open(temp.path().join("masterdata.toml"))
+            .expect("open")
+            .write_all(b"\n# external\n")
+            .expect("external edit");
+        let report = service
+            .save_project_config_edit(
+                Some(temp.path()),
+                temp.path(),
+                &snapshot.base_source,
+                &snapshot.base_content_identity,
+                &[ProjectConfigEditRequest::AddProfile {
+                    name: "prod".into(),
+                    include_tags: vec!["release".into()],
+                    exclude_tags: Vec::new(),
+                }],
+            )
+            .expect("conflict report");
+        assert_eq!(report.status, ConfigSaveStatus::Conflict);
+        assert!(fs::read_to_string(temp.path().join("masterdata.toml"))
+            .expect("read")
+            .contains("# external"));
+    }
+
+    #[test]
+    fn sequential_config_edits_are_composed_from_one_base() {
+        let temp = project();
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_project_config(Some(temp.path()), temp.path())
+            .expect("snapshot");
+        let report = service
+            .save_project_config_edit(
+                Some(temp.path()),
+                temp.path(),
+                &snapshot.base_source,
+                &snapshot.base_content_identity,
+                &[
+                    ProjectConfigEditRequest::AddProfile {
+                        name: "prod".into(),
+                        include_tags: vec!["release".into()],
+                        exclude_tags: Vec::new(),
+                    },
+                    ProjectConfigEditRequest::AddPublishTarget {
+                        kind: masterdata_core::PublishTargetKind::CSharp,
+                        path: "Generated".into(),
+                    },
+                ],
+            )
+            .expect("save");
+        assert_eq!(report.status, ConfigSaveStatus::Success);
+        let saved = fs::read_to_string(temp.path().join("masterdata.toml")).expect("read");
+        assert!(saved.contains("[build.profiles.prod]"));
+        assert!(saved.contains("[[publish.targets]]"));
     }
 
     #[test]
@@ -682,12 +809,11 @@ mod tests {
                 temp.path(),
                 &snapshot.base_source,
                 &snapshot.base_content_identity,
-                &ProjectConfigEditRequest::AddProfile {
+                &[ProjectConfigEditRequest::AddProfile {
                     name: "prod".into(),
                     include_tags: vec!["Not-valid".into()],
                     exclude_tags: Vec::new(),
-                },
-                None,
+                }],
             )
             .expect("domain-invalid config is a saved state");
         assert_eq!(report.status, ConfigSaveStatus::Success);

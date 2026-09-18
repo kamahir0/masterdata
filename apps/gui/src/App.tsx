@@ -1230,8 +1230,10 @@ function App() {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (surface === "settings") void settingsSaveRef.current();
-        else if (activePath) void saveFile(activePath);
+        if (surface === "settings") {
+          if (deliveryBusy) showNotice("Settings Save is blocked while Build or Publish is running.");
+          else void settingsSaveRef.current();
+        } else if (activePath) void saveFile(activePath);
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         if (isTextEditingTarget(event.target)) return;
         event.preventDefault();
@@ -1247,7 +1249,7 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activePath, redoBuffer, saveFile, surface, undoBuffer]);
+  }, [activePath, deliveryBusy, redoBuffer, saveFile, showNotice, surface, undoBuffer]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1319,12 +1321,13 @@ function App() {
   }, [projectRoot, workspace]);
 
   const runBuild = useCallback(async () => {
-    if (!workspace?.capabilities.build || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading") return;
+    if (!workspace?.capabilities.build || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading" || deliveryBusy) return;
     if (dirtyCount > 0) {
       showNotice("Build uses saved source only; unsaved changes are not included.");
     }
     const generation = workspaceGeneration.current;
     setBuildState({ kind: "loading" });
+    setDeliveryBusy(true);
     try {
       const response = await invoke<BuildResponse>("build", {
         projectPath: projectRoot,
@@ -1338,8 +1341,10 @@ function App() {
       if (workspaceGeneration.current !== generation) return;
       setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });
       setProblemsOpen(true);
+    } finally {
+      setDeliveryBusy(false);
     }
-  }, [sourceMutationBlocked, buildState.kind, dirtyCount, projectRoot, selectedProfile, showNotice, workspace]);
+  }, [sourceMutationBlocked, buildState.kind, deliveryBusy, dirtyCount, projectRoot, selectedProfile, showNotice, workspace]);
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
     setActivePath(file.path);
@@ -1559,7 +1564,7 @@ function App() {
           <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
             {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
           </Button>
-          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || !workspace?.capabilities.build || buildState.kind === "loading"}>
+          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || !workspace?.capabilities.build || buildState.kind === "loading"}>
             {buildState.kind === "loading" ? "Building…" : "Build"}
           </Button>
         </div>
@@ -1603,7 +1608,7 @@ function App() {
         <ProjectSettingsPanel
           active={surface === "settings"}
           projectRoot={projectRoot}
-          mutationBlocked={mutationBlocked}
+          mutationBlocked={mutationBlocked || deliveryBusy}
           onDirtyChange={setSettingsDirty}
           onRegisterSave={registerSettingsSave}
           onSaved={refreshWorkspaceAfterConfigSave}

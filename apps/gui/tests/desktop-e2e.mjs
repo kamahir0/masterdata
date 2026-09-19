@@ -12,7 +12,7 @@ if (!appBinary || !projectRoot) {
 }
 
 const evidence = {
-  candidate: process.env.GITHUB_SHA ?? "local",
+  candidate: process.env.CANDIDATE_SHA ?? process.env.GITHUB_SHA ?? "local",
   platform: process.platform,
   node: process.version,
   appBinary,

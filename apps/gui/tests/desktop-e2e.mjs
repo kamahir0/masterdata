@@ -131,22 +131,13 @@ async function waitGone(xpath, timeoutMs = 20_000) {
   throw new Error(`timed out waiting for xpath to disappear: ${xpath}`);
 }
 
-async function enabled(id) {
-  const result = await request(
-    "GET",
-    `/session/${sessionId}/element/${id}/enabled`,
-    undefined,
-    { allowError: true },
-  );
-  return result.ok && result.payload?.value === true;
-}
-
 async function click(xpath, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
+  let lastError = "";
   while (Date.now() < deadline) {
     const ids = await elements(xpath);
     for (const id of ids) {
-      if ((await displayed(id)) && (await enabled(id))) {
+      if (await displayed(id)) {
         const result = await request(
           "POST",
           `/session/${sessionId}/element/${id}/click`,
@@ -154,11 +145,12 @@ async function click(xpath, timeoutMs = 20_000) {
           { allowError: true },
         );
         if (result.ok) return id;
+        lastError = JSON.stringify(result.payload);
       }
     }
     await sleep(200);
   }
-  throw new Error(`timed out waiting to click enabled xpath: ${xpath}`);
+  throw new Error(`timed out clicking xpath: ${xpath}; last WebDriver error: ${lastError}`);
 }
 
 async function fill(xpath, value, timeoutMs) {

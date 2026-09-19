@@ -59,7 +59,7 @@ jobs:
       - name: Install Tauri WebDriver bridge
         run: |
           cargo install tauri-driver --locked
-          tauri-driver --version
+          tauri-driver --help | head -n 2
           command -v WebKitWebDriver
       - name: Run actual Desktop GUI production workflow
         env:
@@ -76,7 +76,7 @@ jobs:
             npm --version
             dotnet --version
             WebKitWebDriver --version || true
-            tauri-driver --version
+            tauri-driver --help | head -n 2
           } | tee "$EVIDENCE_DIR/environment.txt"
           dbus-run-session -- xvfb-run -a sh -c '
             set -eu

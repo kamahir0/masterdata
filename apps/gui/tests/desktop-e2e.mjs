@@ -306,8 +306,8 @@ try {
   await click("//*[@aria-label='New source artifact']");
   await waitElement("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]");
   await selectAnt("Artifact type", "Data");
-  await fill("//*[@id='creation-filename']", "items.yaml");
   await selectAnt("Existing Table", "item");
+  await fill("//*[@id='creation-filename']", "items.yaml");
   await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
   await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
   await waitElement("//*[@aria-label='Add Row']", 30_000);

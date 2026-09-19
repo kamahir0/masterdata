@@ -107,7 +107,7 @@ Human decisionはchatだけに残さずcanonical ownerへ反映する。
 
 1. `current-objective.md`のNext candidate、relevant current reality、Product Visionを必要な範囲だけ確認する。
 2. 現時点で有力な候補をsemantic label + short trade-offで比較する。recommendationは出してよいが、selected priorityとして表現しない。
-3. stable Human-facing execution summaryで、Humanに必要なpriority choice、「進める」が何を意味するか、本格実装開始有無、stop boundaryを明示して停止する（MUST）。
+3. stable Human-facing execution summaryで、Humanに必要なpriority choice、「進める」が何を意味するか、次の「進める」でコード編集がauthorizationされるか、stop boundaryを明示して停止する（MUST）。
 
 直前responseが候補比較と単一recommendationを自己完結的に提示し、`「進める」の意味`でそのcandidate選択を一意に定義している場合だけ、次の短い肯定をpriority selectionとして扱ってよい（MAY）。選択後は`current-objective.md`へdurably反映し、必要なdesign/spec activityへ進めるが、短いcontinuationだけでimplementation classへ跨がない（MUST NOT）。
 
@@ -128,18 +128,23 @@ verification後は、Blockingなし=`objective-complete`、Approved内で修正�
 
 ## Human-facing execution summary
 
-Current Objectiveのdevelopment/status/priority responseはfresh stateから次のstable Markdown順序で出す（MUST）。`objective-complete`で次候補を比較・推薦するresponseもpriority responseに含む。Humanが別formatを明示した場合だけ変更可能。
+Current Objectiveのdevelopment/status/priority responseはfresh stateから、**今回の実績**と**次の短い「進める」がauthorizationする範囲**を分けて出す（MUST）。`objective-complete`で次候補を比較・推薦するresponseもpriority responseに含む。Humanが別formatを明示した場合だけ変更可能。
 
-1. `### 次に進むと`
-2. `**現在地**`
-3. `**次にやること**`
-4. `**判断が必要**`
-5. `**「進める」の意味**`
-6. `**本格実装**`
-7. `**停止地点**`
-8. 必要な場合だけ`**実行先の目安**`
+`今回の実行結果`はこのresponseを生成するturnで実際に起きたことだけを扱い、`次の「進める」`は未来予測ではなく次の短いcontinuationに含まれるauthorizationだけを扱う。両者を混同しない（MUST）。
 
-summaryをJSON / code block等のmachine serializationで囲わない（MUST NOT）。通常`implementation-ready` / `correction-ready`だけ短いcontinuationで本格実装が始まる。
+1. `### 今回の実行結果`
+2. `**実行したこと**`: このturnで実際に行った主要作業を簡潔に示す。
+3. `**コード編集実績**`: `あり` / `なし`。このturnで実際にproduct/source code、test、実行可能script、build toolingを編集したかだけを示す。
+4. `**到達地点**`: このturn終了時点のStage / Candidate / Blockingを示す。
+5. `### 次の「進める」`
+6. `**実行すること**`: 次の短いcontinuationでauthorizationされるactivityのscopeを示す。
+7. `**コード編集**`: `あり` / `なし`。次の短いcontinuationが上記code類の編集をauthorizationするかを示す。spec / docs / Development State更新、inspection、test / CI実行・確認、review、Git metadata操作だけなら`なし`。ここが`なし`のとき、code修正の必要性を発見しても同じcontinuationで編集へ進まず、適切なboundaryで停止する（MUST）。
+8. `**判断が必要**`: 次のactivityを開始または継続するためHuman decisionが必要なら示し、なければ`なし`。
+9. `**停止地点**`: 次の短いcontinuationのauthorizationが終了するboundaryを示す。
+10. 必要な場合だけ`**その後**`: stop後に想定される次activity。これはauthorizationではない。
+11. 必要な場合だけ`**実行先の目安**`。
+
+summaryをJSON / code block等のmachine serializationで囲わない（MUST NOT）。文面や説明量を固定せず、上記の時間軸とauthorization boundaryだけをstable contractとする。
 
 ## Git delivery topology and split-mode projection
 

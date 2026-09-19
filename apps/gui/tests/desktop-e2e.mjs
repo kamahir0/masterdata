@@ -289,28 +289,28 @@ try {
 
   await click("//*[@aria-label='Add Row']");
   await fill("//*[@aria-label='new record id']", "1001");
-  await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save']", 30_000);
+  await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(path.join(projectRoot, "sources", "items.yaml"), "1001", 30_000);
   record("record-edited-and-saved-through-gui");
 
   await click("//button[normalize-space(.)='Settings']");
   await waitElement("//section[@aria-label='Project Settings']");
   await fill("//*[@aria-label='Profile name']", "prod");
-  await click("//button[normalize-space(.)='Apply Profile to buffer']");
+  await click("//button[normalize-space(.)='Apply Profile to buffer' and not(@disabled)]");
   await fill("//*[@aria-label='Publish target path']", "delivery");
-  await click("//button[normalize-space(.)='Apply Target to buffer']");
-  await click("//section[@aria-label='Configuration diff']//button[normalize-space(.)='Save Settings']", 30_000);
+  await click("//button[normalize-space(.)='Apply Target to buffer' and not(@disabled)]");
+  await click("//section[@aria-label='Configuration diff']//button[normalize-space(.)='Save Settings' and not(@disabled)]", 30_000);
   await waitElement("//section[@aria-label='Project Settings']//*[normalize-space(.)='Saved']", 30_000);
   await waitFileContains(path.join(projectRoot, "masterdata.toml"), "delivery", 30_000);
   record("settings-profile-and-publish-target-saved-through-gui");
 
   await click("//button[normalize-space(.)='Delivery']");
   await waitElement("//section[@aria-label='Build and Publish']");
-  await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Build saved input']");
+  await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Build saved input' and not(@disabled)]");
   await waitText("Build succeeded", 180_000);
   record("build-completed-through-gui");
 
-  await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Publish preview']");
+  await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Publish preview' and not(@disabled)]");
   await waitElement("//section[@aria-label='Publish preview']", 30_000);
 
   const delivery = path.join(projectRoot, "delivery");
@@ -323,16 +323,16 @@ try {
   );
   record("external-publish-destination-change-injected");
 
-  await click("//section[@aria-label='Publish preview']//button[normalize-space(.)='Confirm Publish']");
+  await click("//section[@aria-label='Publish preview']//button[normalize-space(.)='Confirm Publish' and not(@disabled)]");
   await waitText("E-PUBLISH-PREVIEW-STALE-DESTINATION", 30_000);
   if (fs.readFileSync(external, "utf8") !== "external") {
     throw new Error("stale Publish mutated the external managed file");
   }
   record("stale-publish-rejected-without-mutation");
 
-  await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Publish preview']");
+  await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Publish preview' and not(@disabled)]");
   await waitElement("//section[@aria-label='Publish preview']", 30_000);
-  await click("//section[@aria-label='Publish preview']//button[normalize-space(.)='Confirm Publish']");
+  await click("//section[@aria-label='Publish preview']//button[normalize-space(.)='Confirm Publish' and not(@disabled)]");
   await waitText("Publish completed", 60_000);
   if (fs.existsSync(external)) {
     throw new Error("fresh Publish did not retire the reviewed managed external file");

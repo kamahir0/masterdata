@@ -37,7 +37,7 @@ Status: Proposed
 
 ### SOURCE-EDIT-017
 
-既存recordのPrimary KeyまたはSecondary Keyを構成するfield valueを編集する場合、そのeditは通常のexisting `RecordValueEdit`と同じexact base snapshot、source provenance、resolved typed value、source-preserving candidate、file単位Save、lost-update preflight、および`Success / Conflict / Failure / Outcome Unknown` lifecycleを使用しなければならない（MUST）。
+既存recordのPrimary KeyまたはSecondary Keyを構成するfield valueを編集する場合、そのeditは通常のexisting record value editと同じexact base snapshot、source provenance、resolved typed value、source-preserving candidate、file単位Save、lost-update preflight、および`Success / Conflict / Failure / Outcome Unknown` lifecycleを使用しなければならない（MUST）。
 
 変更前または変更後のPrimary / Secondary Key valueをrecord occurrence identityとして使用してはならず（MUST NOT）、edit targetをkey valueだけで再検索または再特定してはならない（MUST NOT）。
 
@@ -51,7 +51,7 @@ key value editによってcurrent candidateがPrimary Key uniqueness、unique Se
 
 base snapshotに存在するexisting recordでは、shared applicationが`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくsupported resolved value shapeとして安全にauthoring可能と報告するfieldを、Primary / Secondary Key membershipだけを理由にread-onlyとしてはならない（MUST NOT）。Primitive、Value Object、normal Enum等、key componentとしてApprovedなshapeを含め、resolved value shapeに従ってeditableとして扱わなければならない（MUST）。
 
-unsupported、unresolved、missing source member、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldは、key membershipにかかわらずread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
+unsupported、unresolved、missing source member、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldは、key membershipにかかわらずread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。Primary / Secondary Key構成fieldはeditableになった後もkey membershipを利用者が識別できなければならない（MUST）。
 
 base snapshotに存在しないAdded record draftは既存Record Mutation contractのediting scopeを維持する。Added draftがSave成功してexisting recordになった後も、上記existing-record ruleに従う。
 
@@ -90,7 +90,24 @@ None identified. shared Rust core/application ownership、Tauri thin adapter、Y
 
 ## レビュー（Review）
 
-Pending fresh `review-spec` pass after Human scope selection.
+### Blocking Issues
+
+None identified.
+
+### Non-blocking Issues
+
+- `GUI-DATA-STATE-001`はread-onlyからeditableへのmaterial semantic changeだが、同RequirementはData Editorのfield editability boundaryを継続して所有し、旧meaningは本change artifactに履歴として残るためIDを維持する。
+- batch pathは`AUTHORING-BATCH-001`でexisting keyを明示的に除外しているため、direct edit permissionがsingle-cell pasteへ漏れないことをimplementation regressionで固定する必要がある。
+
+### Questions
+
+None identified.
+
+### Approved as Proposed
+
+**Yes**。Human-selected A2 + B1 + C1を正確に反映し、Source Record Editのprovenance / source preservation / validation-save separationを維持したままdirect key editだけを追加している。Human Approvalとcanonical applicationはまだ必要。
+
+Review dimensions: Intent fidelity=Pass、Internal consistency=Pass、Cross-spec consistency=Pass、Terminology=Pass、Normative strength=Pass、Testability=Pass、Backward compatibility=Pass with explicit source-data impact、Unresolved ambiguity=None、Implementation leakage=None identified、Unrequested behavior=None identified。
 
 ## 承認記録（Approval Record）
 

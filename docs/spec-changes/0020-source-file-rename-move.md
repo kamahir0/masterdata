@@ -43,7 +43,7 @@ Status: Proposed
 
 ### SOURCE-PATH-001
 
-source file rename / moveは、existing canonical source fileのstorage pathだけを変更するsource mutation operationでなければならない（MUST）。Success時のdestination source bytesはoperation開始時に確定したsource bytesとbyte-for-byte一致しなければならず（MUST）、Table / Type等のdeclared logical identity、YAML content、record order、comments、formattingをrename / moveだけを理由に変更してはならない（MUST NOT）。
+source file rename / moveは、existing canonical source fileのstorage pathだけを変更するsource mutation operationでなければならない（MUST）。Success時のdestination source bytesはmutation直前のpreflightで確定したsource bytesとbyte-for-byte一致しなければならず（MUST）、Table / Type等のdeclared logical identity、YAML content、record order、comments、formattingをrename / moveだけを理由に変更してはならない（MUST NOT）。
 
 source path、filename、directoryから新しいdomain identityまたはsemantic renameを導出してはならない（MUST NOT）。
 
@@ -51,7 +51,7 @@ source path、filename、directoryから新しいdomain identityまたはsemanti
 
 sourceとdestinationは同じconfigured source root内でresolveしなければならない（MUST）。configured source roots間move、source root外destination、absolute destination、path traversal、symlinkを通じたworkspace authority escapeをinitial P4-B operationとして許可してはならない（MUST NOT）。
 
-destination fileはMasterdata source discoveryの対象として有効な`.yaml`または`.yml` pathでなければならない（MUST）。rename / moveによってsource fileを非source extensionへ暗黙に退避するoperationとして使用してはならない（MUST NOT）。
+destination fileはMasterdata source discoveryの対象として有効な`.yaml`または`.yml` pathでなければならない（MUST）。rename / moveによってsource fileを非source extensionへ暗黙に退避するoperationとして使用してはならない（MUST NOT）。destination parent folderはoperation開始前に存在しなければならず（MUST）、rename / moveがmissing folderを暗黙に作成してはならない（MUST NOT）。
 
 ### SOURCE-PATH-003
 
@@ -63,7 +63,7 @@ case-only renameでは、host上でsource自身がdestination lookupにも現れ
 
 ### SOURCE-PATH-004
 
-case-only rename（例: `Foo.yaml`から`foo.yaml`）は、source file rename / move capabilityを提供するsupported Desktop環境で通常のrename requestとして扱えなければならない（MUST）。case-insensitive filesystemであることだけを理由にunsupportedまたはno-opとして扱ってはならない（MUST NOT）。
+case-only rename（例: `Foo.yaml`から`foo.yaml`）は、source file rename / move capabilityを提供するhostで通常のrename requestとして扱えなければならない（MUST）。case-insensitive filesystemであることだけを理由にunsupportedまたはno-opとして扱ってはならない（MUST NOT）。
 
 exact intermediate path、host primitive、temporary name等のmechanismはimplementation detailとし、利用者が要求していないtemporary source entryをSuccess後に残してはならない（MUST NOT）。
 
@@ -71,10 +71,10 @@ exact intermediate path、host primitive、temporary name等のmechanismはimple
 
 resultは少なくとも`Success`、`Conflict`、`Failure`、`Outcome Unknown`を観測上区別できなければならない（MUST）。
 
-- `Success`: old source pathは存在せず、destinationにcomplete source bytesが存在する。
-- `Conflict`: source/destination preflightによりmutation開始前に停止した。
-- `Failure`: requested path mutationが成功しなかったことを確定できる。
-- `Outcome Unknown`: mutation開始後のhost/I/O failure等によりold source / destinationの最終状態を安全に断定できない。
+- `Success`: workspace listing / host directory stateがrequested destination path（case-only renameではrequested destination spellingを含む）をcurrent source locationとして示し、destinationにpreflight-confirmed complete source bytesが存在し、sourceとは別のold entryが残っていない。
+- `Conflict`: source/destination preflightによりmutation開始前に停止し、source entryとdestination entryを変更していない。
+- `Failure`: requested path mutationが成功しなかったことを確定でき、preflight-confirmed sourceがold locationにcompleteなまま存在し、distinct destination entryを作成・変更していないことを確認できる。
+- `Outcome Unknown`: mutation開始後のhost/I/O failure等によりold source / destinationの最終状態を上記`Success`または`Failure`として安全に断定できない。
 
 `Outcome Unknown`後はblind retryしてはならず（MUST NOT）、old source pathとdestinationのactual stateを再取得してから次のmutationへ進まなければならない（MUST）。
 
@@ -157,7 +157,29 @@ None identified. filesystem/domain responsibility、shared Rust application boun
 
 ## レビュー（Review）
 
-Pending fresh `review-spec` pass after Human scope selection.
+### Blocking Issues
+
+None identified.
+
+Fresh reviewでは、初版Proposedの`SOURCE-PATH-005`がcase-insensitive filesystemでcase-only renameのSuccessを「old pathが存在しない」と判定しており、G1と両立しない問題を検出した。Successをdirectory/workspace上のrequested destination spellingとdistinct old entryの有無で定義し直し、解消した。
+
+また、known `Failure`のpostconditionが弱くpartial/destructive stateをFailureとして確定できる余地があったため、old source complete + distinct destination unchangedを確認できる場合だけFailureとし、それ以外をOutcome Unknownへ送るよう明確化した。これは新しいproduct choiceではなく、選択済みno-overwrite/data-safety boundaryをtestableにしたもの。
+
+### Non-blocking Issues
+
+- case-only renameのtemporary/intermediate path strategyはhost/filesystem依存であり、specificationはobservable final stateだけを固定している。
+- source path mutationは新canonical ownerを必要とするが、既存Runtime Host / Project identity architectureを変更しないため新ADRは不要。
+- invalid YAML等のsemantic validityをrename/move preconditionにするruleは追加していない。P4-Bはpath mutation contractであり、semantic validationの新gateを発明しない。
+
+### Questions
+
+None identified.
+
+### Approved as Proposed
+
+**Yes**。Human-selected D1 + E1 + F1 + G1を反映し、same-root/no-overwrite、dirty pre-resolution、case-only behavior、Outcome Unknown recoveryがtestableなdata-safety contractとして閉じている。Human Approvalとcanonical applicationはまだ必要。
+
+Review dimensions: Intent fidelity=Pass、Internal consistency=Pass、Cross-spec consistency=Pass、Terminology=Pass、Normative strength=Pass、Testability=Pass、Backward compatibility=Pass within selected scope、Unresolved ambiguity=None、Implementation leakage=None identified、Unrequested behavior=None identified。
 
 ## 承認記録（Approval Record）
 

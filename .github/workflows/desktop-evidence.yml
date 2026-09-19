@@ -52,10 +52,8 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
-      - name: Build frontend and actual Desktop binary
-        run: |
-          npm run frontend:build
-          cargo build --release -p masterdata-gui
+      - name: Build actual Desktop binary with production WebView assets
+        run: npm --workspace @masterdata/gui run tauri -- build --no-bundle
       - name: Install Tauri WebDriver bridge
         run: |
           cargo install tauri-driver --locked

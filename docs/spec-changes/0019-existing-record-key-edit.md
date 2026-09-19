@@ -1,102 +1,97 @@
 # 仕様変更: Existing record key field edit
 
-Status: Draft
+Status: Proposed
 
 ## Affected Specifications
 
-- `docs/gui/data-editor/spec.md` — `Status: Approved`
-  - `GUI-DATA-STATE-001`
 - `docs/specs/source-edit.md` — `Status: Approved`
-  - `SOURCE-EDIT-001`, `SOURCE-EDIT-002`, `SOURCE-EDIT-004`, `SOURCE-EDIT-005`, `SOURCE-EDIT-008..016`
-  - new candidate: `SOURCE-EDIT-017`
-- scope decision次第で `docs/specs/authoring-batch.md` / `docs/gui/data-editor/grid-authoring.md` もaffectedになる。
+  - new requirement: `SOURCE-EDIT-017`
+- `docs/gui/data-editor/spec.md` — `Status: Approved`
+  - changed requirement: `GUI-DATA-STATE-001`
+  - changed requirement: `GUI-DATA-EDIT-001`
+  - initial non-goalからexisting record key field editを除外
+- `docs/specs/authoring-batch.md` — `Status: Approved`
+  - `AUTHORING-BATCH-001`のexisting key batch-edit禁止は変更しない
+- `docs/gui/data-editor/grid-authoring.md` — `Status: Approved`
+  - batch mutation contractは変更しない
 
 ## 根拠と分類（Source Evidence and Classification）
 
 - **Decision / Human priority**: 2026-09-19、Desktop制作v1完了後の次priorityとしてP4を選択し、existing record key field editをP4-Aとして仕様化する。
-- **Constraint / existing Approved contract**: `GUI-DATA-STATE-001`はbase snapshotに存在するexisting recordのPrimary / Secondary Key構成fieldをread-onlyとする。Added record draftだけは初回Save前にkey field入力を許す。
+- **Decision / Human scope**: existing recordのPrimary Key / Secondary Key構成fieldをdirect single-cell editの対象にする。
+- **Decision / Human scope**: paste / fill / range Set Null等のAuthoring Batchはinitial scopeへ含めない。existing keyをbatch edit対象外とする`AUTHORING-BATCH-001`を維持する。
+- **Decision / Human scope**: key edit専用の追加modal confirmationを必須にしない。通常のtyped cell edit / validation / Save lifecycleへ統合する。
 - **Constraint / existing Approved contract**: `SOURCE-EDIT-001`はedit targetをexact base snapshot + source provenanceで識別し、Primary Key valueだけでtargetを特定することを禁止する。
-- **Constraint / existing Approved contract**: `SOURCE-EDIT-004`はdomain validation errorだけを理由にSaveを拒否しない。key uniqueness violation等が発生しても、このcontractを変更する明示decisionがない限りvalidationとsource Saveを分離する。
+- **Constraint / existing Approved contract**: `SOURCE-EDIT-004`はdomain validation errorだけを理由にSaveを拒否しない。
 - **Constraint / existing Approved contract**: `SOURCE-EDIT-005..016`のsource preservation、lossless typed value、lost-update preflight、result lifecycle、host boundaryを維持する。
 - **Constraint / terminology**: recordのkey field value editとMessagePack field `key`、Primary / Secondary Key declaration mutationは別conceptである。
-- **Open Question**: P4-AがPrimary Key構成fieldだけを対象にするか、Secondary Key構成fieldも同じeditable scopeに含めるかは未決定。
-- **Open Question**: single-cell editだけを許可するか、paste / fill / range Set Null等のbatch authoringにもkey fieldを含めるかは未決定。
 
-## 提案する差分（Proposed Delta）
+## Confirmed Decisions
 
-以下はHuman decisionでscopeが確定するまでDraft candidateであり、implementation authorityではない。
+- Primary Key / Secondary Key構成fieldを同じexisting-record direct edit scopeへ含める。
+- P4-Aではdirect single-cell editだけを追加し、existing keyへのbatch mutationは追加しない。
+- key edit専用のmodal confirmationをSaveやedit確定の前提にしない。
+- target occurrence identity、validation / Save分離、source-preserving patch、Conflict lifecycleは既存Source Record Edit contractを維持する。
 
-### SOURCE-EDIT-017（candidate）
+## New Requirements
 
-ApprovedなGUI/application contractがexisting recordのkey構成field editを許可する場合、そのvalue editは通常のexisting `RecordValueEdit`と同じexact base snapshot、source provenance、resolved typed value、source-preserving candidate、file Save、lost-update preflight、result lifecycleを使用しなければならない（MUST）。
+### SOURCE-EDIT-017
 
-key value変更前後の値をrecord occurrence identityとして使用してはならず（MUST NOT）、edit targetをPrimary / Secondary Key valueだけで再検索してはならない（MUST NOT）。
+既存recordのPrimary KeyまたはSecondary Keyを構成するfield valueを編集する場合、そのeditは通常のexisting `RecordValueEdit`と同じexact base snapshot、source provenance、resolved typed value、source-preserving candidate、file単位Save、lost-update preflight、および`Success / Conflict / Failure / Outcome Unknown` lifecycleを使用しなければならない（MUST）。
 
-key value editによってcurrent candidateがPrimary Key / unique Secondary Key等のdomain validationに違反しても、`SOURCE-EDIT-004`のvalidation / Save分離を変更してはならない（MUST NOT）。Save successはcandidateがvalidであることを意味しない。
+変更前または変更後のPrimary / Secondary Key valueをrecord occurrence identityとして使用してはならず（MUST NOT）、edit targetをkey valueだけで再検索または再特定してはならない（MUST NOT）。
 
-### GUI-DATA-STATE-001（changed candidate）
+key value editによってcurrent candidateがPrimary Key uniqueness、unique Secondary Key、またはその他のdomain validationに違反しても、`SOURCE-EDIT-004`のvalidation / Save分離を変更してはならない（MUST NOT）。source commit safetyを満たす限り、validation errorだけを理由にSaveを拒否してはならない（MUST NOT）。Save successはcandidateがdomain-validであることを意味しない。
 
-現在の「existing recordのPrimary / Secondary Key構成fieldはread-only」というblanket ruleを、Humanが選択したP4-A scopeに限って解除する。
+本requirementはMessagePack field `key`、`primaryKey.fields`、`secondaryKeys` declarationのschema mutationを許可しない（MUST NOT）。
 
-editable対象はshared applicationがresolved value shapeをlosslessにauthoring可能と報告するfieldに限り、unsupported / unresolved / unsafe source shapeはkey fieldであってもread-onlyを維持する。frontendがkey compatibilityやsource mutation safetyを独自判定してはならない。
+## Changed Requirements
 
-Added record draftの既存exceptionと、Save後にexisting recordへ移行するlifecycleは維持する。
+### GUI-DATA-STATE-001
 
-### Batch authoring
+base snapshotに存在するexisting recordでは、shared applicationが`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくsupported resolved value shapeとして安全にauthoring可能と報告するfieldを、Primary / Secondary Key membershipだけを理由にread-onlyとしてはならない（MUST NOT）。Primitive、Value Object、normal Enum等、key componentとしてApprovedなshapeを含め、resolved value shapeに従ってeditableとして扱わなければならない（MUST）。
 
-`Authoring Batch` / `GUI-GRID-001..006`へのdeltaは、key fieldをbatch対象へ含めるHuman decisionがあるまで追加しない。
+unsupported、unresolved、missing source member、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldは、key membershipにかかわらずread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
 
-## 互換性（Compatibility）
+base snapshotに存在しないAdded record draftは既存Record Mutation contractのediting scopeを維持する。Added draftがSave成功してexisting recordになった後も、上記existing-record ruleに従う。
 
-- YAML serialized shape、Table identity、MessagePack field `key`、Primary / Secondary Key declaration syntax、generated C# / binary formatは変更しない。
-- existing record valueが変わるため、Build Selection後のlogical dataset、Primary Key / unique Secondary Key constraint、generated binary内容は利用者のsource edit結果として変化し得る。
+### GUI-DATA-EDIT-001
+
+利用者は`GUI-DATA-STATE-001`でeditableなcellをdirect single-cell editingから変更できなければならない（MUST）。Primary / Secondary Key構成fieldだけを理由に、key edit専用の追加modal confirmationをedit確定またはSaveの必須前提にしてはならない（MUST NOT）。
+
+key membershipの表示、validation marker、Problemsへのdiagnostic表示は通常のData Editor contractに従う。key editを行ったことだけを理由にSave、Build、Publish、Migrationを自動実行してはならない（MUST NOT）。
+
+### Authoring Batch boundary
+
+`AUTHORING-BATCH-001`の「existing keyはbatch編集対象外」を維持する。したがってP4-Aのexisting key editabilityから、paste、fill、range Set Null、single-cell pasteを含むAuthoring Batchへのkey mutation permissionを導出してはならない（MUST NOT）。read-only keyのcopy permissionは既存`AUTHORING-BATCH-004`を変更しない。
+
+## Open Questions
+
+None identified for P4-A initial scope.
+
+## Potential ADRs
+
+None identified. shared Rust core/application ownership、Tauri thin adapter、YAML Source of Truthの既存architectureを変更しない。
+
+## Compatibility Impact
+
+- YAML serialized shape、Table identity、MessagePack field `key`、Primary / Secondary Key declaration syntax、generated API shape、binary formatを変更しない。
+- 利用者がexisting record key valueを変更できるため、Build Selection後のlogical dataset、lookup value、canonical record ordering、uniqueness validation、生成binary contentはsource edit結果として変化し得る。
 - target occurrence identityはsource provenanceのまま維持し、変更前/変更後key valueをpersistent edit identityへ昇格させない。
-- schema migrationやreleased binary compatibility policyはこのchangeで追加しない。
+- existing sourceを編集しない限り互換性影響はない。schema migrationやreleased binary compatibility policyは追加しない。
 
-## 受け入れと実装への影響（Acceptance and Implementation Impact）
+## Implementation Impact
 
-scope確定後、少なくとも次をevidence化する。
-
-- `masterdata-core/src/source_edit.rs`の現在のnon-key-only editable field filterを、Approved scopeに合わせて変更し、source provenanceだけでtarget occurrenceを保持する。
-- `masterdata-app/src/authoring.rs`のcolumn/cell capabilityをshared ruleから返し、frontendへkey edit semanticsを複製しない。
-- Data EditorでApproved scopeのexisting key fieldだけがeditableになり、unsupported shapeはread-onlyを維持する。
-- key value edit後にduplicate Primary Key / unique Secondary Key等のdiagnosticが発生しても、validationだけを理由にSaveを拒否しない。
-- Save / Conflict / explicit Overwrite / Failure / Outcome Unknown、external edit、Undo/Redoのexisting lifecycleを回帰する。
-- batch scopeを採用した場合だけ、Authoring BatchとGrid Authoringへfocused regressionを追加する。
-
-## 未解決事項（Open Questions）
-
-1. **Key scope**: existing recordのPrimary Key構成fieldだけをeditableにするか、Primary + Secondary Key構成fieldを対象にするか。
-2. **Batch scope**: P4-A initial sliceはsingle-cell editに限定するか、paste / fill / range Set Null等も同時に許可するか。
-3. **UX warning**: key edit開始時またはSave時に、record lookup / ordering / uniquenessへ影響し得ることを追加confirmation / warningとして要求するか。既存contractからは決まらない。
-
-これらはobservable behaviorを変えるため、Human decisionなしに解決しない。
+- `masterdata-core/src/source_edit.rs`: current non-key-only editable field filterを変更し、resolved supported fieldをkey membershipにかかわらずdirect source edit可能にする。batch permissionとは分離する。
+- `masterdata-app/src/authoring.rs`: Data Editor column/cell capabilityをshared ruleから返し、key membershipをpresentation metadataとして保持しつつdirect editを許可する。
+- React Data Editor: direct typed editへkey fieldを含め、key専用modalを追加しない。existing batch preview pathはkey targetを引き続き拒否する。
+- Tests: PK / Secondary Key direct edit、composite key、duplicate uniqueness diagnostic + Save、same-key no-op、Conflict / Overwrite / Failure / Outcome Unknown、Undo/Redo、batch key rejectionをfocused regressionで保護する。
+- .NET adapter、Build/Publish implementation、fixtures formatの変更は原則不要。必要なend-to-end evidenceはtemporary workspaceを使用する。
 
 ## レビュー（Review）
 
-### Blocking Issues
-
-- **Key scope未決定**: Primary Keyだけか、Primary + Secondary Key構成fieldかで`GUI-DATA-STATE-001`のeditable scopeが変わる。P4というlabelだけから一方を選べない。
-- **Batch scope未決定**: single-cellだけか、paste / fill / range Set Nullにもkey fieldを含めるかでAuthoring Batch / Grid Authoringのaffected contractが変わる。
-- **Key-edit UX未決定**: 通常cell editと同じinteractionにするか、key変更に追加warning / confirmationを要求するかはsource evidenceから決まらない。
-
-### Non-blocking Issues
-
-- current implementationは`masterdata-core/src/source_edit.rs`と`masterdata-app/src/authoring.rs`の両方でkey fieldをnon-editableにしている。これはApproved contractに一致するcurrent realityであり、新behaviorのauthorityにはしない。
-- key edit後のuniqueness violationをvalidation diagnosticとして扱いSave自体をblockしない点は、既存`SOURCE-EDIT-004`を維持する限り整合する。
-
-### Questions
-
-1. Primary Keyだけか、Primary + Secondary Keyか。
-2. single-cellだけか、batch authoringも含むか。
-3. 追加warning / confirmationをmandatoryにするか。
-
-### Approved as Proposed
-
-**No**。P4-Aのpriority intentと既存safety contractへの整合は確認できるが、上記3点がobservable behaviorを変えるため、Human decision前に`Proposed`へ進めない。
-
-Review dimensions: Intent fidelity=Pass、Internal consistency=Pass for Draft、Cross-spec consistency=Pass、Terminology=Pass、Normative strength=Pass for candidate wording、Testability=Pass after scope decision、Backward compatibility=Pass with noted data-content impact、Unresolved ambiguity=Blocking 3件、Implementation leakage=None identified、Unrequested behavior=None identified。
+Pending fresh `review-spec` pass after Human scope selection.
 
 ## 承認記録（Approval Record）
 
-未承認。
+未承認。Human maintainerによる明示Approval後にのみcanonical specificationへ適用する。

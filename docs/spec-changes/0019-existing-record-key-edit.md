@@ -112,5 +112,5 @@ Review dimensions: Intent fidelity=Pass、Internal consistency=Pass、Cross-spec
 ## 承認記録（Approval Record）
 
 - Human approval: 2026-09-20 JST
-- Canonical application: this artifact was changed to `Applied` in the same semantic commit that applied `SOURCE-EDIT-017`, `GUI-DATA-STATE-001`, and `GUI-DATA-EDIT-001` to their Approved canonical owners.
+- Canonical application commit: `5ce8e0e8154e3d4f152c883f88bac34537d89ca6` — applied `SOURCE-EDIT-017`, `GUI-DATA-STATE-001`, and `GUI-DATA-EDIT-001` to their Approved canonical owners.
 - Implementation authority: canonical Approved specifications only; this artifact remains an audit record.

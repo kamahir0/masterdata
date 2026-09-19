@@ -184,5 +184,5 @@ Review dimensions: Intent fidelity=Pass、Internal consistency=Pass、Cross-spec
 ## 承認記録（Approval Record）
 
 - Human approval: 2026-09-20 JST
-- Canonical application: this artifact was changed to `Applied` in the same semantic commit that added the Approved `docs/specs/source-path-mutation.md` owner and applied the Explorer / Source Creation routing delta.
+- Canonical application commit: `5ce8e0e8154e3d4f152c883f88bac34537d89ca6` — added the Approved `docs/specs/source-path-mutation.md` owner and applied the Explorer / Source Creation routing delta.
 - Implementation authority: canonical Approved specifications only; this artifact remains an audit record.

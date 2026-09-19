@@ -897,7 +897,10 @@ mod desktop_workflow_tests {
     #[test]
     fn desktop_workflow_reaches_build_publish_and_stale_recovery() {
         let temp = tempfile::tempdir().expect("desktop scenario");
-        let temp_root = temp.path().canonicalize().expect("canonical desktop scenario root");
+        let temp_root = temp
+            .path()
+            .canonicalize()
+            .expect("canonical desktop scenario root");
         let root = temp_root.join("project");
         let init = create_project(ProjectInitRequest {
             destination: root.clone(),

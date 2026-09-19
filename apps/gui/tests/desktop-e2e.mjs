@@ -200,6 +200,22 @@ async function waitText(text, timeoutMs = 20_000) {
   return waitElement(`//*[contains(normalize-space(.), ${xpathLiteral(text)})]`, timeoutMs);
 }
 
+function findUniqueFile(root, basename) {
+  const matches = [];
+  const visit = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (entry.name === basename) matches.push(full);
+    }
+  };
+  visit(root);
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one ${basename} under ${root}, found ${matches.length}: ${matches.join(", ")}`);
+  }
+  return matches[0];
+}
+
 async function waitFileContains(filePath, fragment, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -285,13 +301,14 @@ try {
   await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
   await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
   await waitElement("//*[@aria-label='Add Row']", 30_000);
-  record("data-source-created-through-gui");
+  const dataFile = findUniqueFile(projectRoot, "items.yaml");
+  record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
   await fill("//*[@aria-label='new record id']", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
-  await waitFileContains(path.join(projectRoot, "sources", "items.yaml"), "1001", 30_000);
-  record("record-edited-and-saved-through-gui");
+  await waitFileContains(dataFile, "1001", 30_000);
+  record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//button[normalize-space(.)='Settings']");
   await waitElement("//section[@aria-label='Project Settings']");

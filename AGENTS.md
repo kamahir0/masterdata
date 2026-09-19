@@ -6,7 +6,23 @@
 
 `MUST` / `MUST NOT`はauthority、observable semantics、data safety、irreversible action、repository integrity等のhard invariantだけに使う。`SHOULD`はdefaultであり、hard invariantを守る理由があれば外れてよい。
 
-repository ruleは**何を守るか**を制約する。Approved semanticsとarchitecture/safety boundaryの内側ではalgorithm、data structure、module decomposition、private API、refactor、test strategy、tool usageをagentが成果物品質に合わせて決める。Humanへ戻すのはApproved authorityから決められないobservable semantics、必要なApproval / priority / destructive・compatibility decision、または解消不能なexecution constraintだけ。
+HumanがCurrent Objectiveを選択した時点で、そのObjectiveを完了するための**autonomous execution authority**をagentへ委任したものとして扱う。Human gateに該当しない限り、agentは調査、spec refinement、agent-resolvable decision、spec review、autonomous approval、canonical application、implementation、tests、self-review、correction、verificationを同一turnで継続してよい（MAY）。Stageはrecovery checkpointであり、turnごとの停止境界ではない。
+
+repository ruleは**何を守るか**を制約する。Approved semanticsとarchitecture/safety boundaryの内側ではalgorithm、data structure、module decomposition、private API、refactor、test strategy、tool usageをagentが成果物品質に合わせて決める。
+
+## Human gate
+
+Humanへ戻すのは、原則として次の場合だけである。
+
+- Current Objective / priorityそのものを新規選択またはmaterially拡張する。
+- destructive / irreversible action、意図的なdata loss、history rewriteなど、既存authorizationから安全に導けない操作。
+- persisted/source format、stable identity、public API / protocol / CLI / config、compatibility / migration policyのbreaking change。
+- security / trust / permission / authentication boundary、secret handling、または権限拡張。
+- release / publish / external deployment等、repository外へ不可逆または課金を伴うeffectを発生させる。
+- 複数のmaterially異なるproduct choiceが残り、Current Objective、Approved authority、Product Directionから合理的に一意化できない。
+- authority conflict、unrecoverable rationale、実行環境制約により安全な進行ができない。
+
+Human gateでない小さなproduct/UX/default decisionは、Current Objectiveを実現するために必要で、reversible・non-breaking・testableである場合、agentが選択してよい（MAY）。そのdecisionはsource evidenceと区別してdurable artifactへ理由を残す。
 
 ## ドキュメント言語
 
@@ -16,20 +32,22 @@ repository内の人間向け文書、commit / PR説明、repository作業完了�
 
 conversation、handoff、agent memoryをcurrent repository authorityの代わりにしない（MUST NOT）。
 
-activity開始時にcurrent branch / working tree / upstream / remote HEADを確認してfreshness epochを確立する。同一activity中は前提が変わっていないことを確認できる限り同じ文書を再読しない。external changeを排除できない時、destructive / irreversible action、commit / push / Stage transition、final report等の境界では影響するauthorityだけをrefreshする。詳細は`docs/execution-workflow.md`。
+activity開始時にcurrent branch / working tree / upstream / remote HEADを確認してfreshness epochを確立する。同一autonomous run中は前提が変わっていないことを確認できる限り同じ文書を再読しない。external changeを排除できない時、destructive / irreversible action、commit / push / Candidate / Stage transition、final report等の境界では影響するauthorityだけをrefreshする。詳細は`docs/execution-workflow.md`。
 
 - clean branchがupstreamへstrictly behindでsafe fast-forward可能な場合だけfast-forwardしてよい。
 - dirty / diverged / detached / merge・rebase中 / freshness不明をreset / stash / rebase / force update / history rewriteで勝手に整合させない（MUST NOT）。
 - implementation開始だけを理由にworking branchを変更しない（MUST NOT）。
 
-freshness後は必要なcontextだけ読む: `docs/current-objective.md`、`docs/execution-state.md`、current Stageに必要な`docs/execution-workflow.md`部分、activity skill、必要なApproved / Implemented spec・ADR・outcome、affected code/tests/fixtures/Git/CI。`README`やProduct Visionはorientation / priority判断に必要な時だけ読む。無関係な文書をcold-start儀式として読む必要はない。
+freshness後は必要なcontextだけ読む: `docs/current-objective.md`、`docs/execution-state.md`、current activityに必要な`docs/execution-workflow.md`部分、activity skill、必要なApproved / Implemented spec・ADR・outcome、affected code/tests/fixtures/Git/CI。無関係な文書をcold-start儀式として読む必要はない。
+
+Humanがrepository governance / workflow maintenanceを明示依頼した場合、そのmaintenanceはproduct Current Objectiveを置き換えずに実行してよい（MAY）。
 
 ## Authority map
 
 - product direction: `docs/product/**`
 - current priority / work package: `docs/current-objective.md`
-- Stage / Candidate / Blocking: `docs/execution-state.md`
-- lifecycle / continuation / Human-facing summary: `docs/execution-workflow.md`
+- Stage / Candidate / Blocking / Human gate: `docs/execution-state.md`
+- lifecycle / autonomous continuation / Human-facing summary: `docs/execution-workflow.md`
 - Approved behavior: `docs/specs/**` とGUI canonical spec
 - architecture WHY: `docs/adr/**`
 - undecided alternatives: `docs/rfcs/**`
@@ -41,9 +59,9 @@ one knowledge, one owner。入口文書やstateへcanonical semanticsを複製�
 ## Hard invariants
 
 - Draft / Proposed / conversation / current codeをApproved behaviorの代わりにしない（MUST NOT）。
-- Approved authorityからobservable behaviorを安全に決められない場合、implementation convenienceで発明せずSpecification Gap / Human decisionへ戻す（MUST NOT）。
-- Human Approvalが必要なsemantic changeをAIが自動承認しない。RFC `Accepted`はspec `Approved`の代替ではない（MUST NOT）。
-- destructive action、data loss、compatibility break、multi-file recoveryはcanonical safety contractとexplicit authorizationに従う。
+- Approved authorityからobservable behaviorを安全に決められない場合、implementation convenienceで発明しない。Human gateでなければspecification workflowへ戻ってagent-resolvable decisionとしてdurably定義し、Human gateなら`decision-required`へ戻す。
+- Human-gated semantic changeをagentが自動承認しない（MUST NOT）。Human gate外のspec changeは`docs/contributing/specification-workflow.md`のautonomous approval条件を満たす場合だけagentが承認してよい（MAY）。
+- destructive action、data loss、compatibility break、multi-file recoveryはcanonical safety contractと必要なauthorizationに従う。
 - YAML + Git source authority、shared Rust semantic/application boundary、native .NET/MasterMemory delegation等のApproved architectureをadapter都合で迂回しない。
 - GUIへfilesystem discovery / YAML domain semanticsを複製しない。CLI / GUIはshared application/coreを使い、.NET invocationは`masterdata-dotnet`へ集約する。
 - Requirement IDとruntime Diagnostic Codeを混同しない。path / filenameへ未承認semantic identityを追加しない。
@@ -51,11 +69,24 @@ one knowledge, one owner。入口文書やstateへcanonical semanticsを複製�
 
 ## Development lifecycle
 
-Development Stateはworkの現在地点だけを表し、agent identity、session role、model tier、branch / PR / CI topology、過去のverification historyを保存しない。
+Development Stateはworkの現在地点を表すrecovery pointerであり、agent identity、session role、過去のverification historyを保存しない。
 
-Stage routingと短い「進める」のauthorization boundaryは`docs/execution-workflow.md`が唯一のowner。`NON_IMPLEMENTATION`と`IMPLEMENTATION`を短いcontinuationだけで同一turnに跨がない（MUST NOT）。
+Stage routingとcontinuation semanticsは`docs/execution-workflow.md`が唯一のowner。Stage間を同一turnで跨いでよい。通常の短い「進める」は、次のHuman gateまたはObjective completionまで自律的に進むauthorizationとして扱う。
 
-Current Objectiveのdevelopment/status/priority responseは同workflowのHuman-facing execution summaryを使う。`objective-complete`で次候補を比較・推薦するresponseもpriority responseに含む。Human selection前に推薦をselected priorityとして扱わない。presentation stateはDevelopment Stateへ保存しない。
+`decision-required`はroutine checkpointではなく、実際にHuman gateが存在するときだけ使う。`objective-complete`では新しいpriorityが既にdurably delegatedされていない限りHumanへ次priorityを戻す。
+
+## Durable intent / maintainability
+
+高い自律性の代わりに、future developer / AIが意図を壊さないためのevidenceを残す。
+
+- observable product/domain behavior -> Approved / Implemented specification
+- cross-cutting architecture choice -> ADR
+- substantial alternative / unresolved product design -> RFC
+- regression / known failure -> focused test
+- non-obvious implementation WHY / platform workaround -> nearby rationale + evidence
+- current priority -> Current Objective
+
+「説明文書を増やす」こと自体を目的にしない。future maintainerが合理的だが意図に反するsimplificationをし得る情報だけをdurably残す。詳細は`docs/contributing/implementation-rationale.md`。
 
 ## Activity-specific procedures
 

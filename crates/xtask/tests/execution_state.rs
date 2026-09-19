@@ -153,10 +153,12 @@ fn development_workflow_keeps_structural_contracts() {
         "## Model autonomy within hard boundaries",
         "## Pre-action freshness gate",
         "## Development State",
+        "## Human gate",
         "## Implementation readiness gate",
-        "## Activity class and continuation boundary",
+        "## Autonomous continuation and activity routing",
         "## Decision presentation gate for `decision-required`",
         "## Priority presentation gate for `objective-complete`",
+        "## Specification approval within an Objective",
         "## Candidate / state transition",
         "## Human-facing execution summary",
         "## Post-action report verification",
@@ -168,6 +170,11 @@ fn development_workflow_keeps_structural_contracts() {
             "development workflow lost required structural owner section: {heading}"
         );
     }
+
+    assert!(
+        workflow.contains("次のHuman gateまたはCurrent Objective completion"),
+        "development workflow must define autonomous continuation to the next Human gate or objective completion"
+    );
 
     for stage in [
         "`designing`",

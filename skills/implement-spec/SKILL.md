@@ -43,7 +43,7 @@ Approved acceptanceを満たす最小で明瞭な変更を行う。architecture 
 
 test可能なbehaviorにはfocused regression evidenceを置く。stable end-to-end input自体がcontract理解に有用ならfixtureを使い、小さなruleにはunit/integration testで十分。generated snapshot/goldenはApproved outputのevidenceである場合だけ更新する。
 
-public behavior、compatibility、diagnostics、ordering、serialization、user-visible stateをApproved authorityから安全に決められない場合は実装で補完せずSpecification Gapへ戻す。private helper、internal decomposition、non-observable allocation等はagentが決めてよい。
+public behavior、compatibility、diagnostics、ordering、serialization、user-visible stateをApproved authorityから安全に決められない場合は実装で補完せずSpecification Gapへ戻す。workflowのHuman gate条件に該当しないGapは、同じautonomous runで`refine-spec -> review-spec -> autonomous approval/application`を経てからimplementationへ復帰してよい。Human gateなら`decision-required`へ停止する。private helper、internal decomposition、non-observable allocation等はagentが決めてよい。
 
 ## Local rationale
 
@@ -93,7 +93,7 @@ Specification Gap
 - Proposed route: refine-spec (and review-spec before approval)
 ```
 
-Gap解消のためにsemantic decisionを発明しない。authority conflict、Human Approval、destructive semantics、recoverできないsafety/compatibility rationaleも同様にHuman / refinementへ戻す。
+Gap解消をimplementation code内で黙って行わない。Objective内のlow-risk / reversible / non-breaking decisionはspecification workflowへ戻してAgent Decisionとしてdurably定義できる。destructive、breaking compatibility、security/authority、material product fork等のHuman gateだけHumanへ戻す。
 
 ## 完了報告
 

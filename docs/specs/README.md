@@ -26,20 +26,17 @@ decision rationaleは重要な場合にADRへ置き、specificationにはそこ�
 `Status:` headerは、次の値のいずれか1つだけを使用する。
 
 - `Draft`: まだ整理中の状態。不明点を含んでもよく、implementation authorityではない。
-- `Proposed`: implementation candidateとしてreviewできる程度に整理済みだが、人間のmaintainerによる最終承認は受けていない。
+- `Proposed`: implementation candidateとしてreviewできる程度に整理済みだが、まだ`Approved`ではない。review後にHuman approvalまたはworkflow条件を満たすautonomous approvalへ進む。
 - `Approved`: current normative contract。新しいimplementation workは原則としてこのstatusをSource of Truthにするべきである（SHOULD）。
 - `Implemented`: acceptance criteriaに対応するimplementation、tests、適切なfixture evidenceを備えた `Approved` contract。適用してもrequirementの意味は変わらない。
 - `Deprecated`: historyまたはcompatibility contextのために残す旧contract。新しいimplementationの対象ではない。replacementまたは理由をlinkするべきである（SHOULD）。
 
-通常の進行は `Draft` -> `Proposed` -> `Approved` -> `Implemented` である。人間のmaintainerは
-specificationを `Deprecated` へ移してもよい。`Approved` へ移せるのは、明示的なhuman approval
-（review済みrepository changeまたは同等のmaintainer operationなど）がある場合だけである。
-AI agentはこのtransitionを自動で行ってはならない（MUST NOT）。「Approved as Proposed」という
-review recommendationはhuman reviewerへのevidenceであり、approval operationそのものではない。
+通常の進行は `Draft` -> `Proposed` -> `Approved` -> `Implemented` である。approval provenanceはstatusとは分離し、change artifactまたはreview recordへ残す。
+
+`Approved` へのtransitionは[仕様ワークフロー](../contributing/specification-workflow.md)に従う。Human gateに該当するchangeはHuman approvalが必要であり、agentが自動承認してはならない（MUST NOT）。Human-selected Current Objective内で、Human gate外・review Blockingなし・non-breaking・testable等のautonomous approval条件を満たすchangeはagentが承認してよい（MAY）。
 
 ApprovedまたはImplemented documentへのsemantic changeは、新しいproposed change artifactとする。
-そのartifactがreview中はcanonical documentを変更せず、引き続きauthorityとする。明示的なhuman
-approval後、承認済みchangeをcanonical documentへatomicにmergeする。変更されないRequirement IDは
+そのartifactがreview中はcanonical documentを変更せず、引き続きauthorityとする。仕様ワークフロー上の有効なapproval後、承認済みchangeをcanonical documentへatomicにmergeする。変更されないRequirement IDは
 stableに保ち、置換または分割されたrequirementには新しいIDを付け、predecessorへのreferenceを
 残す。implementationが不完全な場合、canonical documentは `Approved` のままとし、contractを
 codeに合わせて変更せずgapを報告する。
@@ -99,10 +96,7 @@ requirement definitionではなく、definitionとして使用してはならな
 ## Open Questions（未解決事項）
 
 `Open Questions` sectionには、未解決の選択、曖昧さ、acceptance detailの不足を記録する。これは
-non-normativeである。答えによってbehaviorが変わるQuestionは、approvalをblockするか、current
-proposalの対象外として明示しなければならない（MUST）。agentはimplementation convenienceのために
-これを黙って解決してはならない。回答が得られたら、適切なproposed specification changeへdecision
-を記録し、必要ならADRにも残す。
+non-normativeである。答えによってbehaviorが変わるQuestionは、[仕様ワークフロー](../contributing/specification-workflow.md)に従ってAgent Decisionで解決可能かHuman gateかを分類し、どちらでもない場合はproposalの対象外として明示しなければならない（MUST）。implementation中に黙って解決してはならない。decisionは適切なproposalへdurably記録し、必要ならADRにも残す。
 
 ## 互換性とtraceability
 
@@ -132,12 +126,8 @@ stableなend-to-end inputによってruleが明確になる場合は `fixtures/m
    `Approved` / `Implemented` canonical documentへのsemantic changeでは、
    [`docs/spec-changes`](../spec-changes/README.md) 配下に別artifactを作成する（alternative比較中ならRFC）。
    canonical documentへ未承認semanticsを入れてはならない。
-4. Draftまたはchange artifactに対して `review-spec` を実行する。blocking issueを解消するか、
-   human reviewerが受け入れる理由を記録する。
-5. human maintainerがrepositoryのreview operationで明示的に承認する。artifactは `Approved` となり、
-   その後初めてdeltaをcanonical specificationへatomicに適用する。適用後、artifactを `Applied` とする。
-   `Implemented` specificationへsemantic deltaを適用した場合は、新しいevidenceが揃うまでcanonical
-   documentを `Approved` に戻す。
+4. Draftまたはchange artifactに対して `review-spec` を実行し、BlockingとHuman gate classificationを確定する。
+5. Human gateならHuman approvalを取得する。Human gate外でautonomous approval条件を満たす場合はagentがApproval Recordを残して承認してよい。approval後にdeltaをcanonical specificationへatomicに適用し、artifactを `Applied` とする。`Implemented` specificationへsemantic deltaを適用した場合は、新しいevidenceが揃うまでcanonical documentを `Approved` に戻す。
 6. `implement-spec` でcanonicalなapproved behaviorだけを実装し、testsとfixturesを同期し、repository
    verificationを実行する。`Applied` でないchange artifactはimplementation inputにしてはならない。
 7. evidenceが揃った後にのみcanonical statusを `Implemented` に変更する。

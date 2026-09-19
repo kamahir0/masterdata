@@ -2,8 +2,8 @@
 
 Status: Draft
 
-<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied、またはRejected。canonical
-     specificationを変更する前にhuman approvalが必要である。 -->
+<!-- Lifecycle: Draft -> Proposed -> Approved -> Applied、またはRejected。
+     Human gateならHuman approval、Human gate外でworkflow条件を満たせばautonomous approvalを使う。 -->
 
 ## Affected Specifications
 
@@ -31,8 +31,8 @@ Status: Draft
 
 ## レビュー（Review）
 
-<!-- review findingとhuman approval/rejection operationをここに記録する。 -->
+<!-- review finding、autonomous approval eligibility、Human gate classificationを記録する。 -->
 
 ## 承認記録（Approval Record）
 
-<!-- human maintainerが明示的にchangeを承認するまで空欄にする。 -->
+<!-- Approval mode (Human / Agent-autonomous)、basis、review result、canonical applicationを記録する。 -->

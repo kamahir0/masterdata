@@ -100,3 +100,52 @@ Build snapshot実装はcapture後に`source_files()`を再列挙し、membership
 旧F01–F17のcorrectness findingは解消し、CI #360も3 OSでgreen。ただしCurrent Objectiveのcompletion boundaryに対するV01/V02のBlocking Evidence Gapが残る。
 
 次Stageは`correction-ready`。次passはV01/V02のevidence解消に限定し、Approved behaviorの再設計やunrelated refactorを行わない。
+
+## Correction follow-up final verification
+
+確認日: 2026-09-19（JST）
+
+### Scope
+
+対象Candidate: `eb9c135dc82d1da3d51fdf019c3155f0db8d5c6b`。前回review Candidate `80944c66cf9c79903243a6584509660fef39df20` 以降をfreshな別passで確認した。
+
+80944c以降の変更は、V01/V02解消用のactual Desktop E2E driver / workflow、evidence、Development Stateに限定され、product implementation本体は変更されていない。したがって前節でPass済みのF01–F17 implementation conformanceは維持される。
+
+### Specification Conformance
+
+Pass。V01/V02で要求されたcompletion evidenceを確認し、追加のBlocking specification issueは確認しなかった。
+
+### Tests and Regression Evidence
+
+- V01: GitHub Actions Desktop Evidence run `35440111781` のexact tested SHA `d79e67753859025f33b6852eb712593136988177` でactual Desktop binary / WebView / Tauri WebDriverを通し、Project Create -> Table/Data Create -> record Save -> Settings Save -> Build -> stale Publish rejection without mutation -> fresh Publish successがPASS。
+- V02: 同じexact tested SHAで100,000 records / 20 columns / 10,000-cell preview固定harnessをrelease buildで再計測。load/query/preview/validationとpeak memoryが`desktop-v1-performance.md`のCorrection Candidate記録と一致。
+- Candidate `eb9c135...` はtested SHA `d79e677...` の直後にevidence文書だけを追加したcommitで、runtime/product/test implementationは同一。
+- PR headのrequired CIはUbuntu / WindowsがPASS。macOSの初回failureは`shared no-op preview normalizes structural mutation state back to clean`の10秒timeoutのみで、同一headのfailed-job rerunでmacOS `cargo xtask check-all` がPASS。
+- Desktop EvidenceはPASS。
+
+### Rationale Freshness
+
+V01/V02 correctionではproduct implementation rationaleを変更していない。前節で確認したBuild capture、Publish destination identity、config source preservation、test-only polling rationaleは引き続きFresh。
+
+### Evidence Integrity
+
+- Requirement references: required checksでPASS。
+- ADR/RFC references: architecture owner変更なし。
+- Regression test references: F01–F17のfocused regressionは前回review時点から変更なし。
+- Benchmark/external references: Correction Candidateのfresh performance evidenceを確認。
+- Desktop scenario: actual Desktop surfaceを通るfresh evidenceを確認。
+
+### Architecture
+
+V01/V02 correctionはevidence harness / workflow / documentationのみ。core / application / Tauri / frontendのdomain ownershipに追加変更なし。
+
+### Findings
+
+- Blocking: None identified.
+- E01 — Non-blocking Evidence Gap: Build source membership追加/削除の個別focused regressionは引き続き未追加。実装はpath list equalityで明示的に保護されており、merge blockerとはしない。
+
+### Verdict
+
+**Ready to merge: Yes**
+
+Current Objectiveのcompletion boundaryに対するBlockingは解消した。Development Stateは`objective-complete`へ進める。

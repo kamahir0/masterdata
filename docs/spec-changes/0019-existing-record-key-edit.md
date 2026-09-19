@@ -74,7 +74,28 @@ scope確定後、少なくとも次をevidence化する。
 
 ## レビュー（Review）
 
-Pending. Draft refinement完了後に`review-spec`で独立確認する。
+### Blocking Issues
+
+- **Key scope未決定**: Primary Keyだけか、Primary + Secondary Key構成fieldかで`GUI-DATA-STATE-001`のeditable scopeが変わる。P4というlabelだけから一方を選べない。
+- **Batch scope未決定**: single-cellだけか、paste / fill / range Set Nullにもkey fieldを含めるかでAuthoring Batch / Grid Authoringのaffected contractが変わる。
+- **Key-edit UX未決定**: 通常cell editと同じinteractionにするか、key変更に追加warning / confirmationを要求するかはsource evidenceから決まらない。
+
+### Non-blocking Issues
+
+- current implementationは`masterdata-core/src/source_edit.rs`と`masterdata-app/src/authoring.rs`の両方でkey fieldをnon-editableにしている。これはApproved contractに一致するcurrent realityであり、新behaviorのauthorityにはしない。
+- key edit後のuniqueness violationをvalidation diagnosticとして扱いSave自体をblockしない点は、既存`SOURCE-EDIT-004`を維持する限り整合する。
+
+### Questions
+
+1. Primary Keyだけか、Primary + Secondary Keyか。
+2. single-cellだけか、batch authoringも含むか。
+3. 追加warning / confirmationをmandatoryにするか。
+
+### Approved as Proposed
+
+**No**。P4-Aのpriority intentと既存safety contractへの整合は確認できるが、上記3点がobservable behaviorを変えるため、Human decision前に`Proposed`へ進めない。
+
+Review dimensions: Intent fidelity=Pass、Internal consistency=Pass for Draft、Cross-spec consistency=Pass、Terminology=Pass、Normative strength=Pass for candidate wording、Testability=Pass after scope decision、Backward compatibility=Pass with noted data-content impact、Unresolved ambiguity=Blocking 3件、Implementation leakage=None identified、Unrequested behavior=None identified。
 
 ## 承認記録（Approval Record）
 

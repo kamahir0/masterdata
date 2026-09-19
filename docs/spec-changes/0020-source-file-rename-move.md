@@ -100,7 +100,31 @@ folder rename / move、source delete / duplicateは現在のP4 selectionから�
 
 ## レビュー（Review）
 
-Pending. Draft refinement完了後に`review-spec`で独立確認する。
+### Blocking Issues
+
+- **Destination scope未決定**: same source root限定かconfigured roots間moveまで含むかでtransaction/failure modelが変わる。cross-rootはfilesystem boundaryを跨ぎ、単純renameと同じatomicityを仮定できない。
+- **Dirty buffer policy未決定**: dirty stateのpath rebindを許すか、move前にSave / Don't Save / Cancelで解決するかでGUI/application lifecycleが変わる。
+- **Destination conflict policy未決定**: overwrite禁止かexplicit overwrite許可かはdata-loss boundaryに直結し、implementation convenienceで選べない。
+- **Case-only rename未決定**: Tier 1で必須supportするかによってplatform-specific rename strategyとacceptanceが変わる。
+
+### Non-blocking Issues
+
+- pathはdomain identityではないという`PROJECT-006`等との整合は取れている。
+- `GUI-SHELL-CAPABILITY-001`がRecovery Required中のfuture rename / moveを既に禁止しているため、新surfaceも同じgateを再利用すべきである。
+- source creationのpath-safety implementationは有用なcurrent evidenceだが、rename / moveのproduct contractを自動的に決めるauthorityではない。
+
+### Questions
+
+1. same-root onlyかcross-rootも許可するか。
+2. dirty bufferをmoveと同時にrebindするか、clean-state guardを要求するか。
+3. destination overwriteをinitial sliceで許可するか。
+4. case-only renameをTier 1でinitial supportするか。
+
+### Approved as Proposed
+
+**No**。source pathをidentityにしないこと、shared application/host boundary、Recovery Required gateは整合するが、上記4点がobservable safety / compatibility behaviorを変えるためHuman decisionが必要。
+
+Review dimensions: Intent fidelity=Pass、Internal consistency=Pass for Draft、Cross-spec consistency=Pass、Terminology=Pass、Normative strength=Pass for candidate wording、Testability=Pass after decisions、Backward compatibility=Needs decision for cross-root/case-only/overwrite、Unresolved ambiguity=Blocking 4件、Implementation leakage=None identified、Unrequested behavior=None identified。
 
 ## 承認記録（Approval Record）
 

@@ -37,19 +37,7 @@ impl TableOperationInput {
                 table,
                 field,
                 initializer: initializer
-                    .map(|text| {
-                        // JSON text is a lossless value-tree transport, parsed here
-                        // rather than by JavaScript (GUI-TABLE-INT-001).
-                        let value: serde_json::Value =
-                            serde_json::from_str(&text).map_err(|cause| {
-                                error(
-                                    "E-MIGRATION-INITIALIZER",
-                                    &format!("initializer must be a JSON value: {cause}"),
-                                )
-                            })?;
-                        serde_yaml::to_value(value)
-                            .map_err(|cause| error("E-MIGRATION-INITIALIZER", &cause.to_string()))
-                    })
+                    .map(|text| crate::type_authoring::parse_constant(&text))
                     .transpose()?,
             }),
             Self::Rename {
@@ -73,7 +61,28 @@ pub struct TableSnapshot {
     pub path: String,
     pub schema: SchemaDocument,
     pub field_types: Vec<String>,
+    pub initializer_shapes: BTreeMap<String, ResolvedAuthoringType>,
 }
+pub(crate) fn initializer_shapes(
+    documents: &ProjectDocuments,
+    field_types: &[String],
+) -> BTreeMap<String, ResolvedAuthoringType> {
+    field_types
+        .iter()
+        .filter_map(|type_name| {
+            let probe = FieldDefinition {
+                key: 0,
+                name: "initializer".to_owned(),
+                type_name: type_name.clone(),
+                nullable: false,
+                array: false,
+            };
+            resolve_authoring_field_shape(documents, &probe)
+                .map(|field| (type_name.clone(), field.shape))
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableFileDiff {
@@ -133,10 +142,13 @@ impl TableAuthoringSession {
         let SourceDocument::Schema(schema) = &file.document else {
             return Err(error("E-TABLE-EDITOR-KIND", "source is not a Table schema"));
         };
+        let field_types = creation_choices(&documents).field_types;
+        let initializer_shapes = initializer_shapes(&documents, &field_types);
         Ok(TableSnapshot {
             path: path.into(),
             schema: migration_table_schema(&documents, &schema.table)?,
-            field_types: creation_choices(&documents).field_types,
+            field_types,
+            initializer_shapes,
         })
     }
     pub fn plan(&mut self, root: &Path, input: TableOperationInput) -> Result<TablePlanView> {

@@ -49,7 +49,7 @@ impl NativeProjectService {
         current_dir: &Path,
     ) -> Result<BuildPlan> {
         let project = Project::discover(explicit_project, current_dir)?;
-        let documents = project.load_documents()?;
+        let documents = project.load_build_documents_snapshot()?;
         prepare_build_from_documents(project.info(), documents, &BuildSelection::unfiltered())
     }
 
@@ -60,7 +60,7 @@ impl NativeProjectService {
         selection: &BuildSelection,
     ) -> Result<BuildPlan> {
         let project = Project::discover(explicit_project, current_dir)?;
-        let documents = project.load_documents()?;
+        let documents = project.load_build_documents_snapshot()?;
         prepare_build_from_documents(project.info(), documents, selection)
     }
 
@@ -72,7 +72,7 @@ impl NativeProjectService {
     ) -> Result<BuildPlan> {
         let project = Project::discover(explicit_project, current_dir)?;
         let selection = project.build_selection(profile)?;
-        let documents = project.load_documents()?;
+        let documents = project.load_build_documents_snapshot()?;
         prepare_build_from_documents(project.info(), documents, &selection)
     }
 

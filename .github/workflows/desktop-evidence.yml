@@ -1,0 +1,132 @@
+name: Desktop Evidence
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: desktop-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-gui-e2e:
+    name: Actual Desktop GUI workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Desktop and WebDriver dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            webkit2gtk-driver \
+            xvfb \
+            xauth \
+            dbus-x11
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+      - run: npm ci
+      - name: Build actual Desktop binary with production WebView assets
+        run: npm --workspace @masterdata/gui run tauri -- build --no-bundle
+      - name: Install Tauri WebDriver bridge
+        run: |
+          cargo install tauri-driver --locked
+          tauri-driver --help | head -n 2
+          command -v WebKitWebDriver
+      - name: Run actual Desktop GUI production workflow
+        env:
+          WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+        run: |
+          set -euxo pipefail
+          export EVIDENCE_DIR="$RUNNER_TEMP/desktop-evidence"
+          mkdir -p "$EVIDENCE_DIR"
+          {
+            echo "candidate=$CANDIDATE_SHA"
+            uname -a
+            rustc --version
+            node --version
+            npm --version
+            dotnet --version
+            WebKitWebDriver --version || true
+            tauri-driver --help | head -n 2
+          } | tee "$EVIDENCE_DIR/environment.txt"
+          dbus-run-session -- xvfb-run -a sh -c '
+            set -eu
+            tauri-driver --native-driver "$(command -v WebKitWebDriver)" > "$EVIDENCE_DIR/tauri-driver.log" 2>&1 &
+            driver=$!
+            trap "kill $driver 2>/dev/null || true" EXIT
+            node apps/gui/tests/desktop-e2e.mjs \
+              target/release/masterdata-gui \
+              "$EVIDENCE_DIR/project" \
+              "$EVIDENCE_DIR/desktop-e2e.json"
+          '
+          cat "$EVIDENCE_DIR/desktop-e2e.json"
+      - name: Upload Desktop evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-gui-evidence
+          path: |
+            ${{ runner.temp }}/desktop-evidence/environment.txt
+            ${{ runner.temp }}/desktop-evidence/desktop-e2e.json
+            ${{ runner.temp }}/desktop-evidence/desktop-e2e-failure.png
+            ${{ runner.temp }}/desktop-evidence/tauri-driver.log
+          if-no-files-found: ignore
+
+  performance-evidence:
+    name: Fixed 100k/10k performance evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Build fixed performance harness
+        run: cargo build --release -p masterdata-app --example desktop_v1_performance
+      - name: Measure fixed input
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/desktop-performance"
+          {
+            echo "candidate=$CANDIDATE_SHA"
+            uname -a
+            rustc --version
+            lscpu | sed -n '1,20p'
+            /usr/bin/time -v target/release/examples/desktop_v1_performance
+          } 2>&1 | tee "$RUNNER_TEMP/desktop-performance/performance.txt"
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-performance-evidence
+          path: ${{ runner.temp }}/desktop-performance/performance.txt
+          if-no-files-found: error

@@ -1,6 +1,8 @@
 //! Build/Publish preview DTOs and identity-bound publish confirmation.
 
 use std::collections::BTreeSet;
+use std::fs;
+use std::io::ErrorKind as IoErrorKind;
 use std::path::Path;
 
 use masterdata_core::{ErrorKind, MasterdataError, Project, PublishTargetKind, Result};
@@ -18,6 +20,7 @@ use crate::{
 pub struct PublishPreview {
     pub artifact_set_identity: String,
     pub config_content_identity: String,
+    pub publish_plan_identity: String,
     pub targets: Vec<PublishTargetPreview>,
 }
 
@@ -46,11 +49,7 @@ impl NativeApplicationService {
         let artifacts = validate_artifact_set(&info.artifact_root, &info.project_id)?;
         let artifact_identity = artifact_set_identity(&artifacts);
         let plan = preflight_publish(&info, artifacts)?;
-        Ok(render_publish_preview(
-            artifact_identity,
-            project.config_content_identity(),
-            &plan,
-        ))
+        render_publish_preview(artifact_identity, project.config_content_identity(), &plan)
     }
 
     /// Confirm a previously rendered preview.  Both the canonical artifact
@@ -62,6 +61,7 @@ impl NativeApplicationService {
         current_dir: &Path,
         expected_artifact_set_identity: &str,
         expected_config_content_identity: &str,
+        expected_publish_plan_identity: &str,
     ) -> std::result::Result<PublishExecutionReport, crate::PublishExecutionFailure> {
         let project = match Project::discover(explicit_project, current_dir) {
             Ok(project) => project,
@@ -108,6 +108,20 @@ impl NativeApplicationService {
             Ok(plan) => plan,
             Err(error) => return Err(crate::PublishExecutionFailure { report, error }),
         };
+        let current_plan_identity = match publish_plan_identity(&plan) {
+            Ok(identity) => identity,
+            Err(error) => return Err(crate::PublishExecutionFailure { report, error }),
+        };
+        if current_plan_identity != expected_publish_plan_identity {
+            return Err(crate::PublishExecutionFailure {
+                report,
+                error: delivery_stale_error(
+                    "E-PUBLISH-PREVIEW-STALE-DESTINATION",
+                    "publish destination ownership or content changed after the preview; preview again",
+                    &info.project_root,
+                ),
+            });
+        }
         crate::publish::execute_publish_plan(&info, plan, &[])
     }
 }
@@ -116,7 +130,7 @@ fn render_publish_preview(
     artifact_identity: String,
     config_identity: String,
     plan: &PublishPreflightPlan,
-) -> PublishPreview {
+) -> Result<PublishPreview> {
     let mut targets = Vec::with_capacity(plan.targets.len());
     for (index, target) in plan.targets.iter().enumerate() {
         let (additions, updates, removals, binary_replacement) = match target {
@@ -167,11 +181,93 @@ fn render_publish_preview(
             preflight_ok: true,
         });
     }
-    PublishPreview {
+    Ok(PublishPreview {
         artifact_set_identity: artifact_identity,
         config_content_identity: config_identity,
+        publish_plan_identity: publish_plan_identity(plan)?,
         targets,
+    })
+}
+
+fn hash_identity_part(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_le_bytes());
+    hasher.update(value);
+}
+
+fn publish_plan_identity(plan: &PublishPreflightPlan) -> Result<String> {
+    let mut hasher = Sha256::new();
+    hash_identity_part(&mut hasher, &(plan.targets.len() as u64).to_le_bytes());
+    for target in &plan.targets {
+        let kind = match target.kind {
+            PublishTargetKind::CSharp => b"csharp".as_slice(),
+            PublishTargetKind::Binary => b"binary".as_slice(),
+        };
+        hash_identity_part(&mut hasher, kind);
+        hash_identity_part(&mut hasher, target.configured_path.as_bytes());
+        hash_identity_part(&mut hasher, target.destination.to_string_lossy().as_bytes());
+        match (&target.csharp, &target.binary) {
+            (Some(csharp), None) => {
+                hash_identity_part(&mut hasher, b"csharp-plan");
+                hash_path_state(&mut hasher, &csharp.manifest_path)?;
+                let mut paths = csharp
+                    .previous_managed_paths
+                    .iter()
+                    .chain(csharp.current_generated_paths.iter())
+                    .cloned()
+                    .collect::<BTreeSet<_>>();
+                for path in &paths {
+                    hash_identity_part(&mut hasher, path.as_bytes());
+                    hash_path_state(&mut hasher, &target.destination.join(path))?;
+                }
+                paths.clear();
+            }
+            (None, Some(binary)) => {
+                hash_identity_part(&mut hasher, b"binary-plan");
+                hash_path_state(&mut hasher, &binary.destination)?;
+            }
+            _ => hash_identity_part(&mut hasher, b"invalid-plan-shape"),
+        }
     }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+fn hash_path_state(hasher: &mut Sha256, path: &Path) -> Result<()> {
+    hash_identity_part(hasher, path.to_string_lossy().as_bytes());
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            hash_identity_part(hasher, b"symlink");
+            let target =
+                fs::read_link(path).map_err(|error| destination_identity_error(path, error))?;
+            hash_identity_part(hasher, target.to_string_lossy().as_bytes());
+        }
+        Ok(metadata) if metadata.is_file() => {
+            hash_identity_part(hasher, b"file");
+            let bytes = fs::read(path).map_err(|error| destination_identity_error(path, error))?;
+            hash_identity_part(hasher, &bytes);
+        }
+        Ok(metadata) if metadata.is_dir() => {
+            hash_identity_part(hasher, b"directory");
+        }
+        Ok(_) => hash_identity_part(hasher, b"other"),
+        Err(error) if error.kind() == IoErrorKind::NotFound => {
+            hash_identity_part(hasher, b"missing");
+        }
+        Err(error) => return Err(destination_identity_error(path, error)),
+    }
+    Ok(())
+}
+
+fn destination_identity_error(path: &Path, error: std::io::Error) -> MasterdataError {
+    MasterdataError::new(
+        "E-PUBLISH-PREVIEW-DESTINATION-IDENTITY",
+        ErrorKind::Io,
+        format!(
+            "could not bind publish preview to {}: {error}",
+            path.display()
+        ),
+    )
+    .with_source(path.to_path_buf())
+    .with_related_requirement("PUBLISH-PREVIEW-002")
 }
 
 fn artifact_set_identity(artifacts: &ValidatedArtifactSet) -> String {

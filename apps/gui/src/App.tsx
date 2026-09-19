@@ -195,6 +195,11 @@ type BatchCellChange = {
   after: AuthoringValue;
 };
 
+type AuthoringClipboardShape = {
+  rows: number;
+  columns: number;
+};
+
 type AuthoringBatchPreview = {
   source: SourceEditPreview;
   targetCount: number;
@@ -440,9 +445,18 @@ function mutationHistoryState(editor: EditorState): MutationHistoryState {
   };
 }
 
+const HISTORY_LIMIT = 50;
+
+export function boundedHistoryPush(history: MutationHistoryState[], state: MutationHistoryState): MutationHistoryState[] {
+  if (history.length >= HISTORY_LIMIT) {
+    window.alert("Undo history is full. The oldest undo entry will be discarded after this edit; the current buffer is preserved.");
+  }
+  return [...history, state].slice(-HISTORY_LIMIT);
+}
+
 function mutationHistoryFields(editor: EditorState): Pick<EditorState, "historyPast" | "historyFuture"> {
   return {
-    historyPast: [...editor.historyPast, mutationHistoryState(editor)].slice(-50),
+    historyPast: boundedHistoryPush(editor.historyPast, mutationHistoryState(editor)),
     historyFuture: [],
   };
 }
@@ -493,7 +507,7 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
   return focusElement(document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`));
 }
 
-function App() {
+function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: number | null } = {}) {
   const [recoveries, setRecoveries] = useState<Record<string, MigrationResult>>({});
   const recoveryRef = useRef<Record<string, MigrationResult>>({});
   const [tableEpoch, setTableEpoch] = useState(0);
@@ -513,6 +527,9 @@ function App() {
   const [settingsDirty, setSettingsDirty] = useState(false);
   const settingsSaveRef = useRef<() => Promise<boolean>>(async () => true);
   const settingsDirtyRef = useRef(false);
+  const [deliveryBusy, setDeliveryBusy] = useState(false);
+  const deliveryBusyRef = useRef(false);
+  const [configRevision, setConfigRevision] = useState(0);
 
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
     kind: "loading",
@@ -551,6 +568,10 @@ function App() {
   useEffect(() => {
     settingsDirtyRef.current = settingsDirty;
   }, [settingsDirty]);
+
+  useEffect(() => {
+    deliveryBusyRef.current = deliveryBusy;
+  }, [deliveryBusy]);
 
   const registerSettingsSave = useCallback((save: () => Promise<boolean>) => {
     settingsSaveRef.current = save;
@@ -608,6 +629,33 @@ function App() {
     setNotice(message);
     window.setTimeout(() => setNotice(null), 2600);
   }, []);
+
+  const refreshWorkspaceAfterConfigSave = useCallback(async (): Promise<boolean> => {
+    const state = workspaceStateRef.current;
+    const current = state.kind === "ready" ? state.workspace : state.previous;
+    const root = current?.project.project_root;
+    if (!root) return false;
+    try {
+      const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
+      if (next.project.project_root !== root) return false;
+      const bindingChanged = current.project.project_id !== next.project.project_id
+        || current.sourceRoots.length !== next.sourceRoots.length
+        || current.sourceRoots.some((sourceRoot, index) => sourceRoot !== next.sourceRoots[index]);
+      const dirtySources = Object.values(editorsRef.current).some(editorIsDirty);
+      setWorkspaceState({ kind: "ready", workspace: next });
+      setConfigRevision((revision) => revision + 1);
+      setSelectedProfile((selected) => selected && next.project.profiles?.some((item) => item.name === selected) ? selected : "");
+      if (bindingChanged && dirtySources) {
+        showNotice("Project binding changed after Settings Save. Dirty source buffers were kept, and Save All stopped for review.");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      setWorkspaceState({ kind: "error", diagnostic: asApiError(error).diagnostic, previous: current });
+      showNotice("Settings were saved, but the project binding is invalid; source Save All stopped.");
+      return false;
+    }
+  }, [showNotice]);
 
   const openDataFile = useCallback(async (root: string, path: string, force = false) => {
     const existing = editorsRef.current[path];
@@ -998,7 +1046,7 @@ function App() {
       const next: EditorState = {
         ...editor,
         ...future,
-        historyPast: [...editor.historyPast, mutationHistoryState(editor)].slice(-50),
+        historyPast: boundedHistoryPush(editor.historyPast, mutationHistoryState(editor)),
         historyFuture: editor.historyFuture.slice(0, -1),
         revision: editor.revision + 1,
         previewState: "pending",
@@ -1166,16 +1214,17 @@ function App() {
 
   const requestAction = useCallback((action: PendingAction) => {
     const hasDirty = settingsDirty || Object.values(editorsRef.current).some(editorIsDirty);
-    if (hasDirty) {
+    if (deliveryBusy || hasDirty) {
       setPendingAction(action);
+      if (deliveryBusy) showNotice("A Build or Publish operation is running. Project navigation will wait until it finishes.");
     } else {
       void performAction(action);
     }
-  }, [performAction, settingsDirty]);
+  }, [deliveryBusy, performAction, settingsDirty, showNotice]);
 
   useEffect(() => {
     const listener = getCurrentWindow().onCloseRequested((event) => {
-      if (settingsDirtyRef.current || Object.values(editorsRef.current).some(editorIsDirty)) {
+      if (deliveryBusyRef.current || settingsDirtyRef.current || Object.values(editorsRef.current).some(editorIsDirty)) {
         event.preventDefault();
         setPendingAction({ kind: "close" });
       }
@@ -1189,7 +1238,10 @@ function App() {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (activePath) void saveFile(activePath);
+        if (surface === "settings") {
+          if (deliveryBusy) showNotice("Settings Save is blocked while Build or Publish is running.");
+          else void settingsSaveRef.current();
+        } else if (activePath) void saveFile(activePath);
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         if (isTextEditingTarget(event.target)) return;
         event.preventDefault();
@@ -1205,9 +1257,10 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activePath, redoBuffer, saveFile, undoBuffer]);
+  }, [activePath, deliveryBusy, redoBuffer, saveFile, showNotice, surface, undoBuffer]);
 
   useEffect(() => {
+    if (sourcePollingIntervalMs == null) return;
     const timer = window.setInterval(() => {
       const state = workspaceStateRef.current;
       const root = state.kind === "ready" ? state.workspace.project.project_root : null;
@@ -1257,9 +1310,9 @@ function App() {
           // A transient polling failure must not discard an editor buffer.
         });
       }
-    }, 1600);
+    }, sourcePollingIntervalMs);
     return () => window.clearInterval(timer);
-  }, [openDataFile]);
+  }, [openDataFile, sourcePollingIntervalMs]);
 
   const validateDisk = useCallback(async () => {
     if (!workspace?.capabilities.validate || !projectRoot) return;
@@ -1277,12 +1330,13 @@ function App() {
   }, [projectRoot, workspace]);
 
   const runBuild = useCallback(async () => {
-    if (!workspace?.capabilities.build || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading") return;
+    if (!workspace?.capabilities.build || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading" || deliveryBusy) return;
     if (dirtyCount > 0) {
       showNotice("Build uses saved source only; unsaved changes are not included.");
     }
     const generation = workspaceGeneration.current;
     setBuildState({ kind: "loading" });
+    setDeliveryBusy(true);
     try {
       const response = await invoke<BuildResponse>("build", {
         projectPath: projectRoot,
@@ -1296,8 +1350,10 @@ function App() {
       if (workspaceGeneration.current !== generation) return;
       setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });
       setProblemsOpen(true);
+    } finally {
+      setDeliveryBusy(false);
     }
-  }, [sourceMutationBlocked, buildState.kind, dirtyCount, projectRoot, selectedProfile, showNotice, workspace]);
+  }, [sourceMutationBlocked, buildState.kind, deliveryBusy, dirtyCount, projectRoot, selectedProfile, showNotice, workspace]);
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
     setActivePath(file.path);
@@ -1504,13 +1560,20 @@ function App() {
           <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
           <Button htmlType="button" onClick={() => setSurface("editor")} disabled={surface === "editor"}>Editor</Button>
           <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</Button>
-          <Button htmlType="button" icon={<Save size={15} />} onClick={() => activePath && void saveFile(activePath)} disabled={mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}>
-            {activeEditor?.saving ? "Saving…" : "Save"}
+          <Button
+            htmlType="button"
+            icon={<Save size={15} />}
+            onClick={() => surface === "settings" ? void settingsSaveRef.current() : activePath && void saveFile(activePath)}
+            disabled={surface === "settings"
+              ? mutationBlocked || !settingsDirty
+              : mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}
+          >
+            {surface === "settings" ? "Save Settings" : activeEditor?.saving ? "Saving…" : "Save"}
           </Button>
           <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
             {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
           </Button>
-          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || !workspace?.capabilities.build || buildState.kind === "loading"}>
+          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || !workspace?.capabilities.build || buildState.kind === "loading"}>
             {buildState.kind === "loading" ? "Building…" : "Build"}
           </Button>
         </div>
@@ -1526,6 +1589,7 @@ function App() {
 
       <section className="surface-layout" hidden={surface !== "overview"}>
         <ProjectOverviewPanel
+          key={`${projectRoot ?? "none"}:${configRevision}`}
           active={surface === "overview"}
           projectRoot={projectRoot}
           workspace={workspace as SurfaceWorkspace | null}
@@ -1553,9 +1617,10 @@ function App() {
         <ProjectSettingsPanel
           active={surface === "settings"}
           projectRoot={projectRoot}
-          mutationBlocked={mutationBlocked}
+          mutationBlocked={mutationBlocked || deliveryBusy}
           onDirtyChange={setSettingsDirty}
           onRegisterSave={registerSettingsSave}
+          onSaved={refreshWorkspaceAfterConfigSave}
         />
       </section>
       <section className="surface-layout" hidden={surface !== "delivery"}>
@@ -1567,7 +1632,9 @@ function App() {
           dirtyConfig={settingsDirty}
           profile={selectedProfile}
           onProfileChange={setSelectedProfile}
-          mutationBlocked={mutationBlocked}
+          buildBlocked={mutationBlocked}
+          publishBlocked={!!migrationBusyRoot}
+          onBusyChange={setDeliveryBusy}
         />
       </section>
       <section className="surface-layout" hidden={surface !== "create"}>
@@ -1746,9 +1813,9 @@ function App() {
         closable={!pendingActionBusy} keyboard={!pendingActionBusy} mask={{ closable: false }}
         onCancel={() => !pendingActionBusy && setPendingAction(null)}
         footer={[
-          <Button key="cancel" disabled={pendingActionBusy} onClick={() => setPendingAction(null)}>Cancel</Button>,
-          <Button key="discard" disabled={pendingActionBusy} onClick={() => pendingAction && void performAction(pendingAction)}>Don't Save</Button>,
-          <Button key="save" type="primary" disabled={mutationBlocked} loading={pendingActionBusy} onClick={async () => {
+          <Button key="cancel" disabled={pendingActionBusy || deliveryBusy} onClick={() => setPendingAction(null)}>Cancel</Button>,
+          <Button key="discard" disabled={pendingActionBusy || deliveryBusy} onClick={() => pendingAction && void performAction(pendingAction)}>Don't Save</Button>,
+          <Button key="save" type="primary" disabled={mutationBlocked || deliveryBusy} loading={pendingActionBusy} onClick={async () => {
             if (!pendingAction) return;
             setPendingActionBusy(true);
             const action = pendingAction;
@@ -1757,7 +1824,7 @@ function App() {
             if (ok) await performAction(action);
           }}>Save All</Button>,
         ]}>
-        <p>{dirtyCount} source file{dirtyCount === 1 ? " has" : "s have"}{settingsDirty ? " and masterdata.toml has" : ""} unsaved changes. The requested action would discard the current buffers.</p>
+        <p>{deliveryBusy ? "A Build or Publish operation is still running. This action will remain blocked until it finishes. " : ""}{dirtyCount} source file{dirtyCount === 1 ? " has" : "s have"}{settingsDirty ? " and masterdata.toml has" : ""} unsaved changes. The requested action would discard the current buffers.</p>
       </Modal>
 
       {notice && <Alert className="toast" title={notice} type="info" showIcon role="status" />}
@@ -2097,7 +2164,7 @@ function DataEditor({
   const [querySortDirection, setQuerySortDirection] = useState("ascending");
   const queryRequestSequence = useRef(0);
   const previousAddedCount = useRef(editor.addedRecords.length);
-  const [batchContext, setBatchContext] = useState<{ revision: number; targetsKey: string } | null>(null);
+  const [batchContext, setBatchContext] = useState<{ revision: number; selectionKey: string } | null>(null);
   const capability = addCapability(editor.snapshot);
   const rowsByRecordIndex = new Map(editor.snapshot.rows.map((row) => [row.recordIndex, row]));
   const draftsByQueryIndex = new Map(editor.addedRecords.map((draft, index) => [editor.snapshot.rows.length + index, draft]));
@@ -2160,21 +2227,54 @@ function DataEditor({
     }
     return targets;
   }, [editor.addedRecords, editor.snapshot.columns, gridRows, selectedRange]);
-  const selectedTargetsKey = `${JSON.stringify(editor.queryResult ? {
+  const selectionContextKey = `${JSON.stringify(editor.queryResult ? {
     query: editor.queryResult.query,
     orderedRecordIndices: editor.queryResult.orderedRecordIndices,
-  } : null)}:${JSON.stringify(selectedTargets())}`;
+  } : null)}:${JSON.stringify(selectedRange)}`;
   const batchIsStale = batchPreview !== null
     && batchContext !== null
-    && (batchContext.revision !== editor.revision || batchContext.targetsKey !== selectedTargetsKey);
+    && (batchContext.revision !== editor.revision || batchContext.selectionKey !== selectionContextKey);
+
+  const targetAt = (rowIndex: number, columnIndex: number): BatchTarget | null => {
+    const row = gridRows[rowIndex];
+    const column = editor.snapshot.columns[columnIndex];
+    if (!row || !column) return null;
+    return row.kind === "existing"
+      ? { recordIndex: row.recordIndex, field: column.name }
+      : { addedRecordIndex: editor.addedRecords.findIndex((draft) => draft.draftId === row.draft.draftId), field: column.name };
+  };
+
+  const pasteTargets = async (clipboardText: string): Promise<BatchTarget[]> => {
+    const shape = await invoke<AuthoringClipboardShape>("authoring_clipboard_shape", { clipboardText });
+    const anchor = selectedRange ?? { startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 };
+    const targets: BatchTarget[] = [];
+    for (let rowOffset = 0; rowOffset < shape.rows; rowOffset += 1) {
+      for (let columnOffset = 0; columnOffset < shape.columns; columnOffset += 1) {
+        const target = targetAt(anchor.startRow + rowOffset, anchor.startColumn + columnOffset);
+        if (!target) {
+          throw {
+            diagnostic: {
+              code: "E-AUTHORING-BATCH-SHAPE",
+              kind: "validation",
+              message: "Clipboard rectangle extends beyond the visible authoring grid.",
+              source: null, line: null, column: null, schemaPath: null, valuePath: null,
+              recordIdentity: null, suggestion: null, relatedRequirements: ["GUI-GRID-001"],
+            },
+          };
+        }
+        targets.push(target);
+      }
+    }
+    return targets;
+  };
 
   const previewBatch = async (fill: boolean, clipboardText = batchText) => {
-    const targets = selectedTargets();
-    if (targets.length === 0) return;
-    const requestTargetsKey = selectedTargetsKey;
+    const requestSelectionKey = selectionContextKey;
     setBatchBusy(true);
     setQueryError(null);
     try {
+      const targets = fill ? selectedTargets() : await pasteTargets(clipboardText);
+      if (targets.length === 0) return;
       const result = await invoke<AuthoringBatchPreview>("preview_data_file_batch", {
         projectPath: projectRoot,
         relativePath: file.path,
@@ -2183,7 +2283,7 @@ function DataEditor({
         request: { targets, clipboardText, fill },
       });
       setBatchPreview(result);
-      setBatchContext({ revision: editor.revision, targetsKey: requestTargetsKey });
+      setBatchContext({ revision: editor.revision, selectionKey: requestSelectionKey });
     } catch (error) {
       setQueryError(asApiError(error).diagnostic);
     } finally {
@@ -2514,9 +2614,9 @@ function DataEditor({
                               && input.selectionStart !== input.selectionEnd;
                             if ((event.metaKey || event.ctrlKey)
                               && !event.altKey
-                              && (event.key.toLowerCase() === "c" || event.key.toLowerCase() === "v")
-                              && selectedTargets().length > 1
-                              && !textSelectionActive) {
+                              && !textSelectionActive
+                              && (event.key.toLowerCase() === "v"
+                                || (event.key.toLowerCase() === "c" && selectedTargets().length > 1))) {
                               event.preventDefault();
                               if (event.key.toLowerCase() === "c") void copySelection();
                               else void readClipboardAndPreview();

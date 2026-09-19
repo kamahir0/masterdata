@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import App from '../src/App';
+import App, { boundedHistoryPush } from '../src/App';
 import { authoringValuesEqual, type AuthoringValue } from '../src/data-editor-types';
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -96,7 +96,7 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
-async function open(label = 'record 1 weight') { render(<App />); return await screen.findByRole('textbox', { name: label }); }
+async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} />); return await screen.findByRole('textbox', { name: label }); }
 
 test('sequence equality treats source occurrence order as an authoring change', () => {
   const items = [
@@ -228,7 +228,7 @@ test('Add Row creates an editable draft, validates it through the shared preview
       ]) }
     : normalInvoke(command, args));
 
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
   fireEvent.click(add);
   const id = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
@@ -254,7 +254,7 @@ test('schema-aware controls edit nested exact integers, nullable fields, arrays,
     previewArgs = args;
     return { candidateSource: 'candidate', changed: true, validation };
   };
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
 
   const credits = await screen.findByRole('textbox', { name: 'credits' }) as HTMLInputElement;
   expect(credits.value).toBe('18446744073709551615');
@@ -330,7 +330,7 @@ test('Add Row starts with null placeholders and materializes complex values only
     previewArgs = args;
     return { candidateSource: openSnapshot.baseSource, changed: true, validation };
   };
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   await screen.findByRole('textbox', { name: 'new record id' });
   await waitFor(() => expect(previewArgs?.addedRecords).toHaveLength(1));
@@ -369,7 +369,7 @@ test('nested value diagnostics focus the matching Custom Type field', async () =
       message: 'field `profile` is invalid',
     }],
   } as any;
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const credits = await screen.findByRole('textbox', { name: 'credits' });
   fireEvent.click(screen.getByRole('button', { name: /E-TABLE-INVALID-RECORD-VALUE/ }));
   await waitFor(() => expect(document.activeElement).toBe(credits));
@@ -379,7 +379,7 @@ test('nested value diagnostics focus the matching Custom Type field', async () =
 test('deleting a new draft cancels the addition and returns the file to clean', async () => {
   openSnapshot = mutationSnapshot([]);
   preview = async (args) => ({ candidateSource: openSnapshot.baseSource, changed: Boolean(args.addedRecords?.length || args.deletedRecordIndices?.length), validation });
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   await screen.findByRole('textbox', { name: 'new record id' });
   fireEvent.click(screen.getByRole('button', { name: 'Delete new row 1', exact: true }));
@@ -391,7 +391,7 @@ test('deleting a new draft cancels the addition and returns the file to clean', 
 test('shared no-op preview normalizes structural mutation state back to clean', async () => {
   openSnapshot = mutationSnapshot();
   preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
 
   fireEvent.click(await screen.findByRole('button', { name: 'Delete record 1', exact: true }));
   expect(screen.getByText('Pending delete')).toBeTruthy();
@@ -418,7 +418,7 @@ test('deleting an edited existing row preserves the edit while Undo restores edi
       { field: 'note', text: 'second', editable: true },
     ] },
   ]);
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const weight = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
   fireEvent.change(weight, { target: { value: '11' } });
   fireEvent.click(screen.getByRole('button', { name: 'Delete record 1', exact: true }));
@@ -432,7 +432,7 @@ test('deleting an edited existing row preserves the edit while Undo restores edi
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
   expect((add as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
@@ -451,7 +451,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
     return normalInvoke(command, args);
   });
 
-  render(<App />);
+  render(<App sourcePollingIntervalMs={null} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   const draftId = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
   fireEvent.change(draftId, { target: { value: '1' } });
@@ -555,3 +555,121 @@ test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   await waitFor(()=>expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(false));
   expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
 }, 20_000);
+
+
+test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML editor', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  const config = {
+    projectRoot: '/project',
+    configPath: '/project/masterdata.toml',
+    baseSource: 'base0',
+    baseContentIdentity: 'config0',
+    configValid: true,
+    profiles: [{ name: 'prod', include_tags: ['old'], exclude_tags: [] }],
+    publishTargets: [],
+    diagnostics: [],
+  };
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'open_project_config') return structuredClone(config);
+    if (command === 'preview_project_config_edit') {
+      return {
+        baseContentIdentity: args.baseContentIdentity,
+        candidateContentIdentity: 'config1',
+        candidateSource: 'base1',
+        changed: true,
+        configValid: true,
+        diagnostics: [],
+      };
+    }
+    if (command === 'save_project_config_edit') {
+      return {
+        status: 'success',
+        snapshot: { ...structuredClone(config), baseSource: 'base1', baseContentIdentity: 'config1', profiles: [{ name: 'prod', include_tags: ['new'], exclude_tags: [] }] },
+        current: null,
+        diagnostic: null,
+      };
+    }
+    return normalInvoke(command, args);
+  });
+
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }));
+  await screen.findByRole('heading', { name: 'Project Settings' });
+  fireEvent.change(screen.getByLabelText('Include tags'), { target: { value: 'new' } });
+  fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_project_config_edit')).toBe(true));
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+});
+
+
+test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of flattening the selection', async () => {
+  openSnapshot = mutationSnapshot([
+    { recordIndex: 0, cells: [
+      { field: 'id', text: '1', editable: false },
+      { field: 'weight', text: '10', editable: true },
+      { field: 'note', text: 'a', editable: true },
+    ] },
+    { recordIndex: 1, cells: [
+      { field: 'id', text: '2', editable: false },
+      { field: 'weight', text: '20', editable: true },
+      { field: 'note', text: 'b', editable: true },
+    ] },
+  ]);
+  const normalInvoke = invoke.getMockImplementation()!;
+  let batchArgs: any;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_clipboard_shape') return { rows: 2, columns: 2 };
+    if (command === 'preview_data_file_batch') {
+      batchArgs = args;
+      return {
+        source: {
+          candidateSource: openSnapshot.baseSource,
+          candidateContentIdentity: 'batch-preview',
+          changed: false,
+          validation,
+        },
+        targetCount: 4,
+        changedCellCount: 0,
+        changes: [],
+      };
+    }
+    return normalInvoke(command, args);
+  });
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { readText: vi.fn(async () => '11\tx\n22\ty'), writeText: vi.fn(async () => {}) },
+  });
+
+  const input = await open('record 1 weight');
+  const cell = input.closest('.cell-wrap');
+  expect(cell).toBeTruthy();
+  fireEvent.mouseDown(cell!, { button: 0 });
+  fireEvent.keyDown(input, { key: 'v', ctrlKey: true });
+
+  await waitFor(() => expect(batchArgs).toBeDefined());
+  expect(batchArgs.request.targets).toEqual([
+    { recordIndex: 0, field: 'weight' },
+    { recordIndex: 0, field: 'note' },
+    { recordIndex: 1, field: 'weight' },
+    { recordIndex: 1, field: 'note' },
+  ]);
+  expect(batchArgs.request.clipboardText).toBe('11\tx\n22\ty');
+  expect(batchArgs.request.fill).toBe(false);
+});
+
+test('Undo history warns before discarding the oldest entry and retains the newest 50 states', () => {
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  const state = (index: number) => ({
+    edits: { [`cell-${index}`]: { recordIndex: index, field: 'weight', value: { kind: 'number', value: String(index) } } },
+    addedRecords: [],
+    pendingDeletes: [],
+    tagEdits: {},
+  }) as any;
+  const history = Array.from({ length: 50 }, (_, index) => state(index));
+  const next = boundedHistoryPush(history, state(50));
+  expect(alert).toHaveBeenCalledOnce();
+  expect(next).toHaveLength(50);
+  expect(next[0]).toEqual(state(1));
+  expect(next.at(-1)).toEqual(state(50));
+});

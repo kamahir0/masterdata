@@ -183,10 +183,17 @@ fn source_lines(source: &str) -> Vec<SourceLine<'_>> {
     result
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MultilineString {
+    Basic,
+    Literal,
+}
+
 fn sections(source: &str, lines: &[SourceLine<'_>]) -> Result<Vec<Section>> {
     let mut result = Vec::new();
+    let mut multiline = None;
     for (line, source_line) in lines.iter().enumerate() {
-        let uncommented = strip_comment(source_line.text);
+        let uncommented = section_line_code(source_line.text, &mut multiline);
         let code = uncommented.trim();
         let (array, inner) =
             if let Some(inner) = code.strip_prefix("[[").and_then(|v| v.strip_suffix("]]")) {
@@ -216,6 +223,85 @@ fn sections(source: &str, lines: &[SourceLine<'_>]) -> Result<Vec<Section>> {
     }
     let _ = source;
     Ok(result)
+}
+
+fn section_line_code(line: &str, multiline: &mut Option<MultilineString>) -> String {
+    if let Some(kind) = *multiline {
+        let delimiter = match kind {
+            MultilineString::Basic => "\"\"\"",
+            MultilineString::Literal => "'''",
+        };
+        if multiline_delimiter_position(line, delimiter, 0).is_some() {
+            *multiline = None;
+        }
+        return String::new();
+    }
+
+    let bytes = line.as_bytes();
+    let mut index = 0usize;
+    let mut quote = None;
+    while index < bytes.len() {
+        if quote.is_none() && bytes[index] == b'#' {
+            return line[..index].to_owned();
+        }
+        if quote.is_none() && bytes[index..].starts_with(b"\"\"\"") {
+            if let Some(close) = multiline_delimiter_position(line, "\"\"\"", index + 3) {
+                index = close + 3;
+                continue;
+            }
+            *multiline = Some(MultilineString::Basic);
+            return line[..index].to_owned();
+        }
+        if quote.is_none() && bytes[index..].starts_with(b"'''") {
+            if let Some(close) = multiline_delimiter_position(line, "'''", index + 3) {
+                index = close + 3;
+                continue;
+            }
+            *multiline = Some(MultilineString::Literal);
+            return line[..index].to_owned();
+        }
+        match quote {
+            Some(b'"') => {
+                if bytes[index] == b'\\' {
+                    index = (index + 2).min(bytes.len());
+                    continue;
+                }
+                if bytes[index] == b'"' {
+                    quote = None;
+                }
+            }
+            Some(b'\'') if bytes[index] == b'\'' => quote = None,
+            Some(_) => {}
+            None if bytes[index] == b'"' || bytes[index] == b'\'' => quote = Some(bytes[index]),
+            None => {}
+        }
+        index += 1;
+    }
+    line.to_owned()
+}
+
+fn multiline_delimiter_position(line: &str, delimiter: &str, start: usize) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let delimiter_bytes = delimiter.as_bytes();
+    let mut index = start;
+    while index + delimiter_bytes.len() <= bytes.len() {
+        if &bytes[index..index + delimiter_bytes.len()] == delimiter_bytes {
+            if delimiter == "\"\"\"" {
+                let backslashes = bytes[..index]
+                    .iter()
+                    .rev()
+                    .take_while(|byte| **byte == b'\\')
+                    .count();
+                if backslashes % 2 == 1 {
+                    index += 1;
+                    continue;
+                }
+            }
+            return Some(index);
+        }
+        index += 1;
+    }
+    None
 }
 
 fn parse_key_path(input: &str) -> Option<Vec<String>> {
@@ -430,6 +516,15 @@ fn matching_array_end(source: &str, start: usize, limit: usize) -> Option<usize>
 }
 
 fn update_string_array(source: &str, span: ArraySpan, desired: &[String]) -> Result<String> {
+    let raw = &source[span.start..span.end];
+    let existing = parse_string_array_values(raw)?;
+    if existing == desired {
+        return Ok(raw.to_owned());
+    }
+    if raw.contains('#') {
+        return update_commented_string_array(source, span, &existing, desired);
+    }
+
     let entries = array_entries(source, span)?;
     if desired.is_empty() {
         return Ok("[]".to_owned());
@@ -458,13 +553,9 @@ fn update_string_array(source: &str, span: ArraySpan, desired: &[String]) -> Res
             rendered.push(format!(" {}", render_toml_string(value)));
         }
     }
-    let multiline = source[span.start..span.end].contains('\n');
+    let multiline = raw.contains('\n');
     if multiline {
-        let newline = if source[span.start..span.end].contains("\r\n") {
-            "\r\n"
-        } else {
-            "\n"
-        };
+        let newline = if raw.contains("\r\n") { "\r\n" } else { "\n" };
         let indent = entries
             .first()
             .map(|entry| {
@@ -473,7 +564,7 @@ fn update_string_array(source: &str, span: ArraySpan, desired: &[String]) -> Res
                     .map_or(span.start, |index| index + 1);
                 source[line_start..entry.token_start].to_owned()
             })
-            .unwrap_or_else(|| "\n    ".to_owned());
+            .unwrap_or_else(|| "    ".to_owned());
         Ok(format!(
             "[{newline}{}{newline}]",
             rendered
@@ -492,6 +583,223 @@ fn update_string_array(source: &str, span: ArraySpan, desired: &[String]) -> Res
                 .join(", ")
         ))
     }
+}
+
+fn parse_string_array_values(raw: &str) -> Result<Vec<String>> {
+    let value = toml::from_str::<toml::Value>(&format!("value = {raw}")).map_err(|_| {
+        config_edit_error(
+            "E-CONFIG-EDIT-UNSUPPORTED",
+            "profile array could not be parsed as a string array",
+        )
+    })?;
+    value
+        .get("value")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| {
+            config_edit_error(
+                "E-CONFIG-EDIT-UNSUPPORTED",
+                "profile property is not a TOML array",
+            )
+        })?
+        .iter()
+        .map(|entry| {
+            entry.as_str().map(str::to_owned).ok_or_else(|| {
+                config_edit_error(
+                    "E-CONFIG-EDIT-UNSUPPORTED",
+                    "profile array contains a non-string entry",
+                )
+            })
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+struct StringToken {
+    start: usize,
+    end: usize,
+    quote: u8,
+}
+
+fn string_tokens_in_array(source: &str, span: ArraySpan) -> Result<Vec<StringToken>> {
+    let mut tokens = Vec::new();
+    let bytes = source.as_bytes();
+    let mut index = span.start + 1;
+    let limit = span.end.saturating_sub(1);
+    let mut in_comment = false;
+    while index < limit {
+        let byte = bytes[index];
+        if in_comment {
+            if byte == b'\n' {
+                in_comment = false;
+            }
+            index += 1;
+            continue;
+        }
+        if byte == b'#' {
+            in_comment = true;
+            index += 1;
+            continue;
+        }
+        if byte != b'"' && byte != b'\'' {
+            index += 1;
+            continue;
+        }
+        if index + 2 < limit && bytes[index + 1] == byte && bytes[index + 2] == byte {
+            return Err(config_edit_error(
+                "E-CONFIG-EDIT-UNSUPPORTED",
+                "multiline strings are not supported as profile tag entries",
+            ));
+        }
+        let quote = byte;
+        let token_start = index;
+        index += 1;
+        while index < limit {
+            if quote == b'"' && bytes[index] == b'\\' {
+                index = (index + 2).min(limit);
+                continue;
+            }
+            if bytes[index] == quote {
+                index += 1;
+                tokens.push(StringToken {
+                    start: token_start,
+                    end: index,
+                    quote,
+                });
+                break;
+            }
+            index += 1;
+        }
+        if tokens.last().is_none_or(|token| token.start != token_start) {
+            return Err(config_edit_error(
+                "E-CONFIG-EDIT-UNSUPPORTED",
+                "profile string entry could not be located safely",
+            ));
+        }
+    }
+    Ok(tokens)
+}
+
+fn update_commented_string_array(
+    source: &str,
+    span: ArraySpan,
+    existing: &[String],
+    desired: &[String],
+) -> Result<String> {
+    let tokens = string_tokens_in_array(source, span)?;
+    if tokens.len() != existing.len() {
+        return Err(config_edit_error(
+            "E-CONFIG-EDIT-UNSUPPORTED",
+            "profile array token identity is ambiguous",
+        ));
+    }
+    let mut result = source[span.start..span.end].to_owned();
+    if desired.len() < existing.len() {
+        let mut removals = tokens[desired.len()..]
+            .iter()
+            .map(|token| (token.start, token.end))
+            .collect::<Vec<_>>();
+        let scan_start = desired
+            .last()
+            .and_then(|_| tokens.get(desired.len().saturating_sub(1)))
+            .map_or(span.start + 1, |token| token.end);
+        removals.extend(commented_array_commas(source, scan_start, span.end - 1));
+        removals.sort_unstable_by_key(|(start, _)| *start);
+        for (start, end) in removals.into_iter().rev() {
+            result.replace_range(start - span.start..end - span.start, "");
+        }
+        for index in (0..desired.len()).rev() {
+            let token = &tokens[index];
+            let replacement = render_toml_string_with_quote(&desired[index], token.quote);
+            result.replace_range(
+                token.start - span.start..token.end - span.start,
+                &replacement,
+            );
+        }
+        return Ok(result);
+    }
+
+    for index in (0..existing.len()).rev() {
+        let token = &tokens[index];
+        let replacement = render_toml_string_with_quote(&desired[index], token.quote);
+        result.replace_range(
+            token.start - span.start..token.end - span.start,
+            &replacement,
+        );
+    }
+    if desired.len() == existing.len() {
+        return Ok(result);
+    }
+
+    let last = tokens.last().ok_or_else(|| {
+        config_edit_error(
+            "E-CONFIG-EDIT-UNSUPPORTED",
+            "cannot extend a commented empty profile array safely",
+        )
+    })?;
+    let raw = &source[span.start..span.end];
+    let relative_last_end = last.end - span.start;
+    let tail = &raw[relative_last_end..raw.len() - 1];
+    let before_comment_or_newline = tail.split(['#', '\n', '\r']).next().unwrap_or_default();
+    if !before_comment_or_newline.contains(',') {
+        result.insert(relative_last_end, ',');
+    }
+
+    let close = result.rfind(']').ok_or_else(|| {
+        config_edit_error(
+            "E-CONFIG-EDIT-UNSUPPORTED",
+            "profile array closing delimiter could not be located safely",
+        )
+    })?;
+    let newline = if raw.contains("\r\n") { "\r\n" } else { "\n" };
+    let close_line_start = result[..close].rfind('\n').map_or(0, |index| index + 1);
+    let closing_indent = result[close_line_start..close].to_owned();
+    let indent = format!("{closing_indent}  ");
+    let addition = desired[existing.len()..]
+        .iter()
+        .map(|value| format!("{indent}{}", render_toml_string(value)))
+        .collect::<Vec<_>>()
+        .join(&format!(",{newline}"));
+    result.insert_str(close_line_start, &format!("{addition}{newline}"));
+    Ok(result)
+}
+
+fn commented_array_commas(source: &str, start: usize, end: usize) -> Vec<(usize, usize)> {
+    let bytes = source.as_bytes();
+    let mut index = start;
+    let mut quote = None;
+    let mut in_comment = false;
+    let mut commas = Vec::new();
+    while index < end {
+        let byte = bytes[index];
+        if in_comment {
+            if byte == b'\n' {
+                in_comment = false;
+            }
+            index += 1;
+            continue;
+        }
+        match quote {
+            Some(b'"') => {
+                if byte == b'\\' {
+                    index = (index + 2).min(end);
+                    continue;
+                }
+                if byte == b'"' {
+                    quote = None;
+                }
+            }
+            Some(b'\'') if byte == b'\'' => quote = None,
+            Some(_) => {}
+            None => match byte {
+                b'#' => in_comment = true,
+                b'"' | b'\'' => quote = Some(byte),
+                b',' => commas.push((index, index + 1)),
+                _ => {}
+            },
+        }
+        index += 1;
+    }
+    commas
 }
 
 fn array_entries(source: &str, span: ArraySpan) -> Result<Vec<ArrayEntry>> {
@@ -800,7 +1108,7 @@ mod tests {
         assert!(
             preview
                 .candidate_source
-                .contains("exclude_tags = [\r\n  \"debug\"\r\n]")
+                .contains("exclude_tags = [\r\n  \"debug\",\r\n]")
         );
         assert!(!preview.candidate_source.replace("\r\n", "").contains('\n'));
     }
@@ -834,6 +1142,86 @@ mod tests {
                 .candidate_source
                 .contains("kind = \"binary\"\r\npath = \"data/masterdata.bytes\"")
         );
+    }
+
+    #[test]
+    fn multiline_string_header_is_not_treated_as_profile_section() {
+        let source = "[unknown]\ntext = \"\"\"\n[build.profiles.prod]\ninclude_tags = [\"decoy\"]\n\"\"\"\n[build.profiles.prod]\ninclude_tags = [\"real\"]\n";
+        let preview = preview_project_config_edit(
+            source,
+            &ProjectConfigEditOperation::UpdateProfile {
+                name: "prod".into(),
+                include_tags: vec!["updated".into()],
+                exclude_tags: Vec::new(),
+            },
+        )
+        .expect("profile edit");
+        assert!(
+            preview
+                .candidate_source
+                .contains("include_tags = [\"decoy\"]")
+        );
+        assert!(
+            preview
+                .candidate_source
+                .contains("include_tags = [\"updated\"]")
+        );
+    }
+
+    #[test]
+    fn commented_multiline_array_noop_preserves_exact_bytes_and_extension_keeps_comment() {
+        let source =
+            "[build.profiles.prod]\ninclude_tags = [\n  \"a\", # keep a\n  \"b\", # keep b\n]\n";
+        let noop = preview_project_config_edit(
+            source,
+            &ProjectConfigEditOperation::UpdateProfile {
+                name: "prod".into(),
+                include_tags: vec!["a".into(), "b".into()],
+                exclude_tags: Vec::new(),
+            },
+        )
+        .expect("noop");
+        assert_eq!(noop.candidate_source, source);
+        assert!(!noop.changed);
+
+        let single = "[build.profiles.prod]\ninclude_tags = [\"a\" # keep a\n]\n";
+        let extended = preview_project_config_edit(
+            single,
+            &ProjectConfigEditOperation::UpdateProfile {
+                name: "prod".into(),
+                include_tags: vec!["a".into(), "b".into()],
+                exclude_tags: Vec::new(),
+            },
+        )
+        .expect("extend");
+        assert!(extended.candidate_source.contains("\"a\", # keep a"));
+        assert!(extended.candidate_source.contains("\"b\""));
+        assert!(toml::from_str::<toml::Value>(&extended.candidate_source).is_ok());
+    }
+
+    #[test]
+    fn commented_array_removal_preserves_comments_and_valid_toml() {
+        let source = "[build.profiles.prod]\ninclude_tags = [\n  \"a\", # keep a\n  \"b\", # keep b\n  \"c\" # keep c\n]\n";
+        let preview = preview_project_config_edit(
+            source,
+            &ProjectConfigEditOperation::UpdateProfile {
+                name: "prod".into(),
+                include_tags: vec!["a".into()],
+                exclude_tags: Vec::new(),
+            },
+        )
+        .expect("remove entries");
+        assert!(preview.candidate_source.contains("# keep a"));
+        assert!(preview.candidate_source.contains("# keep b"));
+        assert!(preview.candidate_source.contains("# keep c"));
+        assert!(!preview.candidate_source.contains("\"b\""));
+        assert!(!preview.candidate_source.contains("\"c\""));
+        let parsed = toml::from_str::<toml::Value>(&preview.candidate_source).expect("valid TOML");
+        let tags = parsed["build"]["profiles"]["prod"]["include_tags"]
+            .as_array()
+            .expect("tags");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].as_str(), Some("a"));
     }
 
     #[test]

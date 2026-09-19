@@ -2,13 +2,13 @@ use std::path::{Path, PathBuf};
 
 use masterdata_app::{
     AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
-    AuthoringBatchRequest, AuthoringEdit, AuthoringRecordDraft, AuthoringRecordMutation,
-    AuthoringWorkspace, ConfigSaveReport, CreationContext, CreationDestinationState,
-    CreationReport, CreationRequest, DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot,
-    NativeApplicationService, ProjectConfigEditPreviewView, ProjectConfigEditRequest,
-    ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest, PublishExecutionReport,
-    PublishPreview, RecordTagEditRequest, SourceContentState, SourceEditPreview, SourceSaveReport,
-    TableOverviewRequest, TableOverviewSnapshot,
+    AuthoringBatchRequest, AuthoringClipboardShape, AuthoringEdit, AuthoringRecordDraft,
+    AuthoringRecordMutation, AuthoringWorkspace, ConfigSaveReport, CreationContext,
+    CreationDestinationState, CreationReport, CreationRequest, DataFileQueryRequest,
+    DataFileQueryResult, DataFileSnapshot, NativeApplicationService, ProjectConfigEditPreviewView,
+    ProjectConfigEditRequest, ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest,
+    PublishExecutionReport, PublishPreview, RecordTagEditRequest, SourceContentState,
+    SourceEditPreview, SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -352,8 +352,7 @@ fn save_project_config_edit(
     project_path: Option<String>,
     base_source: String,
     base_content_identity: String,
-    request: ProjectConfigEditRequest,
-    overwrite_expected_identity: Option<String>,
+    requests: Vec<ProjectConfigEditRequest>,
 ) -> std::result::Result<ConfigSaveReport, ApiError> {
     let root = config_binding_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
@@ -368,9 +367,17 @@ fn save_project_config_edit(
             &current_dir,
             &base_source,
             &base_content_identity,
-            &request,
-            overwrite_expected_identity.as_deref(),
+            &requests,
         )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn authoring_clipboard_shape(
+    clipboard_text: String,
+) -> std::result::Result<AuthoringClipboardShape, ApiError> {
+    NativeApplicationService::new()
+        .authoring_clipboard_shape(&clipboard_text)
         .map_err(ApiError::from)
 }
 
@@ -417,24 +424,46 @@ fn publish_preview(project_path: Option<String>) -> std::result::Result<PublishP
         .map_err(ApiError::from)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublishExecutionView {
+    status: &'static str,
+    report: PublishExecutionReport,
+    diagnostic: Option<DiagnosticDto>,
+}
+
 #[tauri::command(rename_all = "camelCase")]
 fn publish_from_preview(
     project_path: Option<String>,
     artifact_set_identity: String,
     config_content_identity: String,
-) -> std::result::Result<PublishExecutionReport, ApiError> {
+    publish_plan_identity: String,
+) -> std::result::Result<PublishExecutionView, ApiError> {
     let root = table_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .publish_from_preview(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &artifact_set_identity,
-            &config_content_identity,
-        )
-        .map_err(|failure| ApiError::from(failure.into_error()))
+    match NativeApplicationService::new().publish_from_preview(
+        configured_path.as_deref().map(Path::new),
+        &current_dir,
+        &artifact_set_identity,
+        &config_content_identity,
+        &publish_plan_identity,
+    ) {
+        Ok(report) => Ok(PublishExecutionView {
+            status: "success",
+            report,
+            diagnostic: None,
+        }),
+        Err(failure) => {
+            let diagnostic = DiagnosticDto::from(failure.diagnostic());
+            Ok(PublishExecutionView {
+                status: "failure",
+                report: failure.report,
+                diagnostic: Some(diagnostic),
+            })
+        }
+    }
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -538,9 +567,9 @@ fn save_data_file(
     overwrite_expected_identity: Option<String>,
 ) -> std::result::Result<SourceSaveReport, ApiError> {
     let root = table_root(project_path.clone())?;
-    let _operation = operation_guard(&root)?;
-    // Hold the shared session guard across mutation so Apply cannot race another
-    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
+    // A normal source Save participates in the migration/session gate but not
+    // the long-lived Build/Publish operation guard. Build capture holds this
+    // session only until its immutable Plan is complete.
     let session = table_session()?;
     session
         .ensure_mutation_allowed(&root)
@@ -597,21 +626,24 @@ fn build(
 ) -> std::result::Result<BuildResponse, ApiError> {
     let root = table_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
-    // Hold the shared session guard across mutation so Apply cannot race another
-    // source command or bypass a Recovery Required gate (GUI-SHELL-CAPABILITY-001).
-    let session = table_session()?;
-    session
-        .ensure_mutation_allowed(&root)
-        .map_err(ApiError::from)?;
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
-    let execution = NativeApplicationService::new()
-        .build_with_profile(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            profile.as_deref(),
-            dry_run,
-        )
+    let service = NativeApplicationService::new();
+    let plan = {
+        let session = table_session()?;
+        session
+            .ensure_mutation_allowed(&root)
+            .map_err(ApiError::from)?;
+        service
+            .prepare_build_with_profile(
+                configured_path.as_deref().map(Path::new),
+                &current_dir,
+                profile.as_deref(),
+            )
+            .map_err(ApiError::from)?
+    };
+    let execution = service
+        .build_from_plan(plan, dry_run)
         .map_err(ApiError::from)?;
     Ok(BuildResponse {
         project: execution.plan.project.clone(),
@@ -645,6 +677,7 @@ pub fn run() {
             open_project_config,
             preview_project_config_edit,
             save_project_config_edit,
+            authoring_clipboard_shape,
             open_data_file,
             query_data_file,
             table_overview,
@@ -848,6 +881,199 @@ mod tests {
                 .join(".masterdata/output/masterdata.bytes")
                 .to_string_lossy()
                 .as_ref()
+        );
+    }
+}
+
+#[cfg(test)]
+mod desktop_workflow_tests {
+    use super::*;
+    use masterdata_app::{
+        AuthoringRecordField, ConfigSaveStatus, CreationStatus, ProjectInitStatus, SourceSaveStatus,
+    };
+    use masterdata_core::{AuthoringValue, PublishTargetKind};
+    use std::fs;
+
+    #[test]
+    fn desktop_workflow_reaches_build_publish_and_stale_recovery() {
+        let temp = tempfile::tempdir().expect("desktop scenario");
+        #[cfg(windows)]
+        let root = temp.path().join("project");
+        #[cfg(not(windows))]
+        let root = temp
+            .path()
+            .canonicalize()
+            .expect("canonical desktop scenario root")
+            .join("project");
+        let init = create_project(ProjectInitRequest {
+            destination: root.clone(),
+            project_id: "desktop.scenario".into(),
+            name: "Desktop Scenario".into(),
+            version: "0.1.0".into(),
+        })
+        .expect("Create Project command");
+        assert_eq!(init.status, ProjectInitStatus::Success);
+        let project_path = root.to_string_lossy().into_owned();
+
+        let context = creation_context(Some(project_path.clone())).expect("creation context");
+        let source_root = context.roots.first().expect("source root").label.clone();
+        let table = create_source(
+            Some(project_path.clone()),
+            serde_json::json!({
+                "sourceRoot": source_root,
+                "destination": "schemas/item-schema.yaml",
+                "artifact": {
+                    "category": "table",
+                    "table": "item",
+                    "csharpName": "ItemMaster",
+                    "fields": [
+                        {"key": 0, "name": "id", "type": "int"},
+                        {"key": 1, "name": "name", "type": "string"}
+                    ],
+                    "primaryKey": {"fields": ["id"]},
+                    "secondaryKeys": []
+                }
+            }),
+        )
+        .expect("Create Table source");
+        assert_eq!(table.status, CreationStatus::Success);
+        let data_creation = create_source(
+            Some(project_path.clone()),
+            serde_json::json!({
+                "sourceRoot": source_root,
+                "destination": "data/items.yaml",
+                "artifact": {"category": "data", "table": "item"}
+            }),
+        )
+        .expect("Create Data source");
+        assert_eq!(data_creation.status, CreationStatus::Success);
+
+        let config = open_project_config(Some(project_path.clone())).expect("open settings");
+        let config_report = save_project_config_edit(
+            Some(project_path.clone()),
+            config.base_source,
+            config.base_content_identity,
+            vec![
+                ProjectConfigEditRequest::AddProfile {
+                    name: "prod".into(),
+                    include_tags: Vec::new(),
+                    exclude_tags: Vec::new(),
+                },
+                ProjectConfigEditRequest::AddPublishTarget {
+                    kind: PublishTargetKind::CSharp,
+                    path: "delivery".into(),
+                },
+            ],
+        )
+        .expect("save settings");
+        assert_eq!(config_report.status, ConfigSaveStatus::Success);
+
+        let data = open_data_file(Some(project_path.clone()), data_creation.path.clone())
+            .expect("open created data");
+        let source_report = save_data_file(
+            Some(project_path.clone()),
+            data_creation.path.clone(),
+            data.base_source,
+            data.base_content_identity,
+            Vec::new(),
+            Some(vec![AuthoringRecordDraft {
+                fields: vec![
+                    AuthoringRecordField {
+                        field: "id".into(),
+                        value: AuthoringValue::Number {
+                            value: "1001".into(),
+                        },
+                    },
+                    AuthoringRecordField {
+                        field: "name".into(),
+                        value: AuthoringValue::String {
+                            value: "Mega Potion".into(),
+                        },
+                    },
+                ],
+                tags: Vec::new(),
+            }]),
+            None,
+            None,
+            None,
+        )
+        .expect("save new record");
+        assert_eq!(source_report.status, SourceSaveStatus::Success);
+        assert!(
+            fs::read_to_string(root.join(&data_creation.path))
+                .expect("saved data")
+                .contains("Mega Potion")
+        );
+
+        let build =
+            build(Some(project_path.clone()), false, Some("prod".into())).expect("desktop build");
+        assert!(!build.generated_files.is_empty());
+        assert!(build.artifact_root.join("masterdata.bytes").is_file());
+
+        let stale_preview = publish_preview(Some(project_path.clone())).expect("publish preview");
+        let delivery = root.join("delivery");
+        fs::create_dir_all(&delivery).expect("delivery");
+        fs::write(delivery.join("External.g.cs"), b"external").expect("external file");
+        fs::write(
+            delivery.join(masterdata_app::PUBLISH_MANIFEST_FILENAME),
+            br#"{"version":1,"files":["External.g.cs"]}"#,
+        )
+        .expect("external manifest");
+
+        let stale = publish_from_preview(
+            Some(project_path.clone()),
+            stale_preview.artifact_set_identity,
+            stale_preview.config_content_identity,
+            stale_preview.publish_plan_identity,
+        )
+        .expect("structured stale result");
+        assert_eq!(stale.status, "failure");
+        assert_eq!(
+            stale
+                .diagnostic
+                .as_ref()
+                .map(|diagnostic| diagnostic.code.as_str()),
+            Some("E-PUBLISH-PREVIEW-STALE-DESTINATION")
+        );
+        assert_eq!(
+            fs::read(delivery.join("External.g.cs")).expect("stale preview is non-mutating"),
+            b"external"
+        );
+
+        let fresh = publish_preview(Some(project_path.clone())).expect("fresh preview");
+        assert!(
+            fresh
+                .targets
+                .iter()
+                .flat_map(|target| target.removals.iter())
+                .any(|path| path == "External.g.cs")
+        );
+        let published = publish_from_preview(
+            Some(project_path),
+            fresh.artifact_set_identity,
+            fresh.config_content_identity,
+            fresh.publish_plan_identity,
+        )
+        .expect("publish result");
+        assert_eq!(published.status, "success");
+        assert!(
+            published
+                .report
+                .targets
+                .iter()
+                .all(|target| target.status == masterdata_app::PublishTargetStatus::Succeeded)
+        );
+        assert!(!delivery.join("External.g.cs").exists());
+        assert!(
+            fs::read_dir(&delivery)
+                .expect("delivery entries")
+                .filter_map(|entry| entry.ok())
+                .any(|entry| {
+                    entry
+                        .path()
+                        .extension()
+                        .is_some_and(|extension| extension == std::ffi::OsStr::new("cs"))
+                })
         );
     }
 }

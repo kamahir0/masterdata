@@ -1,6 +1,7 @@
 //! Read-only search, filter, and sort semantics for authoring snapshots.
 
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -356,14 +357,35 @@ fn value_state_type(shape: &ResolvedAuthoringType, value: &AuthoringValue) -> Va
             }
             _ => ValueState::Invalid,
         },
-        ResolvedAuthoringType::Flags { .. } => ValueState::Invalid,
+        ResolvedAuthoringType::Flags { members, .. } => match value {
+            AuthoringValue::Sequence { items, .. } => {
+                let mut seen = BTreeSet::new();
+                let valid_members = !items.is_empty()
+                    && items.iter().all(|item| match &item.value {
+                        AuthoringValue::String { value } => {
+                            members.iter().any(|member| member == value)
+                                && seen.insert(value.as_str())
+                        }
+                        _ => false,
+                    });
+                let none_mixed = seen.contains("None") && seen.len() > 1;
+                if valid_members && !none_mixed {
+                    ValueState::Valid
+                } else {
+                    ValueState::Invalid
+                }
+            }
+            _ => ValueState::Invalid,
+        },
         ResolvedAuthoringType::Custom { fields, .. } => match value {
             AuthoringValue::Mapping { entries } if entries.len() == fields.len() => {
                 if fields.iter().all(|field| {
                     entries
                         .iter()
                         .find(|entry| entry.name == field.name)
-                        .is_some_and(|entry| value_state(field, &entry.value) == ValueState::Valid)
+                        .is_some_and(|entry| {
+                            value_state(field, &entry.value) != ValueState::Invalid
+                        })
                 }) {
                     ValueState::Valid
                 } else {
@@ -415,24 +437,26 @@ fn scalar_string(value: &AuthoringValue) -> Option<&str> {
 }
 
 fn is_sort_capable(shape: &ResolvedAuthoringField) -> bool {
-    matches!(shape.modifier, FieldModifier::Required)
-        && matches!(
-            shape.shape,
-            ResolvedAuthoringType::Primitive {
-                primitive: PrimitiveType::Int
-                    | PrimitiveType::UInt
-                    | PrimitiveType::Long
-                    | PrimitiveType::ULong
-                    | PrimitiveType::String
-            } | ResolvedAuthoringType::ValueObject {
-                underlying: PrimitiveType::Int
-                    | PrimitiveType::UInt
-                    | PrimitiveType::Long
-                    | PrimitiveType::ULong
-                    | PrimitiveType::String,
-                ..
-            }
-        )
+    matches!(
+        shape.modifier,
+        FieldModifier::Required | FieldModifier::Nullable
+    ) && matches!(
+        shape.shape,
+        ResolvedAuthoringType::Primitive {
+            primitive: PrimitiveType::Int
+                | PrimitiveType::UInt
+                | PrimitiveType::Long
+                | PrimitiveType::ULong
+                | PrimitiveType::String
+        } | ResolvedAuthoringType::ValueObject {
+            underlying: PrimitiveType::Int
+                | PrimitiveType::UInt
+                | PrimitiveType::Long
+                | PrimitiveType::ULong
+                | PrimitiveType::String,
+            ..
+        }
+    )
 }
 
 fn is_string_shape(shape: &ResolvedAuthoringField) -> bool {
@@ -724,6 +748,162 @@ mod tests {
                 vec![0]
             );
         }
+    }
+
+    #[test]
+    fn flags_and_nullable_custom_members_follow_resolved_validation() {
+        let flags = ResolvedAuthoringField {
+            name: "permissions".into(),
+            type_name: "Permission".into(),
+            modifier: FieldModifier::Required,
+            shape: ResolvedAuthoringType::Flags {
+                name: "Permission".into(),
+                underlying: PrimitiveType::Int,
+                members: vec!["None".into(), "Read".into(), "Write".into()],
+            },
+        };
+        let custom = ResolvedAuthoringField {
+            name: "settings".into(),
+            type_name: "Settings".into(),
+            modifier: FieldModifier::Required,
+            shape: ResolvedAuthoringType::Custom {
+                name: "Settings".into(),
+                fields: vec![nullable_field("limit", PrimitiveType::Int)],
+            },
+        };
+        let rows = vec![QueryRow {
+            source_order: 0,
+            values: vec![
+                AuthoringValue::Sequence {
+                    items: vec![crate::AuthoringSequenceItem {
+                        source_index: Some(0),
+                        value: string("Read"),
+                    }],
+                    source_identity: true,
+                },
+                AuthoringValue::Mapping {
+                    entries: vec![crate::AuthoringMember {
+                        name: "limit".into(),
+                        value: AuthoringValue::Null,
+                    }],
+                },
+            ],
+        }];
+        for field_name in ["permissions", "settings"] {
+            let query = AuthoringQuery {
+                filters: vec![ColumnFilter {
+                    field: field_name.into(),
+                    operator: QueryOperator::IsInvalid,
+                    value: None,
+                }],
+                ..Default::default()
+            };
+            assert!(
+                apply_authoring_query(&[flags.clone(), custom.clone()], &rows, &query)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
+    #[test]
+    fn flags_invalid_filter_rejects_empty_duplicate_and_none_mixed_sequences() {
+        let flags = ResolvedAuthoringField {
+            name: "permissions".into(),
+            type_name: "Permission".into(),
+            modifier: FieldModifier::Required,
+            shape: ResolvedAuthoringType::Flags {
+                name: "Permission".into(),
+                underlying: PrimitiveType::Int,
+                members: vec!["None".into(), "Read".into(), "Write".into()],
+            },
+        };
+        let seq = |values: &[&str]| AuthoringValue::Sequence {
+            source_identity: true,
+            items: values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| crate::AuthoringSequenceItem {
+                    source_index: Some(index),
+                    value: string(value),
+                })
+                .collect(),
+        };
+        let rows = vec![
+            QueryRow {
+                source_order: 0,
+                values: vec![seq(&[])],
+            },
+            QueryRow {
+                source_order: 1,
+                values: vec![seq(&["Read", "Read"])],
+            },
+            QueryRow {
+                source_order: 2,
+                values: vec![seq(&["None", "Read"])],
+            },
+            QueryRow {
+                source_order: 3,
+                values: vec![seq(&["None"])],
+            },
+        ];
+        let query = AuthoringQuery {
+            filters: vec![ColumnFilter {
+                field: "permissions".into(),
+                operator: QueryOperator::IsInvalid,
+                value: None,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            apply_authoring_query(&[flags], &rows, &query).unwrap(),
+            vec![0, 1, 2]
+        );
+    }
+
+    #[test]
+    fn nullable_scalar_sort_keeps_valid_then_null_then_invalid_in_both_directions() {
+        let columns = vec![nullable_field("id", PrimitiveType::Int)];
+        let rows = vec![
+            QueryRow {
+                source_order: 0,
+                values: vec![AuthoringValue::Null],
+            },
+            QueryRow {
+                source_order: 1,
+                values: vec![number("2")],
+            },
+            QueryRow {
+                source_order: 2,
+                values: vec![string("bad")],
+            },
+            QueryRow {
+                source_order: 3,
+                values: vec![number("1")],
+            },
+        ];
+        let asc = AuthoringQuery {
+            sort: Some(QuerySort {
+                field: "id".into(),
+                direction: SortDirection::Ascending,
+            }),
+            ..Default::default()
+        };
+        let desc = AuthoringQuery {
+            sort: Some(QuerySort {
+                field: "id".into(),
+                direction: SortDirection::Descending,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            apply_authoring_query(&columns, &rows, &asc).unwrap(),
+            vec![3, 1, 0, 2]
+        );
+        assert_eq!(
+            apply_authoring_query(&columns, &rows, &desc).unwrap(),
+            vec![1, 3, 0, 2]
+        );
     }
 
     #[test]

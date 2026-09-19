@@ -7,75 +7,66 @@ Approved behaviorはcanonical specification、現在のStageは[Development Stat
 
 ## Objective
 
-現在のHuman priorityは、**ApprovedとなったDesktop制作v1（P1–P3）をまとまったwork packageとして実装し、日常制作をDesktop GUIだけで完遂できるcandidateを作る**ことである。
+現在のHuman priorityは、**P4としてexisting recordのkey field編集とsource file rename / moveを安全なauthoring operationとして仕様化し、Human Approval可能なimplementation packageへ収束させる**ことである。
 
-2026-09-18、Human maintainerは仕様変更0016–0018を一括Approvalし、44の新Requirementをcanonical ownerへ適用した。Stageは`implementation-ready`であり、次の作業はApproved contractからの実装である。
+2026-09-19、HumanはDesktop制作v1（P1–P3）のobjective-complete後の次priorityとしてP4を選択した。P4はApproved behaviorへまだ存在しないため、まずspecification refinement / reviewを行い、observable semanticsとsafety boundaryを確定する。Human Approval前にproduct implementationへ進めない。
 
 ## Why now
 
-Complex Value Authoring v1までで型・Table・record authoringとBuild / Publishの基盤は成立した。次は個別機能追加ではなく、Project作成から編集・確認・Build・Publishまでの日常workflowを一つの完成単位として接続する。
+Desktop制作v1によりProject作成、typed authoring、query / batch、Settings、Build / Publishまでの日常制作workflowは成立した。一方、existing recordのPrimary / Secondary Key構成fieldはread-onlyであり、source fileのrename / moveもSource Creation / Explorer / Source Editの非目標として残っている。
+
+P4は、この2つの明示的な制作上の制約を、既存のYAML Source of Truth、source-preserving edit、lost-update protection、Recovery Required、shared Rust application/core boundaryを維持したまま解消するwork packageである。
+
+## Work package
+
+### P4-A — Existing record key field edit
+
+既存recordのkey構成fieldを編集可能にするためのcontractを定義する。
+
+- MessagePack field `key`やschemaのPrimary / Secondary Key定義変更とは区別する。
+- record occurrenceのtargetingはkey valueではなくexisting source provenanceを引き続き使用する。
+- source-preserving edit、lossless typed value、file単位Save、Conflict / Failure / Outcome Unknown、validationとSaveの分離を既存contractから維持する。
+- Primary KeyだけかSecondary Key構成fieldも含めるか、single-cellだけかbatch operationにも含めるか等の未決定事項はspecification changeでHuman decisionへ戻す。
+
+### P4-B — Source file rename / move
+
+configured source root配下のexisting source fileをrename / moveするoperationのcontractを定義する。
+
+- source pathをTable / Type等のdomain identityへ昇格させない。
+- filesystem mutationはshared application / host capability boundaryへ置き、frontendへpath safetyやsource semanticsを複製しない。
+- destination scope、dirty bufferとのcomposition、collision / overwrite、case-only rename等のobservable behaviorはspecification changeでHuman decisionへ戻す。
 
 ## Completion boundary
 
-Desktop制作v1の完了候補は、少なくとも次を満たす。
+このdesign/specification phaseの完了候補は、少なくとも次を満たす。
 
-- 新規ProjectをGUIから安全に作成し、型・Table・Data file・recordを作成できる。
-- Data Editorでsearch/filter/sort、scalar range paste/fill、preview、Undo/Redo、Tag編集をsource-preservingに行える。
-- Table Overviewで分割fileを横断して保存済みsnapshotとProfile selectionを確認し、source occurrenceへ安全に戻れる。
-- Project SettingsでProfile / Publish targetをlossless TOML editとして変更・保存できる。
-- Buildは保存済みsource/configだけを使用し、明示Profileでcanonical artifact setを生成できる。
-- Publishはreceipt validationとpreview / all-target preflightを経てC# / binary targetへ配置できる。
-- external conflict、stale preview、Save All部分失敗、Migration Recovery Required、Publish部分失敗でlocal inputやunmanaged fileを誤って失わない。
-- focused tests、repository required checks、Desktop実機制作scenarioを通す。
-- 10万record（分割file）、20列Table、1万cell pasteの固定生成inputについてload/query/preview/validation時間とpeak memoryを測定し、環境情報とともにevidenceを残す。
-
-完成時はcandidate SHAをDevelopment Stateへ記録し、独立verificationへ進める。
-
-## Canonical implementation inputs
-
-### P1 — 日常編集
-
-- [Authoring Batch](specs/authoring-batch.md)
-- [Authoring Query / Overview](specs/authoring-query.md)
-- [Data Editor Grid Authoring](gui/data-editor/grid-authoring.md)
-- [Typed Migration Initializer](gui/typed-initializer.md)
-
-### P2 — Workspace・Tag・設定
-
-- [Source Tag Edit](specs/source-tag-edit.md)
-- [Data Editor Tag Authoring](gui/data-editor/tag-authoring.md)
-- [Table Overview](gui/table-overview/spec.md)
-- [Project Config Edit](specs/project-config-edit.md)
-- [Project Settings](gui/project-settings/spec.md)
-
-### P3 — Project入口・Build / Publish
-
-- [Project Initialization](specs/project-init.md)
-- [Project Workflow](gui/project-workflow.md)
-- [Build Request / Publish Preview](specs/build-request-preview.md)
-- [Build / Publish GUI](gui/build-publish/spec.md)
-
-既存のSource Edit、Record Mutation、Build Selection、Build pipeline、Migration、Runtime host等のApproved ownerも引き続き適用する。仕様変更0016–0018はApplied audit recordであり、implementation authorityではない。
-
-## Implementation order
-
-依存を壊さず一つのcandidateへ収束させるため、shared semantics / application service → Tauri adapter → React surface → cross-surface lifecycle → end-to-end / performance evidenceの順を基本とする。内部task分割はこの順序を満たす範囲でimplementation側に委ねる。
+- P4-A / P4-Bを別のdurable specification change artifactとして整理する。
+- current Approved specs、ADR、Product terminology、current implementationと照合してAffected Specificationsとcompatibility impactを明確にする。
+- implementation behaviorを変える未決定事項をOpen Questionsとして列挙し、Human decisionが必要なchoiceを自己完結的に提示する。
+- Human decision反映後、各changeをreview可能な`Proposed`へ収束させ、独立`review-spec`でBlockingを解消する。
+- Human Approval後にのみcanonical specificationへ適用し、implementation-readyへ進める。
 
 ## Explicit non-scope
 
-- P4: existing key編集、source file rename/move等。
 - P5: expression / computed / programmable view。
-- P6: Referenceの完成、Web authoring完成。
-- Git stage / commit / pushの自動化。
-- arbitrary YAML/TOML raw editorを通常制作経路にすること。
-- product latency SLAやrecord上限を今回の測定だけから発明すること。
+- P6: Referenceの完成、Standalone / Connected Web authoring完成。
+- MessagePack field `key`のschema編集、Primary / Secondary Key定義そのもののschema mutation。
+- source file delete / duplicate、folder rename / move、arbitrary filesystem operation（P4-BへHumanが明示追加しない限り）。
+- Git stage / commit / pushのproduct機能化。
 - Approved specificationにないobservable behaviorをimplementation convenienceで追加すること。
 
 ## Relevant authorities
 
 - [Authoring system v1 RFC](rfcs/0008-authoring-system-v1.md)
-- [0016 Applied record](spec-changes/0016-desktop-daily-editing.md)
-- [0017 Applied record](spec-changes/0017-desktop-workspace-settings.md)
-- [0018 Applied record](spec-changes/0018-desktop-build-delivery.md)
-- [Specification workflow](contributing/specification-workflow.md)
+- [Source Record Edit](specs/source-edit.md)
+- [Table / Primary Key / Secondary Key](specs/table-and-keys.md)
+- [Data Editor](gui/data-editor/spec.md)
+- [Data Editor Grid Authoring](gui/data-editor/grid-authoring.md)
+- [Project layout](specs/project-layout.md)
+- [Source Artifact Creation](specs/source-creation.md)
+- [Workspace Explorer](gui/explorer/spec.md)
+- [GUI app shell](gui/app-shell.md)
+- [Runtime hosts](specs/runtime-hosts.md)
+- [P4-A Draft change](spec-changes/0019-existing-record-key-edit.md)
+- [P4-B Draft change](spec-changes/0020-source-file-rename-move.md)
 - [Development workflow](execution-workflow.md)

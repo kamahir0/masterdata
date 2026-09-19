@@ -131,10 +131,34 @@ async function waitGone(xpath, timeoutMs = 20_000) {
   throw new Error(`timed out waiting for xpath to disappear: ${xpath}`);
 }
 
-async function click(xpath, timeoutMs) {
-  const id = await waitElement(xpath, timeoutMs);
-  await request("POST", `/session/${sessionId}/element/${id}/click`, {});
-  return id;
+async function enabled(id) {
+  const result = await request(
+    "GET",
+    `/session/${sessionId}/element/${id}/enabled`,
+    undefined,
+    { allowError: true },
+  );
+  return result.ok && result.payload?.value === true;
+}
+
+async function click(xpath, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ids = await elements(xpath);
+    for (const id of ids) {
+      if ((await displayed(id)) && (await enabled(id))) {
+        const result = await request(
+          "POST",
+          `/session/${sessionId}/element/${id}/click`,
+          {},
+          { allowError: true },
+        );
+        if (result.ok) return id;
+      }
+    }
+    await sleep(200);
+  }
+  throw new Error(`timed out waiting to click enabled xpath: ${xpath}`);
 }
 
 async function fill(xpath, value, timeoutMs) {

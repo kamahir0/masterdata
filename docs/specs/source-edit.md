@@ -126,11 +126,22 @@ current source valueがdomain-invalidでも、shared boundaryがsource valueをl
 
 Complex value edit requestはnested scalarを含むvalue treeをlosslessに表現しなければならない（MUST）。特に任意のnested positionにある`long` / `ulong`は全64-bit rangeをroundingなしで往復できなければならず（MUST）、frontendのIEEE-754 `number`へ強制変換してはならない（MUST NOT）。Value ObjectはApproved underlying scalar representation、Enumはsymbolic member、Flagsはsymbolic member sequence、Custom Typeはdeclared field mapping、Nullable / ArrayはApproved Type Systemのshape semanticsを使用しなければならない（MUST）。
 
+### SOURCE-EDIT-017
+
+既存recordのPrimary KeyまたはSecondary Keyを構成するfield valueを編集する場合、そのeditは通常のexisting record value editと同じexact base snapshot、source provenance、resolved typed value、source-preserving candidate、file単位Save、lost-update preflight、および`Success / Conflict / Failure / Outcome Unknown` lifecycleを使用しなければならない（MUST）。
+
+変更前または変更後のPrimary / Secondary Key valueをrecord occurrence identityとして使用してはならず（MUST NOT）、edit targetをkey valueだけで再検索または再特定してはならない（MUST NOT）。
+
+key value editによってcurrent candidateがPrimary Key uniqueness、unique Secondary Key、またはその他のdomain validationに違反しても、`SOURCE-EDIT-004`のvalidation / Save分離を変更してはならない（MUST NOT）。source commit safetyを満たす限り、validation errorだけを理由にSaveを拒否してはならない（MUST NOT）。Save successはcandidateがdomain-validであることを意味しない。
+
+本requirementはMessagePack field `key`、`primaryKey.fields`、`secondaryKeys` declarationのschema mutationを許可しない（MUST NOT）。
+
 ## 検証ルール
 
 少なくとも次をfocused unit / integration / GUI workflow evidenceで検証する。
 
 - 同一PK valueを持つ別source recordが存在しても、選択したsource occurrenceだけが変更される。
+- existing Primary / Secondary Key構成fieldをdirect editしてもsource provenanceで対象occurrenceを保持し、key valueだけで再特定しない。duplicate key等のdomain diagnosticだけではSaveを拒否しない。
 - Primitiveおよびnested complex value内の`long` / `ulong` boundary valueがfrontend/application boundaryでroundingされない。
 - Primitive / Value Object / Enum / Flags / Custom TypeとRequired / Nullable / Arrayのresolved authoring stateがfrontendでYAML/type再解釈なしに利用できる。
 - domain-invalidなexisting sourceを黙ってcoerceせず、安全にtyped stateへ投影できないfieldはoriginal sourceを保持してread-onlyになる。

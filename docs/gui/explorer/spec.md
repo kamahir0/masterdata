@@ -37,6 +37,12 @@ loading、save in progress、save failure、Conflict、Outcome Unknown等のsour
 
 cleanなsource fileが外部変更されて再読込された場合、Explorer selectionを可能な範囲で維持しなければならない（MUST）。dirty fileの外部変更はData Editorと[Source Record Edit](../../specs/source-edit.md)のConflict lifecycleへrouteし、dirty stateを暗黙に消してはならない（MUST NOT）。
 
+### GUI-EXPLORER-STATE-004
+
+rename / move実行中、Explorerはtarget source fileのpath mutationが進行中であることを識別可能にしなければならない（MUST）。Success前にdestination pathを確定したcurrent sourceとして編集可能に表示してはならない（MUST NOT）。
+
+Success後はworkspaceをshared application authorityから更新し、selected / open target sourceをnew pathへ追従させなければならない（MUST）。old pathのclean editor snapshotをcurrent editable sourceとして残してはならず（MUST NOT）、unrelated dirty bufferは保持しなければならない（MUST）。
+
 ## 操作（Interactions）
 
 ### GUI-EXPLORER-INT-001
@@ -50,6 +56,28 @@ folderはexpand / collapseできなければならず（MUST）、file / folder 
 ### GUI-EXPLORER-INT-003
 
 Project切替、Project Reload、window close等、dirty bufferを失う可能性がある上位操作はData Editor specificationの`Save All` / `Don't Save` / `Cancel` lifecycleに従わなければならない（MUST）。Explorer独自の別unsaved-changes policyを実装してはならない（MUST NOT）。
+
+### GUI-EXPLORER-INT-004
+
+Workspace Explorerはexisting Masterdata source fileに対するRename / Move actionを提供しなければならない（MUST）。destinationはsame configured source root内のfolder / filenameとして指定できなければならず（MUST）、source root間moveを実行可能にしてはならない（MUST NOT）。
+
+frontendはfolder配置またはfilenameからTable / Type identity changeを推測してはならない（MUST NOT）。
+
+### GUI-EXPLORER-INT-005
+
+target source fileがdirtyな場合、Rename / Move開始前に`Save` / `Don't Save` / `Cancel`を選択できなければならない（MUST）。
+
+- `Save`: target fileだけを通常Saveし、Successした場合だけRename / Moveへ進む。Conflict / Failure / Outcome Unknownではpath mutationへ進まずlocal bufferを保持する。
+- `Don't Save`: target fileのlocal dirty bufferを明示的に破棄してclean workspace sourceをrename / move対象とする。
+- `Cancel`: path mutationを開始せずlocal bufferを保持する。
+
+unrelated dirty filesへこの確認を適用してはならず（MUST NOT）、それらを暗黙Save / Discardしてはならない（MUST NOT）。
+
+### GUI-EXPLORER-INT-006
+
+Rename / Move成功後も、source documentはdocument kindとdeclared domain identityに従う同じtyped editorへrouteされなければならない（MUST）。case-only renameも通常のSuccess lifecycleを使用しなければならない（MUST）。
+
+destination ConflictではOverwrite actionを提示してはならず（MUST NOT）、destination変更またはCancelへ戻れるようにしなければならない（MUST）。
 
 ## キーボード（Keyboard）
 
@@ -79,6 +107,12 @@ ExplorerはYAMLやdomain semanticsをfrontend独自にparse / validateしては�
 
 filesystem I/O、permission、path safety、source classification、external modification等でfileを開けない場合、既存のdirty bufferや他file selection stateを不必要に破壊してはならない（MUST NOT）。利用者が原因を確認できるstructured error stateを表示しなければならない（MUST）。
 
+### GUI-EXPLORER-ERR-002
+
+[Source Path Mutation](../../specs/source-path-mutation.md)の`Conflict`、`Failure`、`Outcome Unknown`をSuccessとして表示してはならない（MUST NOT）。Outcome Unknownではold / new両pathのactual stateをRecheck / Reloadできるrecovery pathを提示し、recheck前に同じRename / Moveを自動retryしてはならない（MUST NOT）。
+
+Failure / Conflictによってunrelated dirty buffer、Explorer state、別source fileを不必要に破壊してはならない（MUST NOT）。
+
 ## アクセシビリティ（Accessibility）
 
 ### GUI-EXPLORER-A11Y-001
@@ -91,10 +125,10 @@ None.
 
 ## 将来のcreation model
 
-長期的なauthoring modelでは、ExplorerからfolderおよびTable、record data、Value Object、Enum等のsource artifactを作成できる入口を持つ方向とする。ただし各artifactのcreate semantics、template、命名、保存先、validation、rename / delete / moveは、それぞれのcanonical domain仕様が整った時点で別途仕様化する。
+長期的なauthoring modelでは、ExplorerからfolderおよびTable、record data、Value Object、Enum等のsource artifactを作成できる入口を持つ。source fileのrename / moveは[Source Path Mutation](../../specs/source-path-mutation.md)が所有する。delete / duplicate、folder rename / move等の追加mutationは、それぞれのcanonical domain仕様が整った時点で別途仕様化する。
 
 現在のGUI record editing Objectiveでは、新規folder / Table / Value Object / Enum等の作成機能そのものはimplementation scopeに含めない。
 
 ## 未解決事項（Open Questions）
 
-None identified for the initial existing-record Explorer. Creation / rename / delete / move、diagnostic aggregation badge、tree filter / search、favorite / recent source等は将来UXとして別途扱う。
+None identified for the current Explorer contract. Source file delete / duplicate、folder rename / move、diagnostic aggregation badge、tree filter / search、favorite / recent source等は将来UXとして別途扱う。

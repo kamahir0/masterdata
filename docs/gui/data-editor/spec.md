@@ -34,11 +34,11 @@ source diffはmain gridとは別のfile単位`Diff` view / editorとして表示
 
 ### GUI-DATA-STATE-001
 
-base snapshotに存在するexisting recordでは、Primary / Secondary Key構成fieldをread-onlyとして表示しなければならない（MUST）。non-key fieldは、shared applicationが[Source Record Edit](../../specs/source-edit.md)の`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくv1 supported resolved value shapeとして安全にauthoring可能と報告する場合、Primitiveに限定せずValue Object / Enum / Flags Enum / Custom Type / Nullable / Arrayを含めeditableとして扱わなければならない（MUST）。
+base snapshotに存在するexisting recordでは、shared applicationが[Source Record Edit](../../specs/source-edit.md)の`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくsupported resolved value shapeとして安全にauthoring可能と報告するfieldを、Primary / Secondary Key membershipだけを理由にread-onlyとしてはならない（MUST NOT）。Primitive、Value Object、normal Enum等、key componentとしてApprovedなshapeを含め、resolved value shapeに従ってeditableとして扱わなければならない（MUST）。
 
-unsupported、unresolved、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldはread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。
+unsupported、unresolved、missing source member、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldは、key membershipにかかわらずread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。Primary / Secondary Key構成fieldはeditableになった後もkey membershipを利用者が識別できなければならない（MUST）。
 
-base snapshotに存在しないAdded record draftについては、別のApproved GUI specificationが初回Save前のediting scopeを定義してよい（MAY）。この例外からexisting recordのkey field editabilityを導出してはならない（MUST NOT）。Added record draftがSave成功して新しいbase snapshotのexisting recordになった後は、通常の本requirementのscopeへ戻らなければならない（MUST）。
+base snapshotに存在しないAdded record draftは既存Record Mutation contractのediting scopeを維持する。Added draftがSave成功してexisting recordになった後も、上記existing-record ruleに従う。
 
 ### GUI-DATA-STATE-002
 
@@ -72,7 +72,11 @@ dirty stateは「一度編集したか」ではなく、現在のlocal bufferと
 
 ### GUI-DATA-EDIT-001
 
-利用者は編集可能cellを直接変更できなければならない（MUST）。single-cell editingを提供する。range selection、一括paste、fill handle、複数record同時編集、履歴付きUndo/Redo等の高度なspreadsheet操作は必須としない。
+利用者は`GUI-DATA-STATE-001`でeditableなcellをdirect single-cell editingから変更できなければならない（MUST）。Primary / Secondary Key構成fieldだけを理由に、key edit専用の追加modal confirmationをedit確定またはSaveの必須前提にしてはならない（MUST NOT）。
+
+key membershipの表示、validation marker、Problemsへのdiagnostic表示は通常のData Editor contractに従う。key editを行ったことだけを理由にSave、Build、Publish、Migrationを自動実行してはならない（MUST NOT）。
+
+[Authoring Batch](../../specs/authoring-batch.md)の`AUTHORING-BATCH-001`がexisting keyをbatch編集対象外としているため、本requirementのdirect edit permissionからpaste、fill、range Set Null、single-cell paste等のbatch mutation permissionを導出してはならない（MUST NOT）。
 
 ### GUI-DATA-EDIT-002
 
@@ -196,7 +200,6 @@ None.
 
 - recordの追加・削除（別のApproved Record Mutation仕様が所有する）。
 - schema、Table、Value Object、Enum等の編集・作成。
-- existing recordのkey field編集。
 - logical Table全体を複数file横断で一括編集するview。
 - range operation、一括paste、fill handle、multi-cell editing、履歴付きUndo/Redo。
 - Git stage / commit / push。

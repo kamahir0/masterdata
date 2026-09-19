@@ -177,7 +177,7 @@ filesystem destination resolution、path safety、exclusive create、permission�
 
 ## 初期sliceの非目標
 
-- rename / delete / move / duplicate。
+- existing source file rename / move（[Source Path Mutation](source-path-mutation.md)が所有する）、source file delete / duplicate、folder rename / move。
 - record追加・削除。
 - schema/type declarationのpost-create edit operation。
 - 1操作で複数source fileを作成するtransaction。

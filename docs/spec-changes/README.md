@@ -10,6 +10,8 @@ Desktop制作v1のP1–P3 packageは、[0016: 日常編集](0016-desktop-daily-e
 [0017: Workspace・設定](0017-desktop-workspace-settings.md)、[0018: Project入口・Build / Publish](0018-desktop-build-delivery.md)。
 2026-09-18にHuman Approvalを受けてcanonicalへ適用され、3 artifactは`Applied`である。implementationは各artifactが示すApproved canonical ownerを使用する。
 
+P4 packageは、[0019: Existing record key field edit](0019-existing-record-key-edit.md)と[0020: Source file rename / move](0020-source-file-rename-move.md)。2026-09-20 JSTにHuman Approvalを受けてcanonicalへ適用され、2 artifactは`Applied`である。
+
 1. `refine-spec` がevidence、affected Requirement ID、proposed delta、compatibility impact、Open Questionsを
    新しいartifactに記録する。
 2. `review-spec` がartifactを、source request、canonical specification、ADR、terminology、current implementation、

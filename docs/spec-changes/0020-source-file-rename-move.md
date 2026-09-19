@@ -1,6 +1,6 @@
 # 仕様変更: Source file rename / move
 
-Status: Proposed
+Status: Applied
 
 ## Affected Specifications
 
@@ -183,4 +183,6 @@ Review dimensions: Intent fidelity=Pass、Internal consistency=Pass、Cross-spec
 
 ## 承認記録（Approval Record）
 
-未承認。Human maintainerによる明示Approval後にのみcanonical specificationへ適用する。
+- Human approval: 2026-09-20 JST
+- Canonical application: this artifact was changed to `Applied` in the same semantic commit that added the Approved `docs/specs/source-path-mutation.md` owner and applied the Explorer / Source Creation routing delta.
+- Implementation authority: canonical Approved specifications only; this artifact remains an audit record.

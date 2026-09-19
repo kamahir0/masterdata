@@ -200,9 +200,10 @@ async function waitText(text, timeoutMs = 20_000) {
   return waitElement(`//*[contains(normalize-space(.), ${xpathLiteral(text)})]`, timeoutMs);
 }
 
-function findUniqueFile(root, basename) {
+function findFiles(root, basename) {
   const matches = [];
   const visit = (dir) => {
+    if (!fs.existsSync(dir)) return;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) visit(full);
@@ -210,10 +211,19 @@ function findUniqueFile(root, basename) {
     }
   };
   visit(root);
-  if (matches.length !== 1) {
-    throw new Error(`expected exactly one ${basename} under ${root}, found ${matches.length}: ${matches.join(", ")}`);
+  return matches;
+}
+
+async function waitUniqueFile(root, basename, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  let matches = [];
+  while (Date.now() < deadline) {
+    matches = findFiles(root, basename);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) break;
+    await sleep(200);
   }
-  return matches[0];
+  throw new Error(`expected exactly one ${basename} under ${root}, found ${matches.length}: ${matches.join(", ")}`);
 }
 
 async function waitFileContains(filePath, fragment, timeoutMs = 20_000) {
@@ -301,7 +311,7 @@ try {
   await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
   await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
   await waitElement("//*[@aria-label='Add Row']", 30_000);
-  const dataFile = findUniqueFile(projectRoot, "items.yaml");
+  const dataFile = await waitUniqueFile(projectRoot, "items.yaml", 30_000);
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");

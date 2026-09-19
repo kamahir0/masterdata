@@ -163,12 +163,37 @@ async function fill(xpath, value, timeoutMs) {
   return id;
 }
 
+async function execute(script, args = []) {
+  const result = await request(
+    "POST",
+    `/session/${sessionId}/execute/sync`,
+    { script, args },
+    { allowError: true },
+  );
+  if (!result.ok) return { ok: false, value: null };
+  return { ok: true, value: result.payload?.value };
+}
+
 async function selectAnt(label, option, timeoutMs = 20_000) {
   await click(`//*[@aria-label=${xpathLiteral(label)}]`, timeoutMs);
-  await click(
-    `//*[contains(@class,'ant-select-item-option-content') and normalize-space(.)=${xpathLiteral(option)}]`,
-    timeoutMs,
-  );
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const selected = await execute(
+      `const wanted = arguments[0];
+       const item = [...document.querySelectorAll(".ant-select-item-option-content")]
+         .find((node) => node.textContent?.trim() === wanted);
+       if (!item) return false;
+       const target = item.closest(".ant-select-item-option") ?? item;
+       target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+       target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+       target.click();
+       return true;`,
+      [option],
+    );
+    if (selected.ok && selected.value === true) return;
+    await sleep(200);
+  }
+  throw new Error(`timed out selecting Ant option ${option} for ${label}`);
 }
 
 async function waitText(text, timeoutMs = 20_000) {

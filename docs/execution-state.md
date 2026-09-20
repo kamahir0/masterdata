@@ -19,4 +19,4 @@ Remaining:
 
 ## Blocking findings
 
-- Initial P4-B CI timed out in a combined Explorer dirty-buffer test; that test has been split into Cancel / Don't Save / unrelated-buffer preservation. A subsequent macOS run exposed another combined structural no-op GUI test crossing its 10s timeout while Ubuntu passed. Evidence reliability remains Blocking until the focused test splits pass required remote CI.
+- Required CI has exposed platform-dependent timeouts in several long, multi-contract GUI tests while the other two platforms pass. Explorer dirty-buffer and structural no-op tests are already split; the remaining Add Row complex-value test is now split into null-placeholder, custom/array, and enum/flags contracts. Evidence reliability remains Blocking until the focused test suite passes required remote CI.

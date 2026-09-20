@@ -489,7 +489,7 @@ test('Value Object editor sends its ulong underlying as exact decimal text', asy
     .toEqual({ kind: 'number', value: '18446744073709551614' }));
 });
 
-test('Add Row starts with null placeholders and materializes complex values only after explicit choices', async () => {
+test('Add Row complex draft starts with null placeholders', async () => {
   openSnapshot = complexSnapshot([]);
   let previewArgs: any;
   preview = async (args) => {
@@ -500,28 +500,56 @@ test('Add Row starts with null placeholders and materializes complex values only
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   await screen.findByRole('textbox', { name: 'new record id' });
   await waitFor(() => expect(previewArgs?.addedRecords).toHaveLength(1));
+
   expect(previewArgs.addedRecords[0].fields.map((field: any) => field.value.kind))
     .toEqual(['null', 'null', 'null', 'null', 'null', 'null']);
   expect(screen.getByText('No flags value selected yet.')).toBeTruthy();
+}, 10_000);
+
+test('Add Row materializes custom and array values only after explicit choices', async () => {
+  openSnapshot = complexSnapshot([]);
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return { candidateSource: openSnapshot.baseSource, changed: true, validation };
+  };
+  render(<App sourcePollingIntervalMs={null} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
+  await screen.findByRole('textbox', { name: 'new record id' });
 
   fireEvent.click(screen.getByRole('button', { name: 'Materialize new record profile (Profile) fields' }));
   fireEvent.click(screen.getByRole('button', { name: 'Make empty array for new record tags' }));
-  await chooseOption('new record status', 'Paused');
-  fireEvent.click(screen.getByRole('checkbox', { name: 'new record access Write' }));
+
   await waitFor(() => {
     const values = Object.fromEntries(previewArgs?.addedRecords?.[0]?.fields?.map((field: any) => [field.field, field.value]) ?? []);
     expect(values.profile?.kind).toBe('mapping');
+    expect(values.tags).toEqual({ kind: 'sequence', sourceIdentity: true, items: [] });
+  });
+  const fields = Object.fromEntries(previewArgs.addedRecords[0].fields.map((field: any) => [field.field, field.value]));
+  expect(fields.profile.entries.map((entry: any) => entry.value.kind)).toEqual(['null', 'null', 'null']);
+  expect(fields.bonus).toEqual({ kind: 'null' });
+}, 10_000);
+
+test('Add Row materializes enum and flags values only after explicit choices', async () => {
+  openSnapshot = complexSnapshot([]);
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return { candidateSource: openSnapshot.baseSource, changed: true, validation };
+  };
+  render(<App sourcePollingIntervalMs={null} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
+  await screen.findByRole('textbox', { name: 'new record id' });
+
+  await chooseOption('new record status', 'Paused');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'new record access Write' }));
+
+  await waitFor(() => {
+    const values = Object.fromEntries(previewArgs?.addedRecords?.[0]?.fields?.map((field: any) => [field.field, field.value]) ?? []);
     expect(values.status).toEqual({ kind: 'string', value: 'Paused' });
     expect(values.access).toEqual({ kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }] });
   });
-
-  const fields = Object.fromEntries(previewArgs.addedRecords[0].fields.map((field: any) => [field.field, field.value]));
-  expect(fields.profile.entries.map((entry: any) => entry.value.kind)).toEqual(['null', 'null', 'null']);
-  expect(fields.tags).toEqual({ kind: 'sequence', sourceIdentity: true, items: [] });
-  expect(fields.status).toEqual({ kind: 'string', value: 'Paused' });
-  expect(fields.access).toEqual({ kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }] });
-  expect(fields.bonus).toEqual({ kind: 'null' });
-}, 15_000);
+}, 10_000);
 
 test('nested value diagnostics focus the matching Custom Type field', async () => {
   openSnapshot = complexSnapshot();

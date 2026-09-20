@@ -343,6 +343,7 @@ test("Explorer move Don't Save discards only the dirty target before mutation", 
   fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
 
   await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
+  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('10');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
   expect(invoke.mock.calls.filter(([command]) => command === 'rename_source_file')).toHaveLength(1);
 }, 15_000);

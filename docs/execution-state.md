@@ -2,7 +2,7 @@
 
 Stage: implementation-ready
 Candidate: none
-Work base: f7e86f35afaf17a4b0aa8a238145ebdeac434540
+Work base: c7ec8fb48c385b4a5e8dd9869f5fc208580756fe
 
 ## Active work
 

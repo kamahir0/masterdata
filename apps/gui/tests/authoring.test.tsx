@@ -291,7 +291,63 @@ test('Explorer move refreshes selection and the open data editor at the new path
   expect(invoke.mock.calls.some(([command, args]) => command === 'open_data_file' && args.relativePath === 'moved.yaml')).toBe(true);
 });
 
-test('Explorer move keeps unrelated dirty buffers and implements Cancel and Don\'t Save', async () => {
+test('Explorer move Cancel keeps the dirty target and does not start mutation', async () => {
+  openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
+  let renameCalls = 0;
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'rename_source_file') {
+      renameCalls += 1;
+      return normalInvoke(command, args);
+    }
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} />);
+  const targetInput = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
+  fireEvent.change(targetInput, { target: { value: '20' } });
+  await screen.findByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
+  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+
+  expect((screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true })).getAttribute('aria-selected')).toBe('true');
+  expect(renameCalls).toBe(0);
+}, 15_000);
+
+test("Explorer move Don't Save discards only the dirty target before mutation", async () => {
+  openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
+  let moved = false;
+  const movedWorkspace = { ...workspace, files: [{ ...workspace.files[0], path: 'moved.yaml' }] };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return moved ? movedWorkspace : workspace;
+    if (command === 'rename_source_file') {
+      moved = true;
+      return { status: 'success', sourcePath: 'data.yaml', destinationPath: 'moved.yaml', sourceState: null, destinationState: null, diagnostic: null };
+    }
+    if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} />);
+  const targetInput = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
+  fireEvent.change(targetInput, { target: { value: '20' } });
+  await screen.findByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
+  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
+  fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
+
+  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+  expect(invoke.mock.calls.filter(([command]) => command === 'rename_source_file')).toHaveLength(1);
+}, 15_000);
+
+test('Explorer move preserves an unrelated dirty buffer', async () => {
   openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
   const multiWorkspace = {
     ...workspace,
@@ -313,31 +369,22 @@ test('Explorer move keeps unrelated dirty buffers and implements Cancel and Don\
     return normalInvoke(command, args);
   });
   render(<App sourcePollingIntervalMs={null} />);
-  const other = await screen.findByRole('treeitem', { name: 'other.yaml', exact: true });
-  fireEvent.click(other);
+
+  fireEvent.click(await screen.findByRole('treeitem', { name: 'other.yaml', exact: true }));
   const otherInput = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
   fireEvent.change(otherInput, { target: { value: '22' } });
+  await screen.findByRole('treeitem', { name: 'other.yaml, unsaved changes', exact: true });
+
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml', exact: true }));
-  const targetInput = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
-  fireEvent.change(targetInput, { target: { value: '20' } });
-
   fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
   fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
-  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
-  expect((screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true })).getAttribute('aria-selected')).toBe('true');
-
-  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
-  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
-  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
-  fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
   await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
+
   fireEvent.click(screen.getByRole('treeitem', { name: 'other.yaml, unsaved changes', exact: true }));
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('22');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-}, 20_000);
+}, 15_000);
 
 test('Explorer move offers Save for a dirty target before mutation', async () => {
   let moved = false;

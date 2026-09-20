@@ -10,6 +10,8 @@ HumanがCurrent Objectiveを選択した時点で、そのObjectiveを完了す�
 
 Human gateの定義は`docs/execution-workflow.md#human-gate`だけが所有する。ここやactivity skillへcriteriaを複製しない。
 
+**Product quality is primary.** test / CI / documentation / workflowは製品のcorrectness、safety、UX、architecture、regression confidenceを証明・維持するsupporting mechanismである。Current Objectiveの製品品質を実質的に改善しないsupporting workを独立した最適化対象へ拡張しない。
+
 ## ドキュメント言語
 
 repository内の人間向け文書、commit / PR説明、repository作業完了報告は原則日本語（SHOULD）。identifier、Requirement ID、API名、path、MUST / SHOULD / MAY、Draft / Proposed / Approved / Implemented等のstable tokenは無理に翻訳しない。
@@ -80,7 +82,7 @@ repository変更taskは、Humanが`commitしない` / `pushしない`と指定�
 
 long-running implementationでは、`docs/execution-workflow.md#coherent-implementation-checkpoints`に従い、意味のあるsliceがrelevant focused validationを通った時だけcheckpoint commitを作ってよい。壊れた途中状態を「resume用」という理由だけでcommitしない。
 
-unrelated dirty changeを混ぜない。force-push、public history rewrite、無断branch switchをしない（MUST NOT）。commit / pushはHuman Approvalを意味しない。remote CI pendingは明示gateでない限りworkflowを止める理由にしない。
+unrelated dirty changeを混ぜない。force-push、public history rewrite、無断branch switchをしない（MUST NOT）。commit / pushはHuman Approvalを意味しない。remote CI pendingはHuman gateではないが、repository-required CIのreconciliationが完了するまでObjective completion evidenceを満たしたことにはしない。
 
 commit title/bodyは原則日本語で、bodyに最低限「背景/目的」「変更内容」「検証」を残す。未実施testを実施済みと書かない（MUST NOT）。
 

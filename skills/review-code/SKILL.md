@@ -55,6 +55,12 @@ whitespace、formatting、mechanical renameなど意味的に無関係な変更�
 
 testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを証明し、Commentはimplementation shapeがなぜ存在するかを説明する。参照先のtestが通っていても、古い理由を残してはならない（MUST NOT）。
 
+## Review priority
+
+reviewの思考資源はまず製品本体へ使う。第一passでcorrectness、safety、observable semantics、UX state transition、race / failure behavior、architecture、scopeを深く確認する。
+
+test / CI / documentation / workflowは第二passのsupporting evidenceとして確認する。supporting mechanism自体の美化や一般化へscopeを拡張せず、製品品質の証明・regression preventionを実質的に改善する問題だけを扱う。
+
 ## Review checklist
 
 ### Specification conformance
@@ -69,6 +75,10 @@ testの成功とrationaleの鮮度は別の証拠である。Testはbehaviorを�
 
 - 変更されたbehaviorにfocused regression testがあるか、既存testが実際に保護しているか。
 - test nameが`test_bug_1`のような番号だけでなく、保護するbehaviorを表しているか。
+- 1つのintegration testへ複数の独立contractを詰め込み、failure localizationやCI stabilityを悪化させていないか。
+- arbitrary sleep / oversized timeout / wall-clock依存ではなく、observable stateやcommand completionをdeterministicに待っているか。
+- lower layerで高速・決定的に証明できるsemanticsをfull GUI/E2E testで重複検証していないか。full integration testはboundary wiringとcross-layer contractへ集中しているか。
+- new/changed testがremote CIだけでtimeout / raceする場合、timeout延長の前にtest composition、wait condition、resource sensitivity、production async/raceを切り分けているか。
 - fixture、golden、benchmark、external constraintが変更後の実装と対応しているか。
 - `Regression:`、Requirement ID、ADR/RFC、documentation pathなどの明示参照先が存在するか。
 
@@ -136,11 +146,12 @@ correction activityを実行するagentは、blocking fix、focused tests、self
 
 ## Final verificationとDevelopment State
 
-Development Stateが`verification-ready`の場合、このskillのVerdictに応じて次のstageへ遷移する。
+Development Stateが`verification-ready`の場合、このskillのfresh review結果とrepository-required CI evidenceを合わせて次のstageを決める。
 
-- `Blocking`なし -> `objective-complete`
-- Approved authorityの範囲内で修正可能な`Blocking`あり -> `correction-ready`へ遷移し、concrete findingsをdurably記録する
-- new semantic / product / compatibility decisionまたはHuman Approvalが必要 -> `decision-required`へ遷移し、必要なdecisionだけを記録する
+- fresh reviewに`Blocking`なし + required remote CI success -> `objective-complete`
+- fresh reviewに`Blocking`なし + required remote CI pending / infrastructure-only unresolved -> `verification-ready`を維持
+- Approved authority内で修正可能なreview finding、またはproduct / test / evidence CI failure -> `correction-ready`へ遷移し、concrete findingをdurably記録
+- new semantic / product / compatibility decisionまたはHuman Approvalが必要 -> `decision-required`へ遷移し、必要なdecisionだけを記録
 
 self-reviewとしてこのskillを使っている途中は、final candidateになる前の一時findingをDevelopment Stateへ逐次記録する必要はない。Approved authority内で安全に直せるBlockingは同じimplementation work package内で修正する。
 

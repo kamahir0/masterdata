@@ -152,13 +152,15 @@ specification lifecycleのownerは`docs/contributing/specification-workflow.md`�
 
 final candidateの標準flow:
 
-1. implementation/correction、focused tests、self-review、required checks、scope review。
+1. implementation/correction、focused tests、self-review、required local checks、scope review。
 2. candidate commitを作りexact SHA取得。
 3. Development Stateを`verification-ready` + Candidate SHAへ更新。
-4. Candidate diffとcanonical authorityをfresh passでverification。
-5. Blockingなし=`objective-complete`、Approved内で修正可能=`correction-ready`、Human gate=`decision-required`。
+4. Candidate diffとcanonical authorityをfresh passでverificationする。
+5. fresh verificationでBlockingがあれば`correction-ready`、Human gateなら`decision-required`へ戻す。
+6. repository-required remote CIがある場合はCandidateをpushし、CIをreconcileするまで`verification-ready`を維持する。
+7. fresh verificationにBlockingがなくrequired remote CIも成功した時だけ`objective-complete`へ進む。CIでproduct / test / evidence failureが出た場合は`correction-ready`へ戻す。runner outage、registry/network等のinfrastructure-only failureはproduct defectと偽装せず、`verification-ready`のままretry / evidence reconciliationする。
 
-Candidate SHAをcandidate自身へ書けないためmetadata commitを分けてよい。これらのtransitionは同一runで連続してよい。
+Candidate SHAをcandidate自身へ書けないためmetadata commitを分けてよい。Candidate以降のDevelopment Stateだけを変更するmetadata commitはCandidateのproduct/test treeを変更しないため、既に成功したCandidate CI evidenceを無効化しない。metadata commit自身を再度greenにするためだけの無限CI loopを作らない。
 
 ## Human-facing execution summary
 
@@ -182,7 +184,14 @@ repository write、Stage transition、candidate作成、final verification後の
 
 ## CI and completion
 
-CIはevidenceでありApproved semantics / final verificationの代替ではない。明示gateでない限りpending CIでworkflowを止めない。Current Objectiveはfinal verificationでcompletion boundaryとApproved authorityに対しBlockingなしを確認して初めて`objective-complete`になる。
+CIはsupporting evidenceでありApproved semantics / fresh verificationの代替ではない。一方、repositoryがdelivery pathにrequired remote CIを持つ場合、その結果を無視して`objective-complete`へ進んではならない。
+
+- pending: Human gateではない。`verification-ready`を維持し、可能な範囲の作業を継続する。
+- success: fresh verificationもBlockingなしなら`objective-complete`へ進める。
+- product / test / evidence failure: `correction-ready`へ戻し、具体findingとして扱う。特にCurrent Objectiveで新規追加・変更したtestのfailureをunrelated failureとして推測除外しない。
+- infrastructure-only failure: product failureへ誤分類せず、retryまたは代替evidenceでreconcileする。必要evidenceを得られない間は`verification-ready`を維持する。
+
+test timeoutは自動的に「flake」またはproduct bugと決めつけない。test scope過大、non-deterministic wait、CI resource sensitivity、production async/raceのいずれかを切り分ける。timeout値を伸ばすだけの変更は、原因がlong-running contractそのものだと示せる場合以外はdefault solutionにしない。
 
 ## Public repository trust boundary
 

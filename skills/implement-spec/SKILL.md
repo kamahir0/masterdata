@@ -1,108 +1,108 @@
 ---
 name: implement-spec
-description: Implement and verify behavior from an explicitly Approved specification while reporting specification gaps instead of inventing semantics.
+description: Implement and verify behavior from Approved specifications, maintaining recoverable Git/state checkpoints without inventing observable semantics.
 ---
 
 # implement-spec
 
-## 目的とgate
+## 目的
 
-Approved specificationをfinal candidateへ実装するactivity-specific procedure。authority / safety / architecture / Git deliveryの共通ruleは`AGENTS.md`と`docs/execution-workflow.md`をownerとし、このskillでは繰り返さない。
+Approved specificationを実装し、self-reviewとrequired validationを終えたfinal candidateへ到達する。
 
-targetが`Approved`でない場合はproduct codeを変更しない。`Implemented`ならcurrent evidenceを確認して残gapを報告する。implementation activityの完了は「first draft」ではなく、self-reviewとrequired validationを終えた**final candidate ready for verification**である。
+authority / Human gate / recovery / Git deliveryは`AGENTS.md`と[Execution Workflow](../../docs/execution-workflow.md)、documentation quantityは[Documentation Policy](../../docs/contributing/documentation-policy.md)がownerであり、このskillへ共通policyを複製しない。
+
+targetが`Approved`でなければproduct codeを変更しない。
 
 ## Context loading
 
-freshness epochはworkflowに従う。その上でimplementationに必要なものだけ読む。
+fresh-session recoveryはExecution Workflowに従う。その上で次だけを読む。
 
-1. Current Objective / Development Stateとtarget canonical specのstatus。
-2. target spec全体と、observable behavior / compatibility / architectureに直接関係するspec・ADR・accepted outcome。
-3. affected code / tests / fixtures / adaptersとrelevant CI reality。
+1. Current Objective / Development State / Work base / Active work。
+2. target Approved / Implemented specと直接関係するADR。
+3. Work baseからcurrent HEADのGit reality。
+4. affected code / tests / fixtures / adapters / relevant CI。
 
-taskに無関係なspec / RFC / terminology / fixtureを固定儀式として読む必要はない。Draft / Proposed、未Applied change artifact、Accepted RFC、current codeはApproved semanticsの代替ではない。
+Applied spec-change artifactはhistorical auditでありimplementation authorityにしない。
 
-## Work packageとacceptance mapping
+## Work package
 
-promptが不完全でも、実装前にtask-localに次をrecoverする。
+実装前にtask-localで次をrecoverする。
 
-- Objective / authority
-- completion boundary / explicit non-scope
-- required invariant / failure semantics / compatibility expectation
+- Objective / canonical authority
+- completion slice / explicit non-scope
+- invariant / failure / compatibility expectation
 - affected implementation boundary
 - regression evidence / validation command
 
-stable expectationが既にcanonical specにあるなら複製しない。small taskはcompact working mappingで十分で、permanent acceptance matrixを作らない。
-
-各Requirement IDは、必要な範囲でobservable behavior、success/failure、test/fixture、owner code boundaryへ対応付ける。traceabilityに有用ならtest nameやnearby commentへRequirement IDを置く。runtime Diagnostic CodeをRequirement IDとして再利用しない。
-
-同じApproved objectiveを閉じるためのcore/application、adapter wiring、focused refactor、tests、fixtures、local rationale、non-normative docs、validationは同一work packageに含めてよい。別semantic objective、別Human decision、unapproved future behavior、large unrelated refactor、optional cleanupは分ける。
+stable expectationがcanonical specにあるなら別documentへ複製しない。Requirement IDを必要な範囲でtest / owner code boundaryへ対応付ける。
 
 ## Implementation
 
-Approved acceptanceを満たす最小で明瞭な変更を行う。architecture boundaryは`AGENTS.md` / ADRを優先し、adapter都合でdomain semanticsを複製しない。
+Approved acceptanceを満たす最小で明瞭な変更を行う。adapter都合でdomain semanticsを複製しない。
 
-test可能なbehaviorにはfocused regression evidenceを置く。stable end-to-end input自体がcontract理解に有用ならfixtureを使い、小さなruleにはunit/integration testで十分。generated snapshot/goldenはApproved outputのevidenceである場合だけ更新する。
+test可能なchanged behaviorにはfocused regression evidenceを置く。fixtureはstable end-to-end input自体に価値がある場合だけ使う。
 
-public behavior、compatibility、diagnostics、ordering、serialization、user-visible stateをApproved authorityから安全に決められない場合は実装で補完せずSpecification Gapへ戻す。workflowのHuman gate条件に該当しないGapは、同じautonomous runで`refine-spec -> review-spec -> autonomous approval/application`を経てからimplementationへ復帰してよい。Human gateなら`decision-required`へ停止する。private helper、internal decomposition、non-observable allocation等はagentが決めてよい。
+Approved authorityからobservable behaviorを安全に決められない場合はimplementation codeで補完せずSpecification Gapとしてspecification workflowへ戻す。Human gateがなければ同じrunでreview/approval/application後にimplementationへ復帰できる。
+
+## Recovery checkpoints
+
+long-running workでは[Coherent implementation checkpoints](../../docs/execution-workflow.md#coherent-implementation-checkpoints)を使う。
+
+meaningful sliceがfocused validationを通ったらcheckpoint commitを作ってよい。commit後、Development StateのActive workをCompleted / In progress / Remainingのwork package / Requirement IDだけで更新してよい。
+
+毎file / 毎testのprogress logは残さない。Git/code/testsがimplementation realityであり、stateはresume pointerに留める。
 
 ## Local rationale
 
-non-obviousなworkaround、ordering/concurrency constraint、platform-specific behavior、intentional redundancy、optimization、unusual filesystem/error handling等を導入・変更した場合だけ、future agentがprotected invariantを復元できるlocal rationaleを近接させる。
+non-obviousなworkaround、ordering/concurrency、platform-specific behavior、intentional redundancy、optimization、unusual filesystem/error handling等だけ、[Implementation Rationale](../../docs/contributing/implementation-rationale.md)に従ってnearby WHYを残す。
 
-rationale-sensitiveな変更では、実装後にaffected rationaleを再確認し、current invariant / failure mode / evidenceと一致しなければ更新または削除する。構造参照は`cargo xtask check-rationale`で検証する。test passだけでrationale freshnessを証明したことにしない。
+既存specやtestから理由を十分復元できるなら追加commentを書かない。rationale-sensitiveな変更では鮮度を再確認し、必要なら更新 / 削除する。
 
-## Final candidate completion protocol
-
-通常flow:
+## Final candidate protocol
 
 ```text
-authority / acceptance recovery
-        -> implementation
-        -> focused regression evidence
-        -> rationale freshness when relevant
-        -> review-code self-review
-        -> safe self-fix of Blocking findings
-        -> affected validation
-        -> cargo xtask check-rationale
-        -> cargo xtask check-all
-        -> diff / scope review
-        -> commit / push
-        -> verification-ready transition
+authority / recovery
+  -> implementation
+  -> focused regression evidence
+  -> rationale freshness when relevant
+  -> review-code self-review
+  -> safe self-fix
+  -> affected validation
+  -> cargo xtask check-rationale
+  -> cargo xtask check-all
+  -> diff / scope review
+  -> candidate commit
+  -> verification-ready
+  -> fresh verification
 ```
 
-`review-code`でApproved authority内のBlockingを安全に修正できるなら、first draftをverificationへ渡さず同じactivityで修正し、affected validationとself-reviewを更新する。
-
-環境が対応する場合は`cargo xtask check-all`を最終repository checkに使う。実行不能なcheckは理由を報告し、完全なverificationを主張しない。
+環境が対応する場合は`cargo xtask check-all`を最終repository checkに使う。実行不能checkは理由を報告し、完全なverificationを主張しない。
 
 ## Specification status
 
-`Approved -> Implemented`へ変更してよいのは、そのspecのscope内acceptance criteriaにevidenceがあり、必要なtests/fixturesとcompatibility evidenceが同期し、required checksが成功または実行不能理由が明示され、主張するbehaviorに未解決Specification Gapがない場合だけ。
+`Approved -> Implemented`は、そのspec scopeのacceptance evidenceが揃い、tests/fixtures/compatibility evidenceが同期し、required checksが成功または実行不能理由が明示され、未解決Specification Gapがない場合だけ行う。
 
 implementationに合わせてnormative languageを弱めたり、unapproved behaviorをauthorityへ昇格させたりしない。
 
-## Specification Gap
-
-Approved authorityがimplementationに必要なobservable behaviorを決めていない場合:
+## Specification Gap report
 
 ```text
 Specification Gap
 - Spec ID / file:
 - Missing decision:
 - Why implementation cannot proceed safely:
-- Non-semantic implementation work that can proceed:
-- Proposed route: refine-spec (and review-spec before approval)
+- Non-semantic work that can proceed:
+- Proposed route:
 ```
 
-Gap解消をimplementation code内で黙って行わない。Objective内のlow-risk / reversible / non-breaking decisionはspecification workflowへ戻してAgent Decisionとしてdurably定義できる。destructive、breaking compatibility、security/authority、material product fork等のHuman gateだけHumanへ戻す。
+Human gate判定はExecution Workflow、Agent Decision / approvalはSpecification Workflowへ委ねる。
 
-## 完了報告
+## Completion report
 
-final candidate reportでは、Humanがverificationへ進めるのに必要な事実だけを報告する。
+- Objective / authority / non-scope
+- implementation boundary / compatibility impact
+- acceptance evidence / self-review / required checks
+- Candidate SHA / push result
+- unresolved Gap / unavailable check
 
-- Objective / authority / completion boundary / non-scope
-- implementation boundaryとcompatibility impact
-- acceptance evidence、self-review、required checks
-- final candidate readiness、commit SHA、push結果
-- 未解決Gapまたは実行不能check
-
-詳細なacceptance matrixや既知のcanonical semanticsをreportへ再複製しない。
+既知のcanonical semanticsやacceptance matrixをreportへ再複製しない。

@@ -139,9 +139,24 @@ pub fn check_repository(root: &Path) -> Result<SpecCheckSummary> {
             &mut issues,
         );
         check_numbered_filename(root, path, "specification change", &mut issues);
-        if !has_section(&contents, "Affected Specifications") {
+        let applied = contents
+            .lines()
+            .take(12)
+            .any(|line| line.trim() == "Status: Applied");
+        let has_required_owner_section = if applied {
+            has_section(&contents, "Canonical result")
+                || has_section(&contents, "Affected Specifications")
+        } else {
+            has_section(&contents, "Affected Specifications")
+        };
+        if !has_required_owner_section {
+            let expected = if applied {
+                "`## Canonical result` or `## Affected Specifications`"
+            } else {
+                "`## Affected Specifications`"
+            };
             issues.push(format!(
-                "malformed specification change in {}: missing `## Affected Specifications` section",
+                "malformed specification change in {}: missing {expected} section",
                 display_path(root, path)
             ));
         }
@@ -746,6 +761,21 @@ mod tests {
         .expect("change file");
 
         let summary = check_repository(directory.path()).expect("valid change proposal");
+        assert_eq!(summary.proposal_numbers, 1);
+    }
+
+    #[test]
+    fn applied_specification_change_accepts_compact_canonical_result() {
+        let directory = tempdir().expect("temporary directory");
+        let changes = directory.path().join("docs/spec-changes");
+        fs::create_dir_all(&changes).expect("change directory");
+        fs::write(
+            changes.join("0001-example.md"),
+            "# Specification change: Example\n\nStatus: Applied\n\n## Why\n\nHistorical reason.\n\n## Canonical result\n\n- `TEST-001`\n\n## Approval / application\n\nApplied.\n",
+        )
+        .expect("change file");
+
+        let summary = check_repository(directory.path()).expect("valid compact applied record");
         assert_eq!(summary.proposal_numbers, 1);
     }
 

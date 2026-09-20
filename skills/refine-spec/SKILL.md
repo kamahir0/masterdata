@@ -1,142 +1,84 @@
 ---
 name: refine-spec
-description: Turn a request or Current Objective into a traceable Draft/Proposed specification change, resolving low-risk Objective-local decisions while escalating only true Human gates.
+description: Turn a request or Current Objective into a traceable Draft/Proposed specification change, resolving Objective-local decisions only under the canonical specification workflow.
 ---
 
 # refine-spec
 
 ## 目的
 
-product/domain/compatibility/user-visible GUI behaviorを変更する可能性があるrequestを、review可能なDraft/Proposed changeへ変換する。
+product/domain/compatibility/user-visible GUI behaviorを変更するrequestを、review可能なDraft/Proposed changeへ変換する。
 
-このskillはproduct implementationを行わない。authoring passとchallenge passを分離するため、refinement中に`Approved`へstatus transitionしない。ただしHuman-selected Objective内のlow-risk ambiguityをAgent Decisionとして解決してよい。
+Human gate、Agent Decision eligibility、autonomous approvalは[Specification Workflow](../../docs/contributing/specification-workflow.md)と[Execution Workflow](../../docs/execution-workflow.md#human-gate)がownerであり、このskillへcriteriaを複製しない。documentation retentionは[Documentation Policy](../../docs/contributing/documentation-policy.md)に従う。
 
-## 必須context
+このskillはproduct implementationを行わず、authoring pass中に`Approved`へstatus transitionしない。
 
-1. `AGENTS.md`、Current Objective、Development State。
-2. affected Approved / Implemented spec、関連ADR/RFC、Product terminology。
-3. existing Requirement ID / wording search。
-4. affected implementation / tests / fixturesはimpact evidenceとして必要な範囲。
-5. `docs/contributing/specification-workflow.md`のHuman gate / autonomous approval条件。
+## Context
+
+- Current Objective / Development State
+- affected Approved / Implemented specification
+- related ADR / RFC / terminology
+- existing Requirement ID / related wording
+- affected implementation / tests / fixturesはimpact evidenceとして必要な範囲
 
 memory、stale conversation、current codeだけからproduct ruleを作らない。
 
-## Evidence classification
+## Procedure
 
-各statementを必要な範囲で分類する。
+### 1. Evidenceを分類する
 
-- `Decision`
-- `Requirement`
-- `Constraint`
-- `Preference`
-- `Proposal`
-- `Idea`
-- `Question`
-- `Open Question`
-- `Rejected`
-- `Agent Decision`
+必要なstatementを`Decision`、`Requirement`、`Constraint`、`Preference`、`Proposal`、`Idea`、`Question`、`Open Question`、`Rejected`、`Agent Decision`へ分類する。
 
-Agent DecisionはHuman発言と区別し、選択理由とalternativeを短く残す。
+Agent DecisionはHuman発言と明確に区別し、Specification Workflowの条件を満たす場合だけ使う。
 
-## Agent Decisionを使える条件
+### 2. Canonical ownerを特定する
 
-次をすべて満たす場合、未指定default / UX detail / failure presentation等をAgent Decisionとして解決してよい（MAY）。
+同じsemantic ruleを複数documentへcopyしない。Approved / Implemented canonical documentへのsemantic deltaは`docs/spec-changes/`の別artifactへ置く。Accepted RFCやcurrent codeはimplementation authorityではない。
 
-- Current Objectiveのscope内。
-- reversible / low blast radius。
-- non-breaking。
-- destructive / security / permission / external irreversible effectでない。
-- Approved architecture / product directionと整合。
-- test可能。
-- alternative間のtrade-offを説明できる。
+new Requirement IDは既存definitionを検索してから割り当て、再利用しない。Requirement IDとruntime Diagnostic Codeを混同しない。
 
-material product fork、breaking change、data loss、security boundary等は解決せずHuman gateへ送る。
+### 3. Normative strengthを保持する
 
-「implementationが楽だから」だけを理由にobservable behaviorを選ばない。
-
-## Canonical owner
-
-Approved / Implemented canonical documentへのsemantic deltaは`docs/spec-changes/`の別artifactへ置く。未reviewed semanticsをcanonicalへ直接混ぜない。
-
-new canonical specではfile-level statusが一貫するようscopeを切る。Requirement IDは既存definitionを検索してから割り当て、再利用しない。
-
-Accepted RFCはimplementation authorityではない。
-
-## Normative strength
-
-evidence / Agent Decisionが支える強度を使う。
+Human evidenceのcertaintyを強めない。Agent DecisionをHuman requirementとして偽装しない。
 
 - `MUST / MUST NOT`: required invariant / constraint
-- `SHOULD / SHOULD NOT`: strong default with documented exceptions
+- `SHOULD / SHOULD NOT`: strong default with exception rationale
 - `MAY`: permission / capability
 
-Human statementの強度を勝手に上げない。Agent Decisionの場合は「Humanが要求した」と書かない。
+### 4. Open Questionをrouteする
 
-## Open Questions
-
-Open Questionを機械的にHumanへ戻さない。
-
-- Agent Decision条件を満たす -> alternativesを比較し、1つ選び、Confirmed Decisionsへ記録。
-- Human gate -> Open Question + Human decision needed。
+- Agent-resolvable -> alternativesとreasonを記録しAgent Decisionへ。
+- Human gate -> unresolvedのままHuman decision neededへ。
 - Objective外 -> explicit non-scope / deferred。
-- evidence不足で安全に判断不能 -> Human gateまたはKnowledge/Specification Gap。
+- evidence不足 -> Specification / Knowledge Gap。
 
-## Required artifact sections
+implementation convenienceのために黙って解決しない。
 
-### Affected Specifications
+### 5. Downstream impactを記録する
 
-file / status / affected Requirement ID。
+compatibility、affected boundary、focused acceptance evidence、fixture needを、missing semanticsを発明せず記述する。architecture WHYがcross-cuttingならADR候補、large alternative比較ならRFC候補へrouteする。
 
-### Source Evidence and Classification
+## Required proposal content
 
-Human/durable evidenceとAgent Decisionを区別する。
+- Affected Specifications
+- Source Evidence and Classification
+- Confirmed Decisions
+- New / Changed Requirements
+- Open Questions
+- Potential ADRs
+- Compatibility Impact
+- Implementation Impact
+- Approval Eligibility
 
-### Confirmed Decisions
-
-Human decisions + autonomous criteriaを満たしたAgent Decisions。Agent Decisionには短いrationaleを付ける。
-
-### New Requirements
-
-stable ID + normative wording。
-
-### Changed Requirements
-
-existing ID / old meaning / proposed meaning / compatibility。
-
-### Open Questions
-
-Human gateまたは未解決事項だけ。なければ`None identified`。
-
-### Potential ADRs
-
-cross-cutting WHYが必要ならADR、それ以外は`None identified`。
-
-### Compatibility Impact
-
-backward compatible / migration required / breaking / not applicableを明示。
-
-### Implementation Impact
-
-affected boundary / focused tests / fixture / verification。
-
-### Approval Eligibility
-
-- `Autonomous approval eligible: Yes|No`
-- `Human gate: None|<reason>`
-- eligibilityの短い根拠。
+Approval Eligibilityには`Autonomous approval eligible: Yes|No`と`Human gate: None|<reason>`を置く。判定criteriaはcanonical workflowを参照する。
 
 ## Status
 
 整理中は`Draft`、review可能なら`Proposed`。refine-spec pass自身は`Approved`へ変更しない。
 
-review後、workflow orchestrationがautonomous approval条件を満たせばHuman promptなしでapprove/applyしてよい。
-
 ## Safety
 
 - conversation logをspecへ貼らない。
-- Human evidenceとAgent Decisionを混同しない。
 - current implementationを未承認requirementへ昇格しない。
-- Requirement IDとDiagnostic Codeを混同しない。
-- 1 ruleを複数ownerへcopyしない。
-- breaking/destructive/security decisionをAgent Decisionで処理しない。
-- future maintainerが意図を壊し得るdecisionはspec / ADR / rationale / testへdurably残す。
+- one knowledge, one ownerを守る。
+- future maintainerのためという理由だけで重複proseを増やさない。

@@ -1,6 +1,8 @@
 # 用語
 
-Status: Draft
+Document role: Canonical glossary
+
+この文書はrepository-wide vocabularyとsemantic ownerへのroutingを提供する。observable requirementの第二ownerではなく、詳細semanticsは各canonical specificationが所有する。
 
 - **Project**: `masterdata.toml` によって識別されるdirectory。
 - **Source root**: filesystemの探索範囲を設定するroot。それ自体はtableやschemaの意味を持たない。

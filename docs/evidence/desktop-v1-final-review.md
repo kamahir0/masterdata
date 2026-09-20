@@ -1,3 +1,5 @@
+> **Historical evidence — not current authority.** Current behavior / statusはcanonical specifications、Development State、code / tests / Gitから確認する。このfileはactive Candidate / Objectiveから必要な場合だけ参照する。
+
 # Desktop制作v1 Final Candidate verification
 
 確認日: 2026-09-19（JST）

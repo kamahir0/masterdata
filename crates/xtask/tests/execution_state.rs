@@ -56,7 +56,14 @@ fn development_state_keeps_only_stage_mechanical_invariants() {
     assert_eq!(state.lines().next(), Some("# Development State"));
     let stage = field(&state, "Stage");
     let candidate = field(&state, "Candidate");
+    let work_base = field(&state, "Work base");
+    let active = required_section(&state, "Active work");
     let blocking = required_section(&state, "Blocking findings");
+
+    assert!(
+        work_base == "none" || is_commit_sha(work_base),
+        "Work base must be none or an exact commit SHA"
+    );
 
     match stage {
         "designing" | "implementation-ready" => {
@@ -94,6 +101,13 @@ fn development_state_keeps_only_stage_mechanical_invariants() {
         other => panic!("unknown development stage: {other}"),
     }
 
+    if stage == "objective-complete" {
+        assert_eq!(
+            active, "None.",
+            "objective-complete must clear the transient Active work checkpoint"
+        );
+    }
+
     for forbidden in [
         "Next actor:",
         "Recommended lane:",
@@ -103,6 +117,8 @@ fn development_state_keeps_only_stage_mechanical_invariants() {
         "## Approved implementation authority",
         "## Final verification evidence",
         "## Next activity",
+        "## Test log",
+        "## CI transcript",
     ] {
         assert!(
             !state.contains(forbidden),
@@ -120,6 +136,7 @@ fn development_workflow_owners_are_discoverable() {
         "docs/current-objective.md",
         "docs/execution-state.md",
         "docs/execution-workflow.md",
+        "docs/contributing/documentation-policy.md",
         "skills/implement-spec/SKILL.md",
         "skills/review-code/SKILL.md",
         "docs/contributing/specification-workflow.md",
@@ -133,6 +150,8 @@ fn development_workflow_owners_are_discoverable() {
         "docs/current-objective.md",
         "docs/execution-state.md",
         "docs/execution-workflow.md",
+        "docs/contributing/documentation-policy.md",
+        "docs/contributing/specification-workflow.md",
         "skills/implement-spec/SKILL.md",
         "skills/review-code/SKILL.md",
     ] {
@@ -152,10 +171,12 @@ fn development_workflow_keeps_structural_contracts() {
     for heading in [
         "## Model autonomy within hard boundaries",
         "## Pre-action freshness gate",
+        "## Fresh-session recovery",
         "## Development State",
         "## Human gate",
         "## Implementation readiness gate",
-        "## Autonomous continuation and activity routing",
+        "## Autonomous continuation",
+        "## Coherent implementation checkpoints",
         "## Decision presentation gate for `decision-required`",
         "## Priority presentation gate for `objective-complete`",
         "## Specification approval within an Objective",

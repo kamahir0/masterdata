@@ -1,30 +1,32 @@
 # 仕様変更（Specification changes）
 
-このdirectoryには、既存のcanonical specificationを変更するdurableなproposalと、その適用後audit recordを保存する。
-`docs/specs/` とは意図的に分離している。有効なapprovalとatomic applicationの前に、`Approved` / `Implemented` canonical documentへsemantic changeを含めてはならない。
+このdirectoryは、Approved / Implemented canonical specificationへのsemantic changeをapproval前に隔離し、Applied後はcompact audit recordを保持する。
 
-## lifecycle（ライフサイクル）
+current implementation authorityは`docs/specs/**` / GUI canonical specであり、`Applied` artifactではない。
 
-Desktop制作v1のP1–P3 packageは、[0016: 日常編集](0016-desktop-daily-editing.md)、
-[0017: Workspace・設定](0017-desktop-workspace-settings.md)、[0018: Project入口・Build / Publish](0018-desktop-build-delivery.md)。
-2026-09-18にHuman Approvalを受けてcanonicalへ適用され、3 artifactは`Applied`である。implementationは各artifactが示すApproved canonical ownerを使用する。
+## Lifecycle
 
-P4 packageは、[0019: Existing record key field edit](0019-existing-record-key-edit.md)と[0020: Source file rename / move](0020-source-file-rename-move.md)。2026-09-20 JSTにHuman Approvalを受けてcanonicalへ適用され、2 artifactは`Applied`である。
+`Draft -> Proposed -> Approved -> Applied` または `Rejected`
 
-1. `refine-spec` がevidence、affected Requirement ID、proposed delta、compatibility impact、Open Questionsを
-   新しいartifactに記録する。
-2. `review-spec` がartifactを、source request、canonical specification、ADR、terminology、current implementation、
-   testabilityと照合して独立に確認する。
-3. review中、artifactは `Proposed` である。`review-spec`はBlockingとautonomous approval eligibility / Human gateを判定する。
-4. Human gateならHuman decisionを取得する。Human gate外で[仕様ワークフロー](../contributing/specification-workflow.md)の条件を満たす場合、agentがApproval Recordを残して `Approved` へ移してよい。その後deltaをcanonical specificationへatomicに適用し、必要に応じてtests/fixturesを更新し、artifactを `Applied` へ移す。canonical documentは、
-   implementation evidenceによって `Implemented` が正当化されるまで `Approved` のままとする。以前に
-   `Implemented` だった場合は、先に `Approved` へ戻す。
+1. `refine-spec`がsource evidence、proposed delta、compatibility、Open Questionsを作る。
+2. `review-spec`がsemantic readiness、Human gate、autonomous approval eligibilityを確認する。
+3. 有効なapproval後、deltaをcanonical ownerへatomicにapplyする。
+4. artifactを`Applied`へ移し、canonical owner / Requirement IDとapproval/application provenanceを残す。
+5. Applied後は[Documentation Policy](../contributing/documentation-policy.md#specification-change-retention)に従いcompact audit recordへ縮退してよい。詳細Proposal / ReviewはGit historyが保持する。
 
-`Draft` はartifactが不完全な状態を表す。`Proposed` はreview可能だが未承認の状態を表す。`Approved` は有効なapproval（Humanまたはautonomous）のprovenanceをApproval Recordへ持ち、canonical mergeはまだpendingである。`Applied` は承認済みdeltaがcanonicalに存在することを
-記録する。`Rejected` はproposalが却下されたことを記録する。proposalは `Applied` になるまでimplementation
-contractではない。`implement-spec` はmerge後のcanonical approved documentを使用し、proposal自体を使用しては
-ならない。optionの比較を含む大きなchangeには `docs/rfcs/` を使用し、採用されたbehaviorをこのworkflowへ
-routeする。
+## Applied record format
 
-新規artifactには [_template.md](_template.md) を使用し、`0001-table-identity.md` のようにmonotonically allocate
-したfilenameを付ける。proposal numberはhistoryであり、再利用してはならない。
+Applied artifactは原則として次だけを保持する。
+
+- `Why`: 採用したchangeの短い理由 / decision
+- `Canonical result`: canonical ownerとRequirement ID
+- `Approval / application`: HumanまたはAgent-autonomous provenance、application commit等
+
+canonical requirement本文、長いreview transcript、implementation planをcopyし続けない。
+
+## Historical packages
+
+- Desktop制作v1 P1–P3: [0016](0016-desktop-daily-editing.md), [0017](0017-desktop-workspace-settings.md), [0018](0018-desktop-build-delivery.md)
+- P4: [0019](0019-existing-record-key-edit.md), [0020](0020-source-file-rename-move.md)
+
+新規artifactには[_template.md](_template.md)を使い、monotonicなnumberを再利用しない。

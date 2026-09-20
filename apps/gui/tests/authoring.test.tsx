@@ -554,7 +554,7 @@ test('deleting a new draft cancels the addition and returns the file to clean', 
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, 10_000);
 
-test('shared no-op preview normalizes structural mutation state back to clean', async () => {
+test('no-op delete preview restores the existing row to clean', async () => {
   openSnapshot = mutationSnapshot();
   preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
   render(<App sourcePollingIntervalMs={null} />);
@@ -564,8 +564,14 @@ test('shared no-op preview normalizes structural mutation state back to clean', 
   await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
   expect(screen.queryByText('Pending delete')).toBeNull();
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).readOnly).toBe(false);
+}, 10_000);
 
-  fireEvent.click(screen.getByRole('button', { name: 'Add Row', exact: true }));
+test('no-op Add Row preview removes the draft and stays clean', async () => {
+  openSnapshot = mutationSnapshot();
+  preview = async () => ({ candidateSource: openSnapshot.baseSource, changed: false, validation });
+  render(<App sourcePollingIntervalMs={null} />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   expect(await screen.findByRole('textbox', { name: 'new record id' })).toBeTruthy();
   await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
   expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull();

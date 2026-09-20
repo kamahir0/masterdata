@@ -11,7 +11,7 @@ Completed:
 - local `cargo xtask check-rationale` / `cargo xtask check-all`
 
 In progress:
-- P4 supporting-evidence correction: split the cross-contract Explorer dirty-buffer GUI test and reconcile remote CI
+- P4 supporting-evidence correction: split cross-contract GUI tests and reconcile remote CI
 
 Remaining:
 - remote CI on the corrected candidate
@@ -19,4 +19,4 @@ Remaining:
 
 ## Blocking findings
 
-- GitHub CI on `016f761430a24002b25177e7b0b40c3f51429b1d` timed out at 20s on Ubuntu and macOS in the newly added P4-B test `Explorer move keeps unrelated dirty buffers and implements Cancel and Don't Save`; Windows passed. The test combines Cancel, Don't Save, and unrelated-buffer preservation, so evidence reliability must be corrected before objective completion.
+- Initial P4-B CI timed out in a combined Explorer dirty-buffer test; that test has been split into Cancel / Don't Save / unrelated-buffer preservation. A subsequent macOS run exposed another combined structural no-op GUI test crossing its 10s timeout while Ubuntu passed. Evidence reliability remains Blocking until the focused test splits pass required remote CI.

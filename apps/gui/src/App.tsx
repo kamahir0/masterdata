@@ -246,6 +246,33 @@ type SourceSaveReport = {
   diagnostic: Diagnostic | null;
 };
 
+type SourcePathEntryState = {
+  path: string;
+  exists: boolean;
+  regularFile: boolean;
+  symlink: boolean;
+  contentIdentity: string | null;
+};
+
+type SourcePathMutationReport = {
+  status: "success" | "conflict" | "failure" | "outcome_unknown";
+  sourcePath: string;
+  destinationPath: string;
+  sourceState: SourcePathEntryState | null;
+  destinationState: SourcePathEntryState | null;
+  diagnostic: Diagnostic | null;
+};
+
+type SourcePathStateReport = {
+  source: SourcePathEntryState;
+  destination: SourcePathEntryState;
+};
+
+type PathMutationResult =
+  | { kind: "report"; report: SourcePathMutationReport }
+  | { kind: "error"; diagnostic: ApiDiagnostic }
+  | { kind: "state"; state: SourcePathStateReport };
+
 type BuildResponse = {
   project: ProjectInfo;
   schemaSourceContentHash: string;
@@ -522,6 +549,10 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   const [creationOpen, setCreationOpen] = useState(false);
   const [creationTarget, setCreationTarget] = useState({ root: "", folder: "" });
   const [revealCreated, setRevealCreated] = useState<{ path: string; root: string } | null>(null);
+  const [pathMutationTarget, setPathMutationTarget] = useState<{ sourcePath: string; destinationPath: string; sourceRoot: string } | null>(null);
+  const [pathMutationPhase, setPathMutationPhase] = useState<"form" | "dirty" | "result">("form");
+  const [pathMutationBusy, setPathMutationBusy] = useState(false);
+  const [pathMutationResult, setPathMutationResult] = useState<PathMutationResult | null>(null);
   const [surface, setSurface] = useState<Surface>("editor");
   const [selectedProfile, setSelectedProfile] = useState("");
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -1362,6 +1393,146 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     }
   }, [openDataFile, projectRoot]);
 
+  const openPathMutation = useCallback(() => {
+    if (!activeFile || !projectRoot || mutationBlocked || !workspace?.capabilities.workspaceWrite) return;
+    setPathMutationTarget({
+      sourcePath: activeFile.path,
+      destinationPath: activeFile.path,
+      sourceRoot: activeFile.sourceRoot,
+    });
+    setPathMutationResult(null);
+    setPathMutationPhase("form");
+  }, [activeFile, mutationBlocked, projectRoot, workspace]);
+
+  const closePathMutation = useCallback(() => {
+    if (pathMutationBusy) return;
+    setPathMutationTarget(null);
+    setPathMutationResult(null);
+    setPathMutationPhase("form");
+  }, [pathMutationBusy]);
+
+  const removeEditorForPath = useCallback((path: string) => {
+    const timer = previewTimers.current.get(path);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      previewTimers.current.delete(path);
+    }
+    const retained = { ...editorsRef.current };
+    delete retained[path];
+    editorsRef.current = retained;
+    setEditors(retained);
+    setFileOpenErrors((current) => {
+      if (!(path in current)) return current;
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+  }, []);
+
+  const executePathMutation = useCallback(async (sourcePath: string, destinationPath: string, sourceRoot: string) => {
+    const root = workspaceStateRef.current.kind === "ready"
+      ? workspaceStateRef.current.workspace.project.project_root
+      : workspaceStateRef.current.previous?.project.project_root;
+    if (!root || sourceMutationBlocked(root)) return;
+    setPathMutationBusy(true);
+    setPathMutationResult(null);
+    try {
+      const report = await invoke<SourcePathMutationReport>("rename_source_file", {
+        projectPath: root,
+        request: { sourcePath, destinationPath },
+      });
+      if (report.status === "success") {
+        // Invalidate in-flight reads, previews, and polling callbacks that
+        // still address the old path before rebinding the editor state.
+        workspaceGeneration.current += 1;
+        removeEditorForPath(sourcePath);
+        setLoadingPaths((current) => {
+          if (!current.has(sourcePath)) return current;
+          const next = new Set(current);
+          next.delete(sourcePath);
+          return next;
+        });
+        if (pendingRecordFocus.current?.path === sourcePath) {
+          pendingRecordFocus.current = { ...pendingRecordFocus.current, path: destinationPath };
+        }
+        setPathMutationResult({ kind: "report", report });
+        setPathMutationPhase("result");
+        setActivePath(destinationPath);
+        setRevealCreated({ path: destinationPath, root: sourceRoot });
+        try {
+          const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
+          setWorkspaceState({ kind: "ready", workspace: next });
+          const destinationFile = next.files.find((file) => file.path === destinationPath);
+          const destinationRoot = destinationFile?.sourceRoot ?? sourceRoot;
+          setRevealCreated({ path: destinationPath, root: destinationRoot });
+          if (destinationFile?.kind === "data") await openDataFile(root, destinationPath, true);
+          showNotice(`${sourceName(sourcePath)} moved to ${destinationPath}`);
+        } catch (error) {
+          // The mutation report is authoritative even if the post-success
+          // Explorer refresh cannot be completed. Keep the report visible and
+          // leave unrelated dirty buffers untouched for the next refresh.
+          showNotice(`Source moved, but Explorer refresh failed: ${asApiError(error).diagnostic.message}`);
+        }
+      } else {
+        setPathMutationResult({ kind: "report", report });
+        setPathMutationPhase("result");
+      }
+    } catch (error) {
+      setPathMutationResult({ kind: "error", diagnostic: asApiError(error).diagnostic });
+      setPathMutationPhase("result");
+    } finally {
+      setPathMutationBusy(false);
+    }
+  }, [openDataFile, removeEditorForPath, showNotice, sourceMutationBlocked]);
+
+  const submitPathMutation = useCallback(async () => {
+    const target = pathMutationTarget;
+    if (!target || !target.destinationPath.trim() || target.sourcePath === target.destinationPath) return;
+    const editor = editorsRef.current[target.sourcePath];
+    if (editor && editorIsDirty(editor)) {
+      setPathMutationPhase("dirty");
+      return;
+    }
+    await executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot);
+  }, [executePathMutation, pathMutationTarget]);
+
+  const saveDirtyPathTargetAndMove = useCallback(async () => {
+    const target = pathMutationTarget;
+    if (!target) return;
+    setPathMutationBusy(true);
+    const saved = await saveFile(target.sourcePath);
+    setPathMutationBusy(false);
+    if (!saved) return;
+    await executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot);
+  }, [executePathMutation, pathMutationTarget, saveFile]);
+
+  const discardDirtyPathTargetAndMove = useCallback(async () => {
+    const target = pathMutationTarget;
+    if (!target) return;
+    removeEditorForPath(target.sourcePath);
+    await executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot);
+  }, [executePathMutation, pathMutationTarget, removeEditorForPath]);
+
+  const recheckPathMutation = useCallback(async () => {
+    const target = pathMutationTarget;
+    const root = workspaceStateRef.current.kind === "ready"
+      ? workspaceStateRef.current.workspace.project.project_root
+      : workspaceStateRef.current.previous?.project.project_root;
+    if (!target || !root) return;
+    setPathMutationBusy(true);
+    try {
+      const state = await invoke<SourcePathStateReport>("source_path_state", {
+        projectPath: root,
+        request: { sourcePath: target.sourcePath, destinationPath: target.destinationPath },
+      });
+      setPathMutationResult({ kind: "state", state });
+    } catch (error) {
+      setPathMutationResult({ kind: "error", diagnostic: asApiError(error).diagnostic });
+    } finally {
+      setPathMutationBusy(false);
+    }
+  }, [pathMutationTarget]);
+
   const reloadConflict = useCallback(async (path: string) => {
     if (!projectRoot) return;
     if (!window.confirm(`Discard local changes in ${sourceName(path)} and reload the external version?`)) return;
@@ -1652,6 +1823,14 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           <div className="pane-heading">
             <span>EXPLORER</span>
             <Button size="small" aria-label="New source artifact" disabled={mutationBlocked || !workspace?.capabilities.workspaceWrite} onClick={() => setCreationOpen(true)}>New</Button>
+            <Button
+              size="small"
+              aria-label="Rename or move source"
+              disabled={mutationBlocked || !activeFile || !workspace?.capabilities.workspaceWrite}
+              onClick={openPathMutation}
+            >
+              Move
+            </Button>
           </div>
           {workspaceState.kind === "loading" && !workspace && <div className="pane-message">Opening project…</div>}
           {workspaceState.kind === "error" && !workspace && (
@@ -1808,6 +1987,69 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           });
         }}
         onCreated={refreshAfterCreation} />}
+
+      <Modal
+        open={pathMutationTarget !== null}
+        title={pathMutationPhase === "dirty" ? "Save changes before moving?" : pathMutationPhase === "result" ? "Source move result" : "Rename or move source"}
+        closable={!pathMutationBusy}
+        keyboard={!pathMutationBusy}
+        mask={{ closable: false }}
+        onCancel={closePathMutation}
+        footer={pathMutationPhase === "dirty" ? [
+          <Button key="cancel" disabled={pathMutationBusy} onClick={closePathMutation}>Cancel</Button>,
+          <Button key="discard" disabled={pathMutationBusy} onClick={() => void discardDirtyPathTargetAndMove()}>Don&apos;t Save</Button>,
+          <Button key="save" type="primary" loading={pathMutationBusy} disabled={mutationBlocked} onClick={() => void saveDirtyPathTargetAndMove()}>Save</Button>,
+        ] : pathMutationPhase === "result" ? [
+          <Button key="close" type="primary" disabled={pathMutationBusy} onClick={closePathMutation}>Close</Button>,
+          ...(pathMutationResult?.kind === "report" && pathMutationResult.report.status === "conflict"
+            ? [<Button key="change" disabled={pathMutationBusy} onClick={() => {
+                setPathMutationResult(null);
+                setPathMutationPhase("form");
+              }}>Change destination</Button>]
+            : []),
+          ...(pathMutationResult?.kind === "report" && pathMutationResult.report.status === "outcome_unknown"
+            ? [<Button key="recheck" loading={pathMutationBusy} onClick={() => void recheckPathMutation()}>Recheck path state</Button>]
+            : []),
+        ] : [
+          <Button key="cancel" disabled={pathMutationBusy} onClick={closePathMutation}>Cancel</Button>,
+          <Button key="move" type="primary" loading={pathMutationBusy} disabled={mutationBlocked || !pathMutationTarget?.destinationPath.trim() || pathMutationTarget?.destinationPath === pathMutationTarget?.sourcePath} onClick={() => void submitPathMutation()}>Move</Button>,
+        ]}
+      >
+        {pathMutationTarget && pathMutationPhase === "form" && (
+          <>
+            <p>Move an existing source file inside the same configured source root. The destination must be a new <code>.yaml</code> or <code>.yml</code> path.</p>
+            <Input
+              aria-label="Source destination path"
+              value={pathMutationTarget.destinationPath}
+              onChange={(event) => {
+                setPathMutationTarget((current) => current ? { ...current, destinationPath: event.target.value } : current);
+                setPathMutationResult(null);
+              }}
+              placeholder="sources/data/renamed.yaml"
+              disabled={pathMutationBusy}
+            />
+          </>
+        )}
+        {pathMutationTarget && pathMutationPhase === "dirty" && (
+          <p>{sourceName(pathMutationTarget.sourcePath)} has unsaved changes. Choose Save, Don&apos;t Save, or Cancel before the source mutation.</p>
+        )}
+        {pathMutationPhase === "result" && pathMutationResult?.kind === "report" && (
+          <div className="path-mutation-result" role="status">
+            <strong>{pathMutationResult.report.status === "success" ? "Move succeeded." : pathMutationResult.report.status === "conflict" ? "Move conflicted; no overwrite was performed." : pathMutationResult.report.status === "outcome_unknown" ? "Move outcome is unknown. Recheck the old and new paths before retrying." : "Move failed."}</strong>
+            {pathMutationResult.report.diagnostic && <DiagnosticBanner diagnostic={pathMutationResult.report.diagnostic} />}
+          </div>
+        )}
+        {pathMutationPhase === "result" && pathMutationResult?.kind === "state" && (
+          <div className="path-mutation-result" role="status">
+            <strong>Current path state</strong>
+            <span>{pathMutationResult.state.source.path}: {pathMutationResult.state.source.exists ? "present" : "missing"}</span>
+            <span>{pathMutationResult.state.destination.path}: {pathMutationResult.state.destination.exists ? "present" : "missing"}</span>
+          </div>
+        )}
+        {pathMutationPhase === "result" && pathMutationResult?.kind === "error" && (
+          <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(pathMutationResult.diagnostic)} />
+        )}
+      </Modal>
 
       <Modal open={pendingAction !== null} title="Save changes before continuing?"
         closable={!pendingActionBusy} keyboard={!pendingActionBusy} mask={{ closable: false }}
@@ -2580,9 +2822,7 @@ function DataEditor({
                       : column.editable && snapshotCell?.editable === true && !gridRow.pendingDelete && !editor.saving);
                     const readOnlyReason = gridRow.kind === "added"
                       ? undefined
-                      : snapshotCell?.readOnlyReason ?? (column.keyField
-                        ? "Key fields are read-only on saved records."
-                        : column.readOnlyReason ?? undefined);
+                      : snapshotCell?.readOnlyReason ?? column.readOnlyReason ?? undefined;
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
                         <div

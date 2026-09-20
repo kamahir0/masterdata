@@ -167,10 +167,7 @@ pub fn dry_run_source_record_mutation(
         let shape = editable.get(edit.field.as_str()).ok_or_else(|| {
             source_edit_error(
                 "E-SOURCE-EDIT-FIELD-READ-ONLY",
-                format!(
-                    "field `{}` is not an editable resolved non-key field",
-                    edit.field
-                ),
+                format!("field `{}` is not an editable resolved field", edit.field),
                 Some(path.to_path_buf()),
                 "SOURCE-EDIT-002",
             )
@@ -653,20 +650,10 @@ fn editable_fields<'a>(
     schema: &'a SchemaDocument,
     documents: &ProjectDocuments,
 ) -> BTreeMap<&'a str, ResolvedAuthoringField> {
-    let mut keys = BTreeSet::new();
-    if let Some(primary) = &schema.primary_key {
-        keys.extend(primary.fields.iter().map(String::as_str));
-    }
-    for secondary in &schema.secondary_keys {
-        keys.extend(secondary.fields.iter().map(String::as_str));
-    }
     schema
         .fields
         .iter()
         .filter_map(|field| {
-            if keys.contains(field.name.as_str()) {
-                return None;
-            }
             resolve_authoring_field_shape(documents, field)
                 .map(|shape| (field.name.as_str(), shape))
         })
@@ -3478,10 +3465,10 @@ secondaryKeys: []
         );
     }
     #[test]
-    fn source_edit_rejects_key_field() {
+    fn source_edit_allows_existing_key_field_by_exact_occurrence() {
         let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: ok\n";
         let snapshot = documents(SCHEMA, "data.yaml", data);
-        let error = dry_run_source_edit(
+        let dry_run = dry_run_source_edit(
             &snapshot,
             Path::new("data.yaml"),
             &[RecordValueEdit {
@@ -3490,8 +3477,40 @@ secondaryKeys: []
                 value: number("2"),
             }],
         )
-        .expect_err("key field remains read-only");
-        assert_eq!(error.diagnostic().code, "E-SOURCE-EDIT-FIELD-READ-ONLY");
+        .expect("existing key field is directly editable");
+        assert!(dry_run.plan.candidate_source.contains("  - id: 2\n"));
+        assert!(dry_run.plan.candidate_source.contains("weight: 10\n"));
+    }
+
+    #[test]
+    fn source_edit_allows_existing_secondary_key_field_by_exact_occurrence() {
+        let schema = r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: note
+    type: string
+primaryKey:
+  fields: [id]
+secondaryKeys:
+  - fields: [note]
+"#;
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    note: old\n";
+        let snapshot = documents(schema, "data.yaml", data);
+        let dry_run = dry_run_source_edit(
+            &snapshot,
+            Path::new("data.yaml"),
+            &[RecordValueEdit {
+                record_index: 0,
+                field: "note".to_owned(),
+                value: text("new"),
+            }],
+        )
+        .expect("existing secondary key field is directly editable");
+        assert!(dry_run.plan.candidate_source.contains("note: new"));
     }
     #[test]
     fn source_edit_reversion_is_byte_identical() {

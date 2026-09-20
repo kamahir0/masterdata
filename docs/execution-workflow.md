@@ -134,6 +134,20 @@ Human gateに到達した場合だけ、必要decision、各choiceのtrade-off�
 
 新priorityがdurably delegatedされていない場合、current reality / Product Directionから有力候補を比較してHumanへ戻す。事前にroadmap順等のdelegationがある場合だけその範囲で自律選択できる。
 
+## Specification approval within an Objective
+
+specification lifecycleのownerは`docs/contributing/specification-workflow.md`。Human-selected Objective内のsemantic changeは、次をすべて満たす場合、review後にagentがautonomously approve/applyしてよい。
+
+- Objectiveを実現するために必要または自然なscope内。
+- Human gate条件に該当しない。
+- source evidenceとagent decisionが区別されている。
+- `review-spec`でBlockingなし、materialなunresolved ambiguityなし。
+- compatibility impactがnon-breaking、または既存Approved policy内で明確。
+- testableなacceptance / failure behaviorが定義されている。
+- Approval Recordへautonomous approval basisを残す。
+
+これを満たさないproposalは`decision-required`へ送る。routine spec approvalのためだけにHumanを同期ポイントとして使わない。
+
 ## Candidate / state transition
 
 final candidateの標準flow:

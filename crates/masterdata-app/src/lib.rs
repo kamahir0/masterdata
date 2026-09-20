@@ -37,6 +37,8 @@ pub use delivery::*;
 mod authoring;
 mod creation;
 pub use creation::*;
+mod source_path;
+pub use source_path::*;
 mod publish;
 mod receipt;
 

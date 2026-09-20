@@ -8,7 +8,8 @@ use masterdata_app::{
     DataFileQueryResult, DataFileSnapshot, NativeApplicationService, ProjectConfigEditPreviewView,
     ProjectConfigEditRequest, ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest,
     PublishExecutionReport, PublishPreview, RecordTagEditRequest, SourceContentState,
-    SourceEditPreview, SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
+    SourceEditPreview, SourcePathMutationReport, SourcePathMutationRequest, SourcePathStateReport,
+    SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -306,6 +307,43 @@ fn recheck_creation(
     let configured = configured_project_path(project_path);
     NativeApplicationService::new()
         .recheck_creation(configured.as_deref().map(Path::new), &current_dir, &request)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn rename_source_file(
+    project_path: Option<String>,
+    request: serde_json::Value,
+) -> std::result::Result<SourcePathMutationReport, ApiError> {
+    let request: SourcePathMutationRequest = serde_json::from_value(request).map_err(|error| {
+        ApiError::from(MasterdataError::new(
+            "E-SOURCE-PATH-REQUEST",
+            ErrorKind::Validation,
+            format!("invalid source path mutation input: {error}"),
+        ))
+    })?;
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
+    let session = table_session()?;
+    session
+        .ensure_mutation_allowed(&root)
+        .map_err(ApiError::from)?;
+    let current_dir = current_directory()?;
+    let configured = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .rename_source_file(configured.as_deref().map(Path::new), &current_dir, &request)
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn source_path_state(
+    project_path: Option<String>,
+    request: SourcePathMutationRequest,
+) -> std::result::Result<SourcePathStateReport, ApiError> {
+    let current_dir = current_directory()?;
+    let configured = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .source_path_state(configured.as_deref().map(Path::new), &current_dir, &request)
         .map_err(ApiError::from)
 }
 
@@ -674,6 +712,8 @@ pub fn run() {
             creation_context,
             create_source,
             recheck_creation,
+            rename_source_file,
+            source_path_state,
             open_project_config,
             preview_project_config_edit,
             save_project_config_edit,

@@ -11,13 +11,13 @@ const snapshot = () => ({ path: 'data.yaml', table: 'item', baseSource: 'weight:
   columns: [{ name: 'weight', typeName: 'ulong', editable: true, keyField: false, shape: numberShape, readOnlyReason: null }],
   rows: [{ recordIndex: 0, cells: [{ field: 'weight', text: '10', value: { kind: 'number', value: '10' }, editable: true, readOnlyReason: null }] }], validation });
 const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
-  { field: 'id', text: '1', editable: false },
+  { field: 'id', text: '1', editable: true },
   { field: 'weight', text: '10', editable: true },
   { field: 'note', text: 'first', editable: true },
 ] }]) => ({
   path: 'data.yaml', table: 'item', baseSource: 'kind: data\ntable: item\nrecords: []\n', baseContentIdentity: 'base',
   columns: [
-    { name: 'id', typeName: 'ulong', editable: false, keyField: true, shape: { name: 'id', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } }, readOnlyReason: null },
+    { name: 'id', typeName: 'ulong', editable: true, keyField: true, shape: { name: 'id', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } }, readOnlyReason: null },
     { name: 'weight', typeName: 'ulong', editable: true, keyField: false, shape: numberShape, readOnlyReason: null },
     { name: 'note', typeName: 'string', editable: true, keyField: false, shape: { name: 'note', typeName: 'string', modifier: 'required', shape: { kind: 'primitive', primitive: 'string' } }, readOnlyReason: null },
   ],
@@ -33,7 +33,7 @@ const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
 const complexSnapshot = (rows: any[] = [{
   recordIndex: 0,
   cells: [
-    { field: 'id', text: '1', value: { kind: 'number', value: '1' }, editable: false },
+    { field: 'id', text: '1', value: { kind: 'number', value: '1' }, editable: true },
     { field: 'profile', text: '', value: { kind: 'mapping', entries: [
       { name: 'credits', value: { kind: 'number', value: '18446744073709551615' } },
       { name: 'label', value: { kind: 'string', value: 'kept' } },
@@ -56,7 +56,7 @@ const complexSnapshot = (rows: any[] = [{
     { name: 'alias', typeName: 'string', modifier: 'nullable', shape: { kind: 'primitive', primitive: 'string' } },
   ] };
   const fields = [
-    { name: 'id', typeName: 'ulong', editable: false, keyField: true, shape: { name: 'id', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } }, readOnlyReason: null },
+    { name: 'id', typeName: 'ulong', editable: true, keyField: true, shape: { name: 'id', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } }, readOnlyReason: null },
     { name: 'profile', typeName: 'Profile', editable: true, keyField: false, shape: { name: 'profile', typeName: 'Profile', modifier: 'required', shape: profile }, readOnlyReason: null },
     { name: 'tags', typeName: 'string', editable: true, keyField: false, shape: { name: 'tags', typeName: 'string', modifier: 'array', shape: { kind: 'primitive', primitive: 'string' } }, readOnlyReason: null },
     { name: 'status', typeName: 'Status', editable: true, keyField: false, shape: { name: 'status', typeName: 'Status', modifier: 'required', shape: { kind: 'enum', name: 'Status', underlying: 'int', members: ['Ready', 'Paused'] } }, readOnlyReason: null },
@@ -198,7 +198,7 @@ test('creation refresh selects the new source without discarding an existing dir
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, 10_000);
 
-test('Add Row creates an editable draft, validates it through the shared preview, and makes saved keys read-only', async () => {
+test('Existing key cells are directly editable, while Add Row still validates the saved result', async () => {
   openSnapshot = mutationSnapshot([]);
   let previewArgs: any;
   preview = async (args) => {
@@ -216,12 +216,12 @@ test('Add Row creates an editable draft, validates it through the shared preview
   invoke.mockImplementation(async (command, args) => command === 'save_data_file'
     ? { status: 'success', snapshot: mutationSnapshot([
         { recordIndex: 0, cells: [
-          { field: 'id', text: '1', editable: false },
+          { field: 'id', text: '1', editable: true },
           { field: 'weight', text: '10', editable: true },
           { field: 'note', text: 'first', editable: true },
         ] },
         { recordIndex: 1, cells: [
-          { field: 'id', text: '18446744073709551615', editable: false },
+          { field: 'id', text: '18446744073709551615', editable: true },
           { field: 'weight', text: 'invalid', editable: true },
           { field: 'note', text: 'draft', editable: true },
         ] },
@@ -244,7 +244,125 @@ test('Add Row creates an editable draft, validates it through the shared preview
 
   fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
-  expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(true);
+  expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(false);
+}, 20_000);
+
+test('Existing primary key direct edit uses the ordinary cell mutation lifecycle', async () => {
+  openSnapshot = mutationSnapshot();
+  let previewArgs: any;
+  preview = async (args) => {
+    previewArgs = args;
+    return { candidateSource: 'id: 2', changed: true, validation };
+  };
+  render(<App sourcePollingIntervalMs={null} />);
+  const id = await screen.findByRole('textbox', { name: 'record 1 id' }) as HTMLInputElement;
+  expect(id.readOnly).toBe(false);
+  fireEvent.change(id, { target: { value: '2' } });
+  await waitFor(() => expect(previewArgs?.edits?.[0]).toEqual({
+    recordIndex: 0,
+    field: 'id',
+    value: { kind: 'number', value: '2' },
+  }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('Explorer move refreshes selection and the open data editor at the new path', async () => {
+  openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
+  let moved = false;
+  const movedWorkspace = { ...workspace, files: [{ ...workspace.files[0], path: 'moved.yaml' }] };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return moved ? movedWorkspace : workspace;
+    if (command === 'rename_source_file') {
+      expect(args.request).toEqual({ sourcePath: 'data.yaml', destinationPath: 'moved.yaml' });
+      moved = true;
+      return { status: 'success', sourcePath: 'data.yaml', destinationPath: 'moved.yaml', sourceState: null, destinationState: null, diagnostic: null };
+    }
+    if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Rename or move source' }));
+  const destination = screen.getByRole('textbox', { name: 'Source destination path' });
+  fireEvent.change(destination, { target: { value: 'moved.yaml' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
+  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
+  expect(screen.queryByRole('treeitem', { name: 'data.yaml', exact: true })).toBeNull();
+  expect(invoke.mock.calls.some(([command, args]) => command === 'open_data_file' && args.relativePath === 'moved.yaml')).toBe(true);
+});
+
+test('Explorer move keeps unrelated dirty buffers and implements Cancel and Don\'t Save', async () => {
+  openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
+  const multiWorkspace = {
+    ...workspace,
+    files: [workspace.files[0], { ...workspace.files[0], path: 'other.yaml' }],
+  };
+  let moved = false;
+  const movedWorkspace = {
+    ...multiWorkspace,
+    files: [{ ...workspace.files[0], path: 'moved.yaml' }, { ...workspace.files[0], path: 'other.yaml' }],
+  };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return moved ? movedWorkspace : multiWorkspace;
+    if (command === 'rename_source_file') {
+      moved = true;
+      return { status: 'success', sourcePath: 'data.yaml', destinationPath: 'moved.yaml', sourceState: null, destinationState: null, diagnostic: null };
+    }
+    if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} />);
+  const other = await screen.findByRole('treeitem', { name: 'other.yaml', exact: true });
+  fireEvent.click(other);
+  const otherInput = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
+  fireEvent.change(otherInput, { target: { value: '22' } });
+  fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml', exact: true }));
+  const targetInput = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
+  fireEvent.change(targetInput, { target: { value: '20' } });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
+  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  expect((screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true })).getAttribute('aria-selected')).toBe('true');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
+  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
+  fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
+  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
+  fireEvent.click(screen.getByRole('treeitem', { name: 'other.yaml, unsaved changes', exact: true }));
+  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('22');
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+}, 20_000);
+
+test('Explorer move offers Save for a dirty target before mutation', async () => {
+  let moved = false;
+  const movedWorkspace = { ...workspace, files: [{ ...workspace.files[0], path: 'moved.yaml' }] };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return moved ? movedWorkspace : workspace;
+    if (command === 'rename_source_file') {
+      moved = true;
+      return { status: 'success', sourcePath: 'data.yaml', destinationPath: 'moved.yaml', sourceState: null, destinationState: null, diagnostic: null };
+    }
+    if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} />);
+  const input = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
+  fireEvent.change(input, { target: { value: '21' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
+  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true }).at(-1)!);
+  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(true);
+  expect(invoke.mock.calls.some(([command]) => command === 'rename_source_file')).toBe(true);
 }, 20_000);
 
 test('schema-aware controls edit nested exact integers, nullable fields, arrays, Enum, and Flags', async () => {
@@ -408,12 +526,12 @@ test('shared no-op preview normalizes structural mutation state back to clean', 
 test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {
   openSnapshot = mutationSnapshot([
     { recordIndex: 0, cells: [
-      { field: 'id', text: '1', editable: false },
+      { field: 'id', text: '1', editable: true },
       { field: 'weight', text: '10', editable: true },
       { field: 'note', text: 'first', editable: true },
     ] },
     { recordIndex: 1, cells: [
-      { field: 'id', text: '2', editable: false },
+      { field: 'id', text: '2', editable: true },
       { field: 'weight', text: '20', editable: true },
       { field: 'note', text: 'second', editable: true },
     ] },
@@ -532,6 +650,7 @@ test.each(['table','type'])('%s Migration recovery result blocks Create and Buil
   await planFromTable(kind==='type');fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button',{name:'Rename or move source'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
 }, 20_000);
 test('Recovery Required blocks Save until host recheck succeeds',async()=>{
@@ -606,12 +725,12 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
 test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of flattening the selection', async () => {
   openSnapshot = mutationSnapshot([
     { recordIndex: 0, cells: [
-      { field: 'id', text: '1', editable: false },
+      { field: 'id', text: '1', editable: true },
       { field: 'weight', text: '10', editable: true },
       { field: 'note', text: 'a', editable: true },
     ] },
     { recordIndex: 1, cells: [
-      { field: 'id', text: '2', editable: false },
+      { field: 'id', text: '2', editable: true },
       { field: 'weight', text: '20', editable: true },
       { field: 'note', text: 'b', editable: true },
     ] },

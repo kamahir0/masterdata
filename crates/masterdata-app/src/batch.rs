@@ -366,6 +366,15 @@ fn build_batch_mutation(
                     format!("record[{record_index}].{} is read-only", target.field),
                 ));
             }
+            if column.key_field {
+                return Err(batch_error(
+                    "E-AUTHORING-BATCH-READ-ONLY",
+                    format!(
+                        "record[{record_index}].{} is an existing key field and cannot be changed by a batch operation",
+                        target.field
+                    ),
+                ));
+            }
             if mutation.deleted_record_indices.contains(&record_index) {
                 return Err(batch_error(
                     "E-AUTHORING-BATCH-READ-ONLY",
@@ -564,6 +573,11 @@ fn batch_error(code: &str, message: impl Into<String>) -> MasterdataError {
 #[cfg(test)]
 mod clipboard_shape_tests {
     use super::*;
+    use crate::{DataEditorAddCapability, DataEditorCell, DataEditorColumn, DataEditorRow};
+    use masterdata_core::{
+        FieldModifier, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,
+        ValidationReport,
+    };
 
     #[test]
     fn clipboard_shape_preserves_two_dimensional_geometry() {
@@ -580,5 +594,77 @@ mod clipboard_shape_tests {
             .authoring_clipboard_shape("a\tb\nc")
             .expect_err("ragged clipboard");
         assert_eq!(error.diagnostic().code, "E-AUTHORING-BATCH-SHAPE");
+    }
+
+    #[test]
+    fn existing_key_field_is_rejected_by_batch_mutation_even_when_directly_editable() {
+        let key_shape = ResolvedAuthoringField {
+            name: "id".to_owned(),
+            type_name: "ulong".to_owned(),
+            modifier: FieldModifier::Required,
+            shape: ResolvedAuthoringType::Primitive {
+                primitive: PrimitiveType::ULong,
+            },
+        };
+        let snapshot = DataFileSnapshot {
+            path: "sources/data/item.yaml".to_owned(),
+            table: "item".to_owned(),
+            base_source: "id: 1\n".to_owned(),
+            base_content_identity: "base".to_owned(),
+            columns: vec![DataEditorColumn {
+                name: "id".to_owned(),
+                type_name: "ulong".to_owned(),
+                editable: true,
+                key_field: true,
+                shape: Some(key_shape.clone()),
+                read_only_reason: None,
+            }],
+            rows: vec![DataEditorRow {
+                record_index: 0,
+                cells: vec![DataEditorCell {
+                    field: "id".to_owned(),
+                    text: "1".to_owned(),
+                    value: AuthoringValue::Number {
+                        value: "1".to_owned(),
+                    },
+                    editable: true,
+                    read_only_reason: None,
+                }],
+                tags: Vec::new(),
+                tags_editable: true,
+                tags_read_only_reason: None,
+            }],
+            tag_candidates: Vec::new(),
+            tag_candidates_complete: true,
+            add_row: DataEditorAddCapability {
+                supported: true,
+                reason: None,
+            },
+            validation: ValidationReport {
+                valid: true,
+                diagnostics: Vec::new(),
+                files_scanned: 1,
+                schema_documents: 1,
+                data_documents: 1,
+                type_documents: 0,
+                tables: vec!["item".to_owned()],
+                types: Vec::new(),
+            },
+        };
+        let error = build_batch_mutation(
+            &snapshot,
+            &AuthoringRecordMutation::default(),
+            &AuthoringBatchRequest {
+                targets: vec![BatchTarget {
+                    record_index: Some(0),
+                    added_record_index: None,
+                    field: "id".to_owned(),
+                }],
+                clipboard_text: "2".to_owned(),
+                fill: false,
+            },
+        )
+        .expect_err("existing key batch mutation must remain restricted");
+        assert_eq!(error.diagnostic().code, "E-AUTHORING-BATCH-READ-ONLY");
     }
 }

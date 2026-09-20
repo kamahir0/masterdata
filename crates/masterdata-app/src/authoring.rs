@@ -611,7 +611,7 @@ pub(super) fn data_file_snapshot(
             DataEditorColumn {
                 name: field.name.clone(),
                 type_name: field.type_name.clone(),
-                editable: !key_field && shape.is_some(),
+                editable: shape.is_some(),
                 key_field,
                 shape,
                 read_only_reason,
@@ -1224,9 +1224,64 @@ secondaryKeys: []
             .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
             .expect("snapshot");
         assert_eq!(snapshot.rows[0].cells[0].text, "18446744073709551615");
-        assert!(!snapshot.columns[0].editable);
+        assert!(snapshot.columns[0].key_field);
+        assert!(snapshot.columns[0].editable);
+        assert!(snapshot.rows[0].cells[0].editable);
         assert!(snapshot.columns[1].editable);
         assert!(snapshot.columns[2].editable);
+    }
+
+    #[test]
+    fn existing_secondary_key_cells_are_directly_editable() {
+        let temp = project();
+        fs::write(
+            temp.path().join("sources/schemas/item.yaml"),
+            r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: weight
+    type: ulong
+  - key: 2
+    name: note
+    type: string
+primaryKey:
+  fields: [id]
+secondaryKeys:
+  - fields: [note]
+"#,
+        )
+        .expect("secondary-key schema");
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+        assert!(snapshot.columns[2].key_field);
+        assert!(snapshot.columns[2].editable);
+        assert!(snapshot.rows[0].cells[2].editable);
+
+        let preview = service
+            .preview_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &AuthoringRecordMutation {
+                    edits: vec![AuthoringEdit {
+                        record_index: 0,
+                        field: "note".to_owned(),
+                        value: AuthoringValue::String {
+                            value: "changed".to_owned(),
+                        },
+                    }],
+                    ..AuthoringRecordMutation::default()
+                },
+            )
+            .expect("secondary key edit preview");
+        assert!(preview.candidate_source.contains("note: 'changed'"));
     }
 
     #[test]
@@ -1593,6 +1648,61 @@ custom:
     }
 
     #[test]
+    fn duplicate_key_diagnostic_does_not_block_source_preserving_key_save() {
+        let temp = project();
+        fs::write(
+            temp.path().join("sources/data/items.yaml"),
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first # keep\n  - id: 2\n    weight: 20\n    note: second\n",
+        )
+        .expect("duplicate-key source");
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+        let mutation = AuthoringRecordMutation {
+            edits: vec![AuthoringEdit {
+                record_index: 1,
+                field: "id".to_owned(),
+                value: AuthoringValue::Number {
+                    value: "1".to_owned(),
+                },
+            }],
+            ..AuthoringRecordMutation::default()
+        };
+        let preview = service
+            .preview_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &mutation,
+            )
+            .expect("domain-invalid key candidate remains previewable");
+        assert!(
+            preview
+                .validation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "E-TABLE-DUPLICATE-PRIMARY-VALUE")
+        );
+        let report = service
+            .save_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &snapshot.base_content_identity,
+                &mutation,
+                None,
+            )
+            .expect("domain diagnostic is not a Save gate");
+        assert_eq!(report.status, SourceSaveStatus::Success);
+        let saved = fs::read_to_string(temp.path().join("sources/data/items.yaml")).unwrap();
+        assert!(saved.contains("- id: 1\n    weight: 20"));
+        assert!(saved.contains("note: first # keep"));
+    }
+
+    #[test]
     fn record_mutation_preview_and_save_share_the_source_edit_lifecycle() {
         let temp = project();
         let service = NativeApplicationService::new();
@@ -1666,9 +1776,10 @@ custom:
         assert_eq!(report.status, SourceSaveStatus::Success);
         let saved = report.snapshot.expect("saved snapshot");
         assert_eq!(saved.rows.len(), 2);
+        assert!(saved.columns[0].key_field);
         assert!(
-            !saved.columns[0].editable,
-            "saved added key becomes existing read-only"
+            saved.columns[0].editable,
+            "saved added key remains directly editable"
         );
     }
 

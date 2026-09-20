@@ -6,6 +6,9 @@ import { authoringValuesEqual, type AuthoringValue } from '../src/data-editor-ty
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 const validation = { valid: true, diagnostics: [] };
+// Full-App jsdom/Ant Design flows have meaningful cross-platform CI variance.
+ // This timeout is a hang guard, not a product performance budget.
+const APP_INTEGRATION_TEST_TIMEOUT_MS = 30_000;
 const numberShape = { name: 'weight', typeName: 'ulong', modifier: 'required', shape: { kind: 'primitive', primitive: 'ulong' } };
 const snapshot = () => ({ path: 'data.yaml', table: 'item', baseSource: 'weight: 10', baseContentIdentity: 'base',
   columns: [{ name: 'weight', typeName: 'ulong', editable: true, keyField: false, shape: numberShape, readOnlyReason: null }],
@@ -196,7 +199,7 @@ test('creation refresh selects the new source without discarding an existing dir
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Existing key cells are directly editable, while Add Row still validates the saved result', async () => {
   openSnapshot = mutationSnapshot([]);
@@ -245,7 +248,7 @@ test('Existing key cells are directly editable, while Add Row still validates th
   fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
   expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(false);
-}, 20_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Existing primary key direct edit uses the ordinary cell mutation lifecycle', async () => {
   openSnapshot = mutationSnapshot();
@@ -315,7 +318,7 @@ test('Explorer move Cancel keeps the dirty target and does not start mutation', 
 
   expect((screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true })).getAttribute('aria-selected')).toBe('true');
   expect(renameCalls).toBe(0);
-}, 15_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test("Explorer move Don't Save discards only the dirty target before mutation", async () => {
   openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
@@ -346,7 +349,7 @@ test("Explorer move Don't Save discards only the dirty target before mutation", 
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('10');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
   expect(invoke.mock.calls.filter(([command]) => command === 'rename_source_file')).toHaveLength(1);
-}, 15_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Explorer move preserves an unrelated dirty buffer', async () => {
   openSnapshot = { ...mutationSnapshot(), path: 'data.yaml' };
@@ -385,7 +388,7 @@ test('Explorer move preserves an unrelated dirty buffer', async () => {
   fireEvent.click(screen.getByRole('treeitem', { name: 'other.yaml, unsaved changes', exact: true }));
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('22');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-}, 15_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Explorer move offers Save for a dirty target before mutation', async () => {
   let moved = false;
@@ -411,7 +414,7 @@ test('Explorer move offers Save for a dirty target before mutation', async () =>
   await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(true);
   expect(invoke.mock.calls.some(([command]) => command === 'rename_source_file')).toBe(true);
-}, 20_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('schema-aware controls edit nested exact integers, nullable fields, arrays, Enum, and Flags', async () => {
   openSnapshot = complexSnapshot();
@@ -455,7 +458,7 @@ test('schema-aware controls edit nested exact integers, nullable fields, arrays,
   ]);
   expect(edits.status).toEqual({ kind: 'string', value: 'Paused' });
   expect(edits.access.items).toEqual([{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }]);
-}, 30_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Value Object editor sends its ulong underlying as exact decimal text', async () => {
   const base = snapshot();
@@ -504,7 +507,7 @@ test('Add Row complex draft starts with null placeholders', async () => {
   expect(previewArgs.addedRecords[0].fields.map((field: any) => field.value.kind))
     .toEqual(['null', 'null', 'null', 'null', 'null', 'null']);
   expect(screen.getByText('No flags value selected yet.')).toBeTruthy();
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Add Row materializes custom and array values only after explicit choices', async () => {
   openSnapshot = complexSnapshot([]);
@@ -528,7 +531,7 @@ test('Add Row materializes custom and array values only after explicit choices',
   const fields = Object.fromEntries(previewArgs.addedRecords[0].fields.map((field: any) => [field.field, field.value]));
   expect(fields.profile.entries.map((entry: any) => entry.value.kind)).toEqual(['null', 'null', 'null']);
   expect(fields.bonus).toEqual({ kind: 'null' });
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Add Row materializes enum and flags values only after explicit choices', async () => {
   openSnapshot = complexSnapshot([]);
@@ -549,7 +552,7 @@ test('Add Row materializes enum and flags values only after explicit choices', a
     expect(values.status).toEqual({ kind: 'string', value: 'Paused' });
     expect(values.access).toEqual({ kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: null, value: { kind: 'string', value: 'Write' } }] });
   });
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('nested value diagnostics focus the matching Custom Type field', async () => {
   openSnapshot = complexSnapshot();
@@ -568,7 +571,7 @@ test('nested value diagnostics focus the matching Custom Type field', async () =
   fireEvent.click(screen.getByRole('button', { name: /E-TABLE-INVALID-RECORD-VALUE/ }));
   await waitFor(() => expect(document.activeElement).toBe(credits));
   expect(credits.getAttribute('aria-invalid')).toBe('true');
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('deleting a new draft cancels the addition and returns the file to clean', async () => {
   openSnapshot = mutationSnapshot([]);
@@ -580,7 +583,7 @@ test('deleting a new draft cancels the addition and returns the file to clean', 
   await waitFor(() => expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull());
   expect(screen.getByText('Saved')).toBeTruthy();
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('no-op delete preview restores the existing row to clean', async () => {
   openSnapshot = mutationSnapshot();
@@ -592,7 +595,7 @@ test('no-op delete preview restores the existing row to clean', async () => {
   await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
   expect(screen.queryByText('Pending delete')).toBeNull();
   expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).readOnly).toBe(false);
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('no-op Add Row preview removes the draft and stays clean', async () => {
   openSnapshot = mutationSnapshot();
@@ -603,7 +606,7 @@ test('no-op Add Row preview removes the draft and stays clean', async () => {
   expect(await screen.findByRole('textbox', { name: 'new record id' })).toBeTruthy();
   await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
   expect(screen.queryByRole('textbox', { name: 'new record id' })).toBeNull();
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('deleting an edited existing row preserves the edit while Undo restores editability', async () => {
   openSnapshot = mutationSnapshot([
@@ -628,7 +631,7 @@ test('deleting an edited existing row preserves the edit while Undo restores edi
   fireEvent.click(screen.getByRole('button', { name: 'Undo Delete record 1', exact: true }));
   expect(weight.value).toBe('11');
   expect(weight.readOnly).toBe(false);
-}, 10_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
@@ -680,7 +683,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   fireEvent.click(screen.getByRole('button', { name: 'Overwrite', exact: true }));
   await waitFor(() => expect(screen.getByText('Previous save outcome is unknown.')).toBeTruthy());
   expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
-}, 20_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 const tableSnapshot = {path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string']};
 const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml',sourceRoot:'.',kind:'data'},{path:'schema.yaml',sourceRoot:'.',kind:'schema'}]};
@@ -715,7 +718,7 @@ test.each(['table','type'])('%s Migration refresh reloads affected clean editors
   expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
   expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='other.yaml')).toHaveLength(1);
   expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
-}, 20_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
 test.each(['table','type'])('%s Migration recovery result blocks Create and Build',async(kind)=>{
   const normal=invoke.getMockImplementation()!;
@@ -734,7 +737,7 @@ test.each(['table','type'])('%s Migration recovery result blocks Create and Buil
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Rename or move source'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
-}, 20_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   const normal=invoke.getMockImplementation()!;
   let recovery:any=recoveryRequired;
@@ -755,7 +758,7 @@ test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   fireEvent.click(screen.getByRole('button',{name:'Recheck recovered source'}));
   await waitFor(()=>expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(false));
   expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
-}, 20_000);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 
 test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML editor', async () => {

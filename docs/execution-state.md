@@ -11,7 +11,7 @@ Completed:
 - local `cargo xtask check-rationale` / `cargo xtask check-all`
 
 In progress:
-- P4 supporting-evidence correction: split cross-contract GUI tests and reconcile remote CI
+- P4 supporting-evidence correction: stabilize focused GUI integration evidence and reconcile remote CI
 
 Remaining:
 - remote CI on the corrected candidate
@@ -19,4 +19,4 @@ Remaining:
 
 ## Blocking findings
 
-- Required CI has exposed platform-dependent timeouts in several long, multi-contract GUI tests while the other two platforms pass. Explorer dirty-buffer and structural no-op tests are already split; the remaining Add Row complex-value test is now split into null-placeholder, custom/array, and enum/flags contracts. Evidence reliability remains Blocking until the focused test suite passes required remote CI.
+- Three required-CI attempts exposed different full-App GUI tests crossing 10/15/20s thresholds on different platforms while the same tests passed elsewhere. Multi-contract tests have been split where appropriate; remaining failures demonstrate CI resource variance rather than one semantic path. `authoring.test.tsx` now uses one 30s integration hang guard instead of treating arbitrary per-test thresholds as product performance budgets. Evidence reliability remains Blocking until required remote CI passes.

@@ -3483,6 +3483,34 @@ secondaryKeys: []
     }
 
     #[test]
+    fn source_edit_key_field_targets_duplicate_key_occurrence_by_provenance() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n  - id: 1\n    weight: 20\n    note: second\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let dry_run = dry_run_source_edit(
+            &snapshot,
+            Path::new("data.yaml"),
+            &[RecordValueEdit {
+                record_index: 1,
+                field: "id".to_owned(),
+                value: number("2"),
+            }],
+        )
+        .expect("duplicate key occurrence remains addressable by source provenance");
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("  - id: 1\n    weight: 10\n    note: first\n")
+        );
+        assert!(
+            dry_run
+                .plan
+                .candidate_source
+                .contains("  - id: 2\n    weight: 20\n    note: second\n")
+        );
+    }
+
+    #[test]
     fn source_edit_allows_existing_secondary_key_field_by_exact_occurrence() {
         let schema = r#"kind: schema
 table: item

@@ -10,6 +10,8 @@ mod authoring_query;
 mod authoring_value;
 mod config;
 mod config_edit;
+mod data_authoring;
+mod data_query;
 pub mod diagnostics;
 mod document;
 mod error;
@@ -17,6 +19,7 @@ mod migration;
 mod migration_commit;
 mod pipeline;
 mod project;
+mod schema_authoring;
 mod source_creation;
 mod source_edit;
 mod table;
@@ -43,6 +46,11 @@ pub use config::{
 pub use config_edit::{
     ProjectConfigEditOperation, ProjectConfigEditPreview, preview_project_config_edit,
 };
+pub use data_authoring::{
+    DataEditorAddCapability, DataEditorCell, DataEditorColumn, DataEditorRow, DataFileSnapshot,
+    data_file_snapshot,
+};
+pub use data_query::{DataFileQueryResult, query_data_file};
 pub use document::{
     ConversionDefinition, CustomTypeDefinition, DataDocument, EnumDefinition, EnumMember,
     FieldDefinition, FlagsDefinition, IntegerLiteral, LoadedDocument, PrimaryKeyDefinition,
@@ -68,6 +76,9 @@ pub use pipeline::{
 pub use project::{
     BuildProfileInfo, InitOptions, PROJECT_CONFIG_FILENAME, Project, ProjectInfo,
     PublishTargetInfo, initialize_gui_project, initialize_project,
+};
+pub use schema_authoring::{
+    TableSnapshot, TypeMemberView, TypeSnapshot, table_snapshot, type_snapshot,
 };
 pub use source_edit::{
     AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceEditDryRun,

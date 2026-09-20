@@ -55,33 +55,7 @@ impl TableOperationInput {
         })
     }
 }
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TableSnapshot {
-    pub path: String,
-    pub schema: SchemaDocument,
-    pub field_types: Vec<String>,
-    pub initializer_shapes: BTreeMap<String, ResolvedAuthoringType>,
-}
-pub(crate) fn initializer_shapes(
-    documents: &ProjectDocuments,
-    field_types: &[String],
-) -> BTreeMap<String, ResolvedAuthoringType> {
-    field_types
-        .iter()
-        .filter_map(|type_name| {
-            let probe = FieldDefinition {
-                key: 0,
-                name: "initializer".to_owned(),
-                type_name: type_name.clone(),
-                nullable: false,
-                array: false,
-            };
-            resolve_authoring_field_shape(documents, &probe)
-                .map(|field| (type_name.clone(), field.shape))
-        })
-        .collect()
-}
+pub use masterdata_core::TableSnapshot;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,22 +108,7 @@ impl TableAuthoringSession {
     pub fn open_table(&self, root: &Path, path: &str) -> Result<TableSnapshot> {
         let project = Project::discover(Some(root), root)?;
         let documents = project.load_documents()?;
-        let file = documents
-            .files
-            .iter()
-            .find(|file| project_relative_string(project.root(), &file.path) == path)
-            .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "schema source not found"))?;
-        let SourceDocument::Schema(schema) = &file.document else {
-            return Err(error("E-TABLE-EDITOR-KIND", "source is not a Table schema"));
-        };
-        let field_types = creation_choices(&documents).field_types;
-        let initializer_shapes = initializer_shapes(&documents, &field_types);
-        Ok(TableSnapshot {
-            path: path.into(),
-            schema: migration_table_schema(&documents, &schema.table)?,
-            field_types,
-            initializer_shapes,
-        })
+        table_snapshot(&documents, &project.root().join(path), path)
     }
     pub fn plan(&mut self, root: &Path, input: TableOperationInput) -> Result<TablePlanView> {
         self.ensure_mutation_allowed(root)?;

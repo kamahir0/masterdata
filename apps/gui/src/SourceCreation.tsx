@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Form, Input, InputNumber, Modal, Select, Space, Spin } from "antd";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./host";
 
 type Field = { key: number | null; name: string; type: string; nullable: boolean; array: boolean };
 type Member = { name: string; value: string };

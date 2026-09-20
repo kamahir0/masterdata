@@ -6,41 +6,34 @@
 
 ## Objective
 
-**Approved P4 packageを実装し、existing record key fieldのdirect editとsame-root source file rename / moveをDesktop authoring workflowへ統合し、verification済みcandidateへ到達する。**
+**Standalone Webで、明示的に許可されたlocal workspaceを開き、共有frontendとRust semanticsを使って既存sourceの閲覧・編集・検証・保存を完結させ、静的配布可能な成果物をverification済みcandidateへ到達させる。**
 
 ## Completion slices
 
-### P4-A — Existing record key field edit
+### Browser workspaceとshared semantics
 
-- [Source Record Edit](specs/source-edit.md) `SOURCE-EDIT-017`
-- [Data Editor](gui/data-editor/spec.md) `GUI-DATA-STATE-001`, `GUI-DATA-EDIT-001`
-- [Authoring Batch](specs/authoring-batch.md) `AUTHORING-BATCH-001` のexisting-key batch mutation prohibitionを維持
+- [Runtime hosts](specs/runtime-hosts.md) `RUNTIME-HOST-001`, `RUNTIME-HOST-003`, `RUNTIME-HOST-005`, `RUNTIME-HOST-007`, `RUNTIME-HOST-011..013`をStandalone Webで実現する。
+- Browser workspaceのpermission、source read/write、logical path、保存競合、失敗時のobservable behaviorをspecification workflowで確定する。
+- DesktopとWebのfrontend / application semanticsを共有し、host固有のI/Oをadapterへ分離する。
 
-### P4-B — Source file rename / move
+### Authoring workflow
 
-- [Source Path Mutation](specs/source-path-mutation.md) `SOURCE-PATH-001..007`
-- [Workspace Explorer](gui/explorer/spec.md) `GUI-EXPLORER-STATE-004`, `GUI-EXPLORER-INT-004..006`, `GUI-EXPLORER-ERR-002`
-- [GUI app shell](gui/app-shell.md) `GUI-SHELL-CAPABILITY-001`
-- [Runtime hosts](specs/runtime-hosts.md) のshared application / host boundary
-- [Project layout](specs/project-layout.md) のsource path / identity boundary
+- 許可された既存workspaceでExplorerからsourceを選び、Data / Table / Typeを編集・検証・保存できる。
+- capabilityのないnative Build / Publishは事前に利用不可とわかる。
 
 ### Verification
 
-- changed behaviorにfocused core/application/GUI regression evidenceを置く。
-- host/filesystem差を含むpath mutationのTier 1 evidenceを持つ。
-- required repository checksとself-reviewを完了し、exact Candidateをfresh verificationしてBlockingなしにする。
+- 共有semanticsのcross-host regression、Browser実操作、Desktop回帰、WASM、repository checksを確認する。
+- static bundleを作り、exact Candidateのfresh verificationとrequired remote CI reconciliationを完了する。
 
 ## Explicit non-scope
 
-- existing keyへのbatch mutation。
-- MessagePack field `key`、Primary / Secondary Key declarationのschema mutation。
-- configured source roots間move、destination overwrite。
-- source file delete / duplicate、folder rename / move。
-- P5 expression / computed / programmable view。
-- P6 Reference完成、Standalone / Connected Web authoring完成。
-- Git stage / commit / pushのproduct機能化。
+- Native Host、Connected Web、loopback transport、browser内の.NET / MasterMemory binary build。
+- Webからのnative Build / Publish、実サイト公開・release。
+- Reference完成、expression / computed / programmable view。
+- Git操作のproduct機能化。Project / sourceの新規作成は今回のcompletion requirementとしない。
 - Approved specificationにないobservable behaviorをimplementation convenienceで追加すること。
 
 ## Audit
 
-0019 / 0020は2026-09-20 JSTにHuman ApprovalされcanonicalへApplied済み。implementation authorityは上記canonical ownersであり、[0019](spec-changes/0019-existing-record-key-edit.md) / [0020](spec-changes/0020-source-file-rename-move.md)はhistorical audit recordである。
+このObjectiveは2026-09-21 JSTにHumanが選択した。前ObjectiveのP4 completionはGit historyで追跡する。

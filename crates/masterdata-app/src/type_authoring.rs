@@ -173,24 +173,7 @@ pub(crate) fn parse_constant(text: &str) -> Result<serde_yaml::Value> {
 fn error(message: impl Into<String>) -> MasterdataError {
     MasterdataError::new("E-TYPE-EDITOR-INPUT", ErrorKind::Validation, message)
 }
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TypeSnapshot {
-    pub path: String,
-    pub name: String,
-    pub category: String,
-    pub underlying: Option<String>,
-    pub conversions: Option<ConversionDefinition>,
-    pub members: Vec<TypeMemberView>,
-    pub fields: Vec<TypeFieldDefinition>,
-    pub field_types: Vec<String>,
-    pub initializer_shapes: std::collections::BTreeMap<String, ResolvedAuthoringType>,
-}
-#[derive(Debug, Serialize)]
-pub struct TypeMemberView {
-    pub name: String,
-    pub value: String,
-}
+pub use masterdata_core::{TypeMemberView, TypeSnapshot};
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypePlanView {
@@ -207,53 +190,7 @@ impl TableAuthoringSession {
     pub fn open_type(&self, root: &Path, path: &str) -> Result<TypeSnapshot> {
         let project = Project::discover(Some(root), root)?;
         let docs = project.load_documents()?;
-        let file = docs
-            .files
-            .iter()
-            .find(|f| project_relative_string(project.root(), &f.path) == path)
-            .ok_or_else(|| error("type source not found"))?;
-        let SourceDocument::Type(ty) = &file.document else {
-            return Err(error("source is not a type"));
-        };
-        let ty = migration_type_declaration(&docs, &ty.name)?;
-        let field_types = creation_choices(&docs).field_types;
-        let initializer_shapes = crate::table_authoring::initializer_shapes(&docs, &field_types);
-        let mut result = TypeSnapshot {
-            path: path.into(),
-            name: ty.name,
-            category: String::new(),
-            underlying: None,
-            conversions: None,
-            members: vec![],
-            fields: vec![],
-            field_types,
-            initializer_shapes,
-        };
-        if let Some(vo) = ty.value_object {
-            result.category = "Value Object".into();
-            result.underlying = Some(vo.underlying);
-            result.conversions = Some(vo.conversions);
-        } else if let Some(custom) = ty.custom {
-            result.category = "Custom Type".into();
-            result.fields = custom.fields;
-        } else {
-            let (category, underlying, members) = if let Some(e) = ty.enum_definition {
-                ("Enum", e.underlying, e.members)
-            } else {
-                let f = ty.flags.ok_or_else(|| error("unresolved category"))?;
-                ("Flags Enum", f.underlying, f.members)
-            };
-            result.category = category.into();
-            result.underlying = Some(underlying);
-            result.members = members
-                .into_iter()
-                .map(|m| TypeMemberView {
-                    name: m.name,
-                    value: m.value.0.to_string(),
-                })
-                .collect();
-        }
-        Ok(result)
+        type_snapshot(&docs, &project.root().join(path), path)
     }
     pub fn plan_type(&mut self, root: &Path, input: TypeOperationInput) -> Result<TypePlanView> {
         self.ensure_mutation_allowed(root)?;

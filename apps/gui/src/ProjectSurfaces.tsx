@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Select, Space, Tag } from "antd";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./host";
 import { type AuthoringValue, type ResolvedAuthoringField } from "./data-editor-types";
 
 export type SurfaceProjectInfo = {

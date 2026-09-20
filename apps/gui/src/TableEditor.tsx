@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Form, Input, InputNumber, Select, Space, Spin, Table, Tabs, Tag } from "antd";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./host";
 import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
 import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";
 

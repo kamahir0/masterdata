@@ -30,8 +30,7 @@ import {
   type AuthoringValue,
   type ResolvedAuthoringField,
 } from "./data-editor-types";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { closeWindow, invoke, isBrowserHost, onCloseRequested } from "./host";
 
 type ProjectInfo = {
   project_root: string;
@@ -562,10 +561,14 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   const deliveryBusyRef = useRef(false);
   const [configRevision, setConfigRevision] = useState(0);
 
-  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
-    kind: "loading",
-    previous: null,
-  });
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(isBrowserHost
+    ? { kind: "error", previous: null, diagnostic: {
+        code: "E-WEB-WORKSPACE-NOT-OPEN", kind: "project_not_found",
+        message: "Choose a local Masterdata workspace to begin.", source: null,
+        line: null, column: null, schemaPath: null, valuePath: null,
+        recordIdentity: null, suggestion: null, relatedRequirements: [],
+      } }
+    : { kind: "loading", previous: null });
   const [projectPathInput, setProjectPathInput] = useState("");
   const [activePath, setActivePath] = useState<string | null>(null);
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
@@ -644,6 +647,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     : workspaceState.kind === "error"
       ? workspaceState.previous
       : null;
+  const browserPickerAvailable = !isBrowserHost || "showDirectoryPicker" in window;
   const projectRoot = workspace?.project.project_root ?? null;
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
@@ -788,7 +792,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [recordRecovery, openDataFile]);
 
   useEffect(() => {
-    void loadWorkspace(null);
+    if (!isBrowserHost) void loadWorkspace(null);
   }, [loadWorkspace]);
 
   const schedulePreview = useCallback((root: string, path: string, editor: EditorState) => {
@@ -1179,7 +1183,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   const performAction = useCallback(async (action: PendingAction) => {
     setPendingAction(null);
     if (action.kind === "close") {
-      await getCurrentWindow().destroy();
+      await closeWindow();
       return;
     }
     if (action.kind === "create") {
@@ -1207,7 +1211,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [deliveryBusy, performAction, settingsDirty, showNotice]);
 
   useEffect(() => {
-    const listener = getCurrentWindow().onCloseRequested((event) => {
+    const listener = onCloseRequested((event) => {
       if (deliveryBusyRef.current || settingsDirtyRef.current || Object.values(editorsRef.current).some(editorIsDirty)) {
         event.preventDefault();
         setPendingAction({ kind: "close" });
@@ -1676,24 +1680,27 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           </div>
         </div>
         <div className="project-open">
-          <Input
+          {!isBrowserHost && <Input
             aria-label="Project path"
             value={projectPathInput}
             onChange={(event) => setProjectPathInput(event.target.value)}
             placeholder="Project folder path"
-          />
+          />}
           <Button
             htmlType="button"
-            onClick={() => projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
+            disabled={!browserPickerAvailable}
+            onClick={() => isBrowserHost
+              ? requestAction({ kind: "open", projectPath: "browser-picker" })
+              : projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
           >
-            <FolderOpen size={15} /> Open Project
+            <FolderOpen size={15} /> {isBrowserHost ? "Open Local Workspace" : "Open Project"}
           </Button>
         </div>
         <div className="command-bar">
-          <Button htmlType="button" onClick={() => setSurface("overview")} disabled={!workspace}>Overview</Button>
-          <Button htmlType="button" onClick={() => setSurface("settings")} disabled={!workspace}>Settings</Button>
-          <Button htmlType="button" onClick={() => setSurface("delivery")} disabled={!workspace}>Delivery</Button>
-          <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
+          {!isBrowserHost && <Button htmlType="button" onClick={() => setSurface("overview")} disabled={!workspace}>Overview</Button>}
+          {!isBrowserHost && <Button htmlType="button" onClick={() => setSurface("settings")} disabled={!workspace}>Settings</Button>}
+          {!isBrowserHost && <Button htmlType="button" onClick={() => setSurface("delivery")} disabled={!workspace}>Delivery</Button>}
+          {!isBrowserHost && <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>}
           <Button htmlType="button" onClick={() => setSurface("editor")} disabled={surface === "editor"}>Editor</Button>
           <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</Button>
           <Button
@@ -1827,7 +1834,14 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
             </div>
           )}
           {!workspace && workspaceState.kind !== "loading" && (
-            <EmptyEditor title="Open a Masterdata project" copy="Enter a project folder path above. Project semantics are resolved by the shared Rust application service." />
+            <EmptyEditor
+              title={isBrowserHost ? "Open a local Masterdata workspace" : "Open a Masterdata project"}
+              copy={isBrowserHost
+                ? browserPickerAvailable
+                  ? "Choose a project folder with masterdata.toml. Your source files stay on this device."
+                  : "This browser cannot open a local project folder. Use a browser that supports the local directory picker in a secure context."
+                : "Enter a project folder path above. Project semantics are resolved by the shared Rust application service."}
+            />
           )}
           {recovery && <Alert role="alert" type="error" title="Recovery Required — source changes and Build are blocked"
             description={<><p>{recovery.diagnostic?.message}</p><p>{recovery.files.join(", ")}</p>{recovery.fileStates?.map(file => <p key={file.path}>{file.path}: {file.state}</p>)}{recovery.recoveryWorkspace && <p>Recovery workspace: {recovery.recoveryWorkspace}</p>}</>}
@@ -1871,7 +1885,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           )}
           {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor
-              mutationBlocked={mutationBlocked}
+              mutationBlocked={mutationBlocked || !workspace?.capabilities.workspaceWrite}
               file={activeFile}
               projectRoot={projectRoot!}
               editor={activeEditor}
@@ -2647,11 +2661,13 @@ function DataEditor({
         <Select aria-label="Data sort direction" value={querySortDirection} onChange={setQuerySortDirection} options={[{ value: "ascending", label: "A→Z" }, { value: "descending", label: "Z→A" }]} />
         <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Query</Button>
         {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
-        <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
-        <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
-        <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>
-        <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
-        <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
+        {!mutationBlocked && <>
+          <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
+          <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
+          <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>
+          <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
+          <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
+        </>}
       </div>
       <div className="selection-status" role="status" aria-live="polite">
         {selectedRange ? `${selectedTargets().length} cells selected` : "One cell active"}

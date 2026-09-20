@@ -2041,6 +2041,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "masterdata-web"
+version = "0.1.0"
+dependencies = [
+ "masterdata-core",
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "maybe-owned"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

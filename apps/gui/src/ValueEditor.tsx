@@ -2,7 +2,7 @@ import { Button, Checkbox, Input, Select } from "antd";
 import type { AuthoringMember, AuthoringSequenceItem, AuthoringValue, ResolvedAuthoringField, ResolvedAuthoringType } from "./data-editor-types";
 import { authoringValueSummary, nullAuthoringValue } from "./data-editor-types";
 
-type ValueEditorProps = {
+export type ValueEditorProps = {
   field: ResolvedAuthoringField;
   value: AuthoringValue;
   label: string;

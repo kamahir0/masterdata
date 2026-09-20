@@ -15,6 +15,15 @@ import {
 } from "./ProjectSurfaces";
 import ValueEditor from "./ValueEditor";
 import {
+  addDraft,
+  applyPreviewResult,
+  boundedHistoryPush,
+  deleteDraft,
+  deleteExisting,
+  undoExistingDelete as undoExistingDeleteState,
+} from "./editor-state";
+import { migrationRefreshPlan, resolveDirtyPathMutation } from "./authoring-workflow";
+import {
   authoringValueSummary,
   authoringValuesEqual,
   nullAuthoringValue,
@@ -472,15 +481,6 @@ function mutationHistoryState(editor: EditorState): MutationHistoryState {
   };
 }
 
-const HISTORY_LIMIT = 50;
-
-export function boundedHistoryPush(history: MutationHistoryState[], state: MutationHistoryState): MutationHistoryState[] {
-  if (history.length >= HISTORY_LIMIT) {
-    window.alert("Undo history is full. The oldest undo entry will be discarded after this edit; the current buffer is preserved.");
-  }
-  return [...history, state].slice(-HISTORY_LIMIT);
-}
-
 function mutationHistoryFields(editor: EditorState): Pick<EditorState, "historyPast" | "historyFuture"> {
   return {
     historyPast: boundedHistoryPush(editor.historyPast, mutationHistoryState(editor)),
@@ -817,16 +817,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           }
           return {
             ...current,
-            [path]: {
-              ...latest,
-              edits: preview.changed ? latest.edits : {},
-              addedRecords: preview.changed ? latest.addedRecords : [],
-              pendingDeletes: preview.changed ? latest.pendingDeletes : [],
-              tagEdits: preview.changed ? latest.tagEdits : {},
-              preview,
-              previewState: "current",
-              previewError: null,
-            },
+            [path]: applyPreviewResult(latest, preview),
           };
         });
       } catch (error) {
@@ -888,18 +879,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
       if (!editor || editor.saving || !addCapability(editor.snapshot).supported) return current;
       const draftId = `draft-${draftSequence.current + 1}`;
       draftSequence.current += 1;
-      const values: Record<string, AuthoringValue> = {};
-      for (const column of editor.snapshot.columns) values[column.name] = nullAuthoringValue();
-      const next: EditorState = {
-        ...editor,
-        addedRecords: [...editor.addedRecords, { draftId, values, tags: [] }],
-        revision: editor.revision + 1,
-        previewState: "pending",
-        previewError: null,
-        saveDiagnostic: null,
-        queryResult: null,
-        ...mutationHistoryFields(editor),
-      };
+      const next = addDraft(editor, draftId, editor.snapshot.columns.map((column) => column.name));
       const firstField = editor.snapshot.columns[0]?.name;
       if (firstField) {
         pendingCellFocus.current = draftCellKey(draftId, firstField);
@@ -991,16 +971,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     setEditors((current) => {
       const editor = current[path];
       if (!editor || editor.saving || editor.pendingDeletes.includes(recordIndex)) return current;
-      const next: EditorState = {
-        ...editor,
-        pendingDeletes: [...editor.pendingDeletes, recordIndex].sort((left, right) => left - right),
-        revision: editor.revision + 1,
-        previewState: "pending",
-        previewError: null,
-        saveDiagnostic: null,
-        queryResult: null,
-        ...mutationHistoryFields(editor),
-      };
+      const next = deleteExisting(editor, recordIndex);
       schedulePreview(projectRoot, path, next);
       return { ...current, [path]: next };
     });
@@ -1011,16 +982,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     setEditors((current) => {
       const editor = current[path];
       if (!editor || editor.saving || !editor.pendingDeletes.includes(recordIndex)) return current;
-      const next: EditorState = {
-        ...editor,
-        pendingDeletes: editor.pendingDeletes.filter((index) => index !== recordIndex),
-        revision: editor.revision + 1,
-        previewState: "pending",
-        previewError: null,
-        saveDiagnostic: null,
-        queryResult: null,
-        ...mutationHistoryFields(editor),
-      };
+      const next = undoExistingDeleteState(editor, recordIndex);
       schedulePreview(projectRoot, path, next);
       return { ...current, [path]: next };
     });
@@ -1031,16 +993,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     setEditors((current) => {
       const editor = current[path];
       if (!editor || editor.saving || !editor.addedRecords.some((draft) => draft.draftId === draftId)) return current;
-      const next: EditorState = {
-        ...editor,
-        addedRecords: editor.addedRecords.filter((draft) => draft.draftId !== draftId),
-        revision: editor.revision + 1,
-        previewState: "pending",
-        previewError: null,
-        saveDiagnostic: null,
-        queryResult: null,
-        ...mutationHistoryFields(editor),
-      };
+      const next = deleteDraft(editor, draftId);
       schedulePreview(projectRoot, path, next);
       return { ...current, [path]: next };
     });
@@ -1499,18 +1452,28 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   const saveDirtyPathTargetAndMove = useCallback(async () => {
     const target = pathMutationTarget;
     if (!target) return;
-    setPathMutationBusy(true);
-    const saved = await saveFile(target.sourcePath);
-    setPathMutationBusy(false);
-    if (!saved) return;
-    await executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot);
+    await resolveDirtyPathMutation({
+      decision: "save",
+      save: async () => {
+        setPathMutationBusy(true);
+        const saved = await saveFile(target.sourcePath);
+        setPathMutationBusy(false);
+        return saved;
+      },
+      discard: async () => {},
+      mutate: () => executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot),
+    });
   }, [executePathMutation, pathMutationTarget, saveFile]);
 
   const discardDirtyPathTargetAndMove = useCallback(async () => {
     const target = pathMutationTarget;
     if (!target) return;
-    removeEditorForPath(target.sourcePath);
-    await executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot);
+    await resolveDirtyPathMutation({
+      decision: "discard",
+      save: async () => false,
+      discard: () => removeEditorForPath(target.sourcePath),
+      mutate: () => executePathMutation(target.sourcePath, target.destinationPath, target.sourceRoot),
+    });
   }, [executePathMutation, pathMutationTarget, removeEditorForPath]);
 
   const recheckPathMutation = useCallback(async () => {
@@ -1662,9 +1625,11 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     const generation = workspaceGeneration.current;
     // Evict affected clean snapshots before awaiting reload, so they cannot be
     // edited against an obsolete schema (GUI-TABLE-STATE-004).
-    const retained = { ...editorsRef.current };
-    const reload = paths.filter(path => retained[path] && !editorIsDirty(retained[path]));
-    for (const path of reload) delete retained[path];
+    const { reloadPaths: reload, retainedEditors: retained } = migrationRefreshPlan(
+      editorsRef.current,
+      paths,
+      editorIsDirty,
+    );
     editorsRef.current = retained; setEditors(retained);
     const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
     if (workspaceGeneration.current !== generation) return;

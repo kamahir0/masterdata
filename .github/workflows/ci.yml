@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   ubuntu:
-    name: Ubuntu core, frontend, .NET, and GUI compile
+    name: Ubuntu primary quality gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -54,45 +54,31 @@ jobs:
       - run: cargo xtask check-all
 
   windows:
-    name: Windows repository quality gate
+    name: Windows platform quality gate
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       - name: Restore Rust and Cargo cache
         uses: Swatinem/rust-cache@v2
         continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
+      - run: cargo xtask check-platform
 
   macos:
-    name: macOS repository quality gate
+    name: macOS platform quality gate
     runs-on: macos-14
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       - name: Restore Rust and Cargo cache
         uses: Swatinem/rust-cache@v2
         continue-on-error: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.x
-      - run: npm ci
-      - run: cargo xtask check-all
+      - run: cargo xtask check-platform

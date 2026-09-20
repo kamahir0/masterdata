@@ -44,6 +44,8 @@ enum CommandKind {
     CheckWasm,
     /// Run the repository's main checks.
     CheckAll,
+    /// Run checks whose evidence depends on the host OS or native toolchain.
+    CheckPlatform,
     /// Recreate target/dev-project from fixtures/minimal.
     DevReset,
 }
@@ -68,6 +70,7 @@ fn run() -> Result<()> {
         CommandKind::MastermemorySpike => mastermemory_spike(),
         CommandKind::CheckWasm => check_wasm(),
         CommandKind::CheckAll => check_all(),
+        CommandKind::CheckPlatform => check_platform(),
         CommandKind::DevReset => {
             let destination = reset_dev_project()?;
             println!("development project recreated at {}", destination.display());
@@ -437,6 +440,35 @@ fn check_all() -> Result<()> {
         &root,
         &[],
     )?;
+    check_native_integration()
+}
+
+fn check_platform() -> Result<()> {
+    let root = repository_root();
+    run_program(
+        cargo_command(),
+        [
+            OsString::from("test"),
+            OsString::from("--package"),
+            OsString::from("masterdata-app"),
+        ],
+        &root,
+        &[],
+    )?;
+    run_program(
+        cargo_command(),
+        [
+            OsString::from("test"),
+            OsString::from("--package"),
+            OsString::from("masterdata-gui"),
+        ],
+        &root,
+        &[],
+    )?;
+    check_native_integration()
+}
+
+fn check_native_integration() -> Result<()> {
     mastermemory_spike()?;
     test_integration()
 }

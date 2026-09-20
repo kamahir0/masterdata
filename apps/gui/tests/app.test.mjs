@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const authoringTypes = await readFile(new URL("../src/data-editor-types.ts", import.meta.url), "utf8");
+const editorState = await readFile(new URL("../src/editor-state.ts", import.meta.url), "utf8");
 
 test("GUI keeps filesystem and YAML semantics behind Tauri commands", () => {
   assert.match(source, /invoke<AuthoringWorkspace>\("authoring_workspace"/);
@@ -69,7 +70,8 @@ test("background clean-file reload does not steal Explorer selection", () => {
 });
 
 test("shared preview collapses semantic no-op edits back to clean", () => {
-  assert.match(source, /edits: preview\.changed \? latest\.edits : \{\}/);
+  assert.match(source, /applyPreviewResult\(latest, preview\)/);
+  assert.match(editorState, /edits: preview\.changed \? editor\.edits : \{\}/);
 });
 
 test("Problems navigation survives asynchronous file opening", () => {

@@ -6,33 +6,39 @@
 
 ## Objective
 
-**Reference v1を定義・実装し、Table間relationshipをcanonical YAMLで宣言し、selected logical dataset上でshared Rust semanticsによるintegrity validationとC# helper生成を行い、Desktop authoringから扱えるverification済みcandidateへ到達する。**
+**Released Compatibility v1を定義し、2つのexplicitなMasterdata project snapshot間のschema evolutionを比較して、generated API・source migration・artifact/binary・external contractを混同せずcompatibility impactを判定できるshared semanticsへ到達する。**
 
 ## Completion slices
 
-### Reference semantics
+### Compatibility model
 
-- [Index / Reference](specs/index-and-reference.md)へReference v1 Option Bのcore semanticsを適用し、source declaration、target identity、cardinality、nullability、missing target、Build Selectionとの順序を確定する。
-- Primary Key / Secondary Keyの既存identityを再利用し、MessagePack `key`やgenerated `indexNo`をReference identityへ昇格させない。
-- source/targetの型・component order・selected dataset上のintegrityをshared Rust coreで検証する。
+- current-schema semanticsとreleased compatibility semanticsを分離し、既存Approved Table / Type / Index / Reference contractを変更しない。
+- Table、field、type、Enum / Flags、Primary / Secondary Key、Reference、generated C# presentationの変更について、どのcompatibility axisへ影響するかを定義する。
+- MessagePack `key`、Secondary `indexNo`、Reference `csharpName`等を、既存authorityに反してstable identityへ昇格させない。
+- compatibility判定のbaseline/current input、version metadataとの関係、unknown/unsupported changeのfail-closed behaviorを確定する。
 
-### Generated API / Desktop authoring
+### Shared analysis / product surface
 
-- Reference helperはmaster recordへ`MemoryDatabase`を保持せずcallerから受け取り、MasterMemoryのgenerated Table query APIへlowerする。Reference `name`はlanguage-independent domain nameとし、C# helperはdefault `Get<Name>`、必要な場合だけexact `csharpName` overrideを使う。
-- Table EditorからReference declarationをraw YAML手編集へ戻らず扱えるようにし、frontendへReference resolution semanticsを複製しない。source-preserving add/edit/removeは既存Plan/Apply boundaryを使う。
+- compatibility comparison semanticsをshared Rust core/applicationへ置き、CLI / Desktopがdomain ruleを複製しない。
+- machine-actionableなstructured change reportを生成できるようにする。
+- exact public CLI / Desktop surfaceは、Human decisionで選択したcompatibility scopeから必要になる範囲だけ定義する。
 
 ### Verification
 
-- scalar/composite、Primary/Secondary、unique/non-unique、Build Selection、missing target、generated C# compileをfocused evidenceで確認する。
+- representative schema evolution matrixでcompatible / breaking / review-required等の判定をfocused evidence化する。
 - repository checks、fresh review、exact Candidateのrequired remote CI reconciliationを完了する。
 
 ## Explicit non-scope
 
-- released-version compatibility policy、Reference-aware migration / automatic rewrite。
-- cross-project Reference、runtime mutable relationship、binaryからのReference推論。
-- P5 expression / computed / programmable view、Git product integration。
-- Approved specificationにないobservable behaviorをimplementation convenienceで追加すること。
+Human decisionで明示的にscopeへ入れない限り、以下はv1へ含めない。
+
+- external save data / network protocol / external databaseのwire compatibility保証。
+- cross-schema MasterMemory binary reader compatibilityや旧binaryを新generated C#で読む保証。
+- global stable Table / Field / Enum / Reference IDの新設。
+- automatic Reference-aware migrationやarbitrary migration scripting。
+- semantic versionの自動bump、release publication、Git tag作成。
+- artifact-set receiptをreleased compatibility identityへ昇格させること。
 
 ## Audit
 
-このObjectiveは2026-09-21 JSTにHumanが次priorityとしてReference方向へ進むことを選択し、仕様変更0023でOption B（Nullable Referenceをv1へ含める）を明示採用した。さらにReference domain `name`とlanguage-specific presentationを分離し、C#はdefault `Get<Name>` + optional exact `csharpName` override、Optional non-unique absenceは`RangeView<T>.Empty`とするHuman decisionが確定した。
+2026-09-21 JST、Reference v1 Objective完了後、Humanが次へ進むことを選択した。直前のpriority comparisonで推奨されたreleased compatibility / schema evolution方向を次Objectiveとして開始する。material compatibility boundaryは[仕様変更0024](spec-changes/0024-released-compatibility-v1.md)でHuman decisionを受けて確定する。

@@ -197,9 +197,9 @@ pub struct LoadedDocument {
     pub path: PathBuf,
     // WHY: Shared semantic preparation must hash the exact UTF-8 source that
     // was parsed, rather than consulting native filesystem state again.
-    // IF REMOVED: a browser or native snapshot could validate one source and
-    // hash a different later filesystem version.
-    // EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
+    // IF REMOVED: validation could use one source version and hashing could
+    // read a different later filesystem version.
+    // EVIDENCE: docs/specs/build-pipeline.md
     // Regression: schema_source_hash_uses_loaded_source_content.
     pub source: String,
     pub document: SourceDocument,

@@ -1,6 +1,8 @@
 # RFC: Web applicationとNative Hostのlocal-first runtime architecture
 
-Status: Accepted
+Status: Superseded
+
+> Historical decision. Web / Native Host direction was retired by the Human decision recorded in [仕様変更0022](../spec-changes/0022-retire-web-product-hosts.md). This RFC is not current product or implementation authority; the alternative analysis below records the earlier choice.
 
 ## 背景（Context）
 

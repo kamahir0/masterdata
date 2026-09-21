@@ -38,7 +38,7 @@ frontendは再読込前にaffected clean snapshotを退避し、obsolete schema�
 ## Evidence Integrity
 
 - Requirement references: Table Editor / MIGRATION / GUI shellのcanonical ownerを確認。
-- ADR/RFC references: ADR-0001 / ADR-0002 / ADR-0006の境界を維持。
+- ADR/RFC references: ADR-0001 / ADR-0002の境界を維持。
 - Regression test references: 上記focused testsと既存migration transaction testsを確認。
 - Benchmark/external references: 性能改善の主張なし。browser確認はmock transportでありnative end-to-endの証明ではない。
 

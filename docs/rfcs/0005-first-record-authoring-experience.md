@@ -2,6 +2,8 @@
 
 Status: Draft
 
+> この初期authoring案はhistoryとして保持する。Web / Native Hostへの言及は当時の非目標であり、[仕様変更0022](../spec-changes/0022-retire-web-product-hosts.md)以降のproduct scopeを示さない。
+
 ## 背景（Context）
 
 YAMLを手書きせずにマスターデータを編集し、Gitで変更を確認できることは、
@@ -159,7 +161,7 @@ validation feedbackを見失わないUIと、保存済みsource / 編集中buffe
 [Build Selection](../specs/build-selection.md)のselection前後の違いは既存authorityから参照する。
 PKだけを編集対象の永続identityにすると、タグで排他的な同一PKのsource recordsを区別できない。
 source snapshot内でrecordを一意に特定する手段は必要だが、path/record ordinalを新しいdomain identityにはしない。
-[ADR 0002](../adr/0002-rust-core-shared-by-cli-and-gui.md)と[ADR 0006](../adr/0006-host-capability-composition.md)のshared boundaryを維持する。
+[ADR 0002](../adr/0002-rust-core-shared-by-cli-and-gui.md)のshared boundaryを維持する。
 
 ## 互換性（Compatibility）
 

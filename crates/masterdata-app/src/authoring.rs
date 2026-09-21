@@ -15,15 +15,6 @@ use crate::NativeApplicationService;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AuthoringCapabilities {
-    pub workspace_read: bool,
-    pub workspace_write: bool,
-    pub validate: bool,
-    pub build: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WorkspaceSourceFile {
     pub path: String,
     pub source_root: String,
@@ -40,7 +31,6 @@ pub struct AuthoringWorkspace {
     pub source_roots: Vec<String>,
     pub files: Vec<WorkspaceSourceFile>,
     pub folders: Vec<WorkspaceFolder>,
-    pub capabilities: AuthoringCapabilities,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -263,12 +253,6 @@ impl NativeApplicationService {
             source_roots,
             files: entries,
             folders,
-            capabilities: AuthoringCapabilities {
-                workspace_read: true,
-                workspace_write: true,
-                validate: true,
-                build: true,
-            },
         })
     }
 

@@ -27,4 +27,4 @@ macOSでは `scripts/local-app/app.command` をダブルクリックできます
 
 ## scope
 
-Standalone Web、Connected Web、Native Host lifecycle本実装、正式release distribution、code signing、notarization、auto-update、store distributionは対象外です。正式distributionではidentity、installer policy、署名、更新チャネル、各OSの配布審査を別途決定する必要があります。
+正式release distribution、code signing、notarization、auto-update、store distributionは対象外です。正式distributionではidentity、installer policy、署名、更新チャネル、各OSの配布審査を別途決定する必要があります。

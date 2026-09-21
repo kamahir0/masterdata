@@ -145,7 +145,7 @@ Type Migration成功はBuild、Publish、Git commit/push、generated C#、canoni
 
 ### TYPE-MIGRATION-018
 
-Type Migration implementationはdependency resolution、source patch、postcondition、stale-plan preflight、destructive authorization、multi-file commit integrationをshared core/application boundaryへ置かなければならない（MUST）。GUI、Tauri adapter、将来のCLI/Web adapterが独自にYAMLをparse/rewriteし、Type Migration semanticsを複製してはならない（MUST NOT）。
+Type Migration implementationはdependency resolution、source patch、postcondition、stale-plan preflight、destructive authorization、multi-file commit integrationをshared core/application boundaryへ置かなければならない（MUST）。GUI、Tauri adapter、CLI adapterが独自にYAMLをparse/rewriteし、Type Migration semanticsを複製してはならない（MUST NOT）。
 
 ## 検証ルール
 

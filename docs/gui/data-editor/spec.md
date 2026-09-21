@@ -220,7 +220,7 @@ Computed / View columnでは、Excel関数に近いexpressionまたはより自�
 
 同じprogrammable evaluation基盤から、cell / row / recordのpresentationを導出できる方向も保持する。条件付き書式の固定UIに限定せず、background color、text color、emphasis等を計算結果やrecord集合に応じて決定できることを目指す。
 
-JavaScript等の任意code executionを採用するか、expression languageを採用するか、両者を段階的に提供するかは未決定とする。sandbox、performance、determinism、Desktop / Web共通実行、依存関係、保存・共有formatを比較して別途仕様化する。
+JavaScript等の任意code executionを採用するか、expression languageを採用するか、両者を段階的に提供するかは未決定とする。sandbox、performance、determinism、依存関係、保存・共有formatを比較して別途仕様化する。
 
 annotation / computed / presentation情報をTable schemaやMasterMemory runtime dataへ暗黙に混入させない。どの情報をproject sourceとして共有・Git管理するか、user-local view stateとするかも後続仕様で決定する。
 

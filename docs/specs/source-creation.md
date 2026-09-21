@@ -151,9 +151,9 @@ source artifact / folder creationはBuild、Publish、Git stage / commit / push�
 
 ### SOURCE-CREATE-018
 
-request validation、domain declaration construction、initial YAML rendering等のshared semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。pureなcandidate construction / validationはshared core/application boundaryで再利用可能でなければならない（MUST）。
+request validation、domain declaration construction、initial YAML rendering等のshared semanticsをTauri frontendまたはCLI adapterで再実装してはならない（MUST NOT）。pureなcandidate construction / validationはshared core/application boundaryで再利用可能でなければならない（MUST）。
 
-filesystem destination resolution、path safety、exclusive create、permission、Outcome Unknownの判定等のhost I/Oは[Runtime hosts](runtime-hosts.md)のcapability / host boundaryに従わなければならない（MUST）。
+filesystem destination resolution、path safety、exclusive create、Outcome Unknownの判定等のnative I/Oはshared application boundaryに置かなければならない（MUST）。
 
 ## 検証ルール
 

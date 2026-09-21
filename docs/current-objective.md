@@ -6,34 +6,20 @@
 
 ## Objective
 
-**Standalone Webで、明示的に許可されたlocal workspaceを開き、共有frontendとRust semanticsを使って既存sourceの閲覧・編集・検証・保存を完結させ、静的配布可能な成果物をverification済みcandidateへ到達させる。**
+**Browser / Web / Native Hostをactive product scopeからretireし、CLI / Tauri Desktop中心のrepository authority、architecture、implementation、verificationを整合させる。**
 
 ## Completion slices
 
-### Browser workspaceとshared semantics
-
-- [Runtime hosts](specs/runtime-hosts.md) `RUNTIME-HOST-001`, `RUNTIME-HOST-003`, `RUNTIME-HOST-005`, `RUNTIME-HOST-007`, `RUNTIME-HOST-011..013`をStandalone Webで実現する。
-- Browser workspaceのpermission、source read/write、logical path、保存競合、失敗時のobservable behaviorをspecification workflowで確定する。
-- DesktopとWebのfrontend / application semanticsを共有し、host固有のI/Oをadapterへ分離する。
-
-### Authoring workflow
-
-- 許可された既存workspaceでExplorerからsourceを選び、Data / Table / Typeを編集・検証・保存できる。
-- capabilityのないnative Build / Publishは事前に利用不可とわかる。
-
-### Verification
-
-- 共有semanticsのcross-host regression、Browser実操作、Desktop回帰、WASM、repository checksを確認する。
-- static bundleを作り、exact Candidateのfresh verificationとrequired remote CI reconciliationを完了する。
+- [仕様変更0022](spec-changes/0022-retire-web-product-hosts.md)を適用し、Product VisionとApproved Web requirementをretireする。歴史的なRFC / Applied recordはcurrent authorityと区別する。
+- Browser / WASM / static Web専用のcode、build、test、CI、dependencyを削除する。Desktop / CLIに有用なshared Rust core改善を保持する。
+- Desktop / CLI、migration、Build / Publishの回帰、repository checks、exact Candidateのremote CIを確認する。
 
 ## Explicit non-scope
 
-- Native Host、Connected Web、loopback transport、browser内の.NET / MasterMemory binary build。
-- Webからのnative Build / Publish、実サイト公開・release。
-- Reference完成、expression / computed / programmable view。
-- Git操作のproduct機能化。Project / sourceの新規作成は今回のcompletion requirementとしない。
-- Approved specificationにないobservable behaviorをimplementation convenienceで追加すること。
+- Reference、P5、released compatibility等の新しいproduct feature。
+- Git history rewrite、force push、過去のApplied record削除。
+- Desktop / CLIのobservable behavior、YAML / binary / config formatの変更。
 
 ## Audit
 
-このObjectiveは2026-09-21 JSTにHumanが選択した。前ObjectiveのP4 completionはGit historyで追跡する。
+このObjectiveは2026-09-21 JSTにHumanが選択した。前ObjectiveのStandalone Webは[仕様変更0022](spec-changes/0022-retire-web-product-hosts.md)により中止した。

@@ -1,6 +1,8 @@
 # 仕様変更: Standalone Web workspace
 
-Status: Draft
+Status: Rejected
+
+> HumanがBrowser / Web product host全体をretireしたため、このDraftは承認・適用しない。[仕様変更0022](0022-retire-web-product-hosts.md)を参照。以下は当時の提案記録でありcurrent authorityではない。
 
 ## Affected Specifications
 

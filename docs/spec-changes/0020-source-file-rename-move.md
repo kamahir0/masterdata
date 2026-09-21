@@ -15,7 +15,6 @@ same configured source root内のexisting source rename / move、dirty target re
 - [Source Creation](../specs/source-creation.md) — rename/move routing
 - [Workspace Explorer](../gui/explorer/spec.md) — `GUI-EXPLORER-STATE-004`, `GUI-EXPLORER-INT-004..006`, `GUI-EXPLORER-ERR-002`
 - [GUI App Shell](../gui/app-shell.md) — `GUI-SHELL-CAPABILITY-001`
-- [Runtime Hosts](../specs/runtime-hosts.md) — host/workspace boundary
 
 ## Approval / application
 

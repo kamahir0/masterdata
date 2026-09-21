@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "build:web": "node scripts/build-web.mjs",
     "lint": "tsc --noEmit",
     "test": "node --test tests/app.test.mjs && vitest run",
     "tauri": "tauri"

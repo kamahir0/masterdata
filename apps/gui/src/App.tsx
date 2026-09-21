@@ -30,7 +30,8 @@ import {
   type AuthoringValue,
   type ResolvedAuthoringField,
 } from "./data-editor-types";
-import { closeWindow, invoke, isBrowserHost, onCloseRequested } from "./host";
+import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type ProjectInfo = {
   project_root: string;
@@ -77,13 +78,6 @@ type ApiDiagnostic = {
 
 type ApiError = { diagnostic: ApiDiagnostic };
 
-type AuthoringCapabilities = {
-  workspaceRead: boolean;
-  workspaceWrite: boolean;
-  validate: boolean;
-  build: boolean;
-};
-
 type WorkspaceSourceFile = {
   path: string;
   sourceRoot: string;
@@ -98,7 +92,6 @@ type AuthoringWorkspace = {
   sourceRoots: string[];
   files: WorkspaceSourceFile[];
   folders?: { path: string; sourceRoot: string }[];
-  capabilities: AuthoringCapabilities;
 };
 
 type DataEditorColumn = {
@@ -561,14 +554,10 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   const deliveryBusyRef = useRef(false);
   const [configRevision, setConfigRevision] = useState(0);
 
-  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(isBrowserHost
-    ? { kind: "error", previous: null, diagnostic: {
-        code: "E-WEB-WORKSPACE-NOT-OPEN", kind: "project_not_found",
-        message: "Choose a local Masterdata workspace to begin.", source: null,
-        line: null, column: null, schemaPath: null, valuePath: null,
-        recordIdentity: null, suggestion: null, relatedRequirements: [],
-      } }
-    : { kind: "loading", previous: null });
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
+    kind: "loading",
+    previous: null,
+  });
   const [projectPathInput, setProjectPathInput] = useState("");
   const [activePath, setActivePath] = useState<string | null>(null);
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
@@ -647,7 +636,6 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
     : workspaceState.kind === "error"
       ? workspaceState.previous
       : null;
-  const browserPickerAvailable = !isBrowserHost || "showDirectoryPicker" in window;
   const projectRoot = workspace?.project.project_root ?? null;
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
@@ -792,7 +780,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [recordRecovery, openDataFile]);
 
   useEffect(() => {
-    if (!isBrowserHost) void loadWorkspace(null);
+    void loadWorkspace(null);
   }, [loadWorkspace]);
 
   const schedulePreview = useCallback((root: string, path: string, editor: EditorState) => {
@@ -1183,7 +1171,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   const performAction = useCallback(async (action: PendingAction) => {
     setPendingAction(null);
     if (action.kind === "close") {
-      await closeWindow();
+      await getCurrentWindow().destroy();
       return;
     }
     if (action.kind === "create") {
@@ -1211,7 +1199,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [deliveryBusy, performAction, settingsDirty, showNotice]);
 
   useEffect(() => {
-    const listener = onCloseRequested((event) => {
+    const listener = getCurrentWindow().onCloseRequested((event) => {
       if (deliveryBusyRef.current || settingsDirtyRef.current || Object.values(editorsRef.current).some(editorIsDirty)) {
         event.preventDefault();
         setPendingAction({ kind: "close" });
@@ -1303,7 +1291,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [openDataFile, sourcePollingIntervalMs]);
 
   const validateDisk = useCallback(async () => {
-    if (!workspace?.capabilities.validate || !projectRoot) return;
+    if (!workspace || !projectRoot) return;
     const generation = workspaceGeneration.current;
     setManualValidation({ kind: "loading" });
     try {
@@ -1318,7 +1306,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [projectRoot, workspace]);
 
   const runBuild = useCallback(async () => {
-    if (!workspace?.capabilities.build || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading" || deliveryBusy) return;
+    if (!workspace || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading" || deliveryBusy) return;
     if (dirtyCount > 0) {
       showNotice("Build uses saved source only; unsaved changes are not included.");
     }
@@ -1351,7 +1339,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
   }, [openDataFile, projectRoot]);
 
   const openPathMutation = useCallback(() => {
-    if (!activeFile || !projectRoot || mutationBlocked || !workspace?.capabilities.workspaceWrite) return;
+    if (!activeFile || !projectRoot || mutationBlocked) return;
     setPathMutationTarget({
       sourcePath: activeFile.path,
       destinationPath: activeFile.path,
@@ -1680,27 +1668,24 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           </div>
         </div>
         <div className="project-open">
-          {!isBrowserHost && <Input
+          <Input
             aria-label="Project path"
             value={projectPathInput}
             onChange={(event) => setProjectPathInput(event.target.value)}
             placeholder="Project folder path"
-          />}
+          />
           <Button
             htmlType="button"
-            disabled={!browserPickerAvailable}
-            onClick={() => isBrowserHost
-              ? requestAction({ kind: "open", projectPath: "browser-picker" })
-              : projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
+            onClick={() => projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
           >
-            <FolderOpen size={15} /> {isBrowserHost ? "Open Local Workspace" : "Open Project"}
+            <FolderOpen size={15} /> Open Project
           </Button>
         </div>
         <div className="command-bar">
-          {!isBrowserHost && <Button htmlType="button" onClick={() => setSurface("overview")} disabled={!workspace}>Overview</Button>}
-          {!isBrowserHost && <Button htmlType="button" onClick={() => setSurface("settings")} disabled={!workspace}>Settings</Button>}
-          {!isBrowserHost && <Button htmlType="button" onClick={() => setSurface("delivery")} disabled={!workspace}>Delivery</Button>}
-          {!isBrowserHost && <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>}
+          <Button htmlType="button" onClick={() => setSurface("overview")} disabled={!workspace}>Overview</Button>
+          <Button htmlType="button" onClick={() => setSurface("settings")} disabled={!workspace}>Settings</Button>
+          <Button htmlType="button" onClick={() => setSurface("delivery")} disabled={!workspace}>Delivery</Button>
+          <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
           <Button htmlType="button" onClick={() => setSurface("editor")} disabled={surface === "editor"}>Editor</Button>
           <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</Button>
           <Button
@@ -1709,14 +1694,14 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
             onClick={() => surface === "settings" ? void settingsSaveRef.current() : activePath && void saveFile(activePath)}
             disabled={surface === "settings"
               ? mutationBlocked || !settingsDirty
-              : mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown" || !workspace?.capabilities.workspaceWrite}
+              : mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown"}
           >
             {surface === "settings" ? "Save Settings" : activeEditor?.saving ? "Saving…" : "Save"}
           </Button>
-          <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace?.capabilities.validate || manualValidation.kind === "loading"}>
+          <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace || manualValidation.kind === "loading"}>
             {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
           </Button>
-          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || !workspace?.capabilities.build || buildState.kind === "loading"}>
+          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || !workspace || buildState.kind === "loading"}>
             {buildState.kind === "loading" ? "Building…" : "Build"}
           </Button>
         </div>
@@ -1794,11 +1779,11 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
         <aside className="explorer" aria-label="Workspace Explorer">
           <div className="pane-heading">
             <span>EXPLORER</span>
-            <Button size="small" aria-label="New source artifact" disabled={mutationBlocked || !workspace?.capabilities.workspaceWrite} onClick={() => setCreationOpen(true)}>New</Button>
+            <Button size="small" aria-label="New source artifact" disabled={mutationBlocked || !workspace} onClick={() => setCreationOpen(true)}>New</Button>
             <Button
               size="small"
               aria-label="Rename or move source"
-              disabled={mutationBlocked || !activeFile || !workspace?.capabilities.workspaceWrite}
+              disabled={mutationBlocked || !activeFile}
               onClick={openPathMutation}
             >
               Move
@@ -1834,14 +1819,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
             </div>
           )}
           {!workspace && workspaceState.kind !== "loading" && (
-            <EmptyEditor
-              title={isBrowserHost ? "Open a local Masterdata workspace" : "Open a Masterdata project"}
-              copy={isBrowserHost
-                ? browserPickerAvailable
-                  ? "Choose a project folder with masterdata.toml. Your source files stay on this device."
-                  : "This browser cannot open a local project folder. Use a browser that supports the local directory picker in a secure context."
-                : "Enter a project folder path above. Project semantics are resolved by the shared Rust application service."}
-            />
+            <EmptyEditor title="Open a Masterdata project" copy="Enter a project folder path above. Project semantics are resolved by the shared Rust application service." />
           )}
           {recovery && <Alert role="alert" type="error" title="Recovery Required — source changes and Build are blocked"
             description={<><p>{recovery.diagnostic?.message}</p><p>{recovery.files.join(", ")}</p>{recovery.fileStates?.map(file => <p key={file.path}>{file.path}: {file.state}</p>)}{recovery.recoveryWorkspace && <p>Recovery workspace: {recovery.recoveryWorkspace}</p>}</>}
@@ -1850,7 +1828,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
           {activeFile?.kind === "schema" && projectRoot && <TableEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
-            projectPath={projectRoot} path={activeFile.path} canWrite={!!workspace?.capabilities.workspaceWrite && !mutationBlocked}
+            projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
             dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
             beginApply={paths => {
               if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
@@ -1859,7 +1837,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
             endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
             onResult={result => migrationResult(projectRoot, result)} />}
           {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
-            projectPath={projectRoot} path={activeFile.path} canWrite={!!workspace?.capabilities.workspaceWrite && !mutationBlocked}
+            projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
             dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
             beginApply={paths => {
               if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
@@ -1885,7 +1863,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           )}
           {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor
-              mutationBlocked={mutationBlocked || !workspace?.capabilities.workspaceWrite}
+              mutationBlocked={mutationBlocked}
               file={activeFile}
               projectRoot={projectRoot!}
               editor={activeEditor}
@@ -1955,7 +1933,7 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
         projectPath={projectRoot}
         initialRootIndex={Math.max(0, workspace.sourceRoots.indexOf(creationTarget.root))}
         initialFolder={creationTarget.folder}
-        canWrite={workspace.capabilities.workspaceWrite && !mutationBlocked}
+        canWrite={!mutationBlocked}
         onCancel={() => {
           setCreationOpen(false);
           window.requestAnimationFrame(() => {
@@ -2661,13 +2639,11 @@ function DataEditor({
         <Select aria-label="Data sort direction" value={querySortDirection} onChange={setQuerySortDirection} options={[{ value: "ascending", label: "A→Z" }, { value: "descending", label: "Z→A" }]} />
         <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Query</Button>
         {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
-        {!mutationBlocked && <>
-          <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
-          <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
-          <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>
-          <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
-          <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
-        </>}
+        <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
+        <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
+        <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>
+        <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
+        <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
       </div>
       <div className="selection-status" role="status" aria-live="polite">
         {selectedRange ? `${selectedTargets().length} cells selected` : "One cell active"}

@@ -30,7 +30,7 @@ fieldのsemantic selectorまたはdeclaration、operationの引数を表現で�
 
 ### Source snapshot / transformed snapshot
 
-Source snapshotは、Nativeまたは将来のBrowser Hostが取得したcanonical YAML documentsと
+Source snapshotは、native applicationが取得したcanonical YAML documentsと
 provenanceを含む入力snapshotである。Transformed snapshotは、Migration Commandを適用した
 in-memoryの次段入力であり、YAMLがcanonical source of truthであることを置き換えない。
 
@@ -96,7 +96,7 @@ resolve project/workspace source snapshot
 
 ここで`receive / validate Migration Command semantic input`は、frontend-independentな
 semantic入力を受け取り、そのshapeとoperation argumentsを検証することを表す。CLI text
-syntax parserをsemantic coreが必須とする意味ではない。CLI、GUI、Web、AI adapterは、それぞれ
+syntax parserをsemantic coreが必須とする意味ではない。CLI、GUI、AI adapterは、それぞれ
 の入力をこのsemantic modelへ変換してよいが、specific CLI grammar、SQL-like grammar、
 serialized AST shapeはこのspecで固定しない。
 
@@ -235,10 +235,7 @@ Operationではない。binaryはgenerated artifactであり、v1 Migrationのqu
 
 Migrationのpure semantic transformationは、loaded source snapshotとsemantic入力だけで
 実行可能な形を保ち、filesystem commitやworkspace writeはhost-dependent boundaryとして
-分離できなければならない（MUST）。Browser filesystem、RPC、Native Host endpoint、async
-runtimeをMigration semantic coreへ必須依存として導入してはならない（MUST NOT）。CLI、GUI、
-Web、AIが将来同じdeterministic engineを利用できる構造を目標とするが、各host adapterや
-protocolを今回実装・固定しない。
+分離できなければならない（MUST）。filesystem I/Oやasync runtimeをMigration semantic coreへ必須依存として導入してはならない（MUST NOT）。CLI、GUI、AIが同じdeterministic engineを利用できる構造を保つ。
 
 ### MIGRATION-013
 
@@ -466,7 +463,7 @@ current code / tests / Gitから確認する。
 
 ### OQ-B: Concrete public argument grammar
 
-`migrate`の具体的なargument grammar、CLI syntax、GUI/Web/AI adapterからsemantic inputへ
+`migrate`の具体的なargument grammar、CLI syntax、GUI/AI adapterからsemantic inputへ
 変換するsurfaceは未決定である。MIGRATION-003とCLI-009のsemantic boundaryは固定するが、
 SQL-like languageやserialized ASTを選択しない。
 
@@ -504,5 +501,5 @@ orderを混在させない。
 ## Non-goals
 
 この仕様は、migration parser、SQL parser、YAML mutation engine、CST導入、CLI parser変更、
-GUI/Web filesystem adapter、Native Host/RPC、receipt runtime、external publisher、cache、
+GUI filesystem adapter、receipt runtime、external publisher、cache、
 Build Profile wiring、Reference runtime、binary inspectorを実装しない。

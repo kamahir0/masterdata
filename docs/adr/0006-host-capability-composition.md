@@ -1,6 +1,8 @@
 # ADR 0006: Host capabilityとcomposition rootを分離する
 
-Status: Accepted
+Status: Superseded
+
+> Historical architecture decision. Web / Native Host composition was retired by [仕様変更0022](../spec-changes/0022-retire-web-product-hosts.md). Current CLI / Desktop shared semantics and .NET delegation are owned by [ADR 0002](0002-rust-core-shared-by-cli-and-gui.md) and [ADR 0003](0003-dotnet-mastermemory-bridge.md). The former decision below is not current implementation authority.
 
 ## 背景（Context）
 

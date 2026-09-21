@@ -162,7 +162,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [Source Path Mutation仕様](source-path-mutation.md) — `Status: Approved`
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
 - [Build pipeline仕様](build-pipeline.md) — `Status: Approved`
-- [Runtime hosts / composition root / capability仕様](runtime-hosts.md) — `Status: Approved`
+- [Runtime hosts旧仕様](runtime-hosts.md) — `Status: Deprecated`（仕様変更0022でretire）
 - [CLI surface仕様](cli.md) — `Status: Approved`
 - [Schema Migration v1仕様](schema-migration.md) — `Status: Approved`
 - [Type Migration v1仕様](type-migration.md) — `Status: Approved`

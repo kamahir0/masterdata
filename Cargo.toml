@@ -6,7 +6,6 @@ members = [
   "crates/masterdata-codegen-csharp",
   "crates/masterdata-dotnet",
   "crates/masterdata-cli",
-  "crates/masterdata-web",
   "crates/xtask",
   "apps/gui/src-tauri",
 ]

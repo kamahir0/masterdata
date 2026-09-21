@@ -8,7 +8,7 @@ Domain: Source Editing
 
 本仕様は、Projectのconfigured source root内にあるexisting Masterdata source fileをrename / moveするためのobservable contractを定義する。
 
-source file pathはstorage / provenanceであり、Table / Type等のdomain identityではない。[Project layout](project-layout.md)のidentity contract、[Runtime hosts](runtime-hosts.md)のhost capability boundary、[GUI app shell](../gui/app-shell.md)のRecovery Required gateを維持する。record value編集、Source Creation、Schema / Type Migration、Build / Publish、Git operationはそれぞれのowner specificationが所有する。
+source file pathはstorage / provenanceであり、Table / Type等のdomain identityではない。[Project layout](project-layout.md)のidentity contract、[GUI app shell](../gui/app-shell.md)のRecovery Required gateを維持する。record value編集、Source Creation、Schema / Type Migration、Build / Publish、Git operationはそれぞれのowner specificationが所有する。
 
 ## 用語
 

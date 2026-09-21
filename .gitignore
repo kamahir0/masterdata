@@ -5,8 +5,6 @@
 /node_modules/
 /apps/gui/node_modules/
 /apps/gui/dist/
-/apps/gui/dist-web/
-/apps/gui/public/masterdata_web.wasm
 /apps/gui/.vite/
 
 # Tauri

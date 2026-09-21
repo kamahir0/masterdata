@@ -52,9 +52,9 @@ full canonical Build actionはshared Native Application Servicesの既存Build o
 
 ### GUI-SHELL-CAPABILITY-001
 
-Save、Build等のhost-dependent action availabilityは、[Runtime hosts](../specs/runtime-hosts.md)のgranted capabilityに従って決定しなければならない（MUST）。Tauri Desktopであることだけを理由に、利用不能なcapabilityを常に利用可能として表示してはならない（MUST NOT）。
+Save、Build等のaction availabilityは、workspaceのopen状態、実行中operation、Recovery Required等のcurrent application stateに従って決定しなければならない（MUST）。利用不能な操作を開始可能として表示してはならない（MUST NOT）。
 
-Migrationの`Recovery Required`中は、granted capabilityがあっても、そのProjectのcanonical YAML sourceを意図的に変更するGUI commandを開始してはならない（MUST NOT）。Data EditorのSave / Save All / explicit Overwrite、Source Creation、Table EditorのMigration Apply、および将来追加されるsource rename / delete / move等を含む。
+Migrationの`Recovery Required`中は、そのProjectのcanonical YAML sourceを意図的に変更するGUI commandを開始してはならない（MUST NOT）。Data EditorのSave / Save All / explicit Overwrite、Source Creation、Table EditorのMigration Apply、および将来追加されるsource rename / delete / move等を含む。
 
 この状態ではcanonical source setの整合が確定していないため、GUI shellからnormal Buildを開始可能として表示してはならない（MUST NOT）。Explorer navigation、Problems閲覧、Diff / source inspection、workspaceのre-read、recovery guidance等のread-only操作まで一律に禁止してはならない（MUST NOT）。
 

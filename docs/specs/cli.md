@@ -5,7 +5,7 @@ Status: Approved
 この文書は、MasterDataのpublic CLI terminology、canonical command surface、および
 複数のsemantic operationをCLIからcompositionする規則を定義する。StatusはApprovedであり、
 CLI surfaceのcurrent canonical authorityである。既存のApproved specificationが所有する
-build、artifact receipt、publish、host capabilityの意味を再定義せず、それらを参照してCLI
+build、artifact receipt、publishの意味を再定義せず、それらを参照してCLI
 surfaceへ写像することだけを所有する。
 
 適用した仕様変更は、
@@ -18,7 +18,7 @@ surfaceへ写像することだけを所有する。
 ### Operation
 
 Operationは、applicationまたはdomainが提供するfrontend非依存のsemantic operationで
-ある。CLI syntax、Tauri command、RPC method、Web UI eventはOperationそのものではない。
+ある。CLI syntaxとTauri commandはOperationそのものではない。
 Operationのsemantic ownerは、buildについては
 [build pipeline仕様](build-pipeline.md)、migrationについては
 [Schema Migration v1仕様](schema-migration.md)など、個別のcanonical specificationで
@@ -29,20 +29,11 @@ Operationのsemantic ownerは、buildについては
 CLI Commandは、Operationをpublic CLI surfaceとして呼び出す名前とargument surfaceで
 ある。CLI Commandは、対応するOperationのdomain logicを複製または再定義しない。
 
-### Capability
-
-Capabilityは、runtime hostが特定のOperationを実行できる能力である。CLI Commandと
-Capabilityは同義ではない。例えば、Connected Webの`build`利用可否はplatform名では
-なくNative Hostのadvertised/granted capabilityで決まり、詳細は
-[runtime hosts仕様](runtime-hosts.md)が所有する。
-
 ## Normative Requirements
 
 ### CLI-001
 
-CLIの仕様は、Operation、CLI Command、Capabilityを別conceptとして扱わなければならない
-（MUST）。CLI Commandは対応するOperationのentrypointであり、domain semanticの第二の
-実装またはhost capabilityの別名になってはならない（MUST NOT）。
+CLIの仕様は、OperationとCLI Commandを別conceptとして扱わなければならない（MUST）。CLI Commandは対応するOperationのentrypointであり、domain semanticの第二の実装になってはならない（MUST NOT）。
 
 ### CLI-002
 
@@ -159,12 +150,7 @@ diagnosticsとCLI resultの分離方法はSchema Migration仕様の未決定outp
 
 ### CLI-010
 
-CLI commandの実行可否を、単なるplatform名と同義に扱ってはならない（MUST NOT）。Native
-CLIは`NativeApplicationService`をdirect/in-processで使用し、Web対応のためにlocalhost
-RPC、daemon、network serialization、async runtimeを必須化してはならない。Connected Web
-やTauriは同じNative application semanticsをhost adapterから利用できるが、command
-surfaceとruntime capabilityは別に判定する。これは`RUNTIME-HOST-002`、
-`RUNTIME-HOST-005`、`RUNTIME-HOST-006`と整合する。
+CLIは`NativeApplicationService`をdirect/in-processで使用しなければならない（MUST）。CLI commandの存在と実行時の利用可否を混同してはならず（MUST NOT）、domain処理のためにdaemon、network serialization、async runtimeを必須にしてはならない（MUST NOT）。Tauri Desktopも同じapplication semanticsを使用する。
 
 ### CLI-011
 
@@ -188,14 +174,6 @@ semanticsを両立させる。
 test statusは所有しない。利用可能なcommand、adapter wiring、implementation gapはcurrent CLI / application code、tests、Gitから
 freshに確認する。`CLI-004`のhistorical tombstoneだけは、旧`generate` contractのRequirement IDを再利用しないためにこのspecへ保持する。
 
-## Capabilityとの関係
-
-CLI commandは、runtime host capabilityの有無を自動的に意味しない。特に、Standalone Web
-はauthoring/validationを提供できてもNative build/publish capabilityを持たず、Connected
-Webはauthorized Native Hostがadvertiseしたcapabilityに応じて同じNative Operationを
-利用する。CLIはNative application serviceをdirectに呼び出すため、CLI利用にNative Host
-process、pairing、Web handshakeを要求しない。
-
 ## 固定しないCLI事項
 
 次の事項はこのApproved surfaceに関連する未決定事項として固定しない。
@@ -215,7 +193,7 @@ exact test inventory、manual pass/fail statusはtests / code / Gitで確認し�
 
 | Requirement | Observable acceptance expectation |
 | --- | --- |
-| CLI-001, CLI-010 | CLI、Tauri、Connected Webが同じOperation ownerを利用し、CLI direct pathにWeb transportを必須化しない。 |
+| CLI-001, CLI-010 | CLIとTauriが同じOperation ownerを利用し、CLIがapplication serviceをdirectに呼び出す。 |
 | CLI-002 | canonical command surfaceを、各Operationのsemantic ownerを複製せずに公開する。 |
 | CLI-003 | validateがsource-derived validationを行い、artifact、publish target、manifestを変更しない。 |
 | CLI-004 | historical Requirement IDを保持し、current command surfaceまたは別semanticへ再利用しない。 |
@@ -248,7 +226,7 @@ versioning/deprecation policyは未決定である。
 
 ## Non-goals
 
-この仕様は、CLI parser、Tauri command、Web UI、Native Host、migration engine、YAML
+この仕様は、CLI parser、Tauri command、migration engine、YAML
 rewrite、receipt runtime、external publisher、`project-info` removal、Generated C# Preview / explicit
 Export UXを実装または確定
 しない。

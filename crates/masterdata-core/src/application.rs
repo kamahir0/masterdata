@@ -11,14 +11,12 @@ use crate::project::{InitOptions, Project, ProjectInfo, initialize_project};
 use crate::table::BuildSelection;
 use crate::validation::ValidationReport;
 
-/// Native project service used by native composition roots.
+/// Native project service shared by CLI and Tauri.
 //
 // WHY: project discovery, filesystem reads, and native path resolution are
-// host I/O responsibilities. Naming this boundary explicitly prevents a
-// future Browser Host from treating native project access as pure semantics.
-// IF REMOVED: native filesystem authority can leak into shared/browser
-// preparation and create a second, incompatible project-loading path.
-// EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
+// application I/O responsibilities, not pure domain semantics.
+// IF REMOVED: CLI and Tauri could duplicate project loading and path safety.
+// EVIDENCE: docs/adr/0002-rust-core-shared-by-cli-and-gui.md
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NativeProjectService;
 

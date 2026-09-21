@@ -63,11 +63,10 @@ pub struct NativeApplicationService {
     dotnet: DotnetBridge,
 }
 
-// WHY: CLI, Tauri, and a future Connected Web adapter must use one native
-// application workflow while the CLI remains direct and in-process.
-// IF REMOVED: host adapters can fork build/.NET/artifact semantics or force
-// the CLI through a transport boundary.
-// EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
+// WHY: CLI and Tauri must use one native application workflow while the CLI
+// remains direct and in-process.
+// IF REMOVED: the two frontends can fork build/.NET/artifact semantics.
+// EVIDENCE: docs/adr/0002-rust-core-shared-by-cli-and-gui.md
 impl Default for NativeApplicationService {
     fn default() -> Self {
         Self::new()

@@ -8,7 +8,7 @@ Domain: Source Editing
 
 本仕様は、既存Data documentにrecord occurrenceを追加・削除し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
 
-既存record member valueの変更は[Source Record Edit](source-edit.md)、Table / record validityは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、host I/O boundaryは[Runtime hosts](runtime-hosts.md)が所有する。本仕様はそれらを再定義せず、record sequenceのstructural mutation、source-preserving insertion/removal、および既存value editとのcompositionを所有する。
+既存record member valueの変更は[Source Record Edit](source-edit.md)、Table / record validityは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、native commit I/Oは[Source Record Edit](source-edit.md)の`SOURCE-EDIT-014`に従う。本仕様はそれらを再定義せず、record sequenceのstructural mutation、source-preserving insertion/removal、および既存value editとのcompositionを所有する。
 
 Source Record Editの`SOURCE-EDIT-007`から`SOURCE-EDIT-016`が定義するfile単位commit、lost-update preflight、Conflict / Failure / Outcome Unknown、explicit Overwrite、Build非連動、resolved value authoring boundary、およびpatch derivationとhost I/Oの分離は、本仕様のSaveにも適用する。
 
@@ -101,9 +101,9 @@ Record mutationはBuild、Publish、Git stage / commit / push、schema Migration
 
 ### SOURCE-RECORD-014
 
-record sequence location resolution、candidate derivation、resolved value authoring state、typed value conversion、existing value editとのcomposition、validationとのcomposition等のshared semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。source patch derivationはhost commit I/Oから分離できなければならない（MUST）。
+record sequence location resolution、candidate derivation、resolved value authoring state、typed value conversion、existing value editとのcomposition、validationとのcomposition等のshared semanticsをTauri frontendまたはCLI adapterで再実装してはならない（MUST NOT）。source patch derivationはhost commit I/Oから分離できなければならない（MUST）。
 
-Native filesystem write等のhost-specific mutationは[Runtime hosts](runtime-hosts.md)のcapability boundaryへ委譲する。
+Native filesystem write等のmutationはshared applicationのnative I/O boundaryへ委譲する。
 
 ### SOURCE-RECORD-015
 

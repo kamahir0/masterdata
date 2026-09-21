@@ -198,11 +198,9 @@ ignoreする。artifact setにおける「canonical」はbuild/publish artifact 
 authorityを意味しない。`.masterdata/output/`をsource of truthへ昇格させてはならない（MUST NOT）。
 
 User Settings / UI Stateはproject source treeではなくhost/user-local storageへ置かなければならない
-（MUST）。Native/DesktopではOSまたはapplication user-data storage、Webではhost-local browser
-storageを使用してもよい（MAY）が、exact technologyはこのrequirementで固定しない。theme、language、
+（MUST）。DesktopではOSまたはapplication user-data storageを使用してよい（MAY）が、exact technologyはこのrequirementで固定しない。theme、language、
 recent projects、last selected table、panel sizes、column widths、sort/filter UI、expanded treeなどが
-該当する。project-specific UI stateを`project.id`またはopaque workspace/bookmark identityへ紐付ける
-mechanismは未決定であり、既存Web/Native Hostのopaque identityとraw path非公開原則を弱めてはならない。
+該当する。project-specific UI stateを`project.id`またはuser-local workspace identityへ紐付けるmechanismは未決定であり、canonical source semanticsへ影響させてはならない。
 
 User Settings / UI Stateは、次を変更してはならない（MUST NOT）。
 

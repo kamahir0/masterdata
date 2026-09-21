@@ -1,8 +1,8 @@
 //! Shared clipboard and scalar batch-authoring semantics.
 //!
 //! The editor deliberately exchanges clipboard values as text.  Keeping the
-//! codec and the type-directed conversion here prevents a browser/Tauri
-//! surface from accidentally applying spreadsheet or JavaScript semantics to
+//! codec and the type-directed conversion here prevents the Tauri frontend
+//! from accidentally applying spreadsheet or JavaScript semantics to
 //! source values.
 
 use crate::authoring_value::AuthoringValue;

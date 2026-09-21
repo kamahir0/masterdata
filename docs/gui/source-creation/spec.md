@@ -50,7 +50,7 @@ Create実行中は二重submitを防ぎ、operation進行中であることを�
 
 ### GUI-CREATE-STATE-003
 
-workspace write capabilityがgrantedされていない場合、creation commandを実行可能として扱ってはならない（MUST NOT）。UIはCreateが利用不能であることをcapability stateとして識別可能にしなければならない（MUST）。Desktop/Webというplatform名だけでavailabilityを決めてはならない（MUST NOT）。
+workspaceが開かれていない、または[GUI app shell](../app-shell.md)のRecovery Required gate等でsource mutationが停止中の場合、creation commandを実行可能として扱ってはならない（MUST NOT）。
 
 ## 操作（Interactions）
 

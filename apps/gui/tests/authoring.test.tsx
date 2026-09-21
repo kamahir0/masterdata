@@ -33,8 +33,7 @@ const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
   addRow: { supported: true, reason: null }, validation,
 });
 const workspace = { project: { project_root: '/project', name: 'Demo', project_id: 'demo' }, sourceRoots: ['.'],
-  files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data' }],
-  capabilities: { workspaceRead: true, workspaceWrite: true, validate: true, build: true } };
+  files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data' }] };
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
 beforeEach(() => {

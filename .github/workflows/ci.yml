@@ -38,7 +38,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
       - name: Restore Rust and Cargo cache
         uses: Swatinem/rust-cache@v2
         continue-on-error: true
@@ -50,7 +49,6 @@ jobs:
         with:
           dotnet-version: 8.x
       - run: npm ci
-      - run: cargo xtask check-wasm
       - run: cargo xtask check-all
 
   windows:

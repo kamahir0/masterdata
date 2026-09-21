@@ -43,8 +43,7 @@ pub struct SemanticBuildPreparation {
 }
 
 /// Native convenience wrapper that performs project document loading before
-/// entering the snapshot-only semantic preparation boundary. Browser or
-/// other non-native hosts should call [`prepare_semantic_build`] directly.
+/// entering the snapshot-only semantic preparation boundary.
 pub fn prepare_build_with_selection(
     project: &Project,
     selection: &BuildSelection,
@@ -54,13 +53,13 @@ pub fn prepare_build_with_selection(
 }
 
 /// Prepare semantic build state from a source snapshot supplied by a host.
-/// This function is deliberately independent of native filesystem I/O so a
-/// future Browser Host can provide the same loaded documents.
+/// This function is deliberately independent of native filesystem I/O so
+/// validation and resolution operate on one coherent loaded snapshot.
 // WHY: Host I/O must stop at the loaded-document snapshot; validation,
 // resolution, selection, and source-content hashing are shared semantics.
-// IF REMOVED: semantic preparation would regain a hidden native filesystem
-// dependency and connected/browser hosts could not share the same result.
-// EVIDENCE: docs/specs/runtime-hosts.md; docs/adr/0006-host-capability-composition.md
+// IF REMOVED: build preparation could read a different filesystem version
+// after source loading and lose the shared CLI/Desktop semantic result.
+// EVIDENCE: docs/adr/0002-rust-core-shared-by-cli-and-gui.md
 // Regression: build_preparation_accepts_loaded_documents.
 pub fn prepare_build_from_documents(
     project: ProjectInfo,
@@ -108,8 +107,7 @@ pub fn prepare_semantic_build(
                 "project validation failed with {} diagnostic(s)",
                 validation.diagnostics.len()
             ),
-        )
-        .with_related_requirement("RUNTIME-HOST-013"));
+        ));
     }
     let type_system = resolve_type_system(&documents)?;
     let tables = resolve_tables(&documents, &type_system, selection)

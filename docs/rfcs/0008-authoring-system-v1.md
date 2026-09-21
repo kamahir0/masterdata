@@ -12,6 +12,8 @@ Status: Accepted
 
 2026-09-18、Human maintainerは詳細仕様変更[0016](../spec-changes/0016-desktop-daily-editing.md)・[0017](../spec-changes/0017-desktop-workspace-settings.md)・[0018](../spec-changes/0018-desktop-build-delivery.md)を一括Approvalした。3 changeは`Applied`となり、詳細behaviorはcanonical ownerへ移った。
 
+当時のWeb延期判断は、後続の[仕様変更0022](../spec-changes/0022-retire-web-product-hosts.md)でproduct scopeからのretireに置き換わった。以下のWeb言及は当時のalternative historyである。
+
 ## Options considered
 
 - **A: 単機能を順次追加** — changeは小さいが、制作workflowの断点が残る。
@@ -38,4 +40,4 @@ P3のauthorityはProject Initialization、Build Request / Publish Previewと対�
 
 ## Deferred
 
-P4 existing key / source move、P5 expression / computed view、P6 Reference / Web、およびGit automationは別のspecification changeで扱う。今回のperformance workは測定evidenceを要求するが、未承認のlatency SLAや製品上限を導入しない。
+P4 existing key / source move、P5 expression / computed view、Reference、およびGit automationは別のspecification changeで扱う。今回のperformance workは測定evidenceを要求するが、未承認のlatency SLAや製品上限を導入しない。

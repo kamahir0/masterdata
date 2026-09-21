@@ -8,7 +8,7 @@ Domain: Source Editing
 
 本仕様は、GUI等のauthoring surfaceから既存Data document内のrecord valueを変更し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
 
-YAML syntax / scalar classificationは[Masterdata YAML subset](yaml-subset.md)、Table / record semanticsは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、host compositionは[Runtime hosts](runtime-hosts.md)が所有する。本仕様はそれらを再定義せず、source snapshot、record provenance、resolved value authoring boundary、source-preserving patch、file commit、lost-update防止、およびsave resultを所有する。
+YAML syntax / scalar classificationは[Masterdata YAML subset](yaml-subset.md)、Table / record semanticsは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、CLI / GUIのshared boundaryは[ADR 0002](../adr/0002-rust-core-shared-by-cli-and-gui.md)に従う。本仕様はそれらを再定義せず、source snapshot、record provenance、resolved value authoring boundary、source-preserving patch、file commit、lost-update防止、およびsave resultを所有する。
 
 Schema Migrationはproject-wideなschema transformationであり、通常のrecord value editのauthorityではない。ただし[Schema Migration v1](schema-migration.md)のsource-preserving rewriteとlost-update safetyを、この単一file edit contractの既存安全性evidenceとして参照する。
 
@@ -104,7 +104,7 @@ Save resultは少なくとも`Success`、`Conflict`、`Failure`、`Outcome Unkno
 
 single-file commit implementationは、通常I/O failureによってpartial/truncated candidateを成功状態として公開してはならない（MUST NOT）。hostがatomic replace、staging、temporary write等を利用できる場合は、それらを用いてoldまたはcomplete new contentへ収束させてよい（MAY）。
 
-process crash、OS crash、browser crash、power lossを含むglobal filesystem transaction atomicityは本仕様では保証しない。crash後にworkspace contentがold/newのどちらか安全に判定できない場合は、再open時にactual sourceをauthorityとして再取得する。
+process crash、OS crash、power lossを含むglobal filesystem transaction atomicityは本仕様では保証しない。crash後にworkspace contentがold/newのどちらか安全に判定できない場合は、再open時にactual sourceをauthorityとして再取得する。
 
 ### SOURCE-EDIT-013
 
@@ -112,9 +112,9 @@ record SaveはBuild、Publish、Git stage / commit / push、schema Migration、T
 
 ### SOURCE-EDIT-014
 
-source patch derivationとsource commit I/Oの責務は分離できなければならない（MUST）。source location resolution、resolved value authoring state、candidate derivation、validationとのcomposition等のshared application/domain semanticsをTauri frontend、Browser Host、Native Host adapterごとに再実装してはならない（MUST NOT）。
+source patch derivationとsource commit I/Oの責務は分離できなければならない（MUST）。source location resolution、resolved value authoring state、candidate derivation、validationとのcomposition等のshared application/domain semanticsをTauri frontendまたはCLI adapterで再実装してはならない（MUST NOT）。
 
-Native filesystem write、Browser workspace write、permission、path safety、exact file identityの取得等は[Runtime hosts](runtime-hosts.md)のhost boundaryに従う。
+Native filesystem write、path safety、exact file identityの取得等はshared applicationのnative I/O boundaryが担当する。
 
 ### SOURCE-EDIT-015
 

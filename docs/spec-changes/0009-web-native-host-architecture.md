@@ -2,7 +2,9 @@
 
 Status: Applied
 
-> Historical audit record. Current implementation authority is the canonical specification listed below. Full proposal / review detail remains in Git history.
+> Historical audit record. Full proposal / review detail remains in Git history.
+
+> 後続の[仕様変更0022](0022-retire-web-product-hosts.md)により、このWeb / Native Host方向はretireされた。以下の適用記録は当時のdecision historyであり、列挙したownerをcurrent authorityとして再開しない。
 
 ## Why
 

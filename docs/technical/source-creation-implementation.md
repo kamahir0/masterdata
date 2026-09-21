@@ -36,8 +36,8 @@ Folderも1回に1つだけ作成し、既存sourceの編集、record追加、Bui
 
 ## Evidence Integrity / Architecture
 
-Requirement参照は上記canonical ownerに対応する。architectureはADR-0001 / ADR-0002 / ADR-0006の
-YAML Source of Truth、shared core、host capability境界を維持する。frontendはYAMLを構築せず、
+Requirement参照は上記canonical ownerに対応する。architectureはADR-0001 / ADR-0002の
+YAML Source of Truthとshared core境界を維持する。frontendはYAMLを構築せず、
 型候補を共有層から取得する。C#生成名のpreflightは既存codegen validatorを再利用し、生成物を書き込まない。
 benchmarkによる性能改善は主張しない。
 

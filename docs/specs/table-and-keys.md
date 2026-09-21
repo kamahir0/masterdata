@@ -462,6 +462,6 @@ public sealed partial class ItemCategoryMaster
 ## 非目標
 
 Field IDからMessagePack keyへの移行履歴とApproved canonical specificationへの適用は、specification change 0003に記録する。
-また、generated helper naming、Optional non-unique public return contract、cross-schema MasterMemory binary compatibility、released-schema migration、
+また、Referenceのgenerated helper namingとOptional non-unique public return contract（canonical ownerは[Index / Reference](index-and-reference.md)）、cross-schema MasterMemory binary compatibility、released-schema migration、
 schema version negotiation、exact diagnostic wording、GUIの詳細UX、parser、Rust AST/IR、validator、C# code generator、.NET builder、MasterMemory内部、MessagePack
 formatter/resolver、cache、compression、artifact layout、Enum / Flags Enumの詳細仕様、またはIndex以外のReference semanticsをこのdocumentで重複定義しない。

@@ -24,9 +24,10 @@ Table Editorは各fieldについて少なくともMessagePack key、field name�
 
 ### GUI-TABLE-LAYOUT-004
 
-Table EditorはReferenceごとに、current name、ordered source fields、target table、target key fields、resolved single/multi、resolved
-required/optional、およびshared validation diagnosticを確認できなければならない（MUST）。target key matching、type compatibility、
-nullable validity、integrity、query method derivationはfrontendが再実装してはならない（MUST NOT）。
+Table EditorはReferenceごとに、current domain name、optional exact `csharpName`、shared snapshotが返すeffective C# helper name、ordered source
+fields、target table、target key fields、resolved single/multi、resolved required/optional、およびshared validation diagnosticを確認できなければ
+ならない（MUST）。target key matching、type compatibility、nullable validity、integrity、query method derivation、helper name derivationはfrontendが
+再実装してはならない（MUST NOT）。
 
 ## 状態（States）
 
@@ -84,8 +85,8 @@ Migration成功をBuild / Publish / Git / generated artifact更新と同一操�
 
 Reference add/edit/removeはraw YAMLをfrontendで編集せず、shared source-preserving mutation boundaryを通らなければならない（MUST）。
 Plan / Apply、exact-source lost-update protection、stale rejection、recovery、no implicit Build / Publish / Git side effectはfield
-migrationと同じcontractを維持しなければならない（MUST）。Reference helperのpublic C# method namingとOptional non-unique return
-contractは別Human gateであり、declaration authoringはそのchoiceを発明してはならない（MUST NOT）。
+migrationと同じcontractを維持しなければならない（MUST）。`csharpName`の追加・編集・削除もshared source-preserving mutationを通り、
+frontendは`REF-008..009`の命名・return semanticsを再実装してはならない（MUST NOT）。
 
 ## キーボード（Keyboard）
 

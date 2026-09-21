@@ -1,15 +1,15 @@
 # 仕様変更: Reference v1
 
-Status: Proposed
+Status: Applied
 
 ## Affected Specifications
 
-- [Index / Reference](../specs/index-and-reference.md) `REF-001..007`: Option Bのcore semanticsをReference v1のcanonical ownerへ適用する。generated helper public API gateは本changeに残る。
+- [Index / Reference](../specs/index-and-reference.md) `REF-001..009`: Option Bのcore semanticsと確定済みgenerated helper contractをReference v1のcanonical ownerへ適用する。
 - [Table / Primary Key / Secondary Key](../specs/table-and-keys.md): existing Primary/Secondary identity、Build Selection後のReference integrity順序を変更せず参照する。
 - [Schema language](../specs/schema-language.md): approved Reference surfaceへのrouting/exampleを同期する。
 - [Build Selection](../specs/build-selection.md): selected logical dataset上のReference validation順序を既存contractどおり使用する。
 - [Table Editor](../gui/table-editor/spec.md): Reference declarationのguided authoringを追加する。
-- C# generation: resolved ReferenceをMasterMemory query APIへlowerする。exact public helper contractは本changeで決定する。
+- C# generation: resolved ReferenceをMasterMemory query APIへlowerし、`REF-008..009`の命名・return contractを実装する。
 
 ## 根拠と分類（Source Evidence and Classification）
 
@@ -86,7 +86,7 @@ Option Aに加え、source componentsを全てNullableにしたReferenceを許�
 - non-null値のtargetが0件なら、unique/non-uniqueを問わずbuild-blocking missing-reference diagnosticとする。
 - non-unique targetの複数matchは正常であり、0件だけをmissingとして扱う。
 - targetはPrimary Key、unique Secondary Key、またはnon-unique Secondary Keyのordered field sequenceへexactly resolveする。
-- generated helperのunique/non-unique query loweringはMasterMemoryのgenerated queryへ委譲する。ただし公開helper名とOptional non-uniqueのabsence representationは別Human gateとして未確定のままとする。
+- generated helperのunique/non-unique query loweringはMasterMemoryのgenerated queryへ委譲する。公開helper名とOptional non-uniqueのabsence representationは`REF-008..009`の確定済みcontractに従う。
 
 利便性は高いが、validation、projection、GUI、C# signature、optional multi-reference semanticsがv1で増える。
 
@@ -117,9 +117,7 @@ Human decision後、少なくとも以下をevidence化する。
 - Table Editor: Reference add/edit/removeがshared semanticsへ接続され、frontend独自target resolutionを持たない。
 - existing project / Build / migration / Publish regressionsなし。
 
-## 未解決事項（Open Questions）
-
-None for Reference v1 public helper contract.
+## 適用済み決定の監査記録（Applied Decisions）
 
 Human decision: Referenceの`name`はlanguage-independent domain nameとして保持する。C# helperは`csharpName`省略時に`Get` + `name`の先頭ASCII lowercase letterのみuppercaseしたidentifierを生成し、`csharpName`指定時はその値をgenerated C# method identifier全体としてexactly使用する。field名やtarget Table名からhelper名を推測してはならない。
 
@@ -135,10 +133,10 @@ review-spec pass: core declaration、target identity、selection order、nullabl
 
 Option B Human decision: 2026-09-21 JST。Option A / Option C: Rejected alternative。
 Helper API Human decision: 2026-09-21 JST。Reference `name`をlanguage-independent domain nameとして保持し、C#はdefault `Get<Name>` + optional exact `csharpName` overrideとする。Optional non-unique absenceは`RangeView<T>.Empty`とする。
-Core semantic application: Option Bのcore semantic sliceはApproved [Index / Reference](../specs/index-and-reference.md)へ適用済み。helper public API decisionも確定したため、implementation / verification完了後にこのchange全体をAppliedへ遷移する。
+Core semantic application: Option Bのcore semantic sliceとhelper public API decisionはApproved [Index / Reference](../specs/index-and-reference.md)へ適用済み。本changeのimplementation / focused evidenceも完了したため、StatusをAppliedへ遷移した。
 
 ## Approval eligibility
 
 Autonomous approval eligible: Yes after the recorded Human decisions; no unresolved Human gate remains.
 
-Review verdict: Pass。core AST、target identity、cardinality、nullable/value/integrity、Build Selection ordering、migration fail-closed、source-preserving Desktop authoring、domain/codegen naming separation、Optional non-unique absence contractはHuman decisionsと既存Approved authorityへ整合する。
+Review verdict: Pass。core AST、target identity、cardinality、nullable/value/integrity、Build Selection ordering、migration fail-closed、source-preserving Desktop authoring、domain/codegen naming separation、Optional non-unique absence contractはHuman decisionsと既存Approved authorityへ整合する。generated C# compile/runtime smokeを含むfocused verificationを完了した。

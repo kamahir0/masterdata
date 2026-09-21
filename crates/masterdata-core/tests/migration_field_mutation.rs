@@ -229,6 +229,13 @@ fn reference_add_edit_remove_use_reviewed_source_patches() {
             .iter()
             .any(|file| file.source.contains("name: categories"))
     );
+    assert!(
+        edited
+            .transformed_documents
+            .files
+            .iter()
+            .any(|file| file.source.contains("csharpName: GetCategories"))
+    );
 
     let removed = dry_run_migration(
         &edited.transformed_documents,

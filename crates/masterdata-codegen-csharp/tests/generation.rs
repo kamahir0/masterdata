@@ -45,6 +45,47 @@ fn renders_an_immutable_scaffold_from_a_schema() {
 }
 
 #[test]
+fn reference_codegen_reports_the_unresolved_public_api_gate_instead_of_dropping_helpers() {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    fs::write(
+        directory.path().join("masterdata.toml"),
+        "[project]\nid = \"codegen.reference\"\nname = \"Codegen Reference\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("config");
+    fs::write(
+        directory.path().join("sources/category.yaml"),
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+    )
+    .expect("target schema");
+    fs::write(
+        directory.path().join("sources/item.yaml"),
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n",
+    )
+    .expect("source schema");
+    fs::write(
+        directory.path().join("sources/category-data.yaml"),
+        "kind: data\ntable: category\nrecords:\n  - id: 1\n",
+    )
+    .expect("target data");
+    fs::write(
+        directory.path().join("sources/item-data.yaml"),
+        "kind: data\ntable: item\nrecords:\n  - id: 1\n",
+    )
+    .expect("source data");
+    let plan = ProjectService::new()
+        .prepare_build(Some(directory.path()), directory.path())
+        .expect("valid Reference build plan");
+    let error = CSharpGenerator::default()
+        .plan(&plan)
+        .expect_err("public API gate");
+    assert_eq!(
+        error.diagnostic().code,
+        "E-CODEGEN-REFERENCE-PUBLIC-API-UNRESOLVED"
+    );
+}
+
+#[test]
 fn rejects_reserved_csharp_type_names() {
     let directory = fixture_project("kind: schema\ntable: item\ncsharpName: class\nfields: []\n");
     let plan = build_plan(directory.path());

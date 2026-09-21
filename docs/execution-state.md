@@ -2,12 +2,14 @@
 
 Stage: decision-required
 Candidate: none
-Work base: 7bcef041c982c4cf07910d68e22408221ec41b5e
+Work base: 19893f0735c0feecd83e6b7a5cc9c566aa390b18
 
 ## Active work
 
-In progress: Reference v1のcanonical semanticsをrefineし、既存Table/Key identityとMasterMemory query APIに整合する仕様変更0023 Draftを作成。
-Remaining: Human decision後のspec review / application、shared core validation、C# helper、Table Editor authoring、verification。
+Completed: 仕様変更0023へ2026-09-21 JSTのHuman decision（Option B）を記録し、Reference core semanticsをApproved [Index / Reference](specs/index-and-reference.md)へ適用。
+Completed: typed AST、cross-table target resolution、selected dataset integrity、nullable semantics、source-preserving Reference mutation、Table Editor snapshot/Plan surface、Reference dependency fail-closedを実装し、focused testsを通過。
+In progress: Reference v1のHuman-gated public C# helper contractを確定待ち。
+Remaining: helper method naming、Optional non-unique absence representationのdecision後にC# helper lowering/compile evidenceを実装し、final verificationへ進む。
 
 ## Blocking findings
 
@@ -15,10 +17,9 @@ None.
 
 ## Human decision needed
 
-Referenceのtarget identityは既存Approved contractから `table + ordered target fields` に一意化できるが、persisted source surfaceとgenerated public helper APIには複数の合理的choiceが残る。
+Option B自体は承認済みであり、再確認不要。残るdecisionは次の2点だけ。
 
-推奨は仕様変更0023のOption A: schema-level `references`、explicit relation `name`、ordered source `fields`、target `table + fields`、v1はRequired scalar sourceのみ、generated `Get<Name>(MemoryDatabase database)` helper。composite keyを自然に扱え、nullableのpartial-null policyを先送りせずv1 scopeから明示除外できる。
+1. generated helperのpublic method naming。候補例は `GetCategory(MemoryDatabase database)`、`FindCategory(MemoryDatabase database)`、または別の既存命名規則。`Get<Name>`は旧proposalの推奨であり、今回のOption B選択から承認済みとは推定しない。
+2. Optional + non-unique helperのabsence representation。actual MasterMemory queryは`RangeView<Target>`を返す。候補は全nullをempty `RangeView<Target>`として返す、`RangeView<Target>?`/wrapperでabsenceを明示する、または別の既存API contractを採る、のいずれか。unique optionalはtarget row nullableが候補となる。
 
-Option Bは同じsurfaceでNullable Referenceもv1に含め、全component null=参照なし、全component non-null=lookup、partial null=validation errorとする。便利だがsource/runtime/codegen semanticsが広がる。
-
-Option Cはbuild-time integrityだけを先行しgenerated helperを後続にするが、既存REF-003の方向とReference v1の利用価値を分断するため非推奨。
+推奨案: helper nameは既存C# generated member naming ownerから明示承認された一つを選び、Optional non-uniqueはMasterMemoryのactual `RangeView<T>`をmaterializeせずempty resultでabsenceを表現する。ただしこれはHuman Approvalなしに適用しない。

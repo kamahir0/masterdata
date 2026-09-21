@@ -59,6 +59,16 @@ impl CSharpGenerator {
         }
 
         for table in &build_plan.tables {
+            if !table.references.is_empty() {
+                return Err(MasterdataError::new(
+                    "E-CODEGEN-REFERENCE-PUBLIC-API-UNRESOLVED",
+                    ErrorKind::Validation,
+                    format!(
+                        "Table `{}` has Reference declarations, but the public helper method name and Optional non-unique return contract are still a Human-gated API decision",
+                        table.identity
+                    ),
+                ));
+            }
             let type_name = table.csharp_name.clone();
             insert_generated_name(
                 &mut generated_type_names,

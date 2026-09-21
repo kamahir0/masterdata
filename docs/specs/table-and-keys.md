@@ -454,13 +454,14 @@ public sealed partial class ItemCategoryMaster
 - Table fieldの`key`へMessagePack-CSharp `KeyAttribute`のruntime/APIが要求する正確なinteger upper boundがある場合、それをどのvalidation boundaryで表現するか。
 - `csharpName`のnamespace、generated filename、filesystem case collision、およびreleased API rename migrationをどのcompatibility policyで扱うか。
 - Primary Key / Secondary Keyのvalidation failureへ、どのDiagnostic Code、source span、error presentationを割り当てるか。
-- Referenceのexact declaration syntax、Secondary Keyをtargetとして指定する方式、およびmissing-reference severityをどう定義するか。
+- Referenceのrelationship semanticsは[IndexとReferenceのmodel](index-and-reference.md)が所有する。Table/Key specificationはPrimary/Secondary
+  capability、ordered field sequence、uniqueness、query-name derivationだけをReference resolverへ提供する。
 - generated C#のnamespace、MessagePack resolver registration、serialization constructor、exact formatterのshapeをどう定義するか。
 - released schema間でMessagePack binaryを互換にする必要が生じた場合、どの独立したbinary compatibility仕様とmigration policyを採用するか。
 
 ## 非目標
 
 Field IDからMessagePack keyへの移行履歴とApproved canonical specificationへの適用は、specification change 0003に記録する。
-また、Referenceのexact YAML syntax、missing-reference severity、generated helper naming、cross-schema MasterMemory binary compatibility、released-schema migration、
+また、generated helper naming、Optional non-unique public return contract、cross-schema MasterMemory binary compatibility、released-schema migration、
 schema version negotiation、exact diagnostic wording、GUIの詳細UX、parser、Rust AST/IR、validator、C# code generator、.NET builder、MasterMemory内部、MessagePack
-formatter/resolver、cache、compression、artifact layout、Enum / Flags Enumの詳細仕様、またはIndex以外のMasterReferenceを実装・確定しない。
+formatter/resolver、cache、compression、artifact layout、Enum / Flags Enumの詳細仕様、またはIndex以外のReference semanticsをこのdocumentで重複定義しない。

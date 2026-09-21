@@ -4,7 +4,7 @@ Status: Approved
 
 ## 目的
 
-既存Table schema documentをWorkspace Explorerから選択し、Schema Migration v1の`AddField` / `RenameField` / `DropField`をdeterministic Planとsource Diffを確認しながら安全に実行できるschema-aware editorを提供する。
+既存Table schema documentをWorkspace Explorerから選択し、Schema Migration v1の`AddField` / `RenameField` / `DropField`とReference declaration authoringをdeterministic Planとsource Diffを確認しながら安全に実行できるschema-aware editorを提供する。
 
 Table / field / key / type semantics、Migration dependency resolution、source-preserving rewrite、lost-update preflight、multi-file commit / rollbackは[Schema Migration v1](../../specs/schema-migration.md)と既存domain specificationsが所有する。本仕様はそれらを再定義せず、Table Editorのlayout、state、interaction、dirty-buffer composition、surface-local error/recovery、adapter boundaryを所有する。`Recovery Required`中のcross-surface command gateは[GUI app shell](../app-shell.md)の`GUI-SHELL-STATE-001` / `GUI-SHELL-CAPABILITY-001`が所有する。
 
@@ -21,6 +21,12 @@ Table Editorは各fieldについて少なくともMessagePack key、field name�
 ### GUI-TABLE-LAYOUT-003
 
 初期mutation actionは`Add Field`、既存fieldに対する`Rename Field`、`Drop Field`だけを表示しなければならない（MUST）。field type変更、modifier変更、field reorder、MessagePack key変更、Primary / Secondary Key編集、Table renameを同じdirect-edit UIとして提供してはならない（MUST NOT）。
+
+### GUI-TABLE-LAYOUT-004
+
+Table EditorはReferenceごとに、current name、ordered source fields、target table、target key fields、resolved single/multi、resolved
+required/optional、およびshared validation diagnosticを確認できなければならない（MUST）。target key matching、type compatibility、
+nullable validity、integrity、query method derivationはfrontendが再実装してはならない（MUST NOT）。
 
 ## 状態（States）
 
@@ -73,6 +79,13 @@ Applyはcurrent UIが示しているsemantic commandとbase snapshotに対応す
 ### GUI-TABLE-INT-007
 
 Migration成功をBuild / Publish / Git / generated artifact更新と同一操作へ結合してはならない（MUST NOT）。成功後にBuildを別actionとして実行できてよい（MAY）。
+
+### GUI-TABLE-INT-009
+
+Reference add/edit/removeはraw YAMLをfrontendで編集せず、shared source-preserving mutation boundaryを通らなければならない（MUST）。
+Plan / Apply、exact-source lost-update protection、stale rejection、recovery、no implicit Build / Publish / Git side effectはfield
+migrationと同じcontractを維持しなければならない（MUST）。Reference helperのpublic C# method namingとOptional non-unique return
+contractは別Human gateであり、declaration authoringはそのchoiceを発明してはならない（MUST NOT）。
 
 ## キーボード（Keyboard）
 

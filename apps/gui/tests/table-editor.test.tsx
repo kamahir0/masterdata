@@ -58,6 +58,20 @@ test('Add initializer reaches shared service as exact text',async()=>{
   expect(invoke.mock.calls.find(([command])=>command==='plan_table_migration')?.[1].input.initializer).toBe('18446744073709551615');
 });
 
+test('Reference authoring sends ordered declaration to the shared mutation boundary',async()=>{
+  await open();
+  fireEvent.click(screen.getByRole('button',{name:'Add Reference',exact:true}));
+  fireEvent.change(screen.getByLabelText('Reference name'),{target:{value:'category'}});
+  fireEvent.change(screen.getByLabelText('Source fields (ordered, comma-separated)'),{target:{value:'regionId, categoryId'}});
+  fireEvent.change(screen.getByLabelText('Target table'),{target:{value:'item-category'}});
+  fireEvent.change(screen.getByLabelText('Target key fields (ordered, comma-separated)'),{target:{value:'regionId, id'}});
+  fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
+  await screen.findByRole('region',{name:'Migration Plan'});
+  expect(invoke.mock.calls.find(([command])=>command==='plan_table_migration')?.[1].input).toEqual({
+    operation:'add_reference',table:'item',reference:{name:'category',fields:['regionId','categoryId'],target:{table:'item-category',fields:['regionId','id']}}
+  });
+});
+
 test('changing field shape clears typed initializer and reviewed plan',async()=>{
   await open();fireEvent.click(screen.getByRole('button',{name:'Add Field',exact:true}));
   fireEvent.click(screen.getByRole('checkbox',{name:'Explicit constant initializer'}));

@@ -425,3 +425,55 @@ fn custom_mutation_reaches_nested_custom_array_and_skips_nullable_absence() {
     assert!(text(&r, "data.yaml").contains("grade: Rare"));
     assert!(text(&r, "data.yaml").contains("reward: null # preserve"));
 }
+
+#[test]
+fn enum_migration_revalidates_affected_reference_closure() {
+    let d = ProjectDocuments {
+        files: vec![
+            parse_yaml_document(
+                "rarity.yaml".into(),
+                "kind: type\nname: Rarity\nenum:\n  underlying: int\n  members:\n    - name: Rare\n      value: 1\n    - name: Common\n      value: 2\n",
+            )
+            .unwrap(),
+            parse_yaml_document(
+                "category.yaml".into(),
+                "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: rarity\n    type: Rarity\nprimaryKey:\n  fields: [id]\nsecondaryKeys:\n  - fields: [rarity]\n",
+            )
+            .unwrap(),
+            parse_yaml_document(
+                "item.yaml".into(),
+                "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: rarity\n    type: Rarity\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category\n    fields: [rarity]\n    target:\n      table: category\n      fields: [rarity]\n",
+            )
+            .unwrap(),
+            parse_yaml_document(
+                "category-data.yaml".into(),
+                "kind: data\ntable: category\nrecords:\n  - id: 1\n    rarity: Rare\n",
+            )
+            .unwrap(),
+            parse_yaml_document(
+                "item-data.yaml".into(),
+                "kind: data\ntable: item\nrecords:\n  - id: 1\n    rarity: Rare\n",
+            )
+            .unwrap(),
+        ],
+    };
+    let result = run(
+        &d,
+        "Rarity",
+        TypeMigrationOperation::RenameEnumMember {
+            member: "Rare".into(),
+            new_name: "Epic".into(),
+        },
+    );
+    let type_system = build_type_system(&result.candidate.transformed_documents)
+        .model
+        .unwrap();
+    let tables = resolve_tables(
+        &result.candidate.transformed_documents,
+        &type_system,
+        &BuildSelection::unfiltered(),
+    );
+    assert!(tables.diagnostics.is_empty(), "{:#?}", tables.diagnostics);
+    assert!(text(&result, "item-data.yaml").contains("rarity: Epic"));
+    assert!(text(&result, "category-data.yaml").contains("rarity: Epic"));
+}

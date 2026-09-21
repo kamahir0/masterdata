@@ -54,14 +54,16 @@ pub use data_query::{DataFileQueryResult, query_data_file};
 pub use document::{
     ConversionDefinition, CustomTypeDefinition, DataDocument, EnumDefinition, EnumMember,
     FieldDefinition, FlagsDefinition, IntegerLiteral, LoadedDocument, PrimaryKeyDefinition,
-    ProjectDocuments, SchemaDocument, SecondaryKeyDefinition, SourceDocument, TypeDocument,
-    TypeFieldDefinition, ValueObjectDefinition, parse_yaml_document,
+    ProjectDocuments, ReferenceDefinition, ReferenceTargetDefinition, SchemaDocument,
+    SecondaryKeyDefinition, SourceDocument, TypeDocument, TypeFieldDefinition,
+    ValueObjectDefinition, parse_yaml_document,
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use migration::{
-    AddFieldCommand, DropFieldCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan,
-    MigrationOperation, MigrationPatch, MigrationPlan, MigrationValidation, RenameFieldCommand,
-    dry_run_migration, migration_table_schema, plan_migration,
+    AddFieldCommand, AddReferenceCommand, DropFieldCommand, EditReferenceCommand, MigrationCommand,
+    MigrationDryRun, MigrationFilePlan, MigrationOperation, MigrationPatch, MigrationPlan,
+    MigrationValidation, RemoveReferenceCommand, RenameFieldCommand, dry_run_migration,
+    migration_table_schema, plan_migration,
 };
 pub use migration_commit::{
     MigrationCommitFailure, MigrationCommitFailureInjection, MigrationCommitFailurePoint,
@@ -86,8 +88,9 @@ pub use source_edit::{
     source_content_identity,
 };
 pub use table::{
-    BuildSelection, ResolvedPrimaryKey, ResolvedRecord, ResolvedSecondaryKey, ResolvedTable,
-    TableBuild, is_tag_name, record_tags, resolve_tables, table_csharp_name,
+    BuildSelection, ReferenceCardinality, ReferenceKeyKind, ReferenceOptionality,
+    ResolvedPrimaryKey, ResolvedRecord, ResolvedReference, ResolvedSecondaryKey, ResolvedTable,
+    TableBuild, generated_query_name, is_tag_name, record_tags, resolve_tables, table_csharp_name,
 };
 pub use type_system::{
     FieldModifier, NormalizedValue, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,

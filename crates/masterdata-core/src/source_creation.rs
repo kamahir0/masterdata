@@ -136,6 +136,7 @@ pub fn prepare_source_creation(
             fields: fields.clone(),
             primary_key: Some(primary_key.clone()),
             secondary_keys: secondary_keys.clone(),
+            references: Vec::new(),
         }),
         SourceCreation::Data { table } => {
             if documents

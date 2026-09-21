@@ -1,10 +1,10 @@
 # 仕様変更: Reference v1
 
-Status: Draft
+Status: Proposed
 
 ## Affected Specifications
 
-- [Index / Reference](../specs/index-and-reference.md) `REF-001..003`: DraftをReference v1のcanonical ownerへrefineする。
+- [Index / Reference](../specs/index-and-reference.md) `REF-001..007`: Option Bのcore semanticsをReference v1のcanonical ownerへ適用する。generated helper public API gateは本changeに残る。
 - [Table / Primary Key / Secondary Key](../specs/table-and-keys.md): existing Primary/Secondary identity、Build Selection後のReference integrity順序を変更せず参照する。
 - [Schema language](../specs/schema-language.md): approved Reference surfaceへのrouting/exampleを同期する。
 - [Build Selection](../specs/build-selection.md): selected logical dataset上のReference validation順序を既存contractどおり使用する。
@@ -13,7 +13,7 @@ Status: Draft
 
 ## 根拠と分類（Source Evidence and Classification）
 
-- Human Decision: 2026-09-21 JST、Web退役後の次product priorityとしてReference方向へ進む。
+- Human Decision: 2026-09-21 JST、Web退役後の次product priorityとしてReference方向へ進み、Reference v1はOption B（Required ReferenceとNullable Referenceの両方）を採用する。Option AとOption CはRejected alternativeとする。
 - Existing Draft: `REF-001`はsource fieldとtarget table/index、`REF-002`はunique/non-unique cardinality、`REF-003`はbuild validationとcaller-supplied `MemoryDatabase` helperを要求する方向を保持している。
 - Approved Constraint: Secondary Key v1のlogical identityはordered current field-symbol sequenceであり、persistent nameを持たない（`INDEX-SECONDARY-002`）。generated `indexNo`とMessagePack `key`はsemantic identityではない。
 - Approved Constraint: Build Selection後にPK/unique constraints、Reference integrity、canonical ordering、binary buildの順で評価する（`SCHEMA-TABLE-007` / Build Selection owner）。
@@ -58,7 +58,7 @@ references:
 - Reference validationはBuild Selection後、canonical ordering/binary build前に行う。
 - Referenceはgenerated artifactやbinaryをauthorityにせずcanonical YAML + resolved Table modelをauthorityとする。
 
-### Option A — 推奨: Required-only Reference v1
+### Option A — Rejected alternative: Required-only Reference v1
 
 - source `fields`はすべてRequired scalarかつkey-compatibleでなければならない。
 - Nullable / Array source fieldはReference componentに使用しない。
@@ -71,19 +71,25 @@ references:
 
 このOptionはnullableのpartial-null policyをv1 scopeから明示的に外し、composite/unique/non-uniqueとhelper APIを一つのcoherent sliceで完成させる。
 
-### Option B — Nullable Referenceをv1へ含める
+### Option B — Applied Human decision: Nullable Referenceをv1へ含める
 
-Option Aに加え、source componentsを全てNullableにしたReferenceを許可する。
+Option Aに加え、source componentsを全てNullableにしたReferenceを許可する。Reference v1のcanonical semanticsは次のとおりとする。
 
 - 全component null: Referenceなし。
 - 全component non-null: 通常lookup。
 - compositeで一部だけnull: validation error。
-- unique optional helperはnullable targetを返す。
-- non-unique optional helperのabsence representationをexactly定義する必要がある。
+- Required compositeは全componentがRequired scalar、Optional compositeは全componentがNullable scalarでなければならない。Required/Nullableの混在はrejectする。
+- Array fieldはReference source componentとしてrejectする。
+- nullable modifierを除いたbase semantic typeをtarget key componentと照合し、implicit conversionを行わない。
+- Optional Referenceの全null値はselected target dataset lookupを行わず、missing diagnosticを生成しない。
+- non-null値のtargetが0件なら、unique/non-uniqueを問わずbuild-blocking missing-reference diagnosticとする。
+- non-unique targetの複数matchは正常であり、0件だけをmissingとして扱う。
+- targetはPrimary Key、unique Secondary Key、またはnon-unique Secondary Keyのordered field sequenceへexactly resolveする。
+- generated helperのunique/non-unique query loweringはMasterMemoryのgenerated queryへ委譲する。ただし公開helper名とOptional non-uniqueのabsence representationは別Human gateとして未確定のままとする。
 
 利便性は高いが、validation、projection、GUI、C# signature、optional multi-reference semanticsがv1で増える。
 
-### Option C — Integrity-only first
+### Option C — Rejected alternative: Integrity-only first
 
 source declarationとbuild validationだけ先行し、generated helperを後続へ送る。
 
@@ -114,15 +120,25 @@ Human decision後、少なくとも以下をevidence化する。
 
 Human decision required:
 
-1. Option A（Required-only + helperまで完成）、Option B（Nullableもv1）、Option C（integrity-only）のどれをReference v1とするか。
-2. Option A/Bの場合、generated helper namingを推奨の`Get<Name>`で確定してよいか。別のpublic namingを採る場合はこの時点で決める。
+1. generated helperのpublic method naming。`Get<Name>`は本changeの旧proposal上の候補に過ぎず、今回のOption B選択から承認済みとは推定しない。
+2. Optional + non-unique helperで、全null absenceを表現する公開return contract。MasterMemory query自体の`RangeView<T>`と、absenceを表現するwrapper/nullable/empty conventionのどれを採るか。
 
 target identityにbackend `indexNo`やSecondary Key nameを導入する案は、既存Approved identity contractと矛盾するためchoiceとして扱わない。
 
 ## レビュー（Review）
 
-Pending Human decision. target identity、selection order、MasterMemory delegationは既存authorityから一意。persisted Reference declarationとgenerated public API / nullable scopeはmaterial product choiceであり、Human gateに該当する。
+review-spec pass: core declaration、target identity、selection order、nullable semantics、MasterMemory delegationはHuman handoffと既存authorityに整合する。Reference helperのpublic method namingとOptional non-unique return contractは、外部公開APIのmaterial choiceとしてHuman gateに残る。
 
 ## 承認記録（Approval Record）
 
-Pending.
+Option B Human decision: 2026-09-21 JST。Option A / Option C: Rejected alternative。
+Core semantic application: Option Bのcore semantic sliceはApproved [Index / Reference](../specs/index-and-reference.md)へ適用済み。helper public API gate解消後にこのchange全体をAppliedへ遷移する。
+
+## Approval eligibility
+
+Autonomous approval eligible: No
+
+Human gate: generated helper public method naming、およびOptional non-unique absence representationという公開APIのmaterial choice。
+
+Core semantic review verdict: Pass。core AST、target identity、cardinality、nullable/value/integrity、Build Selection ordering、migration fail-closed、
+source-preserving Desktop authoringはOption B decisionと既存Approved authorityへ整合する。helper public APIのchoiceを発明せず、codegenはgate diagnosticで停止する。

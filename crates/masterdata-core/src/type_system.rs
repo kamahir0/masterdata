@@ -217,7 +217,7 @@ pub enum ResolvedAuthoringType {
 /// IEEE 754へ変換される経路を避け、特に `ulong` の全域を保持する
 /// (TYPE-PRIMITIVE-003, SCHEMA-ENUM-003)。この形式はpublic/released
 /// compatibility protocolではなく、同梱Rust/.NET builder間だけで使う。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NormalizedValue {
     Null,
@@ -428,6 +428,33 @@ impl TypeSystem {
         modifier: FieldModifier,
     ) -> bool {
         modifier == FieldModifier::Required && self.is_comparison_capable(reference)
+    }
+
+    /// Reference resolution uses the same key and comparison capability as
+    /// Primary/Secondary Key resolution, but Nullable source components are
+    /// checked by their base type. Array fields never become Reference
+    /// components. Keeping this predicate here prevents Table, GUI, and
+    /// code-generation layers from growing independent capability tables.
+    pub fn is_reference_component_capable(&self, field: &ResolvedField) -> bool {
+        field.modifier != FieldModifier::Array
+            && self.is_key_compatible(&field.base_type)
+            && self.is_comparison_capable(&field.base_type)
+    }
+
+    /// Reference values use nominal type compatibility. A Value Object or
+    /// Enum is compatible only with the same named semantic type; implicit
+    /// conversion to an underlying primitive or another nominal type is not a
+    /// relationship contract.
+    pub fn are_reference_types_compatible(
+        &self,
+        source: &TypeReference,
+        target: &TypeReference,
+    ) -> bool {
+        match (source, target) {
+            (TypeReference::Primitive(left), TypeReference::Primitive(right)) => left == right,
+            (TypeReference::Named(left), TypeReference::Named(right)) => left == right,
+            _ => false,
+        }
     }
 
     /// Normalize an already validated field value for the internal .NET

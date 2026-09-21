@@ -69,6 +69,8 @@ AST、resolved Table model、C# lowering、binary orchestrationの各boundaryで
 `key`はMessagePack `[Key(n)]`へ対応するが、logical field identity、rename、deletion、addition、secondary-key identity、reference identity、または
 schema migration identityを表さない。Custom Typeのpersisted fieldも同じ`key` modelを使用する。
 
+Table schemaの`references` declaration、target identity、cardinality、nullable semantics、integrity diagnosticsは[IndexとReferenceのmodel](index-and-reference.md)がcanonical ownerである。
+
 このdocument familyが認識するdocumentは `schema`、`data`、`type` である。Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
 unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはtyped documentとして扱われ、Type System

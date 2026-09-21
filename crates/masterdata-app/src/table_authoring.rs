@@ -25,6 +25,19 @@ pub enum TableOperationInput {
         table: String,
         field: String,
     },
+    AddReference {
+        table: String,
+        reference: ReferenceDefinition,
+    },
+    EditReference {
+        table: String,
+        name: String,
+        reference: ReferenceDefinition,
+    },
+    RemoveReference {
+        table: String,
+        name: String,
+    },
 }
 impl TableOperationInput {
     fn command(self) -> Result<MigrationCommand> {
@@ -51,6 +64,21 @@ impl TableOperationInput {
             }),
             Self::Drop { table, field } => {
                 MigrationCommand::DropField(DropFieldCommand { table, field })
+            }
+            Self::AddReference { table, reference } => {
+                MigrationCommand::AddReference(AddReferenceCommand { table, reference })
+            }
+            Self::EditReference {
+                table,
+                name,
+                reference,
+            } => MigrationCommand::EditReference(EditReferenceCommand {
+                table,
+                name,
+                reference,
+            }),
+            Self::RemoveReference { table, name } => {
+                MigrationCommand::RemoveReference(RemoveReferenceCommand { table, name })
             }
         })
     }
@@ -149,6 +177,9 @@ impl TableAuthoringSession {
                 MigrationOperation::AddField => "AddField",
                 MigrationOperation::RenameField => "RenameField",
                 MigrationOperation::DropField => "DropField",
+                MigrationOperation::AddReference => "AddReference",
+                MigrationOperation::EditReference => "EditReference",
+                MigrationOperation::RemoveReference => "RemoveReference",
             }
             .into(),
             destructive: dry_run.plan.destructive,

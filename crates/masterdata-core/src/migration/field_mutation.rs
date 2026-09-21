@@ -16,6 +16,11 @@ pub(super) fn prepare(
         })
         .cloned()
         .ok_or_else(|| failure("target Table/field does not exist"))?;
+    if reference_depends_on_field(documents, table, field) {
+        return Err(failure(
+            "field is used by a Reference source or target; Reference-aware rewrite is not available",
+        ));
+    }
     let (closure, _) = resolve_target_snapshot(documents, table, &original)?;
     let schema = find_target_schema(&closure, table)
         .expect("resolved schema")
@@ -108,6 +113,7 @@ pub(super) fn prepare(
             },
             target_table: table.into(),
             field: original,
+            reference: None,
             initializer: None,
             source_inputs: documents
                 .files
@@ -134,6 +140,21 @@ fn replace_names(names: &mut [String], old: &str, new: &str) {
         }
     }
 }
+
+fn reference_depends_on_field(documents: &ProjectDocuments, table: &str, field: &str) -> bool {
+    documents.schemas().any(|(_, schema)| {
+        schema.table == table
+            && schema
+                .references
+                .iter()
+                .any(|reference| reference.fields.iter().any(|name| name == field))
+            || schema.references.iter().any(|reference| {
+                reference.target.table == table
+                    && reference.target.fields.iter().any(|name| name == field)
+            })
+    })
+}
+
 fn failure(message: &str) -> MasterdataError {
     migration_error(
         "E-MIGRATION-FIELD-PRECONDITION",

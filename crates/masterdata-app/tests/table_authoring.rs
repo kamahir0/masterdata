@@ -154,3 +154,53 @@ fn rolled_back_rename_keeps_old_bytes_and_new_plan_invalidates_previous_token() 
         "not_started"
     );
 }
+
+#[test]
+fn reference_authoring_uses_shared_plan_and_refreshes_snapshot() {
+    let dir = project();
+    fs::write(
+        dir.path().join("sources/category.yaml"),
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("sources/category-data.yaml"),
+        "kind: data\ntable: category\nrecords:\n  - id: 1\n",
+    )
+    .unwrap();
+
+    let mut session = TableAuthoringSession::default();
+    let plan = session
+        .plan(
+            dir.path(),
+            input(json!({
+                "operation": "add_reference",
+                "table": "item",
+                "reference": {
+                    "name": "category",
+                    "fields": ["id"],
+                    "target": {"table": "category", "fields": ["id"]}
+                }
+            })),
+        )
+        .unwrap();
+    assert_eq!(plan.operation, "AddReference");
+    assert_eq!(
+        session.apply(dir.path(), &plan.token, false).unwrap().state,
+        "success"
+    );
+
+    let snapshot = session
+        .open_table(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    assert_eq!(snapshot.references.len(), 1);
+    assert_eq!(snapshot.references[0].name, "category");
+    assert_eq!(
+        snapshot.references[0].cardinality,
+        Some(ReferenceCardinality::Single)
+    );
+    assert_eq!(
+        snapshot.references[0].optionality,
+        Some(ReferenceOptionality::Required)
+    );
+}

@@ -289,6 +289,9 @@ KnownTags =
 
 ## 未解決事項（Open Questions）
 
+Reference declaration、target identity、cardinality、missing/nullable semanticsは[IndexとReferenceのmodel](index-and-reference.md)が所有する。
+このdocumentはselection後のlogical datasetとvalidation orderingだけを所有する。
+
 - missing profileによるfailureについて、Diagnostic Code、exit code、message text、presentation channelをどう定義するか。
 - unused tagへのwarningを表示する場合、そのchannel、severity、source locationをどうするか。
 - CLIの `--profile` とGUIのprofile selectionをBuildRequestへ表現する正確なAPI/DTOは何か。

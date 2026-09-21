@@ -24,6 +24,8 @@ pub struct SchemaDocument {
     pub primary_key: Option<PrimaryKeyDefinition>,
     #[serde(rename = "secondaryKeys", default)]
     pub secondary_keys: Vec<SecondaryKeyDefinition>,
+    #[serde(default)]
+    pub references: Vec<ReferenceDefinition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -51,6 +53,24 @@ pub struct SecondaryKeyDefinition {
     pub fields: Vec<String>,
     #[serde(rename = "nonUnique", default)]
     pub non_unique: bool,
+}
+
+/// A schema-level relationship declaration.  Reference identity is the
+/// declaration name plus its ordered source/target field symbols; backend
+/// index ordinals and serialization keys are deliberately not represented.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceDefinition {
+    pub name: String,
+    pub fields: Vec<String>,
+    pub target: ReferenceTargetDefinition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReferenceTargetDefinition {
+    pub table: String,
+    pub fields: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

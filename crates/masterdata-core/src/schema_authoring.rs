@@ -3,10 +3,11 @@ use std::{collections::BTreeMap, path::Path};
 use serde::Serialize;
 
 use crate::{
-    ConversionDefinition, ErrorKind, FieldDefinition, MasterdataError, ProjectDocuments,
+    BuildSelection, ConversionDefinition, Diagnostic, ErrorKind, FieldDefinition, MasterdataError,
+    ProjectDocuments, ReferenceCardinality, ReferenceKeyKind, ReferenceOptionality,
     ResolvedAuthoringType, Result, SchemaDocument, SourceDocument, TypeFieldDefinition,
-    creation_choices, migration_table_schema, migration_type_declaration,
-    resolve_authoring_field_shape,
+    build_type_system, creation_choices, migration_type_declaration, resolve_authoring_field_shape,
+    resolve_tables,
 };
 
 #[derive(Debug, Serialize)]
@@ -16,6 +17,20 @@ pub struct TableSnapshot {
     pub schema: SchemaDocument,
     pub field_types: Vec<String>,
     pub initializer_shapes: BTreeMap<String, ResolvedAuthoringType>,
+    pub references: Vec<ReferenceSnapshot>,
+    pub reference_diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceSnapshot {
+    pub name: String,
+    pub source_fields: Vec<String>,
+    pub target_table: String,
+    pub target_fields: Vec<String>,
+    pub target_key_kind: Option<ReferenceKeyKind>,
+    pub cardinality: Option<ReferenceCardinality>,
+    pub optionality: Option<ReferenceOptionality>,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,11 +90,52 @@ pub fn table_snapshot(
         ));
     };
     let field_types = creation_choices(documents).field_types;
+    // Snapshot reads the selected schema document itself. The migration
+    // closure helper intentionally narrows validation to a field-mutation
+    // dependency set; using it here would make a read-only editor snapshot
+    // reject a valid cross-table Reference whose target is outside that
+    // mutation closure.
+    let schema = schema.clone();
+    let mut references = schema
+        .references
+        .iter()
+        .map(|reference| ReferenceSnapshot {
+            name: reference.name.clone(),
+            source_fields: reference.fields.clone(),
+            target_table: reference.target.table.clone(),
+            target_fields: reference.target.fields.clone(),
+            target_key_kind: None,
+            cardinality: None,
+            optionality: None,
+        })
+        .collect::<Vec<_>>();
+    let mut reference_diagnostics = Vec::new();
+    if let Some(type_system) = build_type_system(documents).model {
+        let build = resolve_tables(documents, &type_system, &BuildSelection::unfiltered());
+        reference_diagnostics.extend(build.diagnostics);
+        if let Some(tables) = build.model {
+            if let Some(table) = tables.iter().find(|table| table.identity == schema.table) {
+                for view in &mut references {
+                    if let Some(resolved) = table
+                        .references
+                        .iter()
+                        .find(|reference| reference.name == view.name)
+                    {
+                        view.target_key_kind = Some(resolved.target_key_kind);
+                        view.cardinality = Some(resolved.cardinality);
+                        view.optionality = Some(resolved.optionality);
+                    }
+                }
+            }
+        }
+    }
     Ok(TableSnapshot {
         path: display_path.into(),
-        schema: migration_table_schema(documents, &schema.table)?,
+        schema,
         initializer_shapes: initializer_shapes(documents, &field_types),
         field_types,
+        references,
+        reference_diagnostics,
     })
 }
 

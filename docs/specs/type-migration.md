@@ -26,6 +26,8 @@ GUI compositionは[Type Editor v1](../gui/type-editor/spec.md)が所有する。
 
 Type Migrationのauthorityはcanonical YAML sourceと、そこからshared parser / Type System / Table semanticsを用いて構成したType Migration resolution closureでなければならない（MUST）。generated C#、canonical binary、artifact-set receipt、binary inspection resultをsource authorityとして使用してはならない（MUST NOT）。physical file pathはprovenance/storage locationであり、type declaration identityそのものとして扱ってはならない（MUST NOT）。
 
+Type Migration後に変更対象のEnum / Value ObjectがReference source componentまたはtarget key componentへ到達する場合、reparsed source上のaffected Reference closureを[IndexとReferenceのmodel](index-and-reference.md)のshared resolverで再検証しなければならない（MUST）。Reference-aware automatic rewriteはType Migration v1の責務に含めず、post-transform contractを満たさない場合はfail closedする。
+
 ### TYPE-MIGRATION-002
 
 v1で成功operationとして扱ってよいType Migration Operationは次だけでなければならない（MUST）。

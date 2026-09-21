@@ -157,7 +157,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Enum / Flags仕様](type-system/enums.md) — `Status: Approved`
   - [Custom Types仕様](type-system/custom-types.md)
 - [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Approved`
-- [Index / reference仕様](index-and-reference.md) — `Status: Draft`（Reference中心。Table/Keyのsemantic ownerは別document）
+- [Index / reference仕様](index-and-reference.md) — `Status: Approved`（Reference core semanticsを所有。Table/Keyのsemantic ownerは別document。generated helper public APIは仕様変更0023のHuman gate）
 - [Source Record Edit仕様](source-edit.md) — `Status: Approved`
 - [Source Path Mutation仕様](source-path-mutation.md) — `Status: Approved`
 - [Build Selection仕様](build-selection.md) — `Status: Approved`

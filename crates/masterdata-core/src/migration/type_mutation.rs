@@ -334,6 +334,7 @@ pub fn dry_run_type_migration(
     // Re-resolve the reparsed candidate, independently of the expected AST.
     let (post, _) = closure(&transformed, &command.target, extra)?;
     resolve_type_system(&post)?;
+    validate_affected_references(&transformed, &dependent)?;
     file_plans.sort_by(|a, b| a.path.cmp(&b.path));
     let mut source_inputs: Vec<_> = documents.files.iter().map(|f| f.path.clone()).collect();
     source_inputs.sort();
@@ -348,6 +349,124 @@ pub fn dry_run_type_migration(
         },
     })
 }
+
+// Reference components are limited to primitive, Value Object, and Enum
+// semantics, but a Type Migration can still transform an Enum/Value Object
+// used by a source or target key. Re-resolve only the affected relationship
+// closure after the canonical source patches are reparsed; unrelated invalid
+// tables remain outside Type Migration's existing closure contract.
+fn validate_affected_references(
+    documents: &ProjectDocuments,
+    dependent: &BTreeSet<String>,
+) -> Result<()> {
+    let schemas = documents.schemas().collect::<Vec<_>>();
+    let mut tables = BTreeSet::new();
+    for (_, schema) in &schemas {
+        let affected = schema.references.iter().any(|reference| {
+            let source_affected = reference.fields.iter().any(|field_name| {
+                schema
+                    .fields
+                    .iter()
+                    .find(|field| field.name == *field_name)
+                    .is_some_and(|field| dependent.contains(&field.type_name))
+            });
+            let target_affected = schemas
+                .iter()
+                .find(|(_, target)| target.table == reference.target.table)
+                .is_some_and(|(_, target)| {
+                    reference.target.fields.iter().any(|field_name| {
+                        target
+                            .fields
+                            .iter()
+                            .find(|field| field.name == *field_name)
+                            .is_some_and(|field| dependent.contains(&field.type_name))
+                    })
+                });
+            source_affected || target_affected
+        });
+        if affected {
+            tables.insert(schema.table.clone());
+        }
+    }
+    if tables.is_empty() {
+        return Ok(());
+    }
+
+    // Include the transitive target closure because resolving an affected
+    // table must not silently omit another Reference declaration on a target
+    // table. An unknown target remains absent and therefore fails closed in
+    // the shared resolver.
+    loop {
+        let before = tables.len();
+        for (_, schema) in &schemas {
+            if tables.contains(&schema.table) {
+                tables.extend(
+                    schema
+                        .references
+                        .iter()
+                        .map(|reference| reference.target.table.clone()),
+                );
+            }
+        }
+        if tables.len() == before {
+            break;
+        }
+    }
+
+    let mut type_names = BTreeSet::new();
+    for (_, schema) in &schemas {
+        if tables.contains(&schema.table) {
+            type_names.extend(schema.fields.iter().map(|field| field.type_name.clone()));
+        }
+    }
+    loop {
+        let before = type_names.len();
+        for (_, type_document) in documents.types() {
+            if type_names.contains(&type_document.name)
+                && let Some(custom) = &type_document.custom
+            {
+                type_names.extend(custom.fields.iter().map(|field| field.type_name.clone()));
+            }
+        }
+        if type_names.len() == before {
+            break;
+        }
+    }
+
+    let scoped = ProjectDocuments {
+        files: documents
+            .files
+            .iter()
+            .filter(|loaded| match &loaded.document {
+                SourceDocument::Schema(schema) => tables.contains(&schema.table),
+                SourceDocument::Data(data) => tables.contains(&data.table),
+                SourceDocument::Type(type_document) => type_names.contains(&type_document.name),
+            })
+            .cloned()
+            .collect(),
+    };
+    let type_build = build_type_system(&scoped);
+    let type_system = type_build.model.ok_or_else(|| {
+        first_diagnostic_error(
+            type_build.diagnostics,
+            "E-TYPE-MIGRATION-REFERENCE",
+            "affected Reference type closure could not be resolved after Type Migration",
+            "TYPE-MIGRATION-014",
+        )
+    })?;
+    let table_build = resolve_tables(&scoped, &type_system, &BuildSelection::unfiltered());
+    if table_build.diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(first_diagnostic_error(
+            table_build.diagnostics,
+            "E-TYPE-MIGRATION-REFERENCE",
+            "affected Reference semantics are invalid after Type Migration",
+            "TYPE-MIGRATION-014",
+        ))
+    }
+}
+
 fn members_mut(ty: &mut TypeDocument) -> Result<&mut Vec<EnumMember>> {
     if let Some(e) = &mut ty.enum_definition {
         Ok(&mut e.members)

@@ -73,6 +73,8 @@ impl BuildSelection {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedRecord {
     pub fields: BTreeMap<String, Value>,
+    pub source: PathBuf,
+    pub record_index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +91,42 @@ pub struct ResolvedSecondaryKey {
     pub index_no: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceKeyKind {
+    Primary,
+    Secondary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceCardinality {
+    Single,
+    Many,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceOptionality {
+    Required,
+    Nullable,
+}
+
+/// A Reference after schema-level resolution. `target_fields` is the logical
+/// ordered key shape; no MessagePack key or backend index ordinal is retained
+/// as relationship identity.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedReference {
+    pub name: String,
+    pub source_fields: Vec<String>,
+    pub target_table: String,
+    pub target_fields: Vec<String>,
+    pub target_key_kind: ReferenceKeyKind,
+    pub cardinality: ReferenceCardinality,
+    pub optionality: ReferenceOptionality,
+}
+
 /// Canonical, validated logical Table model consumed by code generation.
 /// Field and member declaration order is retained in the vectors; records are
 /// canonicalized by the declared Primary Key after validation.
@@ -99,6 +137,7 @@ pub struct ResolvedTable {
     pub fields: Vec<ResolvedField>,
     pub primary_key: ResolvedPrimaryKey,
     pub secondary_keys: Vec<ResolvedSecondaryKey>,
+    pub references: Vec<ResolvedReference>,
     pub records: Vec<ResolvedRecord>,
 }
 
@@ -168,7 +207,7 @@ pub fn resolve_tables(
     }
 
     let mut resolved_tables = Vec::with_capacity(schemas.len());
-    for (table_name, (schema_path, schema)) in schemas {
+    for (table_name, (schema_path, schema)) in &schemas {
         let resolved_fields =
             resolve_schema_fields(schema, type_system, schema_path, &mut diagnostics);
         let field_by_name = resolved_fields
@@ -216,7 +255,7 @@ pub fn resolve_tables(
         let mut selected_records = Vec::new();
         for (data_path, data) in documents
             .data()
-            .filter(|(_, data)| data.table == table_name)
+            .filter(|(_, data)| data.table == *table_name)
         {
             for (record_index, record) in data.records.iter().enumerate() {
                 let tags = match record_tags(record, data_path, record_index, &mut diagnostics) {
@@ -235,7 +274,11 @@ pub fn resolve_tables(
                     &mut diagnostics,
                 ) {
                     selected_records.push(RecordCandidate {
-                        record: ResolvedRecord { fields: validated },
+                        record: ResolvedRecord {
+                            fields: validated,
+                            source: data_path.to_path_buf(),
+                            record_index,
+                        },
                         path: data_path,
                         record_index,
                     });
@@ -251,20 +294,6 @@ pub fn resolve_tables(
             table_name.as_str(),
             &mut diagnostics,
         );
-
-        if let Err(error) =
-            sort_records_by_primary_key(&mut selected_records, &primary_key_fields, type_system)
-        {
-            diagnostics.push(
-                table_diagnostic(
-                    "E-TABLE-KEY-COMPARISON",
-                    error.diagnostic().message.clone(),
-                    schema_path,
-                    "SCHEMA-TABLE-008",
-                )
-                .with_schema_path(format!("table:{}", table_name)),
-            );
-        }
 
         let csharp_name = table_csharp_name(schema);
         for field in &resolved_fields {
@@ -282,7 +311,7 @@ pub fn resolve_tables(
             }
         }
         resolved_tables.push(ResolvedTable {
-            identity: table_name,
+            identity: table_name.clone(),
             csharp_name,
             fields: resolved_fields,
             primary_key: ResolvedPrimaryKey {
@@ -299,11 +328,75 @@ pub fn resolve_tables(
                     index_no: *index_no,
                 })
                 .collect(),
+            references: Vec::new(),
             records: selected_records
                 .into_iter()
                 .map(|candidate| candidate.record)
                 .collect(),
         });
+    }
+
+    // Reference resolution is intentionally a second pass: every Table has
+    // already resolved its fields and key shapes, while selected records have
+    // already passed profile-independent value validation and key constraints.
+    // This keeps cross-table semantics explicit without introducing a global
+    // mutable resolver (REF-002..007, BUILD-SELECT-010/012).
+    let reference_sets = resolved_tables
+        .iter()
+        .map(|table| {
+            let (schema_path, schema) = schemas
+                .get(&table.identity)
+                .expect("resolved table must have a schema");
+            resolve_references(
+                schema,
+                &table.fields,
+                &resolved_tables,
+                type_system,
+                schema_path,
+                &mut diagnostics,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for (index, references) in reference_sets.iter().enumerate() {
+        let (schema_path, _) = schemas
+            .get(&resolved_tables[index].identity)
+            .expect("resolved table must have a schema");
+        validate_reference_integrity(
+            &resolved_tables[index],
+            references,
+            &resolved_tables,
+            type_system,
+            schema_path,
+            &mut diagnostics,
+        );
+    }
+
+    for (table, references) in resolved_tables.iter_mut().zip(reference_sets) {
+        table.references = references;
+        let primary_fields = table
+            .primary_key
+            .fields
+            .iter()
+            .filter_map(|name| table.fields.iter().find(|field| field.name == *name))
+            .cloned()
+            .collect::<Vec<_>>();
+        if let Err(error) =
+            sort_resolved_records_by_primary_key(&mut table.records, &primary_fields, type_system)
+        {
+            diagnostics.push(
+                table_diagnostic(
+                    "E-TABLE-KEY-COMPARISON",
+                    error.diagnostic().message.clone(),
+                    schemas
+                        .get(&table.identity)
+                        .expect("resolved table must have a schema")
+                        .0,
+                    "SCHEMA-TABLE-008",
+                )
+                .with_schema_path(format!("table:{}", table.identity)),
+            );
+        }
     }
 
     if diagnostics.is_empty() {
@@ -587,10 +680,10 @@ fn validate_query_name_collisions(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let mut names = BTreeMap::<String, String>::new();
-    let primary_name = query_name(primary);
+    let primary_name = generated_query_name(primary);
     names.insert(primary_name, "primary key".to_owned());
     for (fields, _, index_no) in secondary {
-        let query_name = query_name(fields);
+        let query_name = generated_query_name(fields);
         if let Some(previous) =
             names.insert(query_name.clone(), format!("secondary key {index_no}"))
         {
@@ -630,7 +723,10 @@ fn validate_secondary_shape_constraints(
     }
 }
 
-fn query_name(fields: &[ResolvedField]) -> String {
+/// Derive the exact MasterMemory query member name from an ordered resolved
+/// key. Both existing key validation and future Reference lowering use this
+/// shared helper instead of maintaining a second naming table.
+pub fn generated_query_name(fields: &[ResolvedField]) -> String {
     let mut result = String::from("FindBy");
     for (index, field) in fields.iter().enumerate() {
         if index != 0 {
@@ -639,6 +735,409 @@ fn query_name(fields: &[ResolvedField]) -> String {
         result.push_str(&csharp_property_name(&field.name));
     }
     result
+}
+
+fn resolve_references(
+    schema: &SchemaDocument,
+    source_fields: &[ResolvedField],
+    tables: &[ResolvedTable],
+    type_system: &TypeSystem,
+    path: &Path,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<ResolvedReference> {
+    let source_by_name = source_fields
+        .iter()
+        .map(|field| (field.name.as_str(), field))
+        .collect::<BTreeMap<_, _>>();
+    let mut names = BTreeSet::new();
+    let mut resolved = Vec::with_capacity(schema.references.len());
+
+    for (reference_index, definition) in schema.references.iter().enumerate() {
+        let declaration_path = format!("references[{reference_index}]");
+        let diagnostic = |code: &str, message: String| {
+            table_diagnostic(code, message, path, "REF-006")
+                .with_schema_path(declaration_path.clone())
+        };
+        let mut valid = true;
+
+        if definition.name.is_empty() {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-INVALID-NAME",
+                "Reference name must not be empty".to_owned(),
+            ));
+            valid = false;
+        }
+        if !names.insert(definition.name.clone()) {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-DUPLICATE-NAME",
+                format!(
+                    "Reference name `{}` is declared more than once",
+                    definition.name
+                ),
+            ));
+            valid = false;
+        }
+        if definition.fields.is_empty() {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-EMPTY-SOURCE-FIELDS",
+                format!(
+                    "Reference `{}` must declare at least one source field",
+                    definition.name
+                ),
+            ));
+            valid = false;
+        }
+
+        let mut seen_source_fields = BTreeSet::new();
+        let mut source = Vec::with_capacity(definition.fields.len());
+        for field_name in &definition.fields {
+            if !seen_source_fields.insert(field_name.clone()) {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-DUPLICATE-SOURCE-FIELD",
+                    format!(
+                        "Reference `{}` contains source field `{field_name}` more than once",
+                        definition.name
+                    ),
+                ));
+                valid = false;
+                continue;
+            }
+            let Some(field) = source_by_name.get(field_name.as_str()).copied() else {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-UNKNOWN-SOURCE-FIELD",
+                    format!(
+                        "Reference `{}` refers to unknown source field `{field_name}`",
+                        definition.name
+                    ),
+                ));
+                valid = false;
+                continue;
+            };
+            source.push(field);
+        }
+
+        let mut optionality = None;
+        for field in &source {
+            if field.modifier == FieldModifier::Array {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-SOURCE-ARRAY",
+                    format!(
+                        "Reference `{}` source field `{}` cannot be an array",
+                        definition.name, field.name
+                    ),
+                ));
+                valid = false;
+                continue;
+            }
+            let component_optionality = match field.modifier {
+                FieldModifier::Required => ReferenceOptionality::Required,
+                FieldModifier::Nullable => ReferenceOptionality::Nullable,
+                FieldModifier::Array => unreachable!(),
+            };
+            if let Some(previous) = optionality
+                && previous != component_optionality
+            {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-MIXED-MODIFIERS",
+                    format!(
+                        "Reference `{}` must use all Required or all Nullable source fields",
+                        definition.name
+                    ),
+                ));
+                valid = false;
+            }
+            optionality = Some(component_optionality);
+            if !type_system.is_reference_component_capable(field) {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-SOURCE-NOT-KEY-COMPATIBLE",
+                    format!(
+                        "Reference `{}` source field `{}` is not key- and comparison-compatible",
+                        definition.name, field.name
+                    ),
+                ));
+                valid = false;
+            }
+        }
+
+        if definition.target.table.is_empty() {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-UNKNOWN-TARGET-TABLE",
+                format!(
+                    "Reference `{}` target table must not be empty",
+                    definition.name
+                ),
+            ));
+            valid = false;
+        }
+        if definition.target.fields.is_empty() {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-EMPTY-TARGET-FIELDS",
+                format!(
+                    "Reference `{}` target fields must not be empty",
+                    definition.name
+                ),
+            ));
+            valid = false;
+        }
+        let mut seen_target_fields = BTreeSet::new();
+        for field_name in &definition.target.fields {
+            if !seen_target_fields.insert(field_name.clone()) {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-DUPLICATE-TARGET-FIELD",
+                    format!(
+                        "Reference `{}` contains target field `{field_name}` more than once",
+                        definition.name
+                    ),
+                ));
+                valid = false;
+            }
+        }
+
+        let Some(target_table) = tables
+            .iter()
+            .find(|table| table.identity == definition.target.table)
+        else {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-UNKNOWN-TARGET-TABLE",
+                format!(
+                    "Reference `{}` refers to unknown target table `{}`",
+                    definition.name, definition.target.table
+                ),
+            ));
+            continue;
+        };
+        let target_by_name = target_table
+            .fields
+            .iter()
+            .map(|field| (field.name.as_str(), field))
+            .collect::<BTreeMap<_, _>>();
+        let mut target = Vec::with_capacity(definition.target.fields.len());
+        for field_name in &definition.target.fields {
+            let Some(field) = target_by_name.get(field_name.as_str()).copied() else {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-UNKNOWN-TARGET-FIELD",
+                    format!(
+                        "Reference `{}` refers to unknown target field `{field_name}` on `{}`",
+                        definition.name, definition.target.table
+                    ),
+                ));
+                valid = false;
+                continue;
+            };
+            target.push(field);
+        }
+
+        let key_kind = if target_table.primary_key.fields == definition.target.fields {
+            Some((ReferenceKeyKind::Primary, false))
+        } else {
+            target_table
+                .secondary_keys
+                .iter()
+                .find(|key| key.fields == definition.target.fields)
+                .map(|key| (ReferenceKeyKind::Secondary, key.non_unique))
+        };
+        let Some((target_key_kind, non_unique)) = key_kind else {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-TARGET-NOT-KEY",
+                format!(
+                    "Reference `{}` target fields {:?} do not exactly match a Primary or Secondary Key on `{}`",
+                    definition.name, definition.target.fields, definition.target.table
+                ),
+            ));
+            // Continue collecting count/type diagnostics when enough symbols
+            // were resolved; the relationship itself is still rejected.
+            if definition.fields.len() != definition.target.fields.len() {
+                diagnostics.push(diagnostic(
+                    "E-REFERENCE-COMPONENT-COUNT",
+                    format!(
+                        "Reference `{}` source/target component counts differ",
+                        definition.name
+                    ),
+                ));
+            }
+            continue;
+        };
+
+        if definition.fields.len() != definition.target.fields.len() {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-COMPONENT-COUNT",
+                format!(
+                    "Reference `{}` source/target component counts differ",
+                    definition.name
+                ),
+            ));
+            valid = false;
+        }
+        if definition.fields.len() == definition.target.fields.len() {
+            for (source_field, target_field) in source.iter().zip(target.iter()) {
+                if !type_system.are_reference_types_compatible(
+                    &source_field.base_type,
+                    &target_field.base_type,
+                ) {
+                    diagnostics.push(diagnostic(
+                        "E-REFERENCE-TYPE-INCOMPATIBLE",
+                        format!(
+                            "Reference `{}` source field `{}` and target field `{}` are not type-compatible",
+                            definition.name, source_field.name, target_field.name
+                        ),
+                    ));
+                    valid = false;
+                }
+            }
+        }
+
+        if valid {
+            let optionality = optionality.unwrap_or(ReferenceOptionality::Required);
+            resolved.push(ResolvedReference {
+                name: definition.name.clone(),
+                source_fields: definition.fields.clone(),
+                target_table: definition.target.table.clone(),
+                target_fields: definition.target.fields.clone(),
+                target_key_kind,
+                cardinality: if non_unique {
+                    ReferenceCardinality::Many
+                } else {
+                    ReferenceCardinality::Single
+                },
+                optionality,
+            });
+        }
+    }
+    resolved
+}
+
+fn validate_reference_integrity(
+    source_table: &ResolvedTable,
+    references: &[ResolvedReference],
+    tables: &[ResolvedTable],
+    type_system: &TypeSystem,
+    schema_path: &Path,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for reference in references {
+        let Some(target_table) = tables
+            .iter()
+            .find(|table| table.identity == reference.target_table)
+        else {
+            continue;
+        };
+        let target_fields = reference_fields(target_table, &reference.target_fields);
+        let source_fields = reference_fields(source_table, &reference.source_fields);
+        if target_fields.len() != reference.target_fields.len()
+            || source_fields.len() != reference.source_fields.len()
+        {
+            continue;
+        }
+
+        // This is a deterministic key -> count lookup, not a source-row x
+        // target-row scan. Count is retained so the same structure naturally
+        // represents unique and non-unique targets (REF-007).
+        let mut target_index = BTreeMap::<Vec<crate::NormalizedValue>, usize>::new();
+        for record in &target_table.records {
+            let Some(key) = normalized_reference_values(record, &target_fields, type_system) else {
+                continue;
+            };
+            *target_index.entry(key).or_default() += 1;
+        }
+
+        for record in &source_table.records {
+            let Some(values) = normalized_reference_values(record, &source_fields, type_system)
+            else {
+                continue;
+            };
+            let null_count = values
+                .iter()
+                .filter(|value| matches!(value, crate::NormalizedValue::Null))
+                .count();
+            match reference.optionality {
+                ReferenceOptionality::Nullable if null_count == values.len() => continue,
+                ReferenceOptionality::Nullable if null_count != 0 => {
+                    diagnostics.push(reference_record_diagnostic(
+                        "E-REFERENCE-PARTIAL-NULL",
+                        format!(
+                            "Reference `{}` has a partial-null composite value; all components must be null or non-null",
+                            reference.name
+                        ),
+                        record,
+                        schema_path,
+                        reference,
+                        &reference.source_fields,
+                    ));
+                    continue;
+                }
+                ReferenceOptionality::Required if null_count != 0 => {
+                    diagnostics.push(reference_record_diagnostic(
+                        "E-REFERENCE-NULL-SOURCE-VALUE",
+                        format!(
+                            "Required Reference `{}` contains a null source component",
+                            reference.name
+                        ),
+                        record,
+                        schema_path,
+                        reference,
+                        &reference.source_fields,
+                    ));
+                    continue;
+                }
+                _ => {}
+            }
+            if !target_index.contains_key(&values) {
+                diagnostics.push(reference_record_diagnostic(
+                    "E-REFERENCE-MISSING-TARGET",
+                    format!(
+                        "Reference `{}` has no matching selected record in target table `{}`",
+                        reference.name, reference.target_table
+                    ),
+                    record,
+                    schema_path,
+                    reference,
+                    &reference.source_fields,
+                ));
+            }
+        }
+    }
+}
+
+fn reference_fields<'a>(table: &'a ResolvedTable, names: &[String]) -> Vec<&'a ResolvedField> {
+    names
+        .iter()
+        .filter_map(|name| table.fields.iter().find(|field| field.name == *name))
+        .collect()
+}
+
+fn normalized_reference_values(
+    record: &ResolvedRecord,
+    fields: &[&ResolvedField],
+    type_system: &TypeSystem,
+) -> Option<Vec<crate::NormalizedValue>> {
+    fields
+        .iter()
+        .map(|field| {
+            let value = record.fields.get(&field.name)?;
+            type_system.normalize_field_value(field, value).ok()
+        })
+        .collect()
+}
+
+fn reference_record_diagnostic(
+    code: &str,
+    message: String,
+    record: &ResolvedRecord,
+    schema_path: &Path,
+    reference: &ResolvedReference,
+    fields: &[String],
+) -> Diagnostic {
+    Diagnostic::new(code, ErrorKind::Validation, message)
+        .with_source(record.source.clone())
+        .with_schema_path(format!(
+            "references[name={}].fields (schema: {})",
+            reference.name,
+            schema_path.display()
+        ))
+        .with_value_path(format!("/{}", fields.join("/")))
+        .with_record_identity(format!("record[{}]", record.record_index))
+        .with_related_requirement("REF-003")
+        .with_related_requirement("REF-004")
 }
 
 fn validate_key_uniqueness(
@@ -655,11 +1154,16 @@ fn validate_key_uniqueness(
     // pairwise comparison made the fixed 100k-record Desktop scenario
     // infeasible while adding no diagnostic information.
     // EVIDENCE: docs/evidence/desktop-v1-performance.md
-    let mut primary_seen = BTreeMap::<Vec<String>, usize>::new();
+    let mut primary_seen = BTreeMap::<Vec<crate::NormalizedValue>, usize>::new();
     let mut secondary_seen = secondary
         .iter()
         .filter(|(_, non_unique, _)| !non_unique)
-        .map(|(_, _, index_no)| (*index_no, BTreeMap::<Vec<String>, usize>::new()))
+        .map(|(_, _, index_no)| {
+            (
+                *index_no,
+                BTreeMap::<Vec<crate::NormalizedValue>, usize>::new(),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
 
     for record in records {
@@ -704,32 +1208,31 @@ fn canonical_record_key(
     record: &ResolvedRecord,
     fields: &[ResolvedField],
     type_system: &TypeSystem,
-) -> Option<Vec<String>> {
+) -> Option<Vec<crate::NormalizedValue>> {
     fields
         .iter()
         .map(|field| {
             let value = record.fields.get(&field.name)?;
-            let normalized = type_system.normalize_field_value(field, value).ok()?;
-            serde_json::to_string(&normalized).ok()
+            type_system.normalize_field_value(field, value).ok()
         })
         .collect()
 }
 
-fn sort_records_by_primary_key(
-    records: &mut [RecordCandidate<'_>],
+fn sort_resolved_records_by_primary_key(
+    records: &mut [ResolvedRecord],
     primary: &[ResolvedField],
     type_system: &TypeSystem,
 ) -> Result<()> {
     let mut comparison_error = None;
-    records.sort_by(|left, right| {
-        match compare_record_key(&left.record, &right.record, primary, type_system) {
+    records.sort_by(
+        |left, right| match compare_record_key(left, right, primary, type_system) {
             Ok(ordering) => ordering,
             Err(error) => {
                 comparison_error = Some(error);
                 Ordering::Equal
             }
-        }
-    });
+        },
+    );
     comparison_error.map_or(Ok(()), Err)
 }
 

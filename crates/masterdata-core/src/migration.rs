@@ -1,4 +1,5 @@
 mod field_mutation;
+mod reference_mutation;
 pub mod type_mutation;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -40,10 +41,32 @@ pub struct DropFieldCommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AddReferenceCommand {
+    pub table: String,
+    pub reference: crate::ReferenceDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EditReferenceCommand {
+    pub table: String,
+    pub name: String,
+    pub reference: crate::ReferenceDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RemoveReferenceCommand {
+    pub table: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum MigrationCommand {
     AddField(AddFieldCommand),
     RenameField(RenameFieldCommand),
     DropField(DropFieldCommand),
+    AddReference(AddReferenceCommand),
+    EditReference(EditReferenceCommand),
+    RemoveReference(RemoveReferenceCommand),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +74,9 @@ pub enum MigrationOperation {
     AddField,
     RenameField,
     DropField,
+    AddReference,
+    EditReference,
+    RemoveReference,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +107,7 @@ pub struct MigrationPlan {
     pub operation: MigrationOperation,
     pub target_table: String,
     pub field: FieldDefinition,
+    pub reference: Option<crate::ReferenceDefinition>,
     pub initializer: Option<Value>,
     /// Canonical source paths whose exact bytes were available to resolution,
     /// closure determination, and postcondition planning. Closure discovery
@@ -135,6 +162,15 @@ fn prepare_migration(
         ),
         MigrationCommand::DropField(command) => {
             field_mutation::prepare(documents, &command.table, &command.field, None)
+        }
+        MigrationCommand::AddReference(command) => {
+            reference_mutation::prepare_add(documents, command)
+        }
+        MigrationCommand::EditReference(command) => {
+            reference_mutation::prepare_edit(documents, command)
+        }
+        MigrationCommand::RemoveReference(command) => {
+            reference_mutation::prepare_remove(documents, command)
         }
     }
 }
@@ -254,6 +290,7 @@ fn prepare_add_field(
         operation: MigrationOperation::AddField,
         target_table: command.table.clone(),
         field: command.field.clone(),
+        reference: None,
         initializer,
         source_inputs: source_inputs.into_iter().collect(),
         destructive: false,

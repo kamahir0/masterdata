@@ -48,7 +48,8 @@ references:
       fields: [id]
 ```
 
-- `name`はTable内でuniqueなReference declaration nameとし、generated helper namingのsourceになる。MessagePack identity、field identity、released compatibility identityにはしない。
+- `name`はTable内でuniqueなlanguage-independent Reference declaration nameとする。C# helper名そのものではなく、Referenceのdomain-facing presentation名であり、MessagePack identity、field identity、released compatibility identityにはしない。
+- C# helperは`csharpName`省略時に`name`からdeterministically生成する。必要な場合だけoptional `csharpName`でgenerated C# method identifier全体をoverrideできる。C#固有presentationをReferenceのdomain semanticsやtarget identityへ使用してはならない。
 - source `fields`はordered field-symbol sequence。target `fields`とcardinalityが一致しなければならない。
 - targetはproject-local `table`と、そのTableのPrimary KeyまたはSecondary Keyと完全一致するordered `fields`で指定する。
 - target `indexNo`、MessagePack `key`、generated C# name、file pathをtarget identityとして使用しない。
@@ -118,27 +119,26 @@ Human decision後、少なくとも以下をevidence化する。
 
 ## 未解決事項（Open Questions）
 
-Human decision required:
+None for Reference v1 public helper contract.
 
-1. generated helperのpublic method naming。`Get<Name>`は本changeの旧proposal上の候補に過ぎず、今回のOption B選択から承認済みとは推定しない。
-2. Optional + non-unique helperで、全null absenceを表現する公開return contract。MasterMemory query自体の`RangeView<T>`と、absenceを表現するwrapper/nullable/empty conventionのどれを採るか。
+Human decision: Referenceの`name`はlanguage-independent domain nameとして保持する。C# helperは`csharpName`省略時に`Get` + `name`の先頭ASCII lowercase letterのみuppercaseしたidentifierを生成し、`csharpName`指定時はその値をgenerated C# method identifier全体としてexactly使用する。field名やtarget Table名からhelper名を推測してはならない。
+
+Optional + non-unique helperは`RangeView<Target>`を返し、Reference absent（全source component null）の場合は`RangeView<Target>.Empty`を返す。non-null Referenceの0件matchは引き続きbuild-blocking missing Referenceであり、empty resultで正常化しない。
 
 target identityにbackend `indexNo`やSecondary Key nameを導入する案は、既存Approved identity contractと矛盾するためchoiceとして扱わない。
 
 ## レビュー（Review）
 
-review-spec pass: core declaration、target identity、selection order、nullable semantics、MasterMemory delegationはHuman handoffと既存authorityに整合する。Reference helperのpublic method namingとOptional non-unique return contractは、外部公開APIのmaterial choiceとしてHuman gateに残る。
+review-spec pass: core declaration、target identity、selection order、nullable semantics、MasterMemory delegation、およびHumanが確定したdomain name / C# presentation separationとOptional non-unique absence contractは既存authorityに整合する。Reference v1について未解決Human gateはない。
 
 ## 承認記録（Approval Record）
 
 Option B Human decision: 2026-09-21 JST。Option A / Option C: Rejected alternative。
-Core semantic application: Option Bのcore semantic sliceはApproved [Index / Reference](../specs/index-and-reference.md)へ適用済み。helper public API gate解消後にこのchange全体をAppliedへ遷移する。
+Helper API Human decision: 2026-09-21 JST。Reference `name`をlanguage-independent domain nameとして保持し、C#はdefault `Get<Name>` + optional exact `csharpName` overrideとする。Optional non-unique absenceは`RangeView<T>.Empty`とする。
+Core semantic application: Option Bのcore semantic sliceはApproved [Index / Reference](../specs/index-and-reference.md)へ適用済み。helper public API decisionも確定したため、implementation / verification完了後にこのchange全体をAppliedへ遷移する。
 
 ## Approval eligibility
 
-Autonomous approval eligible: No
+Autonomous approval eligible: Yes after the recorded Human decisions; no unresolved Human gate remains.
 
-Human gate: generated helper public method naming、およびOptional non-unique absence representationという公開APIのmaterial choice。
-
-Core semantic review verdict: Pass。core AST、target identity、cardinality、nullable/value/integrity、Build Selection ordering、migration fail-closed、
-source-preserving Desktop authoringはOption B decisionと既存Approved authorityへ整合する。helper public APIのchoiceを発明せず、codegenはgate diagnosticで停止する。
+Review verdict: Pass。core AST、target identity、cardinality、nullable/value/integrity、Build Selection ordering、migration fail-closed、source-preserving Desktop authoring、domain/codegen naming separation、Optional non-unique absence contractはHuman decisionsと既存Approved authorityへ整合する。

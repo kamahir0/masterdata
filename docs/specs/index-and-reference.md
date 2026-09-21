@@ -14,8 +14,10 @@ Table/Key specificationは、explicitなMessagePack field `key`とgenerated `[Ke
 **Schema-level declaration**
 
 Table schemaの`references` sequenceは、explicit `name`、ordered source `fields`、および`target.table` + ordered `target.fields`を持つ
-schema-level declarationでなければならない（MUST）。field-level annotation、MessagePack key、file path、generated type nameをReference
-identityへ使用してはならない（MUST NOT）。
+schema-level declarationでなければならない（MUST）。`name`はlanguage-independentなReference domain nameであり、Table内でuniqueでなければならない（MUST）。
+field-level annotation、MessagePack key、file path、generated type name、language-specific codegen nameをReference target identityへ使用してはならない（MUST NOT）。
+Referenceはoptionalな`csharpName`を持ってもよい（MAY）が、これはgenerated C# helper method identifierのpresentation overrideに限り、Reference
+domain semantics、target identity、released compatibility identityを構成してはならない（MUST NOT）。
 
 ### REF-002
 
@@ -73,8 +75,27 @@ diagnosticは可能な範囲でsource schema、data file、record identity、Ref
 non-unique targetはmatching rowが1件以上ならvalidであり、複数matchをsingle rowへ縮退してはならない（MUST NOT）。0件は空relationではなく
 missing Reference errorとする。
 
-Reference declarationのexact lexical name grammar、generated helper public method name、およびOptional non-unique helperのpublic absence
-return contractは、Reference v1のcore semantic owner外に残るHuman gateである。これらをimplementation convenienceで発明してはならない。
+### REF-008
+
+**Generated C# helper naming**
+
+Reference `name`はlowerCamelCase ASCII identifierでなければならない（MUST）。`csharpName`を省略した場合、generated C# helper method identifierは
+`Get`に、`name`の先頭ASCII lowercase letterだけをuppercaseした残り同一sequenceを連結して生成しなければならない（MUST）。
+例えば`rewardItem`は`GetRewardItem`となる。field名、target Table名、target C# type名からhelper名を推測してはならない（MUST NOT）。
+
+optional `csharpName`を指定した場合、その値をgenerated C# method identifier全体としてexactly使用しなければならない（MUST）。
+generatorは`Get`の付与、re-case、prefix/suffix、escape等のautomatic repairを行ってはならない（MUST NOT）。
+したがって`csharpName: GetRewardItemMaster`は`GetRewardItemMaster`、`csharpName: RewardItem`は`RewardItem`を生成する。
+`csharpName`はvalidなC# public method identifierでなければならず、reserved keywordまたはgenerated member collisionはvalidation/codegen errorとする。
+
+### REF-009
+
+**Generated helper return contract**
+
+generated helperはcallerから`MemoryDatabase`を受け取り、target Tableのexisting MasterMemory generated queryへlowerしなければならない（MUST）。
+Required/uniqueはsingle target、Optional/uniqueはnullable target、Required/non-uniqueとOptional/non-uniqueは`RangeView<Target>`を返す。
+Optional/non-uniqueで全source component nullのReference absent時はlookupせず`RangeView<Target>.Empty`を返さなければならない（MUST）。
+non-null Referenceの0件matchは`REF-003`/ `REF-007`によりbuild-blocking errorであり、runtime empty resultをmissing targetの正常表現へ使ってはならない（MUST NOT）。
 
 Primary Key / Secondary Key自体のcapability、query-name導出、unique constraint、backend loweringはTable/KeyおよびType System ownerを
 再利用し、Reference resolverで複製してはならない。

@@ -18,7 +18,7 @@
 
 ### Generated API / Desktop authoring
 
-- Reference helperはmaster recordへ`MemoryDatabase`を保持せずcallerから受け取り、MasterMemoryのgenerated Table query APIへlowerする。
+- Reference helperはmaster recordへ`MemoryDatabase`を保持せずcallerから受け取り、MasterMemoryのgenerated Table query APIへlowerする。Reference `name`はlanguage-independent domain nameとし、C# helperはdefault `Get<Name>`、必要な場合だけexact `csharpName` overrideを使う。
 - Table EditorからReference declarationをraw YAML手編集へ戻らず扱えるようにし、frontendへReference resolution semanticsを複製しない。source-preserving add/edit/removeは既存Plan/Apply boundaryを使う。
 
 ### Verification
@@ -35,4 +35,4 @@
 
 ## Audit
 
-このObjectiveは2026-09-21 JSTにHumanが次priorityとしてReference方向へ進むことを選択し、仕様変更0023でOption B（Nullable Referenceをv1へ含める）を明示採用した。generated helper public method namingとOptional non-unique return contractは未解決のHuman gateとしてDevelopment Stateが所有する。
+このObjectiveは2026-09-21 JSTにHumanが次priorityとしてReference方向へ進むことを選択し、仕様変更0023でOption B（Nullable Referenceをv1へ含める）を明示採用した。さらにReference domain `name`とlanguage-specific presentationを分離し、C#はdefault `Get<Name>` + optional exact `csharpName` override、Optional non-unique absenceは`RangeView<T>.Empty`とするHuman decisionが確定した。

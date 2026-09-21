@@ -41,4 +41,4 @@ Human decisionで明示的にscopeへ入れない限り、以下はv1へ含め�
 
 ## Audit
 
-2026-09-21 JST、Reference v1 Objective完了後、Humanが次へ進むことを選択した。直前のpriority comparisonで推奨されたreleased compatibility / schema evolution方向を次Objectiveとして開始する。material compatibility boundaryは[仕様変更0024](spec-changes/0024-released-compatibility-v1.md)でHuman decisionを受けて確定する。
+2026-09-21 JST、Reference v1 Objective完了後、Humanがreleased compatibility / schema evolution方向へ進むことを選択した。仕様変更0024ではHumanがOption Aを明示採用し、explicit baseline/current canonical project snapshot comparisonとmulti-axis reportをv1 boundaryとした。cross-schema MasterMemory binary compatibility、external save/network/database wire contract、persistent release identity / stable member IDはv1非対象とする。

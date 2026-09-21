@@ -1,6 +1,6 @@
 # 仕様変更: Released Compatibility v1
 
-Status: Draft
+Status: Proposed
 
 ## Affected Specifications
 
@@ -151,18 +151,29 @@ Option Cを選ばない限り、新しいpersistent identity fieldをcanonical Y
 
 Option Bを選ばない限り、existing coherent artifact-set contractをcross-schema binary compatibility guaranteeへ拡張しない。
 
-## Human decision required
+## Human decision
 
-1. Option A / B / CのどれをReleased Compatibility v1のboundaryとするか。
+2026-09-21 JST、Human maintainerはOption Aを選択した。
 
-推奨はOption A。
+Released Compatibility v1はexplicitなbaseline/current canonical project snapshotを比較するmulti-axis analyzerとする。
 
-Option Aを選ぶ場合、baselineはexplicit old/new canonical project snapshotとし、receiptや`project.version`をimplicit compatibility identityへしない方向まで合わせて承認することを推奨する。
+- generated C# API compatibilityとMasterdata source / migration impactを別axisで扱う。
+- artifact/binary axisはcoherent rebuild requirementと「cross-schema compatibility not guaranteed」を表現するに留める。
+- save data / network / external database等のexternal long-lived contractはv1で判定しない。
+- artifact-set receipt、`project.version`、MessagePack `key`、Secondary `indexNo`をreleased compatibility identityへ昇格させない。
+- new global Table / Field / Type / Enum / Reference stable ID、release manifest、rename lineageをv1の前提として導入しない。
+- baseline/currentはcallerが明示的に与えるcanonical project snapshotとし、last build、receipt、mtime、Git HEADをimplicit baselineにしない。
+
+Option B / CはRejected alternativeとする。
 
 ## Review
 
-Pending Human decision. current authorityから、identity非昇格、receipt非identity、coherent artifact set、migration/released compatibility分離は固定できる。一方、cross-schema binaryまでproduct guaranteeに含めるか、persistent release identityを先に導入するかはmaterial product forkでありHuman gate。
+Human decisionによってproduct boundaryは確定した。次のrefinementでは各schema changeのaxis別classification、unmatched/rename ambiguity、structured report model、必要最小限のCLI/Desktop surfaceを定義し、review-specでmaterial ambiguityが残らないことを確認する。
+
+classification detailsに複数のmaterially different product choiceが残る場合だけ新しいHuman gateへ戻す。
 
 ## Approval Record
 
-Pending.
+Option A Human decision: 2026-09-21 JST。
+Option B / C: Rejected alternative。
+Canonical application / implementation: Pending refinement and review.

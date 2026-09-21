@@ -6,39 +6,38 @@
 
 ## Objective
 
-**Released Compatibility v1を定義し、2つのexplicitなMasterdata project snapshot間のschema evolutionを比較して、generated API・source migration・artifact/binary・external contractを混同せずcompatibility impactを判定できるshared semanticsへ到達する。**
+**Schema Evolution & Migrationをproduction-readyにし、日常のschema/type evolutionをReference・compatibility・Desktop authoringと一貫したshared semanticsで安全にPlan / Preview / Applyできる状態へ到達する。**
 
 ## Completion slices
 
-### Compatibility model
+### Safe schema evolution
 
-- current-schema semanticsとreleased compatibility semanticsを分離し、既存Approved Table / Type / Index / Reference contractを変更しない。
-- Table、field、type、Enum / Flags、Primary / Secondary Key、Reference、generated C# presentationの変更について、どのcompatibility axisへ影響するかを定義する。
-- MessagePack `key`、Secondary `indexNo`、Reference `csharpName`等を、既存authorityに反してstable identityへ昇格させない。
-- compatibility判定のbaseline/current input、version metadataとの関係、unknown/unsupported changeのfail-closed behaviorを確定する。
+- Schema Migration / Type Migrationの既存safe operationを基盤に、Reference dependencyを含むrename等の安全に自動追随できるケースをsource-preservingに処理する。
+- destructive / ambiguous / conversion-policy-requiredなchangeは推測せずfail closedし、既存authorization / rollback / Recovery Required contractを維持する。
+- stable Field ID、rename lineage、path identity等を導入せず、current logical symbolsとexplicit migration intentをauthorityとして使う。
 
-### Shared analysis / product surface
+### Impact and authoring workflow
 
-- compatibility comparison semanticsをshared Rust core/applicationへ置き、CLI / Desktopがdomain ruleを複製しない。
-- machine-actionableなstructured change reportを生成できるようにする。
-- exact public CLI / Desktop surfaceは、Human decisionで選択したcompatibility scopeから必要になる範囲だけ定義する。
+- Migration Plan / Diffから、Reference dependencyやgenerated API / released compatibility impactを利用者が理解できるようshared semanticsを接続する。
+- Table Editor / Type Editorはshared application/core operationを使い、frontendへdependency resolution、compatibility classification、YAML rewriteを複製しない。
+- routine schema evolutionがraw YAML手編集へ不必要に戻らず、Plan → review → Apply → refreshed workspaceまで完結する。
 
-### Verification
+### Coverage and product hardening
 
-- representative schema evolution matrixでcompatible / breaking / review-required等の判定をfocused evidence化する。
-- repository checks、fresh review、exact Candidateのrequired remote CI reconciliationを完了する。
+- Objective内で見つかるmigration coverage gapのうち、既存Approved semanticsから一意に決められるsafe/additive operationは同一runでspecify / implement / verifyする。
+- arbitrary data conversion、stable release identity、external wire compatibility等のmaterial product decisionが必要な領域はHuman gateへ戻す。
+- focused regression、fresh review、repository checks、exact Candidate、required remote CI reconciliationまで完了する。
 
 ## Explicit non-scope
 
-Human decisionで明示的にscopeへ入れない限り、以下はv1へ含めない。
-
-- external save data / network protocol / external databaseのwire compatibility保証。
-- cross-schema MasterMemory binary reader compatibilityや旧binaryを新generated C#で読む保証。
-- global stable Table / Field / Enum / Reference IDの新設。
-- automatic Reference-aware migrationやarbitrary migration scripting。
-- semantic versionの自動bump、release publication、Git tag作成。
-- artifact-set receiptをreleased compatibility identityへ昇格させること。
+- arbitrary migration scripting / SQL-like language。
+- implicit AI-generated data conversionや推測によるreplacement。
+- persistent stable Table / Field / Type / Enum / Reference ID、rename lineage、tombstone。
+- cross-schema MasterMemory binary compatibility guarantee、external save/network/database compatibility engine。
+- semantic-version enforcement、automatic release/tag/publish。
+- P5 expression / computed / programmable view。
+- Web / Browser product surfaceの再導入。
 
 ## Audit
 
-2026-09-21 JST、Reference v1 Objective完了後、Humanがreleased compatibility / schema evolution方向へ進むことを選択した。仕様変更0024ではHumanがOption Aを明示採用し、explicit baseline/current canonical project snapshot comparisonとmulti-axis reportをv1 boundaryとした。cross-schema MasterMemory binary compatibility、external save/network/database wire contract、persistent release identity / stable member IDはv1非対象とする。
+2026-09-22 JST、Humanは開発速度向上のためCurrent Objectiveを細かなfeature単位ではなく複数sliceを含む大きなproduct outcomeで切り、sub-feature / StageごとにHumanへ戻らず本物のHuman gateまたはObjective completionまで自律実行する方針を選択した。Released Compatibility v1完了後の次ObjectiveとしてSchema Evolution & Migrationのproduction-ready化を開始する。

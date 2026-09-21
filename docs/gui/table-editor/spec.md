@@ -59,7 +59,7 @@ UIはMessagePack keyの候補値を提案してよい（MAY）が、それをsem
 
 ### GUI-TABLE-INT-002
 
-`Rename Field`はcurrent logical Table identityとcurrent field nameをtarget selectorとしてshared Migration boundaryへ渡さなければならない（MUST）。frontendがschema / data / key referenceを文字列置換してはならない（MUST NOT）。Rename UIからMessagePack key変更を暗黙に行ってはならない（MUST NOT）。
+`Rename Field`はcurrent logical Table identityとcurrent field nameをtarget selectorとしてshared Migration boundaryへ渡さなければならない（MUST）。frontendがschema / data / key / Referenceを文字列置換してはならない（MUST NOT）。shared MigrationがMIGRATION-007に従ってReference source/target componentを追随する場合、そのReference schemaを含むaffected fileとDiffをcurrent Planから表示しなければならない（MUST）。Rename UIからMessagePack key変更、Reference name変更、target変更を暗黙に行ってはならない（MUST NOT）。
 
 ### GUI-TABLE-INT-003
 

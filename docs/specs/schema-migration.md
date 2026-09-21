@@ -168,11 +168,14 @@ field referenceを更新しなければならない（MUST）。Renameはpresent
 変更であり、MessagePack serialization `key`を変更または再割当してはならない（MUST NOT）。
 
 Primary Key field reference、Secondary Key field referenceなど、既存Approved structureの
-依存は単なる文字列置換ではなくresolved semantic referenceとして扱う。Reference v1では
-Reference-aware automatic rewriteを実装しない。RenameFieldがReference source componentまたは
-他TableのReference target componentに到達する場合、安全なsource-preserving rewriteを提供できない
-限り、migration-specific dependency/precondition failureでfail closedし、Reference declarationを
-staleにしたまま成功扱いしてはならない（MUST NOT）。詳細なReference semanticsは[IndexとReferenceのmodel](index-and-reference.md)を所有者とする。
+依存は単なる文字列置換ではなくresolved semantic referenceとして扱う。RenameFieldのexplicit intentが
+Reference source componentまたはReference target componentとして同じlogical Table / fieldへresolveする場合、
+そのcomponentだけをnew nameへsource-preservingに追随更新しなければならない（MUST）。Referenceのdomain `name`、
+`csharpName`、target Table、component order、cardinality、nullabilityをRenameFieldから推測または変更してはならない
+（MUST NOT）。Reference declarationの該当source locationを安全に特定できない、patchがambiguous、またはreparse後の
+resolved relationshipを確認できない場合はmigration-specific dependency/precondition failureでfail closedし、
+Reference declarationをstaleにしたまま成功扱いしてはならない（MUST NOT）。詳細なReference semanticsは
+[IndexとReferenceのmodel](index-and-reference.md)をownerとする。
 
 ### MIGRATION-008
 
@@ -188,9 +191,10 @@ destructive execution authorizationが必要であり、interactive promptだけ
 `--allow-destructive`はCLIでの候補表現に過ぎず、Command ASTのintentとexecution authorization
 を同一conceptとして固定しない。Primary Key、Secondary Key、または既存のindex等がdrop
 対象fieldに依存する場合、関連構造を黙って削除して成功扱いしてはならない（MUST NOT）。
-Reference source component、または他TableのReference target componentに依存する場合も同様に
-扱い、Reference-aware automatic rewriteがないv1ではfail closedする。整合するtransformed
-projectを生成できない場合はfail closedする。
+Reference source component、または他TableのReference target componentに依存する場合、DropFieldは
+replacement relationshipを推測またはReference declarationを暗黙削除してはならず（MUST NOT）、fail closedする。
+RenameFieldの安全なReference component追随はMIGRATION-007が所有し、DropFieldへ一般化しない。
+整合するtransformed projectを生成できない場合はfail closedする。
 
 ### MIGRATION-009
 

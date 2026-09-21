@@ -1,13 +1,14 @@
 # Development State
 
-Stage: designing
+Stage: implementation-ready
 Candidate: none
-Work base: a1d3ca1a60df9fa6ced696b5e7531dd86bf8e631
+Work base: bd17692f519c0c36f89611ac3389c0d99a366b48
 
 ## Active work
 
-In progress: Schema Evolution & Migration production-ready objective。最初のwork packageとしてReference-aware field rename、migration impact visibility、existing migration coverage gapをrefine。
-Remaining: canonical spec application、shared implementation、Desktop composition、focused verification、Candidate / remote CI reconciliation。
+Completed: Objective granularityをproduct outcome単位へ更新。Reference-aware RenameFieldをMIGRATION-007 / GUI-TABLE-INT-002へ適用し、DropFieldのfail-closed境界を維持。
+In progress: shared source-preserving Reference component rewriteとfocused regression evidence。
+Remaining: migration impact/coverage hardening、Desktop composition確認、fresh review、Candidate / remote CI reconciliation。
 
 ## Blocking findings
 

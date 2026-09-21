@@ -8,6 +8,7 @@ mod application;
 mod authoring_batch;
 mod authoring_query;
 mod authoring_value;
+mod compatibility;
 mod config;
 mod config_edit;
 mod data_authoring;
@@ -38,6 +39,12 @@ pub use authoring_query::{
 pub use authoring_value::{
     AuthoringMember, AuthoringSequenceItem, AuthoringValue, project_source_value,
     project_typed_source_value,
+};
+pub use compatibility::{
+    ArtifactBinaryImpact, CompatibilityChange, CompatibilityChangeKind,
+    CompatibilityProjectSnapshot, CompatibilityReport, CompatibilitySnapshot, CompatibilitySubject,
+    CompatibilitySubjectKind, CompatibilitySummary, ExternalContractImpact, GeneratedApiImpact,
+    SourceMigrationImpact, analyze_compatibility, compare_compatibility,
 };
 pub use config::{
     BuildConfig, BuildProfile, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget,

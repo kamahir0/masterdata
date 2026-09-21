@@ -1,6 +1,6 @@
 # 仕様変更: Released Compatibility v1
 
-Status: Proposed
+Status: Applied
 
 ## Affected Specifications
 
@@ -139,9 +139,123 @@ Human decision後、少なくとも以下を分類表とfocused evidenceへ落�
 - Custom Type field add/rename/drop/type/modifier/key/reorder
 - Build Profileやdata-only changeがschema compatibilityへ影響しないcase
 
+## Refined Option A delta
+
+### Canonical snapshot and comparison boundary
+
+`CompatibilitySnapshot`はcallerが明示的にmaterializeした一つのProjectのsnapshotで、既存の
+`project.id`、`project.name`、`project.version` metadataと、canonical YAMLをparseして得た
+`ProjectDocuments`を含む。shared analyzerはsnapshotを受け取って比較し、filesystem discovery、
+Git、artifact、receipt、Build、Publish、source mutationを行わない。
+
+baseline/current双方のschema/type semantic structureをcanonical Type System、Table / Key、
+Reference resolverで一度だけresolveする。schema/type構造を安全にresolveできないsnapshotは
+compatibility resultではなくstructured input diagnosticでfail closedする。data recordはschema
+identityとは別にcanonical typed source valueの集合として扱い、record order、mapping member order、
+physical path、file split、YAML formatting/commentsを比較identityにしない。
+
+`project.id`がbaseline/currentで一致しない場合はreportを生成せず、`E-COMPAT-PROJECT-MISMATCH`
+によるinvalid comparison requestとする。`project.version`と`project.name`はreport metadataに
+保持できるが、SemVer parsing、version bump、version値によるclassificationは行わない。
+
+Tableは`table` value、Typeは既存Type declarationのlogical `name`でmatchする。同一Tableまたは
+Custom Type内のfieldはcurrent field symbol (`name`)でmatchする。Referenceはdomain `name`で
+matchし、`csharpName`はGenerated API presentationとして別に比較する。MessagePack `key`、
+Secondary `indexNo`、path、filename、generated C# nameをlogical identityまたはrename lineageに
+使用しない。確実な対応付けができないremove/addはrenameとして結合せず、unmatched remove/addと
+してreportする。
+
+### Finite axis classifications
+
+各`CompatibilityChange`は次の型付きaxis resultを持つ。classificationを一つのoverall boolへ
+縮退させない。summaryはchangesから再計算され、個別changeのsubject、baseline/current locator、
+reason、Requirement IDを失ってはならない。
+
+`GeneratedApiImpact`は`unchanged`、`additive`、`breaking`、`review_required`のいずれかである。
+`SourceMigrationImpact`は`not_required`、`supported_operation`、
+`destructive_authorization_required`、`manual_action_required`、`review_required`のいずれかである。
+`ArtifactBinaryImpact`は`unchanged`、`rebuild_required`、
+`cross_schema_interoperability_not_guaranteed`のいずれかである。
+`ExternalContractImpact`は`not_assessed`または`external_policy_required`のいずれかである。
+未分類、未知のchange、または不確実な対応付けを`unchanged` / `additive`へ黙って分類してはならない。
+
+`supported_operation`はmigration operationの存在可能性を示すだけで、operationのPlan / Applyを
+実行または成功保証するものではない。既存migrationのprecondition、Reference dependency、
+destructive authorizationがある場合は対応する分類へ上げる。`review_required`はsemantic modelから
+single-axis outcomeを安全に決定できない場合に使用し、理由を必ず返す。
+
+`rebuild_required`はcurrent coherent artifact setの再Buildが必要なことだけを示す。schemaを跨いだ
+MasterMemory binary / generated C# interoperabilityはv1で保証せず、schema shapeやserialized
+representationに関わるchangeでは`cross_schema_interoperability_not_guaranteed`を併記する。
+External axisはcanonical sourceだけではsave/network/database契約を検証できないため、sourceから
+compatible/breakingを推測せず、必要に応じて`external_policy_required`を返す。
+
+### Classification rules
+
+- Table/type addはGenerated API `additive`、removeは`breaking`とする。
+- Table `csharpName`、type shape、field type/modifier、Table field drop、Custom Type field change、
+  Enum/Flags member removeまたはnumeric value change、Primary Key change、unique/non-uniqueを含む
+  Secondary Key changeはGenerated API `breaking`とする。
+- Table field add、Enum/Flags member add、Secondary Key addはactual generated surfaceへの追加として
+  `additive`とする。Custom Type field addはpublic constructor shapeも変えるため`breaking`とする。
+- field nameが不一致の場合はfield renameを推測せず、old field remove + new field addとする。
+  Table/Type nameについても同じくremove + addである。
+- MessagePack key change、field declaration reorder、Secondary declaration reorderはlogical identityを
+  変更しない。actual generated public callable surfaceが変わらない場合Generated APIは`unchanged`、
+  Artifactは`rebuild_required`とする。Custom Type constructor orderを変えるfield reorderは`breaking`とする。
+- Primary / Secondary generated query name・signature、Reference helperのeffective C# identifier、
+  return shapeが変わる場合はactual C# surfaceに基づき`breaking`とする。Reference target/source shapeの
+  変更でcallable signatureだけから安全に決められない場合は`review_required`とする。
+- Reference domain nameの不一致はremove/addであり、Reference `csharpName`だけの変更はrelationship
+  identityを変えずGenerated API presentation changeとして個別reportする。Reference target、source
+  fields、Required/Nullable、single/multiの変更はdomain/API behavior changeとして個別reportする。
+- record valueの変更だけは`data_changed`として、Generated API `unchanged`、Source/Migration
+  `not_required`、Artifact `rebuild_required`とする。schema/API breakingへ昇格しない。
+- path/file split、comments、YAML formatting、record mapping member order、Build Profileだけの差は
+  compatibility changeを生成しない。source contentのfilesystem identityをsemantic changeにしない。
+- source/migration axisはexisting Schema Migration / Type Migration capabilityへ接続するが、
+  compatibility operationはread-onlyである。Build、Publish、Git、version、receipt、source rewriteを
+  implicitに開始してはならない。
+
+### Structured report
+
+`CompatibilityReport`はbaseline/current project metadata、ordered `CompatibilityChange` sequence、
+axis別derived summaryを含む。各changeは少なくともsubject kind/owner/member、change kind、baseline
+locator、current locator、4つのaxis result、reason、related Requirement IDをrecoverできる形でなければ
+ならない。report orderingはlogical subject kind、owner/member、change kindのstable orderとし、
+filesystem traversal / HashMap orderへ依存してはならない。
+
+invalid input diagnosticとvalid snapshot間のbreaking change reportは別conceptとする。invalid inputで
+empty compatible reportを返してはならない。
+
+### Shared operation surface
+
+shared `masterdata-app`へ、明示的なbaseline project pathとcurrent project pathを受け取るread-only
+compatibility operationを追加する。CLIは既存noun command conventionに従う`masterdata compatibility`
+をJSON/console adapterとして公開し、baseline/currentを必須argumentとする。Tauri Desktopは同じ
+application operationへ両方のpathを渡す薄い`compatibility_report` commandを公開する。
+frontendはentity matching、classification、summary計算を実装せず、shared reportを表示する。
+
+これはOption Aのexplicit input boundaryに必要なadditive surfaceであり、既存CLI commandのmeaning、
+source format、artifact receipt、publish、Git integrationを変更しない。
+
+### Acceptance evidence
+
+- unchanged、format/path-only、file split、data-only snapshotがschema/API changeを生成しない。
+- same project.idのTable/field/type/key/Reference/Enum/Flags evolutionがaxis別にdeterministicに分類され、
+  MessagePack key、indexNo、csharpName、pathをidentityへ昇格しない。
+- field/table/typeのunmatched remove/add、project.id mismatch、invalid baseline/currentがそれぞれ
+  rename推測またはcompatibleへの潰し込みなしでstructured outcomeになる。
+- migration classificationがread-onlyで、YAML bytes、config、artifact、receipt、publish target、Git
+  state、version metadataを変更しない。
+- CLIとTauri commandがshared analyzer/application reportを利用し、frontend-only diffを持たない。
+
 ## Public surface
 
-exact CLI command名、GUI placement、Git ref adapter、JSON report schemaはcompatibility semantics確定後にrefineする。shared analyzerを第二のCLI-specific domain実装へしない。
+shared application operationへ明示的なbaseline/current project pathを渡す。CLIは
+`masterdata compatibility --baseline PATH --current PATH [--json]`を公開し、Tauri Desktopは
+`compatibility_report` commandを公開する。Git ref adapter、GUI placement、JSON reportの詳細は
+implementation detailとし、shared analyzerを第二のCLI-specific domain実装へしない。
 
 ## Compatibility
 
@@ -168,7 +282,15 @@ Option B / CはRejected alternativeとする。
 
 ## Review
 
-Human decisionによってproduct boundaryは確定した。次のrefinementでは各schema changeのaxis別classification、unmatched/rename ambiguity、structured report model、必要最小限のCLI/Desktop surfaceを定義し、review-specでmaterial ambiguityが残らないことを確認する。
+2026-09-21 JSTに`review-spec`相当のfresh reviewを完了した。Option Aのexplicit snapshot boundary、
+4-axis finite vocabulary、same-project matching、no-rename inference、read-only operation、shared
+Rust/application ownership、CLI/Tauri surfaceをcanonical ownerへ反映した。
+
+- Blocking: None
+- Human gate: None。Option AはHuman決定済みで、残るCLI/Tauri surfaceはCurrent Objective内のadditive adapterである。
+- Open Questions: None
+- Approval eligibility: satisfied。classificationはmachine-actionableで、unknown inputはstructured
+  diagnosticへfail closedし、cross-schema binary / external contract / stable IDはscope外に留めた。
 
 classification detailsに複数のmaterially different product choiceが残る場合だけ新しいHuman gateへ戻す。
 
@@ -176,4 +298,5 @@ classification detailsに複数のmaterially different product choiceが残る�
 
 Option A Human decision: 2026-09-21 JST。
 Option B / C: Rejected alternative。
-Canonical application / implementation: Pending refinement and review.
+Canonical application: [Released Compatibility v1仕様](../specs/compatibility/released-compatibility.md)へApplied。
+Implementation: shared Rust core/application、CLI、Tauri command、focused testsで実施済み。Candidate作成後にremote CI reconciliationを行う。

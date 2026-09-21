@@ -11,7 +11,9 @@ use masterdata_app::{
     SourceEditPreview, SourcePathMutationReport, SourcePathMutationRequest, SourcePathStateReport,
     SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
 };
-use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
+use masterdata_core::{
+    CompatibilityReport, Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport,
+};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -696,6 +698,21 @@ fn build(
     })
 }
 
+#[tauri::command(rename_all = "camelCase")]
+fn compatibility_report(
+    baseline_project: String,
+    current_project: String,
+) -> std::result::Result<CompatibilityReport, ApiError> {
+    let current_dir = current_directory()?;
+    NativeApplicationService::new()
+        .analyze_compatibility(
+            Path::new(&baseline_project),
+            Path::new(&current_project),
+            &current_dir,
+        )
+        .map_err(ApiError::from)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -729,7 +746,8 @@ pub fn run() {
             source_content,
             save_data_file,
             validate,
-            build
+            build,
+            compatibility_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running masterdata GUI");
@@ -798,6 +816,43 @@ mod tests {
         let error = super::plan_type_migration(path, serde_json::json!({"operation":"add_enum","target":"Rarity","name":"Bad","value":18446744073709551615_u64})).unwrap_err();
         assert_eq!(error.diagnostic.code, "E-TYPE-EDITOR-INPUT");
     }
+
+    #[test]
+    fn compatibility_command_uses_explicit_projects_and_serializes_axis_report() {
+        let baseline = tempfile::tempdir().expect("baseline");
+        let current = tempfile::tempdir().expect("current");
+        for (root, value) in [(baseline.path(), "before"), (current.path(), "after")] {
+            masterdata_core::initialize_project(
+                root,
+                &masterdata_core::InitOptions {
+                    project_id: "gui.compatibility".into(),
+                    name: "GUI Compatibility".into(),
+                    version: "1.0.0".into(),
+                },
+            )
+            .expect("initialize project");
+            std::fs::write(
+                root.join("sources/schema.yaml"),
+                "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: value\n    type: string\nprimaryKey:\n  fields: [id]\n",
+            )
+            .expect("schema");
+            std::fs::write(
+                root.join("sources/data.yaml"),
+                format!("kind: data\ntable: item\nrecords:\n  - id: 1\n    value: {value}\n"),
+            )
+            .expect("data");
+        }
+
+        let report = super::compatibility_report(
+            baseline.path().to_string_lossy().into_owned(),
+            current.path().to_string_lossy().into_owned(),
+        )
+        .expect("compatibility report");
+        let json = serde_json::to_value(&report).expect("report JSON");
+        assert_eq!(json["summary"]["changeCount"], 1);
+        assert_eq!(json["changes"][0]["artifactBinary"], "rebuild_required");
+    }
+
     struct NativeTableFixture;
     impl NativeTableFixture {
         fn schema_path(root: &Path) -> String {

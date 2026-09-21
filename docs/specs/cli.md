@@ -37,7 +37,7 @@ CLIの仕様は、OperationとCLI Commandを別conceptとして扱わなけれ�
 
 ### CLI-002
 
-canonical public CLI command nameは、次の6つである。
+canonical public CLI command nameは、次の7つである。
 
 | CLI command | 主なOperation | semantic owner |
 | --- | --- | --- |
@@ -47,6 +47,7 @@ canonical public CLI command nameは、次の6つである。
 | `build [--publish]` | coherent canonical artifact setの生成、およびApproved compositionによるpublish | build pipeline仕様および本CLI仕様 |
 | `publish` | 既存artifact setのexternal配布 | build pipeline仕様 |
 | `migrate` | schema-aware deterministic transformation | Schema Migration v1仕様 |
+| `compatibility` | 明示的なbaseline/current snapshotのread-only比較 | Released Compatibility v1仕様 |
 
 この表のcommand nameはcanonical surfaceである。ただし、実装済みであることを意味せず、
 deprecation policy、argument grammar、output schemaをこの仕様で確定しない。
@@ -168,6 +169,16 @@ validation、artifact integrity validation、target preflight、target execution
 ことはできるが、source-derived前段を飛ばしてはならない」というruleと、Approved publish
 semanticsを両立させる。
 
+### CLI-012
+
+`masterdata compatibility`は`--baseline PATH`と`--current PATH`を必須で受け取り、両方を
+callerが明示したcanonical project snapshotとして同じ`NativeApplicationService` compatibility
+operationへ渡さなければならない（MUST）。`--json`はstructured reportを表示するadapterである。
+CLIはlast Build、artifact receipt、Git state、mtime、project.versionをbaseline selectorへ使用せず、
+compatibility operation中にsource、config、artifact、receipt、publish target、Git state、versionを
+変更してはならない（MUST NOT）。classification、matching、summaryはReleased Compatibility v1仕様を
+複製してはならない（MUST NOT）。
+
 ## Implementation realityの確認先
 
 このspecificationはcanonical CLI surfaceとcomposition semanticsを所有するが、current command inventory、実装進捗、exact
@@ -203,6 +214,7 @@ exact test inventory、manual pass/fail statusはtests / code / Gitで確認し�
 | CLI-008 | 未承認のshort publish flagをcanonical surfaceへ追加しない。 |
 | CLI-009 | migrateをSchema Migration engineへ委譲し、CLIがsemantic logicを複製しない。 |
 | CLI-011 | source-derived validate/buildが前段をskipせず、publishはcurrent source validationやimplicit buildを要求しない。 |
+| CLI-012 | compatibilityが明示的なbaseline/currentをshared operationへ渡し、read-only structured reportを返す。 |
 
 ## Open Questions
 

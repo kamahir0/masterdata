@@ -4,6 +4,9 @@ Compatibility ruleは、requirementが一緒にspecification lifecycleを進め�
 分割して管理する。これにより、1つの広い `Status:` valueが、成熟度の異なる無関係なrequirementへ
 誤って適用されることを防ぐ。
 
+- [Released Compatibility v1仕様](released-compatibility.md) — explicit baseline/current canonical
+  snapshot comparisonと4-axis compatibility reportのcurrent owner。
+
 - [Table identity仕様](table-identity.md) — current project-local table identity contract。
 - [Field identity仕様](field-identity.md) — `Status: Deprecated`。旧stable numeric Field ID、rename、tombstoneのretired historyと、現在のMessagePack `key` ownerへのroutingを記録する。specification change 0003はAppliedである。
 - [Enum identity仕様](enum-identity.md) — Draftの、Masterdata外のEnum/Flags external compatibility rule。

@@ -119,6 +119,9 @@ pub enum ReferenceOptionality {
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedReference {
     pub name: String,
+    /// C# presentation metadata. It is intentionally not consulted while
+    /// resolving the target relationship or validating record values.
+    pub csharp_name: Option<String>,
     pub source_fields: Vec<String>,
     pub target_table: String,
     pub target_fields: Vec<String>,
@@ -737,6 +740,16 @@ pub fn generated_query_name(fields: &[ResolvedField]) -> String {
     result
 }
 
+/// Derive the C# Reference helper name from presentation metadata. The
+/// language-independent Reference `name` remains the semantic identity; this
+/// function is only the shared lowering rule consumed by snapshots and the
+/// C# generator.
+pub fn reference_csharp_name(name: &str, csharp_name: Option<&str>) -> String {
+    csharp_name
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("Get{}", csharp_property_name(name)))
+}
+
 fn resolve_references(
     schema: &SchemaDocument,
     source_fields: &[ResolvedField],
@@ -764,6 +777,16 @@ fn resolve_references(
             diagnostics.push(diagnostic(
                 "E-REFERENCE-INVALID-NAME",
                 "Reference name must not be empty".to_owned(),
+            ));
+            valid = false;
+        }
+        if !is_table_field_name(&definition.name) {
+            diagnostics.push(diagnostic(
+                "E-REFERENCE-INVALID-NAME",
+                format!(
+                    "Reference name `{}` must be a lowerCamelCase ASCII identifier",
+                    definition.name
+                ),
             ));
             valid = false;
         }
@@ -990,6 +1013,7 @@ fn resolve_references(
             let optionality = optionality.unwrap_or(ReferenceOptionality::Required);
             resolved.push(ResolvedReference {
                 name: definition.name.clone(),
+                csharp_name: definition.csharp_name.clone(),
                 source_fields: definition.fields.clone(),
                 target_table: definition.target.table.clone(),
                 target_fields: definition.target.fields.clone(),

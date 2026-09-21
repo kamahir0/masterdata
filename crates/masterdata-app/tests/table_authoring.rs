@@ -178,6 +178,7 @@ fn reference_authoring_uses_shared_plan_and_refreshes_snapshot() {
                 "table": "item",
                 "reference": {
                     "name": "category",
+                    "csharpName": "GetCategoryMaster",
                     "fields": ["id"],
                     "target": {"table": "category", "fields": ["id"]}
                 }
@@ -195,6 +196,14 @@ fn reference_authoring_uses_shared_plan_and_refreshes_snapshot() {
         .unwrap();
     assert_eq!(snapshot.references.len(), 1);
     assert_eq!(snapshot.references[0].name, "category");
+    assert_eq!(
+        snapshot.references[0].csharp_name.as_deref(),
+        Some("GetCategoryMaster")
+    );
+    assert_eq!(
+        snapshot.references[0].effective_csharp_name,
+        "GetCategoryMaster"
+    );
     assert_eq!(
         snapshot.references[0].cardinality,
         Some(ReferenceCardinality::Single)

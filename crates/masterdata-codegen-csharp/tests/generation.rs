@@ -45,7 +45,7 @@ fn renders_an_immutable_scaffold_from_a_schema() {
 }
 
 #[test]
-fn reference_codegen_reports_the_unresolved_public_api_gate_instead_of_dropping_helpers() {
+fn reference_codegen_uses_domain_name_default_and_exact_override() {
     let directory = tempdir().expect("temp directory");
     fs::create_dir(directory.path().join("sources")).expect("sources");
     fs::write(
@@ -55,33 +55,84 @@ fn reference_codegen_reports_the_unresolved_public_api_gate_instead_of_dropping_
     .expect("config");
     fs::write(
         directory.path().join("sources/category.yaml"),
-        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: code\n    type: string\nprimaryKey:\n  fields: [id]\nsecondaryKeys:\n  - fields: [code]\n    nonUnique: true\n",
     )
     .expect("target schema");
     fs::write(
         directory.path().join("sources/item.yaml"),
-        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n",
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: code\n    type: string\n    nullable: true\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: rewardItem\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n  - name: rewardsByCode\n    csharpName: RewardLookup\n    fields: [code]\n    target:\n      table: category\n      fields: [code]\n",
     )
     .expect("source schema");
     fs::write(
         directory.path().join("sources/category-data.yaml"),
-        "kind: data\ntable: category\nrecords:\n  - id: 1\n",
+        "kind: data\ntable: category\nrecords:\n  - id: 1\n    code: potion\n",
     )
     .expect("target data");
     fs::write(
         directory.path().join("sources/item-data.yaml"),
-        "kind: data\ntable: item\nrecords:\n  - id: 1\n",
+        "kind: data\ntable: item\nrecords:\n  - id: 1\n    code: potion\n",
     )
     .expect("source data");
+    let validation = ProjectService::new()
+        .validate(Some(directory.path()), directory.path())
+        .expect("validation report");
+    assert!(validation.valid, "{:#?}", validation.diagnostics);
     let plan = ProjectService::new()
         .prepare_build(Some(directory.path()), directory.path())
-        .expect("valid Reference build plan");
-    let error = CSharpGenerator::default()
+        .unwrap_or_else(|error| panic!("valid Reference build plan: {:?}", error.diagnostic()));
+    let generated = CSharpGenerator::default()
         .plan(&plan)
-        .expect_err("public API gate");
+        .expect("Reference helper generation");
+    let item = generated
+        .files
+        .iter()
+        .find(|file| file.relative_path == std::path::Path::new("Item.g.cs"))
+        .expect("Item generated file")
+        .contents
+        .clone();
+    assert!(item.contains("public Category GetRewardItem(MemoryDatabase database)"));
+    assert!(
+        item.contains(
+            "public MasterMemory.RangeView<Category> RewardLookup(MemoryDatabase database)"
+        )
+    );
+    assert!(!item.contains("GetRewardsByCode"), "override must be exact");
+    assert!(item.contains("database.CategoryTable.FindById(Id)!"));
+    assert!(item.contains("if (Code is null)"));
+    assert!(item.contains("return MasterMemory.RangeView<Category>.Empty;"));
+    assert!(item.contains("database.CategoryTable.FindByCode(Code!)"));
+}
+
+#[test]
+fn rejects_invalid_and_colliding_reference_helper_names() {
+    let invalid = reference_project(
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: rewardItem\n    csharpName: class\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n",
+    );
+    let error = CSharpGenerator::default()
+        .plan(&build_plan(invalid.path()))
+        .expect_err("reserved helper name");
+    assert_eq!(error.diagnostic().code, "E-CODEGEN-REFERENCE-INVALID-NAME");
+
+    let duplicate = reference_project(
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: rewardItem\n    csharpName: Lookup\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n  - name: rewardItemCopy\n    csharpName: Lookup\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n",
+    );
+    let error = CSharpGenerator::default()
+        .plan(&build_plan(duplicate.path()))
+        .expect_err("duplicate helper name");
     assert_eq!(
         error.diagnostic().code,
-        "E-CODEGEN-REFERENCE-PUBLIC-API-UNRESOLVED"
+        "E-CODEGEN-REFERENCE-HELPER-COLLISION"
+    );
+
+    let property = reference_project(
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: rewardItem\n    csharpName: Id\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n",
+    );
+    let error = CSharpGenerator::default()
+        .plan(&build_plan(property.path()))
+        .expect_err("property collision");
+    assert_eq!(
+        error.diagnostic().code,
+        "E-CODEGEN-REFERENCE-HELPER-COLLISION"
     );
 }
 
@@ -410,6 +461,118 @@ fn generated_type_system_csharp_compiles() {
     );
 }
 
+#[test]
+fn generated_reference_helpers_compile_and_run_against_mastermemory() {
+    if std::process::Command::new("dotnet")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("dotnet is unavailable; skipping generated Reference compilation check");
+        return;
+    }
+
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    fs::write(
+        directory.path().join("masterdata.toml"),
+        "[project]\nid = \"codegen.reference.compile\"\nname = \"Codegen Reference Compile\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("config");
+    fs::write(
+        directory.path().join("sources/category.yaml"),
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: region\n    type: string\n  - key: 2\n    name: code\n    type: string\nprimaryKey:\n  fields: [id]\nsecondaryKeys:\n  - fields: [code]\n    nonUnique: true\n  - fields: [region, id]\n  - fields: [region, code]\n    nonUnique: true\n",
+    )
+    .expect("target schema");
+    fs::write(
+        directory.path().join("sources/quest.yaml"),
+        "kind: schema\ntable: quest\ncsharpName: Quest\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: requiredCategoryId\n    type: int\n  - key: 2\n    name: optionalCategoryId\n    type: int\n    nullable: true\n  - key: 3\n    name: requiredCode\n    type: string\n  - key: 4\n    name: optionalCode\n    type: string\n    nullable: true\n  - key: 5\n    name: requiredRegion\n    type: string\n  - key: 6\n    name: requiredCompositeCode\n    type: string\n  - key: 7\n    name: optionalRegion\n    type: string\n    nullable: true\n  - key: 8\n    name: optionalCompositeCode\n    type: string\n    nullable: true\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: requiredCategory\n    fields: [requiredCategoryId]\n    target:\n      table: category\n      fields: [id]\n  - name: optionalCategory\n    csharpName: OptionalCategory\n    fields: [optionalCategoryId]\n    target:\n      table: category\n      fields: [id]\n  - name: requiredCodes\n    fields: [requiredCode]\n    target:\n      table: category\n      fields: [code]\n  - name: optionalCodes\n    csharpName: OptionalCodes\n    fields: [optionalCode]\n    target:\n      table: category\n      fields: [code]\n  - name: requiredComposite\n    fields: [requiredRegion, requiredCategoryId]\n    target:\n      table: category\n      fields: [region, id]\n  - name: requiredCompositeMany\n    fields: [requiredRegion, requiredCompositeCode]\n    target:\n      table: category\n      fields: [region, code]\n  - name: optionalComposite\n    csharpName: OptionalComposite\n    fields: [optionalRegion, optionalCompositeCode]\n    target:\n      table: category\n      fields: [region, code]\n",
+    )
+    .expect("source schema");
+    fs::write(
+        directory.path().join("sources/category-data.yaml"),
+        "kind: data\ntable: category\nrecords:\n  - id: 1\n    region: apac\n    code: potion\n  - id: 2\n    region: apac\n    code: potion\n  - id: 3\n    region: eu\n    code: ether\n",
+    )
+    .expect("target data");
+    fs::write(
+        directory.path().join("sources/quest-data.yaml"),
+        "kind: data\ntable: quest\nrecords:\n  - id: 10\n    requiredCategoryId: 1\n    optionalCategoryId: null\n    requiredCode: potion\n    optionalCode: null\n    requiredRegion: apac\n    requiredCompositeCode: potion\n    optionalRegion: null\n    optionalCompositeCode: null\n  - id: 11\n    requiredCategoryId: 2\n    optionalCategoryId: 3\n    requiredCode: potion\n    optionalCode: ether\n    requiredRegion: apac\n    requiredCompositeCode: potion\n    optionalRegion: eu\n    optionalCompositeCode: ether\n",
+    )
+    .expect("source data");
+
+    let plan = ProjectService::new()
+        .prepare_build(Some(directory.path()), directory.path())
+        .expect("Reference build plan");
+    let generated = CSharpGenerator::default()
+        .plan(&plan)
+        .expect("Reference generation plan");
+    let generated_dir = directory.path().join("Generated");
+    fs::create_dir(&generated_dir).expect("Generated");
+    for file in &generated.files {
+        fs::write(generated_dir.join(&file.relative_path), &file.contents).expect("generated C#");
+    }
+    let quest_source = generated
+        .files
+        .iter()
+        .find(|file| file.relative_path == std::path::Path::new("Quest.g.cs"))
+        .expect("Quest generated file")
+        .contents
+        .clone();
+    assert!(quest_source.contains("public Category GetRequiredCategory("));
+    assert!(quest_source.contains("public Category? OptionalCategory("));
+    assert!(quest_source.contains("public MasterMemory.RangeView<Category> GetRequiredCodes("));
+    assert!(quest_source.contains("MasterMemory.RangeView<Category>.Empty"));
+    assert!(quest_source.contains("FindByRegionAndId"));
+    assert!(quest_source.contains("FindByRegionAndCode"));
+
+    fs::write(
+        directory.path().join("compile.csproj"),
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"MasterMemory\" Version=\"3.0.4\" />\n    <PackageReference Include=\"MessagePack\" Version=\"3.1.3\" />\n    <Compile Include=\"Generated/*.g.cs\" />\n    <Compile Include=\"Program.cs\" />\n  </ItemGroup>\n</Project>\n",
+    )
+    .expect("project");
+    fs::write(
+        directory.path().join("Program.cs"),
+        "using Masterdata.Generated;\nusing MasterMemory;\n\n[assembly: MasterMemoryGeneratorOptions(Namespace = \"Masterdata.Generated\")]\n\nstatic int Count<T>(IEnumerable<T> values)\n{\n    var count = 0;\n    foreach (var _ in values) count++;\n    return count;\n}\n\nvar builder = new DatabaseBuilder();\nbuilder.Append(new[]\n{\n    new Category { Id = 1, Region = \"apac\", Code = \"potion\" },\n    new Category { Id = 2, Region = \"apac\", Code = \"potion\" },\n    new Category { Id = 3, Region = \"eu\", Code = \"ether\" },\n});\nbuilder.Append(new[]\n{\n    new Quest { Id = 10, RequiredCategoryId = 1, OptionalCategoryId = null, RequiredCode = \"potion\", OptionalCode = null, RequiredRegion = \"apac\", RequiredCompositeCode = \"potion\", OptionalRegion = null, OptionalCompositeCode = null },\n    new Quest { Id = 11, RequiredCategoryId = 2, OptionalCategoryId = 3, RequiredCode = \"potion\", OptionalCode = \"ether\", RequiredRegion = \"apac\", RequiredCompositeCode = \"potion\", OptionalRegion = \"eu\", OptionalCompositeCode = \"ether\" },\n});\nvar database = new MemoryDatabase(builder.Build());\nvar first = database.QuestTable.FindById(10)!;\nvar second = database.QuestTable.FindById(11)!;\nif (first.GetRequiredCategory(database).Id != 1) return 1;\nif (first.OptionalCategory(database) is not null) return 2;\nif (second.OptionalCategory(database)?.Id != 3) return 3;\nif (first.GetRequiredCodes(database).Count != 2) return 4;\nif (first.OptionalCodes(database).Count != 0) return 5;\nif (second.OptionalCodes(database).Count != 1) return 6;\nif (first.GetRequiredComposite(database)?.Id != 1) return 7;\nif (first.GetRequiredCompositeMany(database).Count != 2) return 8;\nif (first.OptionalComposite(database).Count != 0) return 9;\nif (second.OptionalComposite(database).Count != 1) return 10;\nreturn 0;\n",
+    )
+    .expect("program");
+
+    let output = std::process::Command::new("dotnet")
+        .args([
+            "build",
+            "compile.csproj",
+            "--nologo",
+            "--configuration",
+            "Release",
+        ])
+        .current_dir(directory.path())
+        .output()
+        .expect("dotnet build");
+    assert!(
+        output.status.success(),
+        "generated Reference C# did not compile\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = std::process::Command::new("dotnet")
+        .args([
+            "run",
+            "--project",
+            "compile.csproj",
+            "--no-build",
+            "--configuration",
+            "Release",
+        ])
+        .current_dir(directory.path())
+        .output()
+        .expect("dotnet run");
+    assert!(
+        output.status.success(),
+        "generated Reference runtime smoke test failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 fn fixture_project(schema: &str) -> tempfile::TempDir {
     let directory = tempdir().expect("temp directory");
     fs::create_dir(directory.path().join("sources")).expect("sources");
@@ -427,6 +590,33 @@ fn fixture_project(schema: &str) -> tempfile::TempDir {
         schema.to_owned()
     };
     fs::write(directory.path().join("sources").join("schema.yaml"), schema).expect("schema");
+    directory
+}
+
+fn reference_project(item_schema: &str) -> tempfile::TempDir {
+    let directory = tempdir().expect("temp directory");
+    fs::create_dir(directory.path().join("sources")).expect("sources");
+    fs::write(
+        directory.path().join("masterdata.toml"),
+        "[project]\nid = \"codegen.reference\"\nname = \"Codegen Reference\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("config");
+    fs::write(
+        directory.path().join("sources/category.yaml"),
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+    )
+    .expect("target schema");
+    fs::write(
+        directory.path().join("sources/category-data.yaml"),
+        "kind: data\ntable: category\nrecords:\n  - id: 1\n",
+    )
+    .expect("target data");
+    fs::write(directory.path().join("sources/item.yaml"), item_schema).expect("source schema");
+    fs::write(
+        directory.path().join("sources/item-data.yaml"),
+        "kind: data\ntable: item\nrecords:\n  - id: 1\n",
+    )
+    .expect("source data");
     directory
 }
 

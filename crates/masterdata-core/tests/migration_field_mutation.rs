@@ -180,6 +180,7 @@ fn reference_docs() -> ProjectDocuments {
 fn reference_add_edit_remove_use_reviewed_source_patches() {
     let reference = ReferenceDefinition {
         name: "category".into(),
+        csharp_name: None,
         fields: vec!["id".into()],
         target: ReferenceTargetDefinition {
             table: "category".into(),
@@ -211,6 +212,7 @@ fn reference_add_edit_remove_use_reviewed_source_patches() {
             name: "category".into(),
             reference: ReferenceDefinition {
                 name: "categories".into(),
+                csharp_name: Some("GetCategories".into()),
                 fields: vec!["id".into()],
                 target: ReferenceTargetDefinition {
                     table: "category".into(),

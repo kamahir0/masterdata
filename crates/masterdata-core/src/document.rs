@@ -62,6 +62,8 @@ pub struct SecondaryKeyDefinition {
 #[serde(deny_unknown_fields)]
 pub struct ReferenceDefinition {
     pub name: String,
+    #[serde(rename = "csharpName", default)]
+    pub csharp_name: Option<String>,
     pub fields: Vec<String>,
     pub target: ReferenceTargetDefinition,
 }

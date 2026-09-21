@@ -228,6 +228,17 @@ fn reference_declaration_diagnostics_cover_identity_and_type_mismatches() {
 }
 
 #[test]
+fn invalid_reference_domain_name_is_rejected() {
+    let source = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: InvalidName\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n";
+    let result = build(
+        &[("target.yaml", TARGET), ("source.yaml", source)],
+        &BuildSelection::unfiltered(),
+    );
+    assert!(codes(&result).contains(&"E-REFERENCE-INVALID-NAME"));
+    assert!(result.model.is_none());
+}
+
+#[test]
 fn reference_validation_uses_selected_source_and_target_datasets() {
     let source = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: categoryId\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category\n    fields: [categoryId]\n    target:\n      table: category\n      fields: [id]\n";
     let target = "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n";
@@ -266,11 +277,15 @@ fn reference_validation_uses_selected_source_and_target_datasets() {
 fn reference_ast_is_typed_and_unknown_members_are_rejected() {
     let loaded = parse_yaml_document(
         PathBuf::from("schema.yaml"),
-        "kind: schema\ntable: item\nreferences:\n  - name: category\n    fields: [categoryId]\n    target:\n      table: category\n      fields: [id]\n",
+        "kind: schema\ntable: item\nreferences:\n  - name: category\n    csharpName: GetCategoryMaster\n    fields: [categoryId]\n    target:\n      table: category\n      fields: [id]\n",
     )
     .unwrap();
     match loaded.document {
         SourceDocument::Schema(schema) => {
+            assert_eq!(
+                schema.references[0].csharp_name.as_deref(),
+                Some("GetCategoryMaster")
+            );
             assert_eq!(schema.references[0].target.fields, ["id"]);
         }
         _ => panic!("expected schema"),

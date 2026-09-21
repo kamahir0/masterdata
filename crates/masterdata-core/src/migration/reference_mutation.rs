@@ -368,8 +368,13 @@ fn render_reference(
         .map(|field| yaml_scalar(field))
         .collect::<Vec<_>>()
         .join(", ");
+    let csharp_name = reference
+        .csharp_name
+        .as_ref()
+        .map(|value| format!("{spaces}  csharpName: {}{newline}", yaml_scalar(value)))
+        .unwrap_or_default();
     format!(
-        "{spaces}- name: {}{newline}{spaces}  fields: [{fields}]{newline}{spaces}  target:{newline}{spaces}    table: {}{newline}{spaces}    fields: [{target_fields}]{newline}",
+        "{spaces}- name: {}{newline}{csharp_name}{spaces}  fields: [{fields}]{newline}{spaces}  target:{newline}{spaces}    table: {}{newline}{spaces}    fields: [{target_fields}]{newline}",
         yaml_scalar(&reference.name),
         yaml_scalar(&reference.target.table),
     )

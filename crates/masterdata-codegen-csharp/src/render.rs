@@ -3,9 +3,10 @@ use std::fmt::Write;
 use std::path::Path;
 
 use masterdata_core::{
-    BuildPlan, ErrorKind, FieldModifier, MasterdataError, PrimitiveType, ResolvedField,
-    ResolvedTable, ResolvedType, Result, TypeReference, TypeSystem, csharp_property_name,
-    is_csharp_reserved_keyword,
+    BuildPlan, ErrorKind, FieldModifier, MasterdataError, PrimitiveType, ReferenceCardinality,
+    ReferenceOptionality, ResolvedField, ResolvedTable, ResolvedType, Result, TypeReference,
+    TypeSystem, csharp_property_name, generated_query_name, is_csharp_reserved_keyword,
+    reference_csharp_name,
 };
 
 use crate::model::{CSharpGenerationPlan, GeneratedFile, GenerationNote};
@@ -59,16 +60,6 @@ impl CSharpGenerator {
         }
 
         for table in &build_plan.tables {
-            if !table.references.is_empty() {
-                return Err(MasterdataError::new(
-                    "E-CODEGEN-REFERENCE-PUBLIC-API-UNRESOLVED",
-                    ErrorKind::Validation,
-                    format!(
-                        "Table `{}` has Reference declarations, but the public helper method name and Optional non-unique return contract are still a Human-gated API decision",
-                        table.identity
-                    ),
-                ));
-            }
             let type_name = table.csharp_name.clone();
             insert_generated_name(
                 &mut generated_type_names,
@@ -79,13 +70,14 @@ impl CSharpGenerator {
                 &self.namespace,
                 table,
                 &build_plan.type_system,
+                &build_plan.tables,
             )?);
         }
         Ok(CSharpGenerationPlan {
             namespace: self.namespace.clone(),
             files,
             notes: vec![GenerationNote {
-                message: "Reference integrity, cache reuse, and released binary compatibility remain outside this slice.".to_owned(),
+                message: "Reference integrity is resolved by shared Rust core; cache reuse and released binary compatibility remain outside this slice.".to_owned(),
                 placeholder: true,
             }],
         })
@@ -483,8 +475,10 @@ fn render_schema(
     namespace: &str,
     table: &ResolvedTable,
     type_system: &TypeSystem,
+    tables: &[ResolvedTable],
 ) -> Result<GeneratedFile> {
     let type_name = &table.csharp_name;
+    validate_reference_helpers(table)?;
     let mut document = CSharpDocument::new();
     document.header(namespace);
     document.line(format!("// Source table identity: {}", table.identity));
@@ -543,11 +537,200 @@ fn render_schema(
             csharp_field_type(type_system, &field.base_type, field.modifier)?
         ));
     }
+    for reference in &table.references {
+        render_reference_helper(&mut document, table, reference, tables, type_system)?;
+    }
     document.line("}");
     Ok(GeneratedFile {
         relative_path: std::path::PathBuf::from(format!("{}.g.cs", type_name)),
         contents: document.finish(),
     })
+}
+
+fn validate_reference_helpers(table: &ResolvedTable) -> Result<()> {
+    let mut occupied_members = BTreeSet::new();
+    for field in &table.fields {
+        let property = csharp_property_name(&field.name);
+        validate_generated_member_name(&property, "E-CODEGEN-INVALID-PROPERTY-NAME")?;
+        occupied_members.insert(property);
+    }
+
+    // These names are part of the row's generated/object member surface. A
+    // Reference helper must not hide a property, the row type constructor
+    // name, or an object/generator-owned member by overload or shadowing.
+    occupied_members.insert(table.csharp_name.clone());
+    occupied_members.extend([
+        "Equals".to_owned(),
+        "GetHashCode".to_owned(),
+        "ToString".to_owned(),
+        "GetType".to_owned(),
+        "MemberwiseClone".to_owned(),
+        "Finalize".to_owned(),
+    ]);
+
+    let mut helper_names = BTreeSet::new();
+    for reference in &table.references {
+        let helper_name = reference_csharp_name(&reference.name, reference.csharp_name.as_deref());
+        validate_generated_member_name(&helper_name, "E-CODEGEN-REFERENCE-INVALID-NAME")?;
+        if !helper_names.insert(helper_name.clone()) || occupied_members.contains(&helper_name) {
+            return Err(MasterdataError::new(
+                "E-CODEGEN-REFERENCE-HELPER-COLLISION",
+                ErrorKind::Validation,
+                format!(
+                    "Reference `{}` generates helper `{helper_name}` that collides with another Reference or generated member on `{}`",
+                    reference.name, table.csharp_name
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn render_reference_helper(
+    document: &mut CSharpDocument,
+    source_table: &ResolvedTable,
+    reference: &masterdata_core::ResolvedReference,
+    tables: &[ResolvedTable],
+    type_system: &TypeSystem,
+) -> Result<()> {
+    let target_table = tables
+        .iter()
+        .find(|table| table.identity == reference.target_table)
+        .ok_or_else(|| {
+            MasterdataError::new(
+                "E-CODEGEN-REFERENCE-TARGET-TABLE",
+                ErrorKind::Validation,
+                format!(
+                    "Reference `{}` targets unresolved table `{}`",
+                    reference.name, reference.target_table
+                ),
+            )
+        })?;
+    let source_fields = reference
+        .source_fields
+        .iter()
+        .map(|name| {
+            source_table
+                .fields
+                .iter()
+                .find(|field| field.name == *name)
+                .ok_or_else(|| {
+                    MasterdataError::new(
+                        "E-CODEGEN-REFERENCE-SOURCE-FIELD",
+                        ErrorKind::Validation,
+                        format!(
+                            "Reference `{}` has unresolved source field `{name}`",
+                            reference.name
+                        ),
+                    )
+                })
+                .cloned()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let target_fields = reference
+        .target_fields
+        .iter()
+        .map(|name| {
+            target_table
+                .fields
+                .iter()
+                .find(|field| field.name == *name)
+                .ok_or_else(|| {
+                    MasterdataError::new(
+                        "E-CODEGEN-REFERENCE-TARGET-FIELD",
+                        ErrorKind::Validation,
+                        format!(
+                            "Reference `{}` has unresolved target field `{name}`",
+                            reference.name
+                        ),
+                    )
+                })
+                .cloned()
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let helper_name = reference_csharp_name(&reference.name, reference.csharp_name.as_deref());
+    let return_type = match reference.cardinality {
+        ReferenceCardinality::Single => match reference.optionality {
+            ReferenceOptionality::Required => target_table.csharp_name.clone(),
+            ReferenceOptionality::Nullable => format!("{}?", target_table.csharp_name),
+        },
+        ReferenceCardinality::Many => {
+            format!("MasterMemory.RangeView<{}>", target_table.csharp_name)
+        }
+    };
+    let query_name = generated_query_name(&target_fields);
+    let query_values = source_fields
+        .iter()
+        .map(|field| reference_query_value(field, type_system))
+        .collect::<Vec<_>>();
+    let key_argument = if query_values.len() == 1 {
+        query_values[0].clone()
+    } else {
+        format!("({})", query_values.join(", "))
+    };
+    let query = format!(
+        "database.{}Table.{}({key_argument})",
+        target_table.csharp_name, query_name
+    );
+
+    document.line("");
+    document.line(format!(
+        "    public {return_type} {helper_name}(MemoryDatabase database)"
+    ));
+    document.line("    {");
+    if reference.optionality == ReferenceOptionality::Nullable {
+        let absence_condition = source_fields
+            .iter()
+            .map(|field| format!("{} is null", csharp_property_name(&field.name)))
+            .collect::<Vec<_>>()
+            .join(" && ");
+        let absence = match reference.cardinality {
+            ReferenceCardinality::Single => "null".to_owned(),
+            ReferenceCardinality::Many => {
+                format!("MasterMemory.RangeView<{}>.Empty", target_table.csharp_name)
+            }
+        };
+        document.line(format!("        if ({absence_condition})"));
+        document.line("        {");
+        document.line(format!("            return {absence};"));
+        document.line("        }");
+    }
+    let query_result = if reference.cardinality == ReferenceCardinality::Single
+        && reference.optionality == ReferenceOptionality::Required
+    {
+        format!("{query}!")
+    } else {
+        query
+    };
+    document.line(format!("        return {query_result};"));
+    document.line("    }");
+    Ok(())
+}
+
+fn reference_query_value(field: &ResolvedField, type_system: &TypeSystem) -> String {
+    let property = csharp_property_name(&field.name);
+    if field.modifier != FieldModifier::Nullable {
+        return property;
+    }
+    if is_csharp_nullable_value_type(&field.base_type, type_system) {
+        format!("{property}.Value")
+    } else {
+        format!("{property}!")
+    }
+}
+
+fn is_csharp_nullable_value_type(reference: &TypeReference, type_system: &TypeSystem) -> bool {
+    match reference {
+        TypeReference::Primitive(PrimitiveType::String) => false,
+        TypeReference::Primitive(_) => true,
+        TypeReference::Named(name) => type_system.get(name).is_some_and(|resolved| {
+            matches!(
+                resolved,
+                ResolvedType::ValueObject { .. } | ResolvedType::Enum { .. }
+            )
+        }),
+    }
 }
 
 fn csharp_field_type(

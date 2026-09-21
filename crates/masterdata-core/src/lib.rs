@@ -90,7 +90,8 @@ pub use source_edit::{
 pub use table::{
     BuildSelection, ReferenceCardinality, ReferenceKeyKind, ReferenceOptionality,
     ResolvedPrimaryKey, ResolvedRecord, ResolvedReference, ResolvedSecondaryKey, ResolvedTable,
-    TableBuild, generated_query_name, is_tag_name, record_tags, resolve_tables, table_csharp_name,
+    TableBuild, generated_query_name, is_tag_name, record_tags, reference_csharp_name,
+    resolve_tables, table_csharp_name,
 };
 pub use type_system::{
     FieldModifier, NormalizedValue, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,

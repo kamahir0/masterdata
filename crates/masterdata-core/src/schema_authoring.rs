@@ -6,8 +6,8 @@ use crate::{
     BuildSelection, ConversionDefinition, Diagnostic, ErrorKind, FieldDefinition, MasterdataError,
     ProjectDocuments, ReferenceCardinality, ReferenceKeyKind, ReferenceOptionality,
     ResolvedAuthoringType, Result, SchemaDocument, SourceDocument, TypeFieldDefinition,
-    build_type_system, creation_choices, migration_type_declaration, resolve_authoring_field_shape,
-    resolve_tables,
+    build_type_system, creation_choices, migration_type_declaration, reference_csharp_name,
+    resolve_authoring_field_shape, resolve_tables,
 };
 
 #[derive(Debug, Serialize)]
@@ -25,6 +25,8 @@ pub struct TableSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceSnapshot {
     pub name: String,
+    pub csharp_name: Option<String>,
+    pub effective_csharp_name: String,
     pub source_fields: Vec<String>,
     pub target_table: String,
     pub target_fields: Vec<String>,
@@ -101,6 +103,11 @@ pub fn table_snapshot(
         .iter()
         .map(|reference| ReferenceSnapshot {
             name: reference.name.clone(),
+            csharp_name: reference.csharp_name.clone(),
+            effective_csharp_name: reference_csharp_name(
+                &reference.name,
+                reference.csharp_name.as_deref(),
+            ),
             source_fields: reference.fields.clone(),
             target_table: reference.target.table.clone(),
             target_fields: reference.target.fields.clone(),

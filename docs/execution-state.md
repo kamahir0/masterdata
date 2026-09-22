@@ -6,9 +6,7 @@ Work base: 4586212a22e89f813005c70a16e3bd0aded140e6
 
 ## Active work
 
-Completed: 0027 Computed View specification refinement, review, autonomous application, implementation, focused verification, fresh review-code, and latest-main integration.
-In progress: none.
-Remaining: none.
+None.
 
 ## Blocking findings
 

@@ -21,6 +21,7 @@ import {
   boundedHistoryPush,
   deleteDraft,
   deleteExisting,
+  serializeAddedRecords,
   undoExistingDelete as undoExistingDeleteState,
 } from "./editor-state";
 import { migrationRefreshPlan, resolveDirtyPathMutation } from "./authoring-workflow";
@@ -451,13 +452,7 @@ function queryInputValue(column: DataEditorColumn | undefined, text: string): Au
 function mutationForEditor(editor: EditorState): AuthoringRecordMutation {
   return {
     edits: Object.values(editor.edits),
-    addedRecords: editor.addedRecords.map((draft) => ({
-      fields: editor.snapshot.columns.map((column) => ({
-        field: column.name,
-        value: draft.values[column.name] ?? nullAuthoringValue(),
-      })),
-      tags: draft.tags,
-    })),
+    addedRecords: serializeAddedRecords(editor.snapshot.columns.map((column) => column.name), editor.addedRecords),
     deletedRecordIndices: [...editor.pendingDeletes].sort((left, right) => left - right),
     tagEdits: Object.entries(editor.tagEdits).map(([recordIndex, tags]) => ({
       recordIndex: Number(recordIndex),

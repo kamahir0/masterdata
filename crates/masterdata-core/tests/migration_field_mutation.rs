@@ -126,7 +126,7 @@ fn drop_first_compact_record_member_retains_sequence_and_next_member() {
 }
 
 #[test]
-fn rename_and_drop_fail_closed_when_a_reference_depends_on_the_field() {
+fn rename_updates_reference_source_component_and_drop_remains_fail_closed() {
     let mut documents = docs();
     documents.files.push(
         parse_yaml_document(
@@ -138,23 +138,115 @@ fn rename_and_drop_fail_closed_when_a_reference_depends_on_the_field() {
     documents.files[0] = parse_yaml_document(
         PathBuf::from("schema.yaml"),
         &(documents.files[0].source.clone()
-            + "references:\n  - name: category\n    fields: [id]\n    target:\n      table: category\n      fields: [id]\n"),
+            + "references:\n  - name: category # keep reference\n    csharpName: GetCategory\n    fields: ['id'] # source component\n    target:\n      table: category\n      fields: [id]\n"),
     )
     .unwrap();
-    for command in [
-        MigrationCommand::RenameField(RenameFieldCommand {
+
+    let renamed = dry_run_migration(
+        &documents,
+        &MigrationCommand::RenameField(RenameFieldCommand {
             table: "item".into(),
             field: "id".into(),
             new_name: "itemId".into(),
         }),
-        MigrationCommand::DropField(DropFieldCommand {
+    )
+    .expect("Reference source component follows explicit RenameField");
+    let item = renamed
+        .transformed_documents
+        .schemas()
+        .find(|(_, schema)| schema.table == "item")
+        .unwrap()
+        .1;
+    assert_eq!(item.references[0].fields, ["itemId"]);
+    assert_eq!(item.references[0].target.fields, ["id"]);
+    assert_eq!(item.references[0].name, "category");
+    assert_eq!(item.references[0].csharp_name.as_deref(), Some("GetCategory"));
+    let item_source = renamed
+        .transformed_documents
+        .files
+        .iter()
+        .find(|file| file.path == Path::new("schema.yaml"))
+        .unwrap()
+        .source
+        .as_str();
+    assert!(item_source.contains("fields: ['itemId'] # source component"));
+    assert!(item_source.contains("name: category # keep reference"));
+
+    let error = dry_run_migration(
+        &documents,
+        &MigrationCommand::DropField(DropFieldCommand {
             table: "category".into(),
             field: "id".into(),
         }),
-    ] {
-        let error = dry_run_migration(&documents, &command).expect_err("Reference dependency");
-        assert_eq!(error.diagnostic().code, "E-MIGRATION-FIELD-PRECONDITION");
-    }
+    )
+    .expect_err("DropField must not infer Reference replacement");
+    assert_eq!(error.diagnostic().code, "E-MIGRATION-FIELD-PRECONDITION");
+}
+
+#[test]
+fn rename_updates_inbound_reference_target_component_source_preservingly() {
+    let documents = ProjectDocuments {
+        files: vec![
+            parse_yaml_document(
+                PathBuf::from("category.yaml"),
+                "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: 'id' # target field\n    type: int\nprimaryKey:\n  fields: ['id'] # target key\n",
+            )
+            .unwrap(),
+            parse_yaml_document(
+                PathBuf::from("category-data.yaml"),
+                "kind: data\ntable: category\nrecords:\n  - 'id': 1 # target value\n",
+            )
+            .unwrap(),
+            parse_yaml_document(
+                PathBuf::from("item.yaml"),
+                "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: categoryId\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category # preserve\n    csharpName: GetCategoryMaster\n    fields: [categoryId] # source stays\n    target:\n      table: category\n      fields:\n        - 'id' # target follows\n",
+            )
+            .unwrap(),
+        ],
+    };
+
+    let renamed = dry_run_migration(
+        &documents,
+        &MigrationCommand::RenameField(RenameFieldCommand {
+            table: "category".into(),
+            field: "id".into(),
+            new_name: "categoryKey".into(),
+        }),
+    )
+    .expect("inbound Reference target follows explicit RenameField");
+    let item = renamed
+        .transformed_documents
+        .schemas()
+        .find(|(_, schema)| schema.table == "item")
+        .unwrap()
+        .1;
+    assert_eq!(item.references[0].fields, ["categoryId"]);
+    assert_eq!(item.references[0].target.fields, ["categoryKey"]);
+    assert_eq!(
+        item.references[0].csharp_name.as_deref(),
+        Some("GetCategoryMaster")
+    );
+    let item_source = renamed
+        .transformed_documents
+        .files
+        .iter()
+        .find(|file| file.path == Path::new("item.yaml"))
+        .unwrap()
+        .source
+        .as_str();
+    assert!(item_source.contains("fields: [categoryId] # source stays"));
+    assert!(item_source.contains("- 'categoryKey' # target follows"));
+    assert!(item_source.contains("name: category # preserve"));
+    let category_source = renamed
+        .transformed_documents
+        .files
+        .iter()
+        .find(|file| file.path == Path::new("category.yaml"))
+        .unwrap()
+        .source
+        .as_str();
+    assert!(category_source.contains("name: 'categoryKey' # target field"));
+    assert!(category_source.contains("fields: ['categoryKey'] # target key"));
 }
 
 fn reference_docs() -> ProjectDocuments {

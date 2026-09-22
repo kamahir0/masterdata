@@ -30,3 +30,33 @@ export function migrationRefreshPlan<T>(
   ) as Record<string, T>;
   return { reloadPaths, retainedEditors };
 }
+
+export function migrationBlockedFiles<T extends { path: string }>(
+  files: readonly T[],
+  dirtyPaths: readonly string[],
+): T[] {
+  const dirty = new Set(dirtyPaths);
+  return files.filter((file) => dirty.has(file.path));
+}
+
+export function migrationApplyDisabled({
+  canWrite,
+  stale,
+  blocked,
+  destructive,
+  confirmed,
+  succeeded,
+}: {
+  canWrite: boolean;
+  stale: boolean;
+  blocked: boolean;
+  destructive: boolean;
+  confirmed: boolean;
+  succeeded: boolean;
+}): boolean {
+  return !canWrite || stale || blocked || (destructive && !confirmed) || succeeded;
+}
+
+export function migrationDestructiveAuthorization(destructive: boolean, confirmed: boolean): boolean {
+  return destructive && confirmed;
+}

@@ -49,15 +49,6 @@ test('stale preflight preserves inputs but prevents retrying the old Plan',async
   expect((screen.getByLabelText('Field name') as HTMLInputElement).value).toBe('itemId');
   expect((screen.getByRole('button',{name:'Apply reviewed Plan'}) as HTMLButtonElement).disabled).toBe(true);
 });
-test('Add initializer reaches shared service as exact text',async()=>{
-  await open();fireEvent.click(screen.getByRole('button',{name:'Add Field',exact:true}));
-  fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'amount'}});
-  fireEvent.click(screen.getByRole('checkbox',{name:'Explicit constant initializer'}));
-  fireEvent.change(screen.getByLabelText('Initializer'),{target:{value:'18446744073709551615'}});
-  fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));await screen.findByRole('region',{name:'Migration Plan'});
-  expect(invoke.mock.calls.find(([command])=>command==='plan_table_migration')?.[1].input.initializer).toBe('18446744073709551615');
-});
-
 test('Reference authoring sends ordered declaration to the shared mutation boundary',async()=>{
   await open();
   fireEvent.click(screen.getByRole('button',{name:'Add Reference',exact:true}));

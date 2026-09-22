@@ -106,3 +106,16 @@ export function applyPreviewResult<T extends EditorMutationState>(editor: T, pre
     previewError: null,
   } as T;
 }
+
+export function serializeAddedRecords(
+  fields: readonly string[],
+  drafts: readonly EditorMutationDraft[],
+): { fields: { field: string; value: AuthoringValue }[]; tags: string[] }[] {
+  return drafts.map((draft) => ({
+    fields: fields.map((field) => ({
+      field,
+      value: draft.values[field] ?? nullAuthoringValue(),
+    })),
+    tags: draft.tags,
+  }));
+}

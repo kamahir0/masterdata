@@ -19,8 +19,51 @@ const categories: { value: Category; label: string }[] = [
 ];
 const options = (values: string[]) => values.map(value => ({ value, label: value || "/" }));
 const initialField = (): Field => ({ key: 0, name: "id", type: "int", nullable: false, array: false });
-function move<T>(rows: T[], index: number, direction: number): T[] {
+export function move<T>(rows: T[], index: number, direction: number): T[] {
   const next = [...rows]; [next[index], next[index + direction]] = [next[index + direction], next[index]]; return next;
+}
+
+export function buildCreationRequest({
+  category,
+  root,
+  folder,
+  filename,
+  name,
+  table,
+  csharpName,
+  underlying,
+  fromImplicit,
+  toImplicit,
+  fields,
+  primaryKey,
+  secondaryKeys,
+  members,
+  viewColumns,
+}: {
+  category: Category;
+  root: string;
+  folder: string;
+  filename: string;
+  name: string;
+  table: string;
+  csharpName: string;
+  underlying: string;
+  fromImplicit: boolean;
+  toImplicit: boolean;
+  fields: Field[];
+  primaryKey: string[];
+  secondaryKeys: Secondary[];
+  members: Member[];
+  viewColumns: { name: string; expression: string }[];
+}): CreationRequest {
+  let artifact: Record<string, unknown> = { category };
+  if (category === "table") artifact = { category, table: name, csharpName: csharpName || null, fields, primaryKey: { fields: primaryKey }, secondaryKeys };
+  if (category === "data") artifact = { category, table };
+  if (category === "view") artifact = { category, name, table, columns: viewColumns };
+  if (category === "value_object") artifact = { category, name, underlying, conversions: { fromUnderlyingImplicit: fromImplicit, toUnderlyingImplicit: toImplicit } };
+  if (category === "enum" || category === "flags") artifact = { category, name, underlying, members };
+  if (category === "custom_type") artifact = { category, name, fields };
+  return { sourceRoot: root, destination: folder ? `${folder}/${filename}` : filename, artifact };
 }
 function diagnosticOf(error: unknown) {
   if (error && typeof error === "object" && "diagnostic" in error) return (error as { diagnostic: NonNullable<CreationReport["diagnostic"]> }).diagnostic;
@@ -64,16 +107,23 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
     return () => { disposed = true; };
   }, [projectPath, initialRootIndex]);
 
-  const request = (): CreationRequest => {
-    let artifact: Record<string, unknown> = { category };
-    if (category === "table") artifact = { category, table: name, csharpName: csharpName || null, fields, primaryKey: { fields: primaryKey }, secondaryKeys };
-    if (category === "data") artifact = { category, table };
-    if (category === "view") artifact = { category, name, table, columns: viewColumns };
-    if (category === "value_object") artifact = { category, name, underlying, conversions: { fromUnderlyingImplicit: fromImplicit, toUnderlyingImplicit: toImplicit } };
-    if (category === "enum" || category === "flags") artifact = { category, name, underlying, members };
-    if (category === "custom_type") artifact = { category, name, fields };
-    return { sourceRoot: root, destination: folder ? `${folder}/${filename}` : filename, artifact };
-  };
+  const request = (): CreationRequest => buildCreationRequest({
+    category,
+    root,
+    folder,
+    filename,
+    name,
+    table,
+    csharpName,
+    underlying,
+    fromImplicit,
+    toImplicit,
+    fields,
+    primaryKey,
+    secondaryKeys,
+    members,
+    viewColumns,
+  });
   const focusError = (diagnostic: NonNullable<CreationReport["diagnostic"]>) => {
     let id = "creation-name";
     if (/PATH|EXTENSION|CONFLICT|IO/.test(diagnostic.code)) id = "creation-filename";

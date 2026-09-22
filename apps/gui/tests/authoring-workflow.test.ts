@@ -1,5 +1,11 @@
 import { expect, test, vi } from "vitest";
-import { migrationRefreshPlan, resolveDirtyPathMutation } from "../src/authoring-workflow";
+import {
+  migrationApplyDisabled,
+  migrationBlockedFiles,
+  migrationDestructiveAuthorization,
+  migrationRefreshPlan,
+  resolveDirtyPathMutation,
+} from "../src/authoring-workflow";
 
 test("Cancel and failed Save never start a dirty path mutation", async () => {
   const save = vi.fn(async () => false);
@@ -49,4 +55,28 @@ test("migration refresh reloads affected clean editors and retains unrelated dir
     "other.yaml": { dirty: true },
     "untouched.yaml": { dirty: false },
   });
+});
+
+test("migration apply policy blocks dirty/destructive states without editor-specific duplication", () => {
+  const files = [{ path: "schema.yaml" }, { path: "data.yaml" }];
+  expect(migrationBlockedFiles(files, ["data.yaml"])).toEqual([{ path: "data.yaml" }]);
+
+  const base = {
+    canWrite: true,
+    stale: false,
+    blocked: false,
+    destructive: false,
+    confirmed: false,
+    succeeded: false,
+  };
+  expect(migrationApplyDisabled(base)).toBe(false);
+  expect(migrationApplyDisabled({ ...base, blocked: true })).toBe(true);
+  expect(migrationApplyDisabled({ ...base, destructive: true })).toBe(true);
+  expect(migrationApplyDisabled({ ...base, destructive: true, confirmed: true })).toBe(false);
+  expect(migrationApplyDisabled({ ...base, stale: true })).toBe(true);
+  expect(migrationApplyDisabled({ ...base, succeeded: true })).toBe(true);
+
+  expect(migrationDestructiveAuthorization(false, true)).toBe(false);
+  expect(migrationDestructiveAuthorization(true, false)).toBe(false);
+  expect(migrationDestructiveAuthorization(true, true)).toBe(true);
 });

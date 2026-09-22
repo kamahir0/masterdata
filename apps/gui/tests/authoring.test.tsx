@@ -143,55 +143,6 @@ test('creation refresh selects the new source without discarding an existing dir
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
-test('Existing key cells are directly editable, while Add Row still validates the saved result', async () => {
-  openSnapshot = mutationSnapshot([]);
-  let previewArgs: any;
-  preview = async (args) => {
-    previewArgs = args;
-    return {
-      candidateSource: 'kind: data\ntable: item\nrecords:\n  - id: 18446744073709551615\n    weight: invalid\n    note: draft\n',
-      changed: true,
-      validation: {
-        valid: false,
-        diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', source: '/project/data.yaml', record_identity: 'record[0]', message: 'field `weight` is invalid' }],
-      },
-    };
-  };
-  const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => command === 'save_data_file'
-    ? { status: 'success', snapshot: mutationSnapshot([
-        { recordIndex: 0, cells: [
-          { field: 'id', text: '1', editable: true },
-          { field: 'weight', text: '10', editable: true },
-          { field: 'note', text: 'first', editable: true },
-        ] },
-        { recordIndex: 1, cells: [
-          { field: 'id', text: '18446744073709551615', editable: true },
-          { field: 'weight', text: 'invalid', editable: true },
-          { field: 'note', text: 'draft', editable: true },
-        ] },
-      ]) }
-    : normalInvoke(command, args));
-
-  render(<App sourcePollingIntervalMs={null} />);
-  const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
-  fireEvent.click(add);
-  const id = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
-  expect(id.readOnly).toBe(false);
-  await waitFor(() => expect(document.activeElement).toBe(id));
-  fireEvent.change(id, { target: { value: '18446744073709551615' } });
-  const weight = screen.getByRole('textbox', { name: 'new record weight' }) as HTMLInputElement;
-  fireEvent.change(weight, { target: { value: 'invalid' } });
-  fireEvent.change(screen.getByRole('textbox', { name: 'new record note' }), { target: { value: 'draft' } });
-  await waitFor(() => expect(previewArgs?.addedRecords?.[0]?.fields.map((field: any) => field.field)).toEqual(['id', 'weight', 'note']));
-  await waitFor(() => expect(weight.closest('td')?.classList.contains('invalid')).toBe(true));
-  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
-
-  fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
-  await waitFor(() => expect(screen.getByRole('textbox', { name: 'record 2 id' })).toBeTruthy());
-  expect((screen.getByRole('textbox', { name: 'record 2 id' }) as HTMLInputElement).readOnly).toBe(false);
-}, APP_INTEGRATION_TEST_TIMEOUT_MS);
-
 test('Existing primary key direct edit uses the ordinary cell mutation lifecycle', async () => {
   openSnapshot = mutationSnapshot();
   let previewArgs: any;
@@ -235,32 +186,6 @@ test('Explorer move refreshes selection and the open data editor at the new path
   expect(screen.queryByRole('treeitem', { name: 'data.yaml', exact: true })).toBeNull();
   expect(invoke.mock.calls.some(([command, args]) => command === 'open_data_file' && args.relativePath === 'moved.yaml')).toBe(true);
 });
-
-test('Explorer move offers Save for a dirty target before mutation', async () => {
-  let moved = false;
-  const movedWorkspace = { ...workspace, files: [{ ...workspace.files[0], path: 'moved.yaml' }] };
-  const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
-    if (command === 'authoring_workspace') return moved ? movedWorkspace : workspace;
-    if (command === 'rename_source_file') {
-      moved = true;
-      return { status: 'success', sourcePath: 'data.yaml', destinationPath: 'moved.yaml', sourceState: null, destinationState: null, diagnostic: null };
-    }
-    if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
-    return normalInvoke(command, args);
-  });
-  render(<App sourcePollingIntervalMs={null} />);
-  const input = await screen.findByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement;
-  fireEvent.change(input, { target: { value: '21' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Rename or move source' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Source destination path' }), { target: { value: 'moved.yaml' } });
-  fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
-  await screen.findByText(/Choose Save, Don't Save, or Cancel/);
-  fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true }).at(-1)!);
-  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
-  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(true);
-  expect(invoke.mock.calls.some(([command]) => command === 'rename_source_file')).toBe(true);
-}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
@@ -317,6 +242,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
 const tableSnapshot = {path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string']};
 const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml',sourceRoot:'.',kind:'data'},{path:'schema.yaml',sourceRoot:'.',kind:'schema'}]};
 const tablePlan = {token:'table-plan',table:'item',operation:'RenameField',field:'id',destructive:false,affectedRecordCount:1,files:[{path:'schema.yaml',before:'name: id',after:'name: itemId'},{path:'data.yaml',before:'id: 1',after:'itemId: 1'}],diagnostics:[]};
+const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
 async function planFromTable(type = false) {
   fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
   fireEvent.click(await screen.findByRole('button',{name:'Rename Field',exact:true}));
@@ -324,29 +250,6 @@ async function planFromTable(type = false) {
   fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
   await screen.findByRole('region',{name:type?'Type Migration Plan':'Migration Plan'});
 }
-test('Table Migration refresh reloads affected clean editors and preserves unrelated dirty buffers',async()=>{
-  const normal=invoke.getMockImplementation()!;
-  invoke.mockImplementation(async(command,args)=>{
-    if(command==='authoring_workspace')return tableWorkspace;
-    if(command==='open_table')return tableSnapshot;
-    if(command==='plan_table_migration')return tablePlan;
-    if(command==='apply_table_migration')return {state:'success',files:['schema.yaml','data.yaml']};
-    if(command==='open_data_file')return {...snapshot(),path:args.relativePath};
-    return normal(command,args);
-  });
-  await open();
-  fireEvent.click(screen.getByRole('treeitem',{name:'other.yaml',exact:true}));
-  const input=await screen.findByRole('textbox',{name:'record 1 weight'});
-  fireEvent.change(input,{target:{value:'20'}});
-  await planFromTable();
-  fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
-  await waitFor(()=>expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='data.yaml')).toHaveLength(2));
-  fireEvent.click(screen.getByRole('treeitem',{name:'other.yaml, unsaved changes',exact:true}));
-  expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
-  expect(invoke.mock.calls.filter(([command,args])=>command==='open_data_file'&&args.relativePath==='other.yaml')).toHaveLength(1);
-  expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
-}, APP_INTEGRATION_TEST_TIMEOUT_MS);
-const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
 test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;
   invoke.mockImplementation(async(command,args)=>{

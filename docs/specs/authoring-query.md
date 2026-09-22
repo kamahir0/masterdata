@@ -5,6 +5,7 @@ Status: Approved
 Domain: Authoring
 
 この仕様は、Desktop制作v1のData Editor / Table Overviewで使用するread-only search、filter、sortと保存済みOverview datasetを定義する。適用記録は[仕様変更0016](../spec-changes/0016-desktop-daily-editing.md)および[0017](../spec-changes/0017-desktop-workspace-settings.md)を参照する。
+[Computed View](computed-view.md)のresolved scalarも、同じtyped query capabilityへlowerされる。Computed Viewのparser/type/evaluation semanticsは同仕様が所有し、この仕様はquery operator capabilityだけを所有する。
 
 ## 規範要件
 

@@ -71,7 +71,10 @@ schema migration identityを表さない。Custom Typeのpersisted fieldも同�
 
 Table schemaの`references` declaration、target identity、cardinality、nullable semantics、integrity diagnosticsは[IndexとReferenceのmodel](index-and-reference.md)がcanonical ownerである。
 
-このdocument familyが認識するdocumentは `schema`、`data`、`type` である。Approvedの
+このdocument familyが認識するruntime/schema documentは `schema`、`data`、`type` である。authoring-onlyの
+[Computed View仕様](computed-view.md)が定義する`kind: view`は同じsource discovery / typed document boundaryで
+認識するが、Table schema、MasterMemory field、Build artifactへlowerしない。
+Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
 unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはtyped documentとして扱われ、Type System
 validationとC# generationのimplementation contractを構成する。type documentのpathまたはfilenameはtype identityを

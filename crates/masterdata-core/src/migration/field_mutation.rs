@@ -333,12 +333,7 @@ fn mapping_value_end(
     limit: usize,
     key_indent: usize,
 ) -> usize {
-    for (line, source_line) in lines
-        .iter()
-        .enumerate()
-        .take(limit)
-        .skip(key_line + 1)
-    {
+    for (line, source_line) in lines.iter().enumerate().take(limit).skip(key_line + 1) {
         if is_ignorable_line(source_line.text) {
             continue;
         }

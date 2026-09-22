@@ -5,7 +5,7 @@ import TableEditor from '../src/TableEditor';
 const {invoke}=vi.hoisted(()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/api/core',()=>({invoke}));
 const snapshot={path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false},{key:1,name:'note',type:'string',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string','ulong'],initializerShapes:{int:{kind:'primitive',primitive:'int'},string:{kind:'primitive',primitive:'string'},ulong:{kind:'primitive',primitive:'ulong'}}};
-const planned={token:'1',table:'item',operation:'RenameField',field:'note',destructive:false,affectedRecordCount:2,files:[{path:'data.yaml',before:'note: before',after:'description: before'}],diagnostics:[],compatibility:{report:{summary:{changeCount:2,generatedApi:[{classification:'breaking',count:1}],sourceMigration:[{classification:'supported_operation',count:1}],artifactBinary:[{classification:'rebuild_required',count:1}],externalContract:[{classification:'not_assessed',count:1}]}},diagnostic:null}};
+const planned={token:'1',table:'item',operation:'RenameField',field:'note',destructive:false,affectedRecordCount:2,files:[{path:'data.yaml',before:'note: before',after:'description: before'}],diagnostics:[],compatibility:{report:{summary:{changeCount:2,generatedApi:[{classification:'breaking',count:1}],sourceMigration:[{classification:'supported_operation',count:1}],artifactBinary:[{classification:'rebuild_required',count:1}],externalContract:[{classification:'not_assessed',count:1}]},changes:[{subject:{kind:'field',owner:'item',member:'note'},kind:'field_removed',generatedApi:'breaking',sourceMigration:'supported_operation',artifactBinary:'rebuild_required',externalContract:'not_assessed',reason:'Generated property changes.'}]},diagnostic:null}};
 let plan:any;let outcome:any;
 const onResult=vi.fn(async()=>{});const beginApply=vi.fn(()=>true);const endApply=vi.fn();
 beforeEach(()=>{plan=structuredClone(planned);outcome={state:'success',files:['data.yaml']};invoke.mockReset();onResult.mockClear();beginApply.mockClear();endApply.mockClear();invoke.mockImplementation(async command=>{
@@ -89,6 +89,9 @@ test('Migration Plan renders shared released compatibility impact without reclas
   expect(screen.getByRole('region',{name:'Released Compatibility Impact'})).toBeTruthy();
   expect(screen.getByText('Generated API: breaking 1')).toBeTruthy();
   expect(screen.getByText('Source / Migration: supported_operation 1')).toBeTruthy();
+  fireEvent.click(screen.getByText('Review compatibility changes (1)'));
+  expect(screen.getByText('Generated property changes.')).toBeTruthy();
+  expect(screen.getByText(/item.note/)).toBeTruthy();
 });
 test('compatibility analysis diagnostic remains informational and does not remove Apply',async()=>{
   plan.compatibility={report:null,diagnostic:{code:'E-COMPAT-BASELINE-INVALID',message:'unrelated invalid source'}};

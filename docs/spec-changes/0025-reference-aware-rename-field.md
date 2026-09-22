@@ -15,7 +15,7 @@ Schema MigrationのRenameFieldはPrimary / Secondary Keyまではresolved depend
 - DropFieldはreplacementを推測できないため、Reference dependencyがあれば引き続きfail closedする。
 - stable Field ID、MessagePack key identity、rename lineageを導入しない。
 
-## Canonical owners
+## Affected Specifications
 
 - [Schema Migration v1](../specs/schema-migration.md) — MIGRATION-007 / MIGRATION-008
 - [Table Editor](../gui/table-editor/spec.md) — GUI-TABLE-INT-002

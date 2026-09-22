@@ -333,14 +333,19 @@ fn mapping_value_end(
     limit: usize,
     key_indent: usize,
 ) -> usize {
-    for line in key_line + 1..limit {
-        if is_ignorable_line(lines[line].text) {
+    for (line, source_line) in lines
+        .iter()
+        .enumerate()
+        .take(limit)
+        .skip(key_line + 1)
+    {
+        if is_ignorable_line(source_line.text) {
             continue;
         }
-        let indent = if mapping_entry(lines[line].text).is_some() {
-            logical_mapping_indent(lines[line].text)
+        let indent = if mapping_entry(source_line.text).is_some() {
+            logical_mapping_indent(source_line.text)
         } else {
-            yaml_indent(lines[line].text)
+            yaml_indent(source_line.text)
         };
         if indent <= key_indent {
             return line;

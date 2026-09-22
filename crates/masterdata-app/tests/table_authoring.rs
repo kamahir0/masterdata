@@ -247,3 +247,56 @@ fn compatibility_analysis_failure_does_not_block_safe_table_migration_plan() {
         );
     }
 }
+
+#[test]
+fn reference_aware_target_rename_surfaces_inbound_schema_in_reviewed_plan() {
+    let dir = project();
+    fs::write(
+        dir.path().join("sources/schema.yaml"),
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\n  - key: 2\n    name: categoryId\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category\n    fields: [categoryId]\n    target:\n      table: category\n      fields: [id]\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("sources/data.yaml"),
+        "kind: data\ntable: item\nrecords:\n  - id: 1\n    note: text\n    categoryId: 10\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("sources/category.yaml"),
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("sources/category-data.yaml"),
+        "kind: data\ntable: category\nrecords:\n  - id: 10\n",
+    )
+    .unwrap();
+
+    let mut session = TableAuthoringSession::default();
+    let plan = session
+        .plan(
+            dir.path(),
+            input(json!({
+                "operation": "rename",
+                "table": "category",
+                "field": "id",
+                "newName": "categoryKey"
+            })),
+        )
+        .expect("Reference-aware RenameField plan");
+    let paths = plan
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect::<Vec<_>>();
+    assert!(paths.contains(&"sources/category.yaml"));
+    assert!(paths.contains(&"sources/category-data.yaml"));
+    assert!(paths.contains(&"sources/schema.yaml"));
+    let inbound = plan
+        .files
+        .iter()
+        .find(|file| file.path == "sources/schema.yaml")
+        .expect("inbound Reference schema");
+    assert!(inbound.after.contains("fields: [categoryKey]"));
+    assert!(plan.compatibility.report.is_some());
+}

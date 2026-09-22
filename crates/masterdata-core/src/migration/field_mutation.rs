@@ -174,8 +174,8 @@ fn reference_dependencies(
     let mut result = BTreeSet::new();
     for (_, schema) in documents.schemas() {
         for reference in &schema.references {
-            let source_depends = schema.table == table
-                && reference.fields.iter().any(|name| name == field);
+            let source_depends =
+                schema.table == table && reference.fields.iter().any(|name| name == field);
             let target_depends = reference.target.table == table
                 && reference.target.fields.iter().any(|name| name == field);
             if source_depends || target_depends {
@@ -186,12 +186,7 @@ fn reference_dependencies(
     result
 }
 
-fn rename_reference_components(
-    schema: &mut SchemaDocument,
-    table: &str,
-    old: &str,
-    new: &str,
-) {
+fn rename_reference_components(schema: &mut SchemaDocument, table: &str, old: &str, new: &str) {
     let source_table = schema.table == table;
     for reference in &mut schema.references {
         if source_table {
@@ -231,11 +226,7 @@ fn reference_component_patches(
     for (index, source_depends, target_depends) in affected {
         let reference = &schema.references[index];
         let item_start = region.items[index];
-        let item_end = region
-            .items
-            .get(index + 1)
-            .copied()
-            .unwrap_or(sequence_end);
+        let item_end = region.items.get(index + 1).copied().unwrap_or(sequence_end);
         let direct_indent = (item_start..item_end)
             .filter(|line| !is_ignorable_line(lines[*line].text))
             .filter(|line| mapping_entry(lines[*line].text).is_some())
@@ -257,8 +248,7 @@ fn reference_component_patches(
                             "MIGRATION-007",
                         )
                     })?;
-            let fields_end =
-                mapping_value_end(&lines, fields_line, item_end, direct_indent);
+            let fields_end = mapping_value_end(&lines, fields_line, item_end, direct_indent);
             let mut patches =
                 key_reference_patches(source, &lines, fields_line, fields_end, old, new)?;
             let expected = reference.fields.iter().filter(|name| *name == old).count();
@@ -280,13 +270,11 @@ fn reference_component_patches(
                             "MIGRATION-007",
                         )
                     })?;
-            let target_end =
-                mapping_value_end(&lines, target_line, item_end, direct_indent);
+            let target_end = mapping_value_end(&lines, target_line, item_end, direct_indent);
             let target_indent = logical_mapping_indent(lines[target_line].text);
             let fields_line = (target_line + 1..target_end)
                 .find(|line| {
-                    mapping_entry(lines[*line].text)
-                        .is_some_and(|entry| entry.key == "fields")
+                    mapping_entry(lines[*line].text).is_some_and(|entry| entry.key == "fields")
                         && logical_mapping_indent(lines[*line].text) > target_indent
                 })
                 .ok_or_else(|| {
@@ -296,8 +284,7 @@ fn reference_component_patches(
                     )
                 })?;
             let fields_indent = logical_mapping_indent(lines[fields_line].text);
-            let fields_end =
-                mapping_value_end(&lines, fields_line, target_end, fields_indent);
+            let fields_end = mapping_value_end(&lines, fields_line, target_end, fields_indent);
             let mut patches =
                 key_reference_patches(source, &lines, fields_line, fields_end, old, new)?;
             let expected = reference
@@ -460,12 +447,7 @@ fn validate_renamed_reference_closure(
 }
 
 fn reference_failure(message: &str, requirement: &str) -> MasterdataError {
-    migration_error(
-        "E-MIGRATION-FIELD-PRECONDITION",
-        message,
-        None,
-        requirement,
-    )
+    migration_error("E-MIGRATION-FIELD-PRECONDITION", message, None, requirement)
 }
 
 fn failure(message: &str) -> MasterdataError {

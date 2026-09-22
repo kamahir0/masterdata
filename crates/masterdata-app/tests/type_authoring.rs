@@ -51,7 +51,11 @@ fn type_plan_is_read_only_and_lossless_and_apply_refreshes_authority() {
     assert_eq!(snapshot.members[0].value, "18446744073709551615");
     let plan = session.plan_type(root, rename()).unwrap();
     assert_eq!(plan.affected_occurrence_count, 1);
-    let compatibility = plan.compatibility.report.as_ref().expect("compatibility report");
+    let compatibility = plan
+        .compatibility
+        .report
+        .as_ref()
+        .expect("compatibility report");
     assert!(
         compatibility
             .changes

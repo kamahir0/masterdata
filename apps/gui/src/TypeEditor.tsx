@@ -4,11 +4,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type { MigrationResult } from "./TableEditor";
 import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
 import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";
+import MigrationCompatibilityImpact, { type MigrationCompatibility } from "./MigrationCompatibilityImpact";
 
 type Field = { key: number; name: string; type: string; nullable: boolean; array: boolean };
 type Snapshot = { path: string; name: string; category: string; underlying: string | null; conversions: { fromUnderlyingImplicit: boolean; toUnderlyingImplicit: boolean } | null; members: { name: string; value: string }[]; fields: Field[]; fieldTypes: string[]; initializerShapes: Record<string, ResolvedAuthoringType> };
 type Diagnostic = { code: string; message: string; source?: string; schemaPath?: string; schema_path?: string };
-type Plan = { token: string; target: string; operation: string; selector: string; destructive: boolean; affectedOccurrenceCount: number; files: { path: string; before: string; after: string }[]; diagnostics: Diagnostic[] };
+type Plan = { token: string; target: string; operation: string; selector: string; destructive: boolean; affectedOccurrenceCount: number; files: { path: string; before: string; after: string }[]; diagnostics: Diagnostic[]; compatibility: MigrationCompatibility };
 type Operation = "conversions" | "add" | "rename" | "drop";
 const diagnosticText = (d: Diagnostic) => [d.source, d.schemaPath ?? d.schema_path, `${d.code}: ${d.message}`].filter(Boolean).join(" · ");
 const message = (error: unknown) => error && typeof error === "object" && "diagnostic" in error ? diagnosticText((error as { diagnostic: Diagnostic }).diagnostic) : String(error);
@@ -137,6 +138,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
         <p>{plan.files.length} affected files · {plan.affectedOccurrenceCount} affected value occurrences · {plan.destructive ? "Destructive" : "Non-destructive"}</p>
         {plan.diagnostics.length === 0 && <p>Migration validation passed.</p>}
         {plan.diagnostics.map((d, i) => <Alert key={i} title={diagnosticText(d)} type="error" />)}
+        <MigrationCompatibilityImpact value={plan.compatibility} />
         <Tabs items={plan.files.map(file => ({ key: file.path, label: file.path, children: <div className="migration-diff"><section><h4>Before</h4><pre>{file.before}</pre></section><section><h4>After</h4><pre>{file.after}</pre></section></div> }))} />
         {blocked.length > 0 && <Alert type="warning" title="Apply blocked by unsaved affected files" description={blocked.map(f => f.path).join(", ")} />}
         {plan.destructive && <Checkbox disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}>I confirm dropping {plan.target}.{plan.selector}{custom ? " and its values" : ""}.</Checkbox>}

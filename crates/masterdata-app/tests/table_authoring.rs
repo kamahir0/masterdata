@@ -34,7 +34,11 @@ fn plan_is_read_only_and_apply_checks_exact_reviewed_snapshot() {
     let before = fs::read(dir.path().join("sources/data.yaml")).unwrap();
     let plan = session.plan(dir.path(), rename()).unwrap();
     assert_eq!(plan.files.len(), 2);
-    let compatibility = plan.compatibility.report.as_ref().expect("compatibility report");
+    let compatibility = plan
+        .compatibility
+        .report
+        .as_ref()
+        .expect("compatibility report");
     assert!(compatibility.summary.change_count > 0);
     assert!(
         compatibility

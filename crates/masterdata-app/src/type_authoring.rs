@@ -1,7 +1,8 @@
 //! GUI transport values remain exact text until parsed by the shared service.
 use crate::{
-    TableAuthoringSession, TableFileDiff, authoring::project_relative_string,
-    table_authoring::{Prepared, MigrationCompatibilityView, migration_compatibility},
+    TableAuthoringSession, TableFileDiff,
+    authoring::project_relative_string,
+    table_authoring::{MigrationCompatibilityView, Prepared, migration_compatibility},
 };
 use masterdata_core::*;
 use serde::{Deserialize, Serialize};
@@ -225,11 +226,8 @@ impl TableAuthoringSession {
                     .clone(),
             })
             .collect();
-        let compatibility = migration_compatibility(
-            &project,
-            &before,
-            &dry_run.candidate.transformed_documents,
-        );
+        let compatibility =
+            migration_compatibility(&project, &before, &dry_run.candidate.transformed_documents);
         let view = TypePlanView {
             token: token.clone(),
             target: command.target,

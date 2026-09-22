@@ -160,7 +160,10 @@ fn rename_updates_reference_source_component_and_drop_remains_fail_closed() {
     assert_eq!(item.references[0].fields, ["itemId"]);
     assert_eq!(item.references[0].target.fields, ["id"]);
     assert_eq!(item.references[0].name, "category");
-    assert_eq!(item.references[0].csharp_name.as_deref(), Some("GetCategory"));
+    assert_eq!(
+        item.references[0].csharp_name.as_deref(),
+        Some("GetCategory")
+    );
     let item_source = renamed
         .transformed_documents
         .files

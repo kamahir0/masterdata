@@ -5,7 +5,7 @@ import TableEditor from '../src/TableEditor';
 const {invoke}=vi.hoisted(()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/api/core',()=>({invoke}));
 const snapshot={path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false},{key:1,name:'note',type:'string',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string','ulong'],initializerShapes:{int:{kind:'primitive',primitive:'int'},string:{kind:'primitive',primitive:'string'},ulong:{kind:'primitive',primitive:'ulong'}}};
-const planned={token:'1',table:'item',operation:'RenameField',field:'note',destructive:false,affectedRecordCount:2,files:[{path:'data.yaml',before:'note: before',after:'description: before'}],diagnostics:[]};
+const planned={token:'1',table:'item',operation:'RenameField',field:'note',destructive:false,affectedRecordCount:2,files:[{path:'data.yaml',before:'note: before',after:'description: before'}],diagnostics:[],compatibility:{report:{summary:{changeCount:2,generatedApi:[{classification:'breaking',count:1}],sourceMigration:[{classification:'supported_operation',count:1}],artifactBinary:[{classification:'rebuild_required',count:1}],externalContract:[{classification:'not_assessed',count:1}]}},diagnostic:null}};
 let plan:any;let outcome:any;
 const onResult=vi.fn(async()=>{});const beginApply=vi.fn(()=>true);const endApply=vi.fn();
 beforeEach(()=>{plan=structuredClone(planned);outcome={state:'success',files:['data.yaml']};invoke.mockReset();onResult.mockClear();beginApply.mockClear();endApply.mockClear();invoke.mockImplementation(async command=>{
@@ -82,4 +82,18 @@ test('changing field shape clears typed initializer and reviewed plan',async()=>
   fireEvent.click((await screen.findAllByText('string',{selector:'.ant-select-item-option-content'})).at(-1)!);
   expect(screen.queryByRole('region',{name:'Migration Plan'})).toBeNull();
   expect((screen.getByRole('checkbox',{name:'Explicit constant initializer'}) as HTMLInputElement).checked).toBe(false);
+});
+
+test('Migration Plan renders shared released compatibility impact without reclassifying it',async()=>{
+  await open();await rename();
+  expect(screen.getByRole('region',{name:'Released Compatibility Impact'})).toBeTruthy();
+  expect(screen.getByText('Generated API: breaking 1')).toBeTruthy();
+  expect(screen.getByText('Source / Migration: supported_operation 1')).toBeTruthy();
+});
+test('compatibility analysis diagnostic remains informational and does not remove Apply',async()=>{
+  plan.compatibility={report:null,diagnostic:{code:'E-COMPAT-BASELINE-INVALID',message:'unrelated invalid source'}};
+  await open();await rename();
+  expect(screen.getByText('Released compatibility impact unavailable')).toBeTruthy();
+  expect(screen.getByText(/E-COMPAT-BASELINE-INVALID/)).toBeTruthy();
+  expect((screen.getByRole('button',{name:'Apply reviewed Plan'}) as HTMLButtonElement).disabled).toBe(false);
 });

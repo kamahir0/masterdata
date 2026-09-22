@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TableEditor from '../src/TableEditor';
 const {invoke}=vi.hoisted(()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/api/core',()=>({invoke}));
@@ -91,7 +91,8 @@ test('Migration Plan renders shared released compatibility impact without reclas
   expect(screen.getByText('Source / Migration: supported_operation 1')).toBeTruthy();
   fireEvent.click(screen.getByText('Review compatibility changes (1)'));
   expect(screen.getByText('Generated property changes.')).toBeTruthy();
-  expect(screen.getByText(/item.note/)).toBeTruthy();
+  const impact = screen.getByRole('region',{name:'Released Compatibility Impact'});
+  expect(within(impact).getByText('item.note')).toBeTruthy();
 });
 test('compatibility analysis diagnostic remains informational and does not remove Apply',async()=>{
   plan.compatibility={report:null,diagnostic:{code:'E-COMPAT-BASELINE-INVALID',message:'unrelated invalid source'}};

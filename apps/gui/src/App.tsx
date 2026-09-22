@@ -523,7 +523,7 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
   return focusElement(document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`));
 }
 
-function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: number | null } = {}) {
+function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourcePollingIntervalMs?: number | null; previewDelayMs?: number } = {}) {
   const [recoveries, setRecoveries] = useState<Record<string, MigrationResult>>({});
   const recoveryRef = useRef<Record<string, MigrationResult>>({});
   const [tableEpoch, setTableEpoch] = useState(0);
@@ -827,9 +827,9 @@ function App({ sourcePollingIntervalMs = 1600 }: { sourcePollingIntervalMs?: num
           };
         });
       }
-    }, 320);
+    }, previewDelayMs);
     previewTimers.current.set(path, timer);
-  }, []);
+  }, [previewDelayMs]);
 
   const updateCell = useCallback((path: string, recordIndex: number, field: string, value: AuthoringValue) => {
     if (!projectRoot) return;

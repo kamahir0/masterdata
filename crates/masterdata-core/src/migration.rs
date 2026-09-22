@@ -473,18 +473,38 @@ fn build_resolution_closure(
     table_name: &str,
     new_field: &FieldDefinition,
 ) -> ProjectDocuments {
-    // WHY: Migration Resolvable is scoped to the target Table and its type
-    // dependencies; project-wide validation would incorrectly turn unrelated
-    // diagnostics into AddField blockers.
-    // IF REMOVED: an invalid unrelated Table or type would prevent a safe
-    // target transformation even though it cannot affect the patch.
-    // EVIDENCE: docs/specs/schema-migration.md; docs/spec-changes/0011-cli-surface-and-schema-migration.md
-    // Regression: unrelated_invalid_type_does_not_block_add_field_resolution;
-    // target_table_unrelated_record_diagnostic_does_not_block_add_field_resolution.
+    // WHY: Migration Resolvable is scoped to the target Table and its semantic
+    // dependencies. Reference target Tables are part of that schema closure:
+    // omitting them makes an otherwise valid target schema fail as
+    // E-REFERENCE-UNKNOWN-TARGET-TABLE. Project-wide unrelated Tables remain
+    // excluded so unrelated diagnostics do not become Migration blockers.
+    // IF REMOVED: a target Table that declares a Reference cannot participate
+    // in safe field migration even though the relationship resolves in the
+    // project; including every Table instead would violate MIGRATION-017.
+    // EVIDENCE: docs/specs/schema-migration.md (MIGRATION-005/007/017);
+    // docs/specs/index-and-reference.md.
+    let mut tables = BTreeSet::from([table_name.to_owned()]);
+    loop {
+        let before = tables.len();
+        for (_, schema) in documents.schemas() {
+            if tables.contains(&schema.table) {
+                for reference in &schema.references {
+                    tables.insert(reference.target.table.clone());
+                }
+            }
+        }
+        if tables.len() == before {
+            break;
+        }
+    }
+
     let mut included = Vec::<LoadedDocument>::new();
     for loaded in &documents.files {
         let include = match &loaded.document {
-            SourceDocument::Schema(schema) => schema.table == table_name,
+            SourceDocument::Schema(schema) => tables.contains(&schema.table),
+            // Record-value constraints remain outside Migration schema
+            // resolution. Keep only the target Table's data because callers
+            // use this closure for target record mutation/count semantics.
             SourceDocument::Data(data) => data.table == table_name,
             SourceDocument::Type(_) => false,
         };
@@ -507,9 +527,11 @@ fn build_resolution_closure(
     }
 
     let mut pending = BTreeSet::new();
-    if let Some(schema) = find_target_schema(documents, table_name) {
-        for field in &schema.document.fields {
-            add_named_type(&mut pending, &field.type_name);
+    for (_, schema) in documents.schemas() {
+        if tables.contains(&schema.table) {
+            for field in &schema.fields {
+                add_named_type(&mut pending, &field.type_name);
+            }
         }
     }
     add_named_type(&mut pending, &new_field.type_name);

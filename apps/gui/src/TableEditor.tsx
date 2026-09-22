@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
 import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";
 import MigrationCompatibilityImpact, { type MigrationCompatibility } from "./MigrationCompatibilityImpact";
+import { migrationApplyDisabled, migrationBlockedFiles, migrationDestructiveAuthorization } from "./authoring-workflow";
 
 type Field = { key:number; name:string; type:string; nullable:boolean; array:boolean };
 type Reference = { name:string; csharpName?:string|null; effectiveCsharpName?:string; sourceFields:string[]; targetTable:string; targetFields:string[]; targetKeyKind?:"primary"|"secondary"; cardinality?:"single"|"many"; optionality?:"required"|"nullable" };
@@ -53,7 +54,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
     inFlight.current=true;setBusy(true);setError(null);
     try {
       let outcome:MigrationResult;
-      try {outcome=await invoke<MigrationResult>("apply_table_migration",{projectPath,token:plan.token,allowDestructive:plan.destructive&&confirmed});}
+      try {outcome=await invoke<MigrationResult>("apply_table_migration",{projectPath,token:plan.token,allowDestructive: migrationDestructiveAuthorization(plan.destructive, confirmed)});}
       catch(error){
         if(error&&typeof error==="object"&&"diagnostic" in error)throw error;
         outcome={state:"recovery_required",files:plan.files.map(file=>file.path),diagnostic:{code:"E-MIGRATION-TRANSPORT",message:message(error)}};
@@ -68,7 +69,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
     finally{inFlight.current=false;endApply();if(mounted.current)setBusy(false);}
   };
   const stale = result?.state === "not_started" && !!result.diagnostic?.message.includes("stale");
-  const blocked=plan?.files.filter(file=>dirtyPaths.includes(file.path))??[];
+  const blocked = migrationBlockedFiles(plan?.files ?? [], dirtyPaths);
   return <section className="table-editor" aria-label="Table Editor">
     {error&&<Alert role="alert" type="error" title={error}/>}
     {!snapshot&&!error&&<Spin tip="Loading Table"><div style={{minHeight:80}}/></Spin>}
@@ -136,7 +137,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
         <Tabs items={plan.files.map(file=>({key:file.path,label:file.path,children:<div className="migration-diff"><section><h4>Before</h4><pre>{file.before}</pre></section><section><h4>After</h4><pre>{file.after}</pre></section></div>}))}/>
         {blocked.length>0&&<Alert type="warning" title="Apply blocked by unsaved affected files" description={blocked.map(file=>file.path).join(", ")}/>}
         {plan.destructive&&<Checkbox disabled={busy} checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}>I confirm dropping {plan.table}.{plan.field} and its record values.</Checkbox>}
-        <Button type="primary" danger={plan.destructive} loading={busy} disabled={!canWrite||stale||blocked.length>0||(plan.destructive&&!confirmed)||result?.state==="success"} onClick={()=>void apply()}>Apply reviewed Plan</Button>
+        <Button type="primary" danger={plan.destructive} loading={busy} disabled={migrationApplyDisabled({ canWrite, stale, blocked: blocked.length > 0, destructive: plan.destructive, confirmed, succeeded: result?.state === "success" })} onClick={()=>void apply()}>Apply reviewed Plan</Button>
       </section>}
       {result&&<Alert role="status" type={result.state==="success"?"success":"warning"} title={result.state==="not_started"&&result.diagnostic?.message.includes("stale")?"Stale Plan — re-plan required":result.state} description={result.diagnostic?.message}/>}
     </>}

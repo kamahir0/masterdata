@@ -59,7 +59,7 @@ UIはMessagePack keyの候補値を提案してよい（MAY）が、それをsem
 
 ### GUI-TABLE-INT-002
 
-`Rename Field`はcurrent logical Table identityとcurrent field nameをtarget selectorとしてshared Migration boundaryへ渡さなければならない（MUST）。frontendがschema / data / key referenceを文字列置換してはならない（MUST NOT）。Rename UIからMessagePack key変更を暗黙に行ってはならない（MUST NOT）。
+`Rename Field`はcurrent logical Table identityとcurrent field nameをtarget selectorとしてshared Migration boundaryへ渡さなければならない（MUST）。frontendがschema / data / key / Referenceを文字列置換してはならない（MUST NOT）。shared MigrationがMIGRATION-007に従ってReference source/target componentを追随する場合、そのReference schemaを含むaffected fileとDiffをcurrent Planから表示しなければならない（MUST）。Rename UIからMessagePack key変更、Reference name変更、target変更を暗黙に行ってはならない（MUST NOT）。
 
 ### GUI-TABLE-INT-003
 
@@ -67,7 +67,7 @@ UIはMessagePack keyの候補値を提案してよい（MAY）が、それをsem
 
 ### GUI-TABLE-INT-004
 
-source mutation前に必ずMigration Planを取得しなければならない（MUST）。Plan surfaceは少なくともoperation / target、destructive state、affected source files、affected record count、Migration validation / diagnosticsを表示しなければならない（MUST）。Plan作成・表示はsourceを変更してはならない（MUST NOT）。Plan failureをApply successとして扱ってはならない（MUST NOT）。
+source mutation前に必ずMigration Planを取得しなければならない（MUST）。Plan surfaceは少なくともoperation / target、destructive state、affected source files、affected record count、Migration validation / diagnosticsを表示しなければならない（MUST）。Planは同じbefore snapshotとin-memory transformed candidateをReleased Compatibilityのshared analyzerへread-onlyで渡し、利用可能な場合はstructured compatibility reportを提示しなければならない（MUST）。Compatibility analysisがunrelated invalid source等で成立しない場合、そのdiagnosticを補助impact情報として提示してよいが（MAY）、Migration resolution closureがvalidであるPlan自体をcompatibility analysis failureだけで拒否してはならない（MUST NOT）。Plan作成・表示はsourceを変更してはならない（MUST NOT）。Plan failureをApply successとして扱ってはならない（MUST NOT）。
 
 ### GUI-TABLE-INT-005
 

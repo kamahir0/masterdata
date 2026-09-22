@@ -1,7 +1,8 @@
 //! GUI transport values remain exact text until parsed by the shared service.
 use crate::{
-    TableAuthoringSession, TableFileDiff, authoring::project_relative_string,
-    table_authoring::Prepared,
+    TableAuthoringSession, TableFileDiff,
+    authoring::project_relative_string,
+    table_authoring::{MigrationCompatibilityView, Prepared, migration_compatibility},
 };
 use masterdata_core::*;
 use serde::{Deserialize, Serialize};
@@ -185,6 +186,7 @@ pub struct TypePlanView {
     pub affected_occurrence_count: usize,
     pub files: Vec<TableFileDiff>,
     pub diagnostics: Vec<Diagnostic>,
+    pub compatibility: MigrationCompatibilityView,
 }
 impl TableAuthoringSession {
     pub fn open_type(&self, root: &Path, path: &str) -> Result<TypeSnapshot> {
@@ -224,6 +226,8 @@ impl TableAuthoringSession {
                     .clone(),
             })
             .collect();
+        let compatibility =
+            migration_compatibility(&project, &before, &dry_run.candidate.transformed_documents);
         let view = TypePlanView {
             token: token.clone(),
             target: command.target,
@@ -233,6 +237,7 @@ impl TableAuthoringSession {
             affected_occurrence_count: dry_run.affected_occurrence_count,
             files,
             diagnostics: vec![],
+            compatibility,
         };
         self.plans
             .retain(|_, plan| plan.project.root() != project.root());

@@ -18,6 +18,8 @@ conversationやhandoffは補助情報でありcurrent authorityではない。
 
 Human-selected Current Objectiveは、Human gateに到達するまでのautonomous executionをauthorizationする。agentはObjective内で必要な調査、design、specification、agent-resolvable decision、review、approval/application、implementation、test、self-review、correction、verificationを一連のworkとして進めてよい（MAY）。
 
+Current Objectiveはdefaultとして単一featureや単一spec changeではなく、複数の関連feature / spec / implementation sliceを含むproduct outcomeまたはdevelopment themeの到達点で切る（SHOULD）。Objective内のsub-feature完了、spec適用、checkpoint commit、Stage transitionをHuman同期点にしてはならず、Human gateまたはObjective completionまで連続して進める。
+
 Stageはrecovery checkpointでありturn boundaryではない。
 
 ## Pre-action freshness gate

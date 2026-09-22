@@ -17,12 +17,21 @@ pub(super) fn prepare(
         })
         .cloned()
         .ok_or_else(|| failure("target Table/field does not exist"))?;
-    if validate_computed_view_dependencies(documents, table).is_err()
-        || reference_depends_on_field(documents, table, field)
-        || (rename.is_none() && view_depends_on_field(documents, table, field))
-    {
+    let affected_references = reference_dependencies(documents, table, field);
+    if validate_computed_view_dependencies(documents, table).is_err() {
         return Err(failure(
-            "field is used by a Reference or Computed View source/target; safe automatic rewrite is not available",
+            "target Table has an invalid Computed View dependency; field migration is fail-closed",
+        ));
+    }
+    if rename.is_none() && !affected_references.is_empty() {
+        return Err(reference_failure(
+            "DropField target is used by a Reference source or target; replacement is not inferred",
+            "MIGRATION-008",
+        ));
+    }
+    if rename.is_none() && view_depends_on_field(documents, table, field) {
+        return Err(failure(
+            "DropField target is used by a Computed View; replacement is not inferred",
         ));
     }
     let (closure, _) = resolve_target_snapshot(documents, table, &original)?;
@@ -53,18 +62,16 @@ pub(super) fn prepare(
         .sort_by_key(|&index| matches!(expected.files[index].document, SourceDocument::View(_)));
     for file_index in file_indices {
         let path = expected.files[file_index].path.clone();
-        let view_patch = if rename.is_some()
+        let view_patch = if let Some(name) = rename
             && let SourceDocument::View(view) = &expected.files[file_index].document
             && view.table == table
         {
             let mut desired = view.clone();
             let mut changed = false;
             for column in &mut desired.columns {
-                if let Some(expression) = crate::rename_field_references(
-                    &column.expression,
-                    field,
-                    rename.expect("rename checked"),
-                ) {
+                if let Some(expression) =
+                    crate::rename_field_references(&column.expression, field, name)
+                {
                     column.expression = expression;
                     changed = true;
                 }
@@ -88,24 +95,44 @@ pub(super) fn prepare(
         } else {
             let loaded = &mut expected.files[file_index];
             match &mut loaded.document {
-                SourceDocument::Schema(schema) if schema.table == table => {
-                    let index = schema
-                        .fields
-                        .iter()
-                        .position(|candidate| candidate.name == field)
-                        .expect("resolved field");
-                    let patches =
-                        schema_patches(&loaded.source, index, schema.fields.len(), field, rename)?;
+                SourceDocument::Schema(schema) => {
+                    let mut patches = Vec::new();
                     if let Some(name) = rename {
-                        schema.fields[index].name = name.into();
-                        if let Some(key) = &mut schema.primary_key {
-                            replace_names(&mut key.fields, field, name);
+                        patches.extend(reference_component_patches(
+                            &loaded.source,
+                            schema,
+                            table,
+                            field,
+                            name,
+                        )?);
+                    }
+                    if schema.table == table {
+                        let index = schema
+                            .fields
+                            .iter()
+                            .position(|candidate| candidate.name == field)
+                            .expect("resolved field");
+                        patches.extend(schema_patches(
+                            &loaded.source,
+                            index,
+                            schema.fields.len(),
+                            field,
+                            rename,
+                        )?);
+                        if let Some(name) = rename {
+                            schema.fields[index].name = name.into();
+                            if let Some(key) = &mut schema.primary_key {
+                                replace_names(&mut key.fields, field, name);
+                            }
+                            for key in &mut schema.secondary_keys {
+                                replace_names(&mut key.fields, field, name);
+                            }
+                        } else {
+                            schema.fields.remove(index);
                         }
-                        for key in &mut schema.secondary_keys {
-                            replace_names(&mut key.fields, field, name);
-                        }
-                    } else {
-                        schema.fields.remove(index);
+                    }
+                    if let Some(name) = rename {
+                        rename_reference_components(schema, table, field, name);
                     }
                     patches
                 }
@@ -144,6 +171,9 @@ pub(super) fn prepare(
     plans.sort_by(|a, b| a.path.cmp(&b.path));
     let transformed = apply_file_plans(documents, &plans)?;
     resolve_target_snapshot(&transformed, table, &probe)?;
+    if rename.is_some() && !affected_references.is_empty() {
+        validate_renamed_reference_closure(&transformed, &affected_references)?;
+    }
     if semantic_documents(&transformed) != semantic_documents(&expected) {
         return Err(failure("field transformation postcondition failed"));
     }
@@ -184,17 +214,164 @@ fn replace_names(names: &mut [String], old: &str, new: &str) {
     }
 }
 
-fn reference_depends_on_field(documents: &ProjectDocuments, table: &str, field: &str) -> bool {
-    documents.schemas().any(|(_, schema)| {
-        schema.table == table
-            && schema
-                .references
+fn reference_dependencies(
+    documents: &ProjectDocuments,
+    table: &str,
+    field: &str,
+) -> BTreeSet<(String, String)> {
+    let mut result = BTreeSet::new();
+    for (_, schema) in documents.schemas() {
+        for reference in &schema.references {
+            let source_depends =
+                schema.table == table && reference.fields.iter().any(|name| name == field);
+            let target_depends = reference.target.table == table
+                && reference.target.fields.iter().any(|name| name == field);
+            if source_depends || target_depends {
+                result.insert((schema.table.clone(), reference.name.clone()));
+            }
+        }
+    }
+    result
+}
+
+fn rename_reference_components(schema: &mut SchemaDocument, table: &str, old: &str, new: &str) {
+    let source_table = schema.table == table;
+    for reference in &mut schema.references {
+        if source_table {
+            replace_names(&mut reference.fields, old, new);
+        }
+        if reference.target.table == table {
+            replace_names(&mut reference.target.fields, old, new);
+        }
+    }
+}
+
+fn reference_component_patches(
+    source: &str,
+    schema: &SchemaDocument,
+    table: &str,
+    old: &str,
+    new: &str,
+) -> Result<Vec<MigrationPatch>> {
+    let affected = schema
+        .references
+        .iter()
+        .enumerate()
+        .filter_map(|(index, reference)| {
+            let source_depends =
+                schema.table == table && reference.fields.iter().any(|name| name == old);
+            let target_depends = reference.target.table == table
+                && reference.target.fields.iter().any(|name| name == old);
+            (source_depends || target_depends).then_some((index, source_depends, target_depends))
+        })
+        .collect::<Vec<_>>();
+    if affected.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let (lines, region, sequence_end) = sequence(source, "references", schema.references.len())?;
+    let mut result = Vec::new();
+    for (index, source_depends, target_depends) in affected {
+        let reference = &schema.references[index];
+        let item_start = region.items[index];
+        let item_end = region.items.get(index + 1).copied().unwrap_or(sequence_end);
+        let direct_indent = (item_start..item_end)
+            .filter(|line| !is_ignorable_line(lines[*line].text))
+            .filter(|line| mapping_entry(lines[*line].text).is_some())
+            .map(|line| logical_mapping_indent(lines[line].text))
+            .min()
+            .ok_or_else(|| {
+                reference_failure(
+                    "Reference item mapping cannot be located safely",
+                    "MIGRATION-007",
+                )
+            })?;
+
+        if source_depends {
+            let fields_line =
+                find_mapping_line(&lines, item_start, item_end, direct_indent, "fields")
+                    .ok_or_else(|| {
+                        reference_failure(
+                            "Reference source fields cannot be located safely",
+                            "MIGRATION-007",
+                        )
+                    })?;
+            let fields_end = mapping_value_end(&lines, fields_line, item_end, direct_indent);
+            let mut patches =
+                key_reference_patches(source, &lines, fields_line, fields_end, old, new)?;
+            let expected = reference.fields.iter().filter(|name| *name == old).count();
+            if patches.len() != expected {
+                return Err(reference_failure(
+                    "Reference source field patch is ambiguous",
+                    "MIGRATION-007",
+                ));
+            }
+            result.append(&mut patches);
+        }
+
+        if target_depends {
+            let target_line =
+                find_mapping_line(&lines, item_start, item_end, direct_indent, "target")
+                    .ok_or_else(|| {
+                        reference_failure(
+                            "Reference target mapping cannot be located safely",
+                            "MIGRATION-007",
+                        )
+                    })?;
+            let target_end = mapping_value_end(&lines, target_line, item_end, direct_indent);
+            let target_indent = logical_mapping_indent(lines[target_line].text);
+            let fields_line = (target_line + 1..target_end)
+                .find(|line| {
+                    mapping_entry(lines[*line].text).is_some_and(|entry| entry.key == "fields")
+                        && logical_mapping_indent(lines[*line].text) > target_indent
+                })
+                .ok_or_else(|| {
+                    reference_failure(
+                        "Reference target fields cannot be located safely",
+                        "MIGRATION-007",
+                    )
+                })?;
+            let fields_indent = logical_mapping_indent(lines[fields_line].text);
+            let fields_end = mapping_value_end(&lines, fields_line, target_end, fields_indent);
+            let mut patches =
+                key_reference_patches(source, &lines, fields_line, fields_end, old, new)?;
+            let expected = reference
+                .target
+                .fields
                 .iter()
-                .any(|reference| reference.fields.iter().any(|name| name == field))
-            || schema.references.iter().any(|reference| {
-                reference.target.table == table
-                    && reference.target.fields.iter().any(|name| name == field)
-            })
+                .filter(|name| *name == old)
+                .count();
+            if patches.len() != expected {
+                return Err(reference_failure(
+                    "Reference target field patch is ambiguous",
+                    "MIGRATION-007",
+                ));
+            }
+            result.append(&mut patches);
+        }
+    }
+    Ok(result)
+}
+
+fn logical_mapping_indent(line: &str) -> usize {
+    let code = strip_yaml_comment(line);
+    if let Some((_, rest)) = sequence_item_parts(code) {
+        rest.as_ptr() as usize - line.as_ptr() as usize
+    } else {
+        yaml_indent(line)
+    }
+}
+
+fn find_mapping_line(
+    lines: &[SourceLine<'_>],
+    start: usize,
+    end: usize,
+    indent: usize,
+    key: &str,
+) -> Option<usize> {
+    (start..end).find(|line| {
+        logical_mapping_indent(lines[*line].text) == indent
+            && mapping_entry(lines[*line].text).is_some_and(|entry| entry.key == key)
     })
 }
 
@@ -206,6 +383,129 @@ fn view_depends_on_field(documents: &ProjectDocuments, table: &str, field: &str)
                 .iter()
                 .any(|column| !crate::field_reference_spans(&column.expression, field).is_empty())
     })
+}
+
+fn mapping_value_end(
+    lines: &[SourceLine<'_>],
+    key_line: usize,
+    limit: usize,
+    key_indent: usize,
+) -> usize {
+    for (line, source_line) in lines.iter().enumerate().take(limit).skip(key_line + 1) {
+        if is_ignorable_line(source_line.text) {
+            continue;
+        }
+        let indent = if mapping_entry(source_line.text).is_some() {
+            logical_mapping_indent(source_line.text)
+        } else {
+            yaml_indent(source_line.text)
+        };
+        if indent <= key_indent {
+            return line;
+        }
+    }
+    limit
+}
+
+fn validate_renamed_reference_closure(
+    documents: &ProjectDocuments,
+    affected: &BTreeSet<(String, String)>,
+) -> Result<()> {
+    let schemas = documents.schemas().collect::<Vec<_>>();
+    let mut tables = BTreeSet::new();
+    for (source_table, reference_name) in affected {
+        let (_, schema) = schemas
+            .iter()
+            .find(|(_, schema)| schema.table == *source_table)
+            .ok_or_else(|| {
+                reference_failure(
+                    "affected Reference source Table cannot be resolved",
+                    "MIGRATION-007",
+                )
+            })?;
+        let reference = schema
+            .references
+            .iter()
+            .find(|reference| reference.name == *reference_name)
+            .ok_or_else(|| {
+                reference_failure(
+                    "affected Reference cannot be resolved after RenameField",
+                    "MIGRATION-007",
+                )
+            })?;
+        tables.insert(source_table.clone());
+        tables.insert(reference.target.table.clone());
+    }
+
+    let mut type_names = BTreeSet::new();
+    for (_, schema) in &schemas {
+        if tables.contains(&schema.table) {
+            for field in &schema.fields {
+                add_named_type(&mut type_names, &field.type_name);
+            }
+        }
+    }
+    loop {
+        let before = type_names.len();
+        for (_, type_document) in documents.types() {
+            if type_names.contains(&type_document.name)
+                && let Some(custom) = &type_document.custom
+            {
+                for field in &custom.fields {
+                    add_named_type(&mut type_names, &field.type_name);
+                }
+            }
+        }
+        if type_names.len() == before {
+            break;
+        }
+    }
+
+    let mut files = Vec::new();
+    for loaded in &documents.files {
+        match &loaded.document {
+            SourceDocument::Schema(schema) if tables.contains(&schema.table) => {
+                let mut loaded = loaded.clone();
+                let SourceDocument::Schema(scoped_schema) = &mut loaded.document else {
+                    unreachable!("schema clone changed document kind")
+                };
+                let table_name = scoped_schema.table.clone();
+                scoped_schema.references.retain(|reference| {
+                    affected.contains(&(table_name.clone(), reference.name.clone()))
+                });
+                files.push(loaded);
+            }
+            SourceDocument::Type(type_document) if type_names.contains(&type_document.name) => {
+                files.push(loaded.clone());
+            }
+            _ => {}
+        }
+    }
+    let scoped = ProjectDocuments { files };
+    let type_build = build_type_system(&scoped);
+    let type_system = type_build.model.ok_or_else(|| {
+        first_diagnostic_error(
+            type_build.diagnostics,
+            "E-MIGRATION-FIELD-PRECONDITION",
+            "affected Reference type closure cannot be resolved after RenameField",
+            "MIGRATION-007",
+        )
+    })?;
+    let table_build = resolve_tables(&scoped, &type_system, &BuildSelection::unfiltered());
+    if table_build.diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(first_diagnostic_error(
+            table_build.diagnostics,
+            "E-MIGRATION-FIELD-PRECONDITION",
+            "affected Reference relationship is invalid after RenameField",
+            "MIGRATION-007",
+        ))
+    }
+}
+
+fn reference_failure(message: &str, requirement: &str) -> MasterdataError {
+    migration_error("E-MIGRATION-FIELD-PRECONDITION", message, None, requirement)
 }
 
 fn failure(message: &str) -> MasterdataError {

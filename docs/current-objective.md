@@ -6,38 +6,48 @@
 
 ## Objective
 
-**Schema Evolution & Migrationをproduction-readyにし、日常のschema/type evolutionをReference・compatibility・Desktop authoringと一貫したshared semanticsで安全にPlan / Preview / Applyできる状態へ到達する。**
+**Advanced Authoringをproduction-readyにし、保存済みMasterdata snapshotから安全にderived informationを作るexpression / computed viewを、Git-reviewableなdefinition、shared Rust semantics、Desktop authoring/query workflowまで一貫して利用できる状態へ到達する。**
 
 ## Completion slices
 
-### Safe schema evolution
+### Computed view semantics
 
-- Schema Migration / Type Migrationの既存safe operationを基盤に、Reference dependencyを含むrename等の安全に自動追随できるケースをsource-preservingに処理する。
-- destructive / ambiguous / conversion-policy-requiredなchangeは推測せずfail closedし、既存authorization / rollback / Recovery Required contractを維持する。
-- stable Field ID、rename lineage、path identity等を導入せず、current logical symbolsとexplicit migration intentをauthorityとして使う。
+- Authoring system RFCでDeferredとなっているP5 expression / computed viewをspecifyし、canonical persisted definition、logical identity、target Tableとの関係、expression type checking、null / invalid propagation、deterministic evaluationを定義する。
+- computed viewはauthoring/read-only derived projectionとして扱い、canonical Table field、MessagePack field、MasterMemory schema、generated C# public field、binary persisted valueへ暗黙昇格させない。
+- arbitrary user code、filesystem/network access、time/random/environment dependence、mutation、side effectをexpression semanticsへ導入しない。
+- Reference、Value Object、Enum / Flags、Custom Type等の既存shared semanticsを再利用し、frontend独自expression semanticsを作らない。
 
-### Impact and authoring workflow
+### Authoring workflow
 
-- Migration Plan / Diffから、Reference dependencyやgenerated API / released compatibility impactを利用者が理解できるようshared semanticsを接続する。
-- Table Editor / Type Editorはshared application/core operationを使い、frontendへdependency resolution、compatibility classification、YAML rewriteを複製しない。
-- routine schema evolutionがraw YAML手編集へ不必要に戻らず、Plan → review → Apply → refreshed workspaceまで完結する。
+- saved canonical source snapshotからshared Rust evaluatorがcomputed columns / values / diagnosticsを生成する。
+- Table Overviewを中心にcomputed valuesをread-only表示し、適切な型でsearch / filter / sortへcompositionできる範囲をspecify / implementする。
+- computed definitionのcreate/edit/removeをDesktopからsource-preservingかつstale-safeに行えるようにし、Git diffでdefinition changeをreviewできる。
+- invalid expressionやdependency failureをraw source valueや0/nullへ黙ってcoerceせず、structured diagnosticとUnavailable/invalid stateを明示する。
 
-### Coverage and product hardening
+### Product hardening
 
-- Objective内で見つかるmigration coverage gapのうち、既存Approved semanticsから一意に決められるsafe/additive operationは同一runでspecify / implement / verifyする。
-- arbitrary data conversion、stable release identity、external wire compatibility等のmaterial product decisionが必要な領域はHuman gateへ戻す。
+- expression dependency cycle、unknown field/type/reference、nullable/invalid input、overflow / invalid operation等をdeterministicにfail closedまたはtyped invalid resultとして扱う。
+- same saved snapshot + same definitionsから同じderived result / orderingを生成する。
+- current source/data mutation、Migration、Build、Publish、released compatibilityとの境界を明確にし、computed view authoringからそれらを暗黙実行しない。
 - focused regression、fresh review、repository checks、exact Candidate、required remote CI reconciliationまで完了する。
+
+## Directional boundary
+
+Authoring system RFCのP5表現（expression / computed view）と既存architectureから、v1のdefault directionは**authoring-only derived view**とする。generated C# / MasterMemory binaryへcomputed fieldを追加するruntime featureへscopeを広げない。
+
+definitionはHuman / AIがGitでreviewできるcanonical sourceとして永続化する方向をdefaultとする。exact YAML document shape、expression grammar、view identity、supported operator matrixはspecification refinementで決定する。複数のmaterially different product choiceが残る場合だけHuman gateへ戻す。
 
 ## Explicit non-scope
 
-- arbitrary migration scripting / SQL-like language。
-- implicit AI-generated data conversionや推測によるreplacement。
-- persistent stable Table / Field / Type / Enum / Reference ID、rename lineage、tombstone。
-- cross-schema MasterMemory binary compatibility guarantee、external save/network/database compatibility engine。
-- semantic-version enforcement、automatic release/tag/publish。
-- P5 expression / computed / programmable view。
+- generated C# / MasterMemory schemaへcomputed field/propertyを追加すること。
+- Unity/runtimeでexpression evaluatorを実行すること。
+- arbitrary scripting、C# / JavaScript / Lua等のembedded user code。
+- filesystem / network / process / environment / clock / randomへのaccess。
+- expressionからsource mutation、Migration、Build、Publishを開始すること。
+- aggregate / join / group-by / cross-project queryを、single-row computed view semanticsが固まる前に一般purpose query engineとして導入すること。
+- persistent stable member ID、cross-schema binary compatibility、external wire compatibility。
 - Web / Browser product surfaceの再導入。
 
 ## Audit
 
-2026-09-22 JST、Humanは開発速度向上のためCurrent Objectiveを細かなfeature単位ではなく複数sliceを含む大きなproduct outcomeで切り、sub-feature / StageごとにHumanへ戻らず本物のHuman gateまたはObjective completionまで自律実行する方針を選択した。Released Compatibility v1完了後の次ObjectiveとしてSchema Evolution & Migrationのproduction-ready化を開始する。
+2026-09-22 JST、Humanは前Objective完了後に次へ進むことを選択し、コード編集を伴う実装はimplementation agentへ指示書で委譲する運用を指定した。Authoring system RFCでDeferredとなっていたP5 expression / computed viewを中心に、Advanced Authoringを大きなproduct outcome単位で開始する。

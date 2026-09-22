@@ -52,7 +52,7 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
-async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} />); return await screen.findByRole('textbox', { name: label }); }
+async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); return await screen.findByRole('textbox', { name: label }); }
 
 test('late pre-save no-op preview cannot discard a new edit after Save resets revision', async () => {
   let resolveOld!: (value: unknown) => void;
@@ -150,7 +150,7 @@ test('Existing primary key direct edit uses the ordinary cell mutation lifecycle
     previewArgs = args;
     return { candidateSource: 'id: 2', changed: true, validation };
   };
-  render(<App sourcePollingIntervalMs={null} />);
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   const id = await screen.findByRole('textbox', { name: 'record 1 id' }) as HTMLInputElement;
   expect(id.readOnly).toBe(false);
   fireEvent.change(id, { target: { value: '2' } });
@@ -177,7 +177,7 @@ test('Explorer move refreshes selection and the open data editor at the new path
     if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
     return normalInvoke(command, args);
   });
-  render(<App sourcePollingIntervalMs={null} />);
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Rename or move source' }));
   const destination = screen.getByRole('textbox', { name: 'Source destination path' });
   fireEvent.change(destination, { target: { value: 'moved.yaml' } });
@@ -189,7 +189,7 @@ test('Explorer move refreshes selection and the open data editor at the new path
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
-  render(<App sourcePollingIntervalMs={null} />);
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
   expect((add as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
@@ -208,7 +208,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
     return normalInvoke(command, args);
   });
 
-  render(<App sourcePollingIntervalMs={null} />);
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
   const draftId = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
   fireEvent.change(draftId, { target: { value: '1' } });

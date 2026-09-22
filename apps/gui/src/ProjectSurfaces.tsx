@@ -15,7 +15,7 @@ export type SurfaceProjectInfo = {
 
 export type SurfaceWorkspace = {
   project: SurfaceProjectInfo;
-  files: Array<{ path: string; kind: string; table: string | null }>;
+  files: Array<{ path: string; kind: string; table: string | null; name?: string | null }>;
 };
 
 export type BuildProfileInfo = {
@@ -51,6 +51,8 @@ type OverviewColumn = {
   typeName: string;
   keyField: boolean;
   shape: ResolvedAuthoringField | null;
+  computed: boolean;
+  computedView: string | null;
 };
 
 type OverviewRow = {
@@ -67,6 +69,7 @@ type OverviewRow = {
 type OverviewSnapshot = {
   status: "complete" | "partial" | "unavailable" | "stale";
   table: string;
+  view: string | null;
   columns: OverviewColumn[];
   rows: OverviewRow[];
   totalCount: number;
@@ -200,6 +203,10 @@ function valueLabel(value: unknown): string {
     const inner = (value as { value?: unknown }).value;
     return typeof inner === "string" ? inner : JSON.stringify(inner);
   }
+  if (typeof value === "object" && value !== null && "diagnostic" in value) {
+    const diagnostic = (value as { diagnostic?: { code?: string } }).diagnostic;
+    return `invalid${diagnostic?.code ? ` (${diagnostic.code})` : ""}`;
+  }
   return JSON.stringify(value);
 }
 
@@ -231,6 +238,7 @@ export function ProjectOverviewPanel({
   const [sortField, setSortField] = useState("");
   const [sortDirection, setSortDirection] = useState("ascending");
   const [selectedOnly, setSelectedOnly] = useState(false);
+  const [view, setView] = useState("");
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
@@ -254,6 +262,7 @@ export function ProjectOverviewPanel({
         projectPath: projectRoot,
         request: {
           table,
+          view: view || null,
           profile: profile || null,
           query: {
             search,
@@ -272,7 +281,7 @@ export function ProjectOverviewPanel({
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [filterField, filterOperator, filterValue, profile, projectRoot, search, selectedOnly, snapshot, sortDirection, sortField, table]);
+  }, [filterField, filterOperator, filterValue, profile, projectRoot, search, selectedOnly, snapshot, sortDirection, sortField, table, view]);
 
   useEffect(() => {
     if (active && projectRoot && table) void load();
@@ -283,6 +292,9 @@ export function ProjectOverviewPanel({
 
   const columns = snapshot?.columns ?? [];
   const profiles = workspace?.project.profiles ?? [];
+  const views = workspace?.files
+    .filter((file) => file.kind === "view" && file.table === table && file.name)
+    .map((file) => ({ value: file.name as string, label: file.name as string })) ?? [];
   const profileMissing = profile.length > 0 && !profiles.some((item) => item.name === profile);
 
   if (!active) return <div hidden aria-hidden="true" />;
@@ -305,6 +317,7 @@ export function ProjectOverviewPanel({
       <div className="surface-toolbar">
         <Input aria-label="Overview search" placeholder="Search all displayed fields" value={search} onChange={(event) => setSearch(event.target.value)} onPressEnter={() => void load()} />
         <Select aria-label="Overview profile" value={profile || "__unfiltered"} onChange={(value) => onProfileChange(value === "__unfiltered" ? "" : value)} options={[{ value: "__unfiltered", label: "Unfiltered" }, ...profiles.map((item) => ({ value: item.name, label: item.name }))]} />
+        <Select aria-label="Overview computed view" allowClear placeholder="Computed View" value={view || undefined} onChange={(value) => setView(value ?? "")} options={views} />
         <Select aria-label="Overview filter field" allowClear placeholder="Filter field" value={filterField || undefined} onChange={(value) => setFilterField(value ?? "")} options={columns.map((column) => ({ value: column.name, label: column.name }))} />
         <Select aria-label="Overview filter operator" value={filterOperator} onChange={setFilterOperator} options={[{ value: "contains", label: "contains" }, { value: "equals", label: "equals" }, { value: "not-equals", label: "not equals" }, { value: "less-than", label: "<" }, { value: "greater-than", label: ">" }, { value: "is-null", label: "is null" }, { value: "is-invalid", label: "is invalid" }]} />
         <Input aria-label="Overview filter value" placeholder="Filter value" value={filterValue} onChange={(event) => setFilterValue(event.target.value)} />
@@ -328,7 +341,7 @@ export function ProjectOverviewPanel({
           </div>
           <div className="surface-table-scroll">
             <table className="surface-table">
-              <thead><tr><th>Source occurrence</th><th>Selection</th>{snapshot.columns.map((column) => <th key={column.name}>{column.name}{column.keyField ? " · KEY" : ""}</th>)}</tr></thead>
+              <thead><tr><th>Source occurrence</th><th>Selection</th>{snapshot.columns.map((column) => <th key={column.name}>{column.name}{column.keyField ? " · KEY" : ""}{column.computed ? " · VIEW" : ""}</th>)}</tr></thead>
               <tbody>
                 {snapshot.rows.map((row) => (
                   <tr key={`${row.sourcePath}:${row.recordIndex}`}>

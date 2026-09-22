@@ -442,6 +442,7 @@ pub(super) fn patch_document(
                 }
             }
         }
+        SourceDocument::View(_) => {}
         _ => return Err(failure("unsupported source kind")),
     }
     let locator = Locator::new(&before.source);

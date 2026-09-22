@@ -784,6 +784,15 @@ fn untyped_authoring_value(value: &AuthoringValue) -> Result<Value> {
             }
             Ok(Value::Mapping(result))
         }
+        AuthoringValue::Invalid { diagnostic } => Err(source_edit_error(
+            "E-SOURCE-EDIT-INVALID-VALUE",
+            format!(
+                "cannot persist an invalid computed value: {}",
+                diagnostic.message
+            ),
+            None,
+            "SOURCE-EDIT-016",
+        )),
     }
 }
 

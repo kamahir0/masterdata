@@ -121,6 +121,38 @@ fn semantic_build_from_in_memory_sources() {
 }
 
 #[test]
+fn computed_view_is_not_runtime_schema_or_schema_hash_input() {
+    let schema = parse_yaml_document(
+        std::path::PathBuf::from("schemas/item.yaml"),
+        IN_MEMORY_SCHEMA,
+    )
+    .expect("schema");
+    let data = parse_yaml_document(std::path::PathBuf::from("data/item.yaml"), IN_MEMORY_DATA)
+        .expect("data");
+    let view = parse_yaml_document(
+        std::path::PathBuf::from("views/item.yaml"),
+        "kind: view\nname: display\ntable: item\ncolumns:\n  - name: label\n    expression: 'name + \"!\"'\n",
+    )
+    .expect("view");
+    let without_view = ProjectDocuments {
+        files: vec![schema.clone(), data.clone()],
+    };
+    let with_view = ProjectDocuments {
+        files: vec![schema, data, view],
+    };
+    let first = prepare_semantic_build(without_view.clone(), &BuildSelection::unfiltered())
+        .expect("base build");
+    let second =
+        prepare_semantic_build(with_view, &BuildSelection::unfiltered()).expect("view build");
+    assert_eq!(
+        first.schema_source_content_hash,
+        second.schema_source_content_hash
+    );
+    assert_eq!(first.tables, second.tables);
+    assert_eq!(second.documents.views().count(), 1);
+}
+
+#[test]
 fn type_source_hash_tracks_raw_type_bytes() {
     let directory = tempdir().expect("temp directory");
     write_project(

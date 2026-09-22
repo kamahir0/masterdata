@@ -334,6 +334,15 @@ pub fn dry_run_type_migration(
     // Re-resolve the reparsed candidate, independently of the expected AST.
     let (post, _) = closure(&transformed, &command.target, extra)?;
     resolve_type_system(&post)?;
+    if let Some(diagnostic) = crate::validate_computed_views(&transformed)
+        .into_iter()
+        .next()
+    {
+        return Err(failure(format!(
+            "Computed View validation failed after Type Migration: {}",
+            diagnostic.message
+        )));
+    }
     validate_affected_references(&transformed, &dependent)?;
     file_plans.sort_by(|a, b| a.path.cmp(&b.path));
     let mut source_inputs: Vec<_> = documents.files.iter().map(|f| f.path.clone()).collect();
@@ -441,6 +450,7 @@ fn validate_affected_references(
                 SourceDocument::Schema(schema) => tables.contains(&schema.table),
                 SourceDocument::Data(data) => tables.contains(&data.table),
                 SourceDocument::Type(type_document) => type_names.contains(&type_document.name),
+                SourceDocument::View(_) => false,
             })
             .cloned()
             .collect(),

@@ -1,5 +1,6 @@
 export type AuthoringValue =
   | { kind: "null" }
+  | { kind: "invalid"; diagnostic: { code: string; message: string } }
   | { kind: "bool"; value: boolean }
   | { kind: "number"; value: string }
   | { kind: "string"; value: string }
@@ -31,6 +32,7 @@ export const nullAuthoringValue = (): AuthoringValue => ({ kind: "null" });
 export function authoringValueSummary(value: AuthoringValue): string {
   switch (value.kind) {
     case "null": return "null";
+    case "invalid": return `invalid: ${value.diagnostic.code}`;
     case "bool": return value.value ? "true" : "false";
     case "number": return value.value;
     case "string": return JSON.stringify(value.value);
@@ -43,6 +45,7 @@ export function authoringValuesEqual(left: AuthoringValue, right: AuthoringValue
   if (left.kind !== right.kind) return false;
   switch (left.kind) {
     case "null": return true;
+    case "invalid": return right.kind === "invalid" && left.diagnostic.code === right.diagnostic.code && left.diagnostic.message === right.diagnostic.message;
     case "bool": return right.kind === "bool" && left.value === right.value;
     case "number": return right.kind === "number" && left.value === right.value;
     case "string": return right.kind === "string" && left.value === right.value;

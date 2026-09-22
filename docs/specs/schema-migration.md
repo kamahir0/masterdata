@@ -10,6 +10,9 @@ CLI grammar、YAML rewrite library、filesystem transaction mechanismはこの�
 CLI surfaceとのcompositionは[CLI surface仕様](cli.md)、既存のYAML/schema/type/table
 semanticは、[YAML subset仕様](yaml-subset.md)、[Table / Key仕様](table-and-keys.md)、
 [Type System仕様](type-system/README.md)および各owner specificationを参照する。
+Persisted Computed Viewがfield symbolへ依存する場合のRenameField追随、DropField fail-closed、Type Migration後の
+再検証は[Computed View仕様](computed-view.md)が所有する。Migrationのsource-preserving Plan / Apply boundaryは
+この仕様に従う。
 
 ## 用語と境界
 

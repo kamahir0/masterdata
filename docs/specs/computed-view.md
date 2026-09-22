@@ -1,6 +1,6 @@
 # Computed View仕様
 
-Status: Approved
+Status: Implemented
 
 Domain: Advanced Authoring
 
@@ -163,8 +163,9 @@ patch engine、filesystem transactionを実装しない。
 token spanをsource-preservingに置換し、再parse/type-check/postcondition検証する。expression全体のpretty-print、
 quoted string内の同名文字列の置換、unlocatable/ambiguous patchはfail closedする。unrelated view sourceはbyte-for-byte
 不変とする。`DropField`は依存viewが存在する場合、暗黙削除・null置換・replacement推測をせずfail closedする。
-Type Migration後もviewを再parse/type-checkし、既存operationが安全にsymbolを追随できる場合以外はpostcondition
-failureとする。
+他のfield evolution（例えばAddField）がView column collisionまたは既存invalid definitionを生む場合も、sourceを
+staleにせずdependency/precondition failureでfail closedする。Type Migration後もviewを再parse/type-checkし、既存
+operationが安全にsymbolを追随できる場合以外はpostcondition failureとする。
 
 ## Build and compatibility boundary
 

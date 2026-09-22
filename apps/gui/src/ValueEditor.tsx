@@ -445,6 +445,7 @@ function isKnownFlag(value: AuthoringValue, members: string[]): boolean {
 function scalarText(value: AuthoringValue): string {
   switch (value.kind) {
     case "null": return "";
+    case "invalid": return authoringValueSummary(value);
     case "bool": return value.value ? "true" : "false";
     case "number":
     case "string": return value.value;

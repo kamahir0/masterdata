@@ -452,3 +452,23 @@ fn add_field_rejects_key_collision_without_source_change() {
     assert_eq!(error.diagnostic.code, "E-TABLE-DUPLICATE-FIELD-KEY");
     assert_eq!(snapshot.files[0].source, schema);
 }
+
+#[test]
+fn add_field_fails_closed_when_it_would_invalidate_a_computed_view() {
+    let snapshot = documents(&[
+        (
+            "schema.yaml",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: name\n    type: string\nprimaryKey:\n  fields: [name]\n",
+        ),
+        (
+            "view.yaml",
+            "kind: view\nname: itemDisplay\ntable: item\ncolumns:\n  - name: label\n    expression: 'name'\n",
+        ),
+    ]);
+    let error = dry_run_migration(&snapshot, &add_field("item", 1, "label", "string", None))
+        .expect_err("AddField must not collide with a persisted computed column");
+    assert_eq!(
+        error.diagnostic().code,
+        "E-MIGRATION-COMPUTED-VIEW-PRECONDITION"
+    );
+}

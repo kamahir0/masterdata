@@ -32,6 +32,8 @@ mod project_init;
 pub use project_init::*;
 mod overview;
 pub use overview::*;
+mod computed_view;
+pub use computed_view::*;
 mod delivery;
 pub use delivery::*;
 mod authoring;

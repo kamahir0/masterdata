@@ -10,6 +10,9 @@ Domain: Released Compatibility
 impactをGenerated API、Source / Migration、Artifact / Binary、External Contractの4 axisへ分離して
 reportするcontractを所有する。current schemaの意味は既存のTable / Key、Type System、Reference、
 Build、Migration仕様が所有し、この仕様はそれらをreleased comparisonへlowerする。
+authoring-onlyの[Computed View](../computed-view.md)はruntime Table/API/binaryへlowerされないため、View定義の
+追加・編集・削除をGenerated APIまたはArtifact / Binaryのbreaking changeとして推測しない。Viewのexpression、
+Overview、source-preserving migration semanticsはComputed View仕様が所有する。
 
 仕様変更0024でHuman maintainerが2026-09-21 JSTにOption Aを採用した。cross-schema MasterMemory
 binary guarantee、external wire compatibility engine、persistent stable member identityはこのv1の

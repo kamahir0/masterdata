@@ -10,6 +10,9 @@ use crate::{ErrorKind, MasterdataError, Result};
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AuthoringValue {
     Null,
+    Invalid {
+        diagnostic: Box<crate::Diagnostic>,
+    },
     Bool {
         value: bool,
     },

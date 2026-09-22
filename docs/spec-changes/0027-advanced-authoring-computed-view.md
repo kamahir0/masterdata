@@ -35,7 +35,7 @@ Status: Applied
 - `ADV-VIEW-004` — saved snapshotのbase rowsへviewを評価し、base+computed columnsをOverviewへread-onlyで返す。
 - `ADV-VIEW-005` — computed scalarを既存Authoring Queryへlowerし、frontendでfilter/search/sort semanticsを再実装しない。
 - `ADV-VIEW-006` — source-preserving create/edit/remove、stale rejection、no implicit Build/Publish/Gitを提供する。
-- `ADV-VIEW-007` — RenameFieldは安全なexpression tokenだけ追随し、DropFieldとambiguous patchはfail closedする。
+- `ADV-VIEW-007` — RenameFieldは安全なexpression tokenだけ追随し、DropField、Viewをinvalidにするfield evolution、ambiguous patchはfail closedする。
 - `ADV-VIEW-008` — Build/codegen/binaryへcomputed valueを混入させず、existing projectsのruntime surfaceを保持する。
 - `ADV-VIEW-009` — deterministic diagnostics/result order、query/profile composition、invalid view isolationを検証する。
 

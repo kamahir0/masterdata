@@ -7,6 +7,8 @@ export function initializerJson(value: AuthoringValue): string {
   switch (value.kind) {
     case "null":
       return "null";
+    case "invalid":
+      return "null";
     case "bool":
       return value.value ? "true" : "false";
     case "number":

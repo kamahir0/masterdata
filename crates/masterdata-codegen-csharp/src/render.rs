@@ -863,7 +863,9 @@ pub fn validate_creation_names(
                 Some(masterdata_core::table_csharp_name(schema))
             }
             masterdata_core::SourceDocument::Type(ty) => Some(ty.name.clone()),
-            masterdata_core::SourceDocument::Data(_) => None,
+            masterdata_core::SourceDocument::Data(_) | masterdata_core::SourceDocument::View(_) => {
+                None
+            }
         }
     }
     let Some(candidate) = name(candidate) else {

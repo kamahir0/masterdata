@@ -3,13 +3,15 @@ use std::path::{Path, PathBuf};
 use masterdata_app::{
     AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
     AuthoringBatchRequest, AuthoringClipboardShape, AuthoringEdit, AuthoringRecordDraft,
-    AuthoringRecordMutation, AuthoringWorkspace, ConfigSaveReport, CreationContext,
-    CreationDestinationState, CreationReport, CreationRequest, DataFileQueryRequest,
-    DataFileQueryResult, DataFileSnapshot, NativeApplicationService, ProjectConfigEditPreviewView,
-    ProjectConfigEditRequest, ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest,
-    PublishExecutionReport, PublishPreview, RecordTagEditRequest, SourceContentState,
-    SourceEditPreview, SourcePathMutationReport, SourcePathMutationRequest, SourcePathStateReport,
-    SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
+    AuthoringRecordMutation, AuthoringWorkspace, ComputedViewEditPreview, ComputedViewEditRequest,
+    ComputedViewRemoveReport, ComputedViewSaveReport, ComputedViewSnapshot, ConfigSaveReport,
+    CreationContext, CreationDestinationState, CreationReport, CreationRequest,
+    DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot, NativeApplicationService,
+    ProjectConfigEditPreviewView, ProjectConfigEditRequest, ProjectConfigSnapshot,
+    ProjectInitReport, ProjectInitRequest, PublishExecutionReport, PublishPreview,
+    RecordTagEditRequest, SourceContentState, SourceEditPreview, SourcePathMutationReport,
+    SourcePathMutationRequest, SourcePathStateReport, SourceSaveReport, TableOverviewRequest,
+    TableOverviewSnapshot,
 };
 use masterdata_core::{
     CompatibilityReport, Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport,
@@ -454,6 +456,96 @@ fn table_overview(
 }
 
 #[tauri::command(rename_all = "camelCase")]
+fn open_computed_view(
+    project_path: Option<String>,
+    relative_path: String,
+) -> std::result::Result<ComputedViewSnapshot, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .open_computed_view(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn preview_computed_view(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    request: ComputedViewEditRequest,
+) -> std::result::Result<ComputedViewEditPreview, ApiError> {
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .preview_computed_view(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &request,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn save_computed_view(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    base_content_identity: String,
+    request: ComputedViewEditRequest,
+) -> std::result::Result<ComputedViewSaveReport, ApiError> {
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
+    table_session()?
+        .ensure_mutation_allowed(&root)
+        .map_err(ApiError::from)?;
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .save_computed_view(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &base_content_identity,
+            &request,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn remove_computed_view(
+    project_path: Option<String>,
+    relative_path: String,
+    base_source: String,
+    base_content_identity: String,
+    confirmed: bool,
+) -> std::result::Result<ComputedViewRemoveReport, ApiError> {
+    let root = table_root(project_path.clone())?;
+    let _operation = operation_guard(&root)?;
+    table_session()?
+        .ensure_mutation_allowed(&root)
+        .map_err(ApiError::from)?;
+    let current_dir = current_directory()?;
+    let configured_path = configured_project_path(project_path);
+    NativeApplicationService::new()
+        .remove_computed_view(
+            configured_path.as_deref().map(Path::new),
+            &current_dir,
+            &relative_path,
+            &base_source,
+            &base_content_identity,
+            confirmed,
+        )
+        .map_err(ApiError::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
 fn publish_preview(project_path: Option<String>) -> std::result::Result<PublishPreview, ApiError> {
     let root = table_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
@@ -738,6 +830,10 @@ pub fn run() {
             open_data_file,
             query_data_file,
             table_overview,
+            open_computed_view,
+            preview_computed_view,
+            save_computed_view,
+            remove_computed_view,
             publish_preview,
             publish_from_preview,
             preview_data_file,

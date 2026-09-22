@@ -64,6 +64,36 @@ fn unchanged_snapshot_ignores_formatting_paths_file_split_and_record_order() {
 }
 
 #[test]
+fn authoring_only_computed_view_change_has_no_runtime_compatibility_impact() {
+    let baseline = snapshot(
+        "compat.test",
+        &[
+            ("schema.yaml", ITEM_SCHEMA),
+            (
+                "views/display.yaml",
+                "kind: view\nname: display\ntable: item\ncolumns:\n  - name: label\n    expression: 'name + \"!\"'\n",
+            ),
+        ],
+    );
+    let current = snapshot(
+        "compat.test",
+        &[
+            ("schema.yaml", ITEM_SCHEMA),
+            (
+                "renamed-path.yaml",
+                "kind: view\nname: display\ntable: item\ncolumns:\n  - name: label\n    expression: 'name + \"?\"'\n  - name: upper\n    expression: 'name'\n",
+            ),
+        ],
+    );
+
+    let report = compare_compatibility(&baseline, &current).expect("comparable snapshots");
+    assert!(
+        report.changes.is_empty(),
+        "Computed View authoring changes must not be reported as runtime API/binary changes: {report:#?}"
+    );
+}
+
+#[test]
 fn data_only_change_is_separate_and_requires_rebuild() {
     let baseline = snapshot(
         "compat.test",

@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 type Field = { key: number | null; name: string; type: string; nullable: boolean; array: boolean };
 type Member = { name: string; value: string };
 type Secondary = { fields: string[]; nonUnique: boolean };
-type Category = "folder" | "table" | "data" | "value_object" | "enum" | "flags" | "custom_type";
+type Category = "folder" | "table" | "data" | "view" | "value_object" | "enum" | "flags" | "custom_type";
 type Context = { roots: { index: number; label: string; folders: string[] }[]; choices: { fieldTypes: string[]; tables: string[]; valueObjectUnderlyings: string[]; enumUnderlyings: string[] } };
 type CreationRequest = { sourceRoot: string; destination: string; artifact: Record<string, unknown> };
 export type CreationReport = { status: "success" | "conflict" | "failure" | "outcome_unknown"; path: string; folder: boolean; diagnostic: { code: string; message: string; schema_path?: string; schemaPath?: string } | null };
@@ -14,7 +14,7 @@ export type CreationReport = { status: "success" | "conflict" | "failure" | "out
 // Otherwise closing a dialog would bypass GUI-CREATE-INT-011 before recheck.
 const uncertainCreations = new Map<string, CreationRequest>();
 const categories: { value: Category; label: string }[] = [
-  { value: "folder", label: "Folder" }, { value: "table", label: "Table" }, { value: "data", label: "Data" },
+  { value: "folder", label: "Folder" }, { value: "table", label: "Table" }, { value: "data", label: "Data" }, { value: "view", label: "Computed View" },
   { value: "value_object", label: "Value Object" }, { value: "enum", label: "Enum" }, { value: "flags", label: "Flags Enum" }, { value: "custom_type", label: "Custom Type" },
 ];
 const options = (values: string[]) => values.map(value => ({ value, label: value || "/" }));
@@ -46,6 +46,7 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
   const [primaryKey, setPrimaryKey] = useState<string[]>(["id"]);
   const [secondaryKeys, setSecondaryKeys] = useState<Secondary[]>([]);
   const [members, setMembers] = useState<Member[]>([{ name: "", value: "" }]);
+  const [viewColumns, setViewColumns] = useState<{ name: string; expression: string }[]>([{ name: "display", expression: "" }]);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState<CreationReport["diagnostic"]>(null);
@@ -67,6 +68,7 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
     let artifact: Record<string, unknown> = { category };
     if (category === "table") artifact = { category, table: name, csharpName: csharpName || null, fields, primaryKey: { fields: primaryKey }, secondaryKeys };
     if (category === "data") artifact = { category, table };
+    if (category === "view") artifact = { category, name, table, columns: viewColumns };
     if (category === "value_object") artifact = { category, name, underlying, conversions: { fromUnderlyingImplicit: fromImplicit, toUnderlyingImplicit: toImplicit } };
     if (category === "enum" || category === "flags") artifact = { category, name, underlying, members };
     if (category === "custom_type") artifact = { category, name, fields };
@@ -132,8 +134,18 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
           <Form.Item label={category === "folder" ? "Folder name" : "Filename (.yaml / .yml)"} htmlFor="creation-filename" required><Input id="creation-filename" value={filename} onChange={event => setFilename(event.target.value)} /></Form.Item>
         </div>
         <p className="creation-hint">Destination and domain identity are independent. Existing files are never overwritten.</p>
-        {category !== "folder" && category !== "data" && <Form.Item label={category === "table" ? "Table identity" : "Type name"} htmlFor="creation-name" required><Input id="creation-name" value={name} onChange={event => setName(event.target.value)} /></Form.Item>}
+        {category !== "folder" && category !== "data" && <Form.Item label={category === "table" ? "Table identity" : category === "view" ? "View name" : "Type name"} htmlFor="creation-name" required><Input id="creation-name" value={name} onChange={event => setName(event.target.value)} /></Form.Item>}
         {category === "data" && <Form.Item label="Existing Table" required><Select aria-label="Existing Table" value={table || undefined} options={options(context.choices.tables)} onChange={setTable} placeholder="Select a Table" /><p>New Data documents start with empty records.</p></Form.Item>}
+        {category === "view" && <>
+          <Form.Item label="Target Table" required><Select aria-label="Computed View target Table" value={table || undefined} options={options(context.choices.tables)} onChange={setTable} placeholder="Select a Table" /></Form.Item>
+          <h3>Computed columns</h3>
+          {viewColumns.map((column, index) => <div className="creation-field" key={index}>
+            <Form.Item label="Column name" required><Input aria-label={`Computed column ${index + 1} name`} value={column.name} onChange={event => setViewColumns(viewColumns.map((item, i) => i === index ? { ...item, name: event.target.value } : item))} /></Form.Item>
+            <Form.Item label="Expression" required><Input.TextArea aria-label={`Computed column ${index + 1} expression`} value={column.expression} onChange={event => setViewColumns(viewColumns.map((item, i) => i === index ? { ...item, expression: event.target.value } : item))} autoSize={{ minRows: 1, maxRows: 4 }} /></Form.Item>
+            <RowActions label={`Computed column ${index + 1}`} index={index} count={viewColumns.length} reorder={direction => setViewColumns(move(viewColumns, index, direction))} remove={() => setViewColumns(viewColumns.filter((_, i) => i !== index))} />
+          </div>)}
+          <Button icon={<Plus size={14} />} onClick={() => setViewColumns([...viewColumns, { name: "", expression: "" }])}>Add computed column</Button>
+        </>}
         {category === "table" && <Form.Item label="C# name (optional)"><Input aria-label="C# name" value={csharpName} onChange={event => setCsharpName(event.target.value)} /></Form.Item>}
         {(category === "table" || category === "custom_type") && <>
           <h3>Fields</h3>

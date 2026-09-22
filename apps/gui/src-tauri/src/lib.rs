@@ -8,10 +8,10 @@ use masterdata_app::{
     CreationContext, CreationDestinationState, CreationReport, CreationRequest,
     DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot, NativeApplicationService,
     ProjectConfigEditPreviewView, ProjectConfigEditRequest, ProjectConfigSnapshot,
-    ProjectInitReport, ProjectInitRequest, PublishExecutionReport, PublishPreview,
-    RecordTagEditRequest, SourceContentState, SourceEditPreview, SourcePathMutationReport,
-    SourcePathMutationRequest, SourcePathStateReport, SourceSaveReport, TableOverviewRequest,
-    TableOverviewSnapshot,
+    ProjectInitReport, ProjectInitRequest, PublishAggregateStatus, PublishExecutionReport,
+    PublishPreview, RecordTagEditRequest, SourceContentState, SourceEditPreview,
+    SourcePathMutationReport, SourcePathMutationRequest, SourcePathStateReport, SourceSaveReport,
+    TableOverviewRequest, TableOverviewSnapshot,
 };
 use masterdata_core::{
     CompatibilityReport, Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport,
@@ -560,6 +560,8 @@ fn publish_preview(project_path: Option<String>) -> std::result::Result<PublishP
 #[serde(rename_all = "camelCase")]
 struct PublishExecutionView {
     status: &'static str,
+    outcome: PublishAggregateStatus,
+    unity_verification: &'static str,
     report: PublishExecutionReport,
     diagnostic: Option<DiagnosticDto>,
 }
@@ -584,6 +586,8 @@ fn publish_from_preview(
     ) {
         Ok(report) => Ok(PublishExecutionView {
             status: "success",
+            outcome: report.aggregate_status(),
+            unity_verification: "not_observed",
             report,
             diagnostic: None,
         }),
@@ -591,6 +595,8 @@ fn publish_from_preview(
             let diagnostic = DiagnosticDto::from(failure.diagnostic());
             Ok(PublishExecutionView {
                 status: "failure",
+                outcome: failure.report.aggregate_status(),
+                unity_verification: "not_observed",
                 report: failure.report,
                 diagnostic: Some(diagnostic),
             })
@@ -1220,6 +1226,11 @@ mod desktop_workflow_tests {
         .expect("structured stale result");
         assert_eq!(stale.status, "failure");
         assert_eq!(
+            stale.outcome,
+            masterdata_app::PublishAggregateStatus::Failed
+        );
+        assert_eq!(stale.unity_verification, "not_observed");
+        assert_eq!(
             stale
                 .diagnostic
                 .as_ref()
@@ -1247,6 +1258,11 @@ mod desktop_workflow_tests {
         )
         .expect("publish result");
         assert_eq!(published.status, "success");
+        assert_eq!(
+            published.outcome,
+            masterdata_app::PublishAggregateStatus::Succeeded
+        );
+        assert_eq!(published.unity_verification, "not_observed");
         assert!(
             published
                 .report

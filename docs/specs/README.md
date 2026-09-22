@@ -163,6 +163,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [Source Path Mutation仕様](source-path-mutation.md) — `Status: Approved`
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
 - [Build pipeline仕様](build-pipeline.md) — `Status: Approved`
+- [Unity Integration仕様](unity-integration.md) — `Status: Implemented`（Production Delivery & Unity Integrationのcanonical owner）
 - [Runtime hosts旧仕様](runtime-hosts.md) — `Status: Deprecated`（仕様変更0022でretire）
 - [CLI surface仕様](cli.md) — `Status: Approved`
 - [Schema Migration v1仕様](schema-migration.md) — `Status: Approved`

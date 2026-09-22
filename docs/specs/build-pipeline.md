@@ -2,6 +2,8 @@
 
 Status: Approved
 
+Unity Editor import、Unity compile、runtime load、および`.meta` lifecycleは[Unity Integration仕様](unity-integration.md)が所有する。この文書はgeneric C# managed-set / explicit binary publisherのownershipだけを定義し、Unity側のasset lifecycleを再定義しない。
+
 ## この文書の位置付け
 
 この文書は、MasterData projectのcanonical build artifactを作成する処理と、作成済みartifactを外部へ配置する処理の
@@ -808,8 +810,7 @@ artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`、および複
 - `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
 - semantic schema hash、builder cache key、released-schema binary compatibilityをreceiptと独立したspecificationで定義するか。
 - artifact signing、producer authentication、supply-chain attestation、remote provenanceを将来導入する必要があるか。
-- Unity `.meta` lifecycleとpublish manifestの連携をMasterData publisherが持つか、Unity importerへ委譲するか。
-- generated .NET projectのownership、cache eviction、Unity asset importがartifact publicationをどう観測するか。
+- generated .NET projectのownership、cache eviction、およびUnity外のasset import observationを将来定義するか。
 - source discoveryでsymlinkをfollowまたはignoreするproduct-level policy。current traversal guardはcycle防止のためsymlink entryをfollowしない。
 
 - canonical layoutを将来`output/binary/`や`output/metadata/`へ分割する必要があるかは、v1 layoutを承認する際に再確認する。

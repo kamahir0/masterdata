@@ -2,7 +2,7 @@
 
 Status: Approved
 
-Build / Publish surfaceは保存済みProject inputからcanonical Buildを実行し、receipt-valid artifact setを既存Publish contractに従って外部targetへ配置するDesktop workflowを定義する。domain contractは[Build pipeline](../../specs/build-pipeline.md)と[Build Selection](../../specs/build-selection.md)が所有する。適用記録は[仕様変更0018](../../spec-changes/0018-desktop-build-delivery.md)を参照する。
+Build / Publish surfaceは保存済みProject inputからcanonical Buildを実行し、receipt-valid artifact setを既存Publish contractに従って外部targetへ配置するDesktop workflowを定義する。domain contractは[Build pipeline](../../specs/build-pipeline.md)、[Build Selection](../../specs/build-selection.md)、およびUnity delivery phaseの[Unity Integration](../../specs/unity-integration.md)が所有する。適用記録は[仕様変更0018](../../spec-changes/0018-desktop-build-delivery.md)を参照する。
 
 ## 規範要件
 
@@ -38,6 +38,10 @@ Migration Recovery Requiredではconfig/source mutationとBuild / Build and Publ
 
 Problemsはcurrent buffer、saved validation、Build resultをsnapshotとProfile付きで区別しなければならない（MUST）。古いdiagnosticをcurrentへ置換しない。sourceにmapできない問題も保持する。
 operation開始・完了、partial failure、not_attempted、dirty-input除外、disabled reasonは文字とassistive semanticsで提示し、keyboardでaction、preview、result、source navigationへ到達できなければならない（MUST）。Confirm / Cancel後のfocusは開始actionへ戻す。progressの細かな段階数やpercentを推測しない。
+
+### GUI-DELIVERY-007
+
+Publish resultはshared application reportのaggregate outcomeとtarget-local statusを表示し、Unity projectへのPublishであってもUnity import、compile、runtime loadを観測済みと表示してはならない（MUST NOT）。Unity verificationは`not_observed`として独立表示し、partial target failureをUnity-readyへ変換してはならない（MUST）。詳細なphase/diagnostic ownershipは[Unity Integration仕様](../../specs/unity-integration.md)に委譲する。
 
 ## 受け入れ証拠
 

@@ -6,25 +6,23 @@
 
 ## Objective
 
-**Advanced Authoringをproduction-readyにし、保存済みMasterdata snapshotから安全にderived informationを作るComputed Viewを、Git-reviewableなdefinition、shared Rust semantics、Desktop Table Overview/query workflow、schema evolution safetyまで一貫して利用できる状態へ到達する。**
+**Production Delivery & Unity Integrationをproduction-readyにし、canonical MasterData Build/PublishからUnity packageのEditor import observation、compile status、runtime MasterMemory loadまで、責務分離されたdelivery workflowを一貫して利用できる状態へ到達する。**
 
 ## Completion slices
 
-- [Computed View仕様](specs/computed-view.md)に従う`kind: view` persisted definitionとbounded typed scalar expression。
-- shared Rust parser / type checker / deterministic evaluator、null・invalid・arithmetic diagnostics。
-- source-preserving view create/edit/remove、stale/lost-update protection、RenameField追随とDropField fail-closed。
-- 保存済みOverviewへread-only computed columnsを表示し、既存Authoring Queryのsupported search/filter/sortへ接続する。
-- view definitionをMasterMemory schema、generated C#、binary、artifact receipt、runtime fieldへ混入させない。
-- focused regressions、fresh review、exact Candidate、required remote CI reconciliation。
+- [Unity Integration仕様](specs/unity-integration.md)に従うUPM-compatible repository package、runtime/editor assembly separation、explicit path/status API。
+- generic publisherのC# manifest / explicit binary ownership、`.meta`/GUID lifecycleのUnity側委譲、stale retirement preservation。
+- Publish aggregate、Unity import/compile/runtime loadのphase separation、Desktopでの`not_observed`表示。
+- caller-supplied factoryによるMasterMemory 3.0.4 / MessagePack 3.1.3 runtime load、missing/corrupt/factory failure semantics。
+- focused publisher/package/Desktop regressions、package static validation、available environmentのUnity compile evidence、fresh review、exact Candidate、required remote CI reconciliation。
 
 ## Explicit non-scope
 
-- generated C# computed property、MasterMemory binary field、Unity runtime evaluator。
-- embedded scripting、filesystem/network/environment side effect。
-- aggregate、group-by、arbitrary join、cross-project query、recursive Reference traversal。
-- persistent stable member ID、rename lineage、released compatibility identity、external wire compatibility。
-- computed resultのsource materialization、Data Editorでのcomputed cell編集、Web / Browser / Native Host。
+- package registry publish、Unity process自動起動、reverse control/IPC、generated artifact auto-commit。
+- MasterMemory binary parser再実装、cross-schema binary compatibility、save/network compatibility、artifact signing。
+- Unity GUID/stable identity registry、publisherによる`.meta` cleanup、YAML/schema resolverのpackage複製。
+- Web product revival、unrelated Desktop polish、および既存Advanced Authoring/Reference semanticsの再設計。
 
 ## Audit
 
-2026-09-22 JST、Released Compatibility v1完了後のHuman priorityとしてAdvanced Authoringを開始した。仕様変更0027はAgent-autonomous review/applicationにより[Computed View仕様](specs/computed-view.md)へ適用済み。P5 computed viewはauthoring-only projectionとして扱い、既存runtime artifact contractを変更しない。
+2026-09-22 JST、Advanced Authoring完了後のHuman priorityとしてProduction Delivery & Unity Integrationを開始した。仕様変更0028でHumanはOption B（Unity Editor/packageが`.meta` lifecycleを所有）を選択した。PUBLISH ownership、receipt、generated C#、binary contractを再利用し、Unity import/compile/runtimeを別phaseに保つ。

@@ -10,6 +10,7 @@ use masterdata_core::{ErrorKind, MasterdataError, Project, Result};
 mod app;
 mod rationale_check;
 mod spec_check;
+mod unity_package;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -46,6 +47,8 @@ enum CommandKind {
     CheckPlatform,
     /// Recreate target/dev-project from fixtures/minimal.
     DevReset,
+    /// Check the repository Unity package boundary without requiring Unity Editor.
+    CheckUnityPackage,
 }
 
 fn main() {
@@ -73,6 +76,7 @@ fn run() -> Result<()> {
             println!("development project recreated at {}", destination.display());
             Ok(())
         }
+        CommandKind::CheckUnityPackage => unity_package::check_repository(&repository_root()),
     }
 }
 
@@ -356,6 +360,7 @@ fn check_all() -> Result<()> {
     let root = repository_root();
     check_specs()?;
     check_rationale()?;
+    unity_package::check_repository(&root)?;
     run_program(
         cargo_command(),
         [
@@ -425,6 +430,7 @@ fn check_all() -> Result<()> {
 
 fn check_platform() -> Result<()> {
     let root = repository_root();
+    unity_package::check_repository(&root)?;
     run_program(
         cargo_command(),
         [

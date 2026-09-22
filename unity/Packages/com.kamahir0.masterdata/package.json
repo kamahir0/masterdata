@@ -1,0 +1,13 @@
+{
+  "name": "com.kamahir0.masterdata",
+  "version": "0.1.0",
+  "displayName": "MasterData Unity Integration",
+  "description": "Explicit MasterData artifact observation and caller-owned MasterMemory loading for Unity.",
+  "unity": "6000.0",
+  "author": {
+    "name": "masterdata contributors"
+  },
+  "dependencies": {
+    "com.unity.modules.unitywebrequest": "1.0.0"
+  }
+}

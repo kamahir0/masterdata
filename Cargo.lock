@@ -4803,6 +4803,7 @@ dependencies = [
  "clap",
  "masterdata-app",
  "masterdata-core",
+ "serde_json",
  "tempfile",
 ]
 

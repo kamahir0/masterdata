@@ -49,9 +49,9 @@ mod receipt;
 pub use authoring::*;
 pub use publish::{
     BinaryPublishPreflight, CSharpPublishPreflight, PUBLISH_MANIFEST_FILENAME,
-    PublishExecutionFailure, PublishExecutionReport, PublishFailureInjection, PublishFailurePoint,
-    PublishPreflightPlan, PublishTargetPreflight, PublishTargetResult, PublishTargetStatus,
-    preflight_publish,
+    PublishAggregateStatus, PublishExecutionFailure, PublishExecutionReport,
+    PublishFailureInjection, PublishFailurePoint, PublishPreflightPlan, PublishTargetPreflight,
+    PublishTargetResult, PublishTargetStatus, preflight_publish,
 };
 pub use receipt::{
     ARTIFACT_HASH_ALGORITHM, ARTIFACT_RECEIPT_FILENAME, ARTIFACT_SET_RECEIPT_FILENAME,

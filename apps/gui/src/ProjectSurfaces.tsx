@@ -138,6 +138,8 @@ type PublishPreview = {
 
 type PublishExecutionView = {
   status: "success" | "failure";
+  outcome: "no_targets" | "succeeded" | "partial_failure" | "failed";
+  unityVerification: "not_observed";
   report: {
     targets: Array<{
       index: number;
@@ -803,6 +805,8 @@ export function DeliveryPanel({
       {publishExecution && (
         <section className="publish-preview" aria-label="Publish execution result">
           <h3>Publish result</h3>
+          <p>Unity verification: {publishExecution.unityVerification === "not_observed" ? "not observed (Editor import, compile, and runtime load are separate phases)." : publishExecution.unityVerification}</p>
+          <Tag>{publishExecution.outcome}</Tag>
           {publishExecution.report.targets.map((target) => (
             <div className="publish-target" key={target.index}>
               <strong>{target.kind}</strong><span>{target.configured_path}</span><Tag>{target.status}</Tag>
@@ -811,8 +815,8 @@ export function DeliveryPanel({
           ))}
         </section>
       )}
-      {publishState === "succeeded" && <Alert type="success" title="Publish completed" />}
-      {publishState === "failed" && <Alert type="warning" title="Publish did not complete" description="The previous confirmation is expired. Review target results and create a new preview before retrying." />}
+      {publishState === "succeeded" && <Alert type="success" title={publishExecution?.outcome === "partial_failure" ? "Publish partially completed" : "Publish completed"} description="Unity import, compile, and runtime load are not observed by MasterData Publish." />}
+      {publishState === "failed" && <Alert type="warning" title={publishExecution?.outcome === "partial_failure" ? "Publish partially completed" : "Publish did not complete"} description="Review target results. Unity import, compile, and runtime load remain separate phases." />}
       {publishState === "unknown" && <Alert type="error" title="Publish outcome unknown" description="The previous confirmation is expired. Recheck destination state and create a fresh preview before any retry." />}
     </section>
   );

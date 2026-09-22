@@ -15,6 +15,7 @@ path = "src/main.rs"
 clap.workspace = true
 masterdata-app = { path = "../masterdata-app" }
 masterdata-core = { path = "../masterdata-core" }
+serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

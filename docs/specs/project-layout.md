@@ -243,6 +243,8 @@ publish target pathのbaseは、[Build pipeline仕様](build-pipeline.md)の`PUB
 許可し、configured absolute filesystem destinationとして扱う。relative/absolute targetの詳細なfilesystem safetyは、同仕様の
 `PUBLISH-PATH-001`から`PUBLISH-PATH-010`が所有する。
 
+Unity packageのimport/compile/runtime observationと`.meta` ownershipは[Unity Integration仕様](unity-integration.md)へ委譲する。existing `publish.targets`でUnity destinationを指定する例だけをこのdocumentのconfiguration guidanceとし、Unity project linkをMasterData project identityへ昇格させない。
+
 Open Questions: configがnamed source group、ignore pattern、明示的なUnity project linkを将来
 サポートするか、設定されたsource rootがsymlinkをfollowするか、custom artifact/cache pathのautomatic
 Git ignoreを行うか、User Settingsのserializationとhost-local physical storageをどう定義するか、

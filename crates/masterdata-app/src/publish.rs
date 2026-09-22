@@ -34,6 +34,20 @@ pub enum PublishTargetStatus {
     Failed,
 }
 
+/// Aggregate outcome for one explicit publish execution.
+///
+/// This is deliberately independent from any external platform such as
+/// Unity. A successful publish means that the configured MasterData targets
+/// completed; it does not observe an asset import, compiler, or runtime load.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishAggregateStatus {
+    NoTargets,
+    Succeeded,
+    PartialFailure,
+    Failed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublishTargetResult {
     pub index: usize,
@@ -48,6 +62,36 @@ pub struct PublishTargetResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublishExecutionReport {
     pub targets: Vec<PublishTargetResult>,
+}
+
+impl PublishExecutionReport {
+    pub fn aggregate_status(&self) -> PublishAggregateStatus {
+        let succeeded = self
+            .targets
+            .iter()
+            .filter(|target| target.status == PublishTargetStatus::Succeeded)
+            .count();
+        let failed = self
+            .targets
+            .iter()
+            .filter(|target| target.status == PublishTargetStatus::Failed)
+            .count();
+        let not_attempted = self
+            .targets
+            .iter()
+            .filter(|target| target.status == PublishTargetStatus::NotAttempted)
+            .count();
+
+        if self.targets.is_empty() {
+            PublishAggregateStatus::NoTargets
+        } else if succeeded == 0 {
+            PublishAggregateStatus::Failed
+        } else if failed > 0 || not_attempted > 0 {
+            PublishAggregateStatus::PartialFailure
+        } else {
+            PublishAggregateStatus::Succeeded
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

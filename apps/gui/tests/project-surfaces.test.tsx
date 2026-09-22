@@ -252,6 +252,8 @@ test("Delivery retains target-level Publish failure results and expires the old 
       expect(args.publishPlanIdentity).toBe("plan");
       return {
         status: "failure",
+        outcome: "partial_failure",
+        unityVerification: "not_observed",
         report: {
           targets: [
             { index: 0, kind: "csharp", configured_path: "first", destination: "/first", status: "succeeded", failure: null },
@@ -285,6 +287,8 @@ test("Delivery retains target-level Publish failure results and expires the old 
   await screen.findByText("Publish result");
   expect(screen.getByText("succeeded")).toBeTruthy();
   expect(screen.getByText("failed")).toBeTruthy();
+  expect(screen.getByText("partial_failure")).toBeTruthy();
+  expect(screen.getByText(/Unity verification: not observed/)).toBeTruthy();
   expect(screen.getByText(/E-PUBLISH: target failed/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Confirm Publish" })).toBeNull();
 });

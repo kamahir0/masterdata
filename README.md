@@ -4,7 +4,9 @@
 
 このリポジトリはschema-drivenなMasterMemory binary buildを中心に、project discovery、typed YAML AST、Type System、Table/Key
 validation、Build Selection、C#生成、.NET bridge、artifact-set receipt、CLI、Tauri app shellを同じworkflowで扱います。Reference、
-builder cache、released binary compatibility、Unityへの最終配置は別scopeです。observable contractとlifecycleは各canonical
+Unity delivery、builder cache、released binary compatibilityは各canonical ownerで定義します。Unity integration packageは
+[`unity/Packages/com.kamahir0.masterdata`](unity/Packages/com.kamahir0.masterdata/README.md)にあります。
+observable contractとlifecycleは各canonical
 specification、current implementation realityはcode / tests / Gitを参照してください。
 
 ## アーキテクチャ

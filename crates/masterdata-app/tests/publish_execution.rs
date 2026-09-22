@@ -3,10 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use masterdata_app::{
-    NativeApplicationService, PUBLISH_MANIFEST_FILENAME, PublishExecutionFailure,
-    PublishExecutionReport, PublishFailureInjection, PublishFailurePoint, PublishTargetStatus,
-    write_artifact_set_receipt,
+    NativeApplicationService, PUBLISH_MANIFEST_FILENAME, PublishAggregateStatus,
+    PublishExecutionFailure, PublishExecutionReport, PublishFailureInjection, PublishFailurePoint,
+    PublishTargetResult, PublishTargetStatus, write_artifact_set_receipt,
 };
+use masterdata_core::PublishTargetKind;
 use serde_json::json;
 use tempfile::{Builder, TempDir};
 
@@ -379,6 +380,65 @@ fn publish_reports_per_target_status() {
     assert_eq!(report.targets[1].index, 1);
     assert_eq!(report.targets[1].configured_path, "masterdata.bytes");
     assert_eq!(report.targets[1].status, PublishTargetStatus::Succeeded);
+    assert_eq!(report.aggregate_status(), PublishAggregateStatus::Succeeded);
+}
+
+#[test]
+fn publish_aggregate_distinguishes_noop_partial_and_failed_delivery() {
+    let no_targets = publish_success(&project_with_targets(&[]));
+    assert_eq!(
+        no_targets.aggregate_status(),
+        PublishAggregateStatus::NoTargets
+    );
+
+    let partial = publish_failure(
+        &project_with_targets(&[("csharp", "first"), ("binary", "second.bytes")]),
+        &[PublishFailureInjection {
+            target_index: 1,
+            point: PublishFailurePoint::BinaryBeforePublication,
+        }],
+    );
+    assert_eq!(
+        partial.report.aggregate_status(),
+        PublishAggregateStatus::PartialFailure
+    );
+
+    let failed = publish_failure(
+        &project_with_targets(&[("binary", "only.bytes")]),
+        &[PublishFailureInjection {
+            target_index: 0,
+            point: PublishFailurePoint::BinaryBeforePublication,
+        }],
+    );
+    assert_eq!(
+        failed.report.aggregate_status(),
+        PublishAggregateStatus::Failed
+    );
+
+    let incomplete = PublishExecutionReport {
+        targets: vec![
+            PublishTargetResult {
+                index: 0,
+                kind: PublishTargetKind::CSharp,
+                configured_path: "first".into(),
+                destination: PathBuf::from("first"),
+                status: PublishTargetStatus::Succeeded,
+                failure: None,
+            },
+            PublishTargetResult {
+                index: 1,
+                kind: PublishTargetKind::Binary,
+                configured_path: "second.bytes".into(),
+                destination: PathBuf::from("second.bytes"),
+                status: PublishTargetStatus::NotAttempted,
+                failure: None,
+            },
+        ],
+    };
+    assert_eq!(
+        incomplete.aggregate_status(),
+        PublishAggregateStatus::PartialFailure
+    );
 }
 
 #[test]
@@ -430,6 +490,11 @@ fn csharp_publish_adds_updates_retires_and_writes_current_manifest() {
         &[("Item.g.cs", b"old"), ("Stale.g.cs", b"stale")],
         &["Item.g.cs", "Stale.g.cs"],
     );
+    fs::write(
+        target.join("Stale.g.cs.meta"),
+        b"unity-guid-stays-owned-by-unity",
+    )
+    .expect("stale metadata");
 
     publish_success(&project);
 
@@ -439,6 +504,10 @@ fn csharp_publish_adds_updates_retires_and_writes_current_manifest() {
         b"new nested"
     );
     assert!(!target.join("Stale.g.cs").exists());
+    assert_eq!(
+        fs::read(target.join("Stale.g.cs.meta")).expect("stale metadata preserved"),
+        b"unity-guid-stays-owned-by-unity"
+    );
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(target.join(PUBLISH_MANIFEST_FILENAME)).unwrap()).unwrap();
     assert_eq!(

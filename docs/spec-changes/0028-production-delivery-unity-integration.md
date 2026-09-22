@@ -1,6 +1,6 @@
 # 仕様変更0028: Production Delivery & Unity Integration v1
 
-Status: Draft
+Status: Proposed
 
 ## Affected Specifications
 
@@ -123,20 +123,43 @@ Human decision後、最低限次をspecify / verifyする。
 - non-Unity C# / binary publish regressionなし。
 - Unity packageなしのexisting project behavior不変。
 
+## Human decision
+
+2026-09-22 JST、Human maintainerはOption Bを採用した。
+
+- Unity Editor/packageがUnity `.meta` lifecycleを所有する。
+- MasterData generic publisherはgenerated C# / binary artifact bytesとMasterData-owned publish manifestだけを所有する。
+- MasterData publisherはUnity `.meta`を生成・更新・削除しない。
+- Unity AssetDatabase lifecycle、asset import observation、Unity-specific diagnosticsはUnity integration側が所有する。
+- Publish successとUnity import / compile / runtime load successは別phaseとして扱う。
+
+Option A / CはRejected alternativeとする。
+
+package internal layout、Editor window/component naming、runtime helper API、test harness、orphan `.meta` cleanupの安全な具体化は、上記ownership principleと既存Approved authorityから決められる範囲でagent-resolvableとする。new persisted config format、breaking public API/CLI、security/trust boundary、external release/publishが必要になった場合だけHuman gateへ戻す。
+
 ## 未解決事項（Open Questions）
 
-Human decision required:
+Human-gated Open Questionは解消済み。
 
-1. Option A / B / CのどれをUnity `.meta` lifecycle ownershipとするか。
+Implementation前にagentがrefineすべき事項:
 
-Option B採用後のpackage internal layout、Editor window/component naming、test harness等はHuman gateではなくagent-resolvableとする。ただしnew persisted config formatやbreaking CLI/APIが必要になった場合はworkflowに従いHuman gateへ戻す。
+- Unity package / repository layout。
+- Unity artifact location discoveryを既存publish configurationからどう受け取るか。
+- Unity Editor側のorphan `.meta` cleanup policy。
+- import / compile / runtime load status model。
+- MemoryDatabase load helperとPlay Mode / reload lifecycle。
+- Desktop delivery statusのcomposition。
+
+これらはOption Bのownership boundaryを変更しない限りagent-resolvableである。
 
 ## レビュー（Review）
 
-current Approved authorityだけからUnity `.meta` ownershipは一意に決められない。Build pipeline自身がOpen Questionとして保持しているためHuman gate。
+Human decisionによりmaterial product forkは解消した。Option Bはexisting generic publisherのunmanaged preservation、target-local ownership、adapter separationと整合する。
 
-Recommendation: Option B。
+次のrefinementではUnity integration canonical owner、package/runtime boundary、failure semantics、verification matrixを確定し、review-specでBlockingなしを確認してからimplementationへ進む。
 
 ## 承認記録（Approval Record）
 
-Pending Human decision。
+Human decision: Option B, 2026-09-22 JST。
+Option A / C: Rejected alternative。
+Canonical refinement / implementation: Pending。

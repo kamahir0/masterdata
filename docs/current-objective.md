@@ -35,11 +35,11 @@
 - existing non-Unity publish target、canonical artifact、Build/Publish semanticsをregressさせない。
 - fresh review、repository checks、exact Candidate、required remote CI reconciliationまで完了する。
 
-## Human-gated design boundary
+## Adopted Unity ownership boundary
 
-Build pipelineのApproved specは、Unity `.meta` lifecycleをMasterData publisherが持つかUnity importerへ委譲するかをOpen Questionとして明示している。このownershipはUnity GUID stability、stale deletion、unmanaged preservation、publisher manifest scopeに影響するため、仕様変更0028でHuman decisionを受けて確定する。
+2026-09-22 JSTのHuman decisionにより、Unity Editor/packageが`.meta` lifecycleを所有するOption Bを採用した。
 
-推奨方向は、**Unity Editor/packageが`.meta` lifecycleを所有し、MasterData generic publisherは`.meta`を生成・更新・削除しない**。MasterDataはartifact bytesと自身が所有するpublish manifestだけを管理し、Unity固有asset database stateを所有しない。
+MasterData generic publisherはgenerated C# / binary artifact bytesと自身のpublish manifestだけを管理し、Unity `.meta`を生成・更新・削除しない。Unity AssetDatabase lifecycle、asset import observation、Unity-specific diagnosticsはUnity integration側が所有する。Publish successとUnity import / compile / runtime load successを混同しない。
 
 ## Explicit non-scope
 
@@ -55,4 +55,4 @@ Build pipelineのApproved specは、Unity `.meta` lifecycleをMasterData publish
 
 ## Audit
 
-2026-09-22 JST、Advanced Authoring / Computed View完了後、Humanは次Objectiveへ進むことを選択した。コード編集を伴う実装はimplementation agentへ指示書で委譲する。Product VisionがUnity project向けlocal-first systemを明示し、Build / PublishがUnity等のexternal destinationを既に扱うため、次の大きなproduct outcomeとしてProduction Delivery & Unity Integrationを開始する。
+2026-09-22 JST、Advanced Authoring / Computed View完了後、Humanは次Objectiveへ進むことを選択した。コード編集を伴う実装はimplementation agentへ指示書で委譲する。Product VisionがUnity project向けlocal-first systemを明示し、Build / PublishがUnity等のexternal destinationを既に扱うため、次の大きなproduct outcomeとしてProduction Delivery & Unity Integrationを開始した。同日、仕様変更0028のHuman gateではOption B（Unity Editor/packageが`.meta` lifecycleを所有）を採用した。

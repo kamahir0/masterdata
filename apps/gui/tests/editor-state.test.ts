@@ -5,6 +5,7 @@ import {
   boundedHistoryPush,
   deleteDraft,
   deleteExisting,
+  serializeAddedRecords,
   undoExistingDelete,
   type EditorMutationState,
 } from "../src/editor-state";
@@ -86,4 +87,24 @@ test("bounded history keeps the newest 50 states and warns before eviction", () 
   expect(next).toHaveLength(50);
   expect(next[0]).toEqual(state(1));
   expect(next.at(-1)).toEqual(state(50));
+});
+
+test("serializes Add Row fields in schema order without losing exact integer text", () => {
+  const draft = {
+    draftId: "draft-1",
+    values: {
+      id: { kind: "number", value: "18446744073709551615" } as AuthoringValue,
+      note: { kind: "string", value: "draft" } as AuthoringValue,
+    },
+    tags: ["reviewed"],
+  };
+
+  expect(serializeAddedRecords(["id", "weight", "note"], [draft])).toEqual([{
+    fields: [
+      { field: "id", value: { kind: "number", value: "18446744073709551615" } },
+      { field: "weight", value: { kind: "null" } },
+      { field: "note", value: { kind: "string", value: "draft" } },
+    ],
+    tags: ["reviewed"],
+  }]);
 });

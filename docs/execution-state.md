@@ -1,14 +1,14 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
-Work base: 20edcd8625e41a3f6ab53aac99270a8ba9cee0e5
+Stage: verification-ready
+Candidate: 5a788c3562406829f18f68e12896ce000911acad
+Work base: 8b7d9e943b4e9ea5c915cdfa4718d474914726a2
 
 ## Active work
 
-Completed: Product Simplification & Scope CleanupをHuman-selected Current Objectiveとして開始。Git-native CollaborationをRejected化。Released Compatibility全面退役を仕様変更0030としてHuman-approved authorityへ確定。Computed View v1全面退役とProgrammable View将来要件の分離を仕様変更0031としてHuman-approved authorityへ確定。Milestone 1としてimplementation agentへ直接渡すcleanup指示書プロンプトを再策定。
-In progress: implementation agentへのdirect handoff待ち。本格implementationはagent branchで行い、mainへ直接実装しない。
-Remaining: agent implementation / self-review / focused checks / PR、main reviewerによるfresh review-code、必要なdiff-directed correction、Candidate / required remote CI reconciliation。
+Completed: Product Simplification & Scope Cleanupを実装。0029をRejectedとしてGit product integrationを追加せず、0030でReleased Compatibilityを全面退役し、0031でComputed View v1を全面退役した。core/application/CLI/Tauri/GUI/docs/testsのdependency closureを整理し、Reference、Migration safety、Build/Publish、Unity、.NET spike、将来Programmable View intentを保持した。Candidate前にfocused review、仕様/rationale、workspace、GUI、Unity package、MasterMemory/.NET smokeを完了した。
+In progress: Candidate diffのfresh review、branch push、main向けPR作成、required remote CI reconciliation。
+Remaining: remote CIが成功しfresh reviewのBlockingがないことを確認後、Objectiveをcompleteへ遷移する。CIまたはreviewにproduct/test/evidence failureがあればcorrection-readyへ戻す。
 
 ## Blocking findings
 

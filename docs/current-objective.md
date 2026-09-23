@@ -20,7 +20,7 @@
 
 - Git-native Collaboration & Automationは次Objectiveとして進めない。仕様変更0029はRejectedとし、Git client / stage / commit / push / PR等をproduct scopeへ追加しない。
 - Released Compatibilityは独立product capabilityとしてretireする方向とし、baseline/current snapshot comparison、4-axis compatibility classification、compatibility CLI/GUI等をcleanup対象とする。
-- Programmable Viewという将来要件自体は保持するが優先度は低い。現在の独自DSL型Computed Viewを将来設計の最終形として固定せず、このCleanup中に新機能・DSL拡張を行わない。将来再開時に汎用language/runtimeを含めて再設計する。
+- Programmable Viewという将来要件自体は保持するが優先度は低い。現在の独自DSL型Computed View v1は仕様変更0031に従って今回のCleanupで全面退役し、persisted `kind: view`、DSL処理系、CRUD/Overview/Migration integrationをcurrent product surfaceから除去する。将来再開時は現行v1 contractとの後方互換を前提にせず、汎用language/runtimeを含めて再設計する。
 - source-preserving edit、lost-update protection、migration operation自身のcorrectness、Build/Publish safety等、Compatibility機能とは独立したcore safety invariantはretirementの巻き添えにしない。
 
 ### Retirement execution
@@ -47,4 +47,4 @@
 
 ## Audit
 
-2026-09-23 JST、Humanは次の新機能へ進む前に、十分なコストを掛けて不要な機能・仕様・実装を徹底的に除去し、productを一度小さく綺麗にすることをCurrent Objectiveとして選択した。直前のGit-native Collaboration & AutomationはHuman-selected priorityではなかったため進行を中止する。会話上の方向として、Git-nativeはretire、Released Compatibilityは独立機能として全retire、Programmable Viewの要件は将来向けに保持しつつ現行Computed View設計は凍結・再設計対象とする。
+2026-09-23 JST、Humanは次の新機能へ進む前に、十分なコストを掛けて不要な機能・仕様・実装を徹底的に除去し、productを一度小さく綺麗にすることをCurrent Objectiveとして選択した。直前のGit-native Collaboration & AutomationはHuman-selected priorityではなかったため進行を中止する。会話上の方向として、Git-nativeはretire、Released Compatibilityは独立機能として全retire、Programmable Viewの要件は将来向けに保持しつつ現行Computed View v1は全面retireして将来ゼロベース再設計できる状態へ戻す。

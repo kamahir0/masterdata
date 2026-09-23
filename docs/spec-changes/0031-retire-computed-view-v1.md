@@ -1,6 +1,6 @@
 # 仕様変更0031: Computed View v1退役とProgrammable View将来要件の分離
 
-Status: Proposed
+Status: Approved
 
 ## Why
 
@@ -139,8 +139,34 @@ Human decision is already provided on 2026-09-23 JST.
 
 ## Review
 
-Pending fresh review.
+Fresh review completed 2026-09-23 JST.
+
+### Blocking Issues
+
+None identified.
+
+### Non-blocking Issues
+
+None identified.
+
+### Questions
+
+None identified.
+
+### Approved as Proposed
+
+Yes.
+
+### Review dimensions
+
+Intent fidelity、retirement closure、future requirementとの分離、migration/build/reference safety、documentation ownership、testability、意図的breaking removalを確認した。将来Programmable Viewの具体設計を未決定のまま保つため、現行DSL contractをcompatibility shimとして残さないことを重要なacceptance conditionとする。
 
 ## Approval Record
 
-Pending fresh review. Human decision basis: 2026-09-23 JST Product Simplification & Scope Cleanup conversation.
+Approval mode: Human.
+
+Approved: 2026-09-23 JST.
+
+Basis: HumanはProgrammable Viewの将来要件を保持しつつ、現行Computed View v1を今回のcleanupで全面退役し、将来は汎用language/runtimeを含めて再設計可能な状態へ戻す方針を選択した。
+
+Application / implementationはimplementation agentのreviewable branch / PRへ委譲し、merge前にfresh review-codeを行う。

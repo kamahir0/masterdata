@@ -110,7 +110,7 @@ implementation中のSpecification Gapは同じrunでspecification workflowへ戻
 
 ## Autonomous continuation
 
-短い「進める」「continue」等は、**既に選択済みのCurrent Objective内で**次のHuman gateまたはObjective completionまで可能な限り自律的に進めるauthorizationとして扱う。Stage境界を同一turnで跨いでよい。Objective completion後の新priority選択には適用しない。
+短い「進める」「continue」等は、**既に選択済みのCurrent Objective内で**、次のHuman gateまたはCurrent Objective completionまで可能な限り自律的に進めるauthorizationとして扱う。Stage境界を同一turnで跨いでよい。Objective completion後の新priority選択には適用しない。
 
 Humanが「specだけ」「実装しない」「ここで止める」等のstop boundaryを明示した場合はそれを優先する。
 

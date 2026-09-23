@@ -16,6 +16,16 @@ CLIとDesktopの制作workflowを、共有Rust semantics、source-preserving aut
 
 未承認のauthoring設計案は[Authoring system v1 RFC](../rfcs/0008-authoring-system-v1.md)を参照する。RFCの提案をApproved behaviorとは扱わない。
 
+## Scope discipline / 何を作らないか
+
+`masterdata`のcoreへ入れるのは、MasterDataを定義・編集・検証・安全にmigrationし、再現可能なartifactをBuild / PublishしてUnityへ届ける中心workflowを成立させる責務をdefaultとする。「あると便利」「将来使えそう」だけではcore ownershipの理由にしない。
+
+Git hosting / collaboration、AI支援、issue tracker、通知、provider固有workflow等の外部concernは、具体的なHuman-selected requirementがない限りcoreへ取り込まない。必要になった場合も、まずYAML/files、CLI、既存の明示boundaryを使って外側からcompositionし、依存方向を **integration / extension → masterdata** に保つことを優先する。masterdata coreが外部providerやcollaboration productのsemanticsへ依存する形をdefaultにしない。
+
+この原則はplugin / extension frameworkを先回りして実装する要求ではない。extension APIやplugin architecture自体も、具体的で反復する需要とHuman-selected Objectiveが現れるまで作らない。
+
+RFC、Deferred、future direction、Ideaは設計上の可能性を保存するだけで、roadmap、priority、次Objectiveの予約を意味しない。必要性が具体化した時点で改めてHumanがpriorityを選択する。
+
 ## 成功条件
 
 - developerがUnityを開かずにprojectをdiscover、validate、authoring、Buildできる。

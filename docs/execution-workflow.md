@@ -22,6 +22,14 @@ Current Objectiveはdefaultとして単一featureや単一spec changeではな�
 
 Stageはrecovery checkpointでありturn boundaryではない。
 
+## Product scope discipline
+
+Product Direction、RFC、Deferred、future idea、過去に見送ったOptionは、current priorityやimplementation authorizationではない（MUST NOT）。それらを「次に作る候補」としてHumanへ提示することはできるが、Current Objectiveへ自動昇格させてはならない。
+
+Objective完了後、Humanが単に「次へ」「進める」「continue」とだけ指示した場合、それをagentが新しいproduct themeを選択するauthorizationとして解釈してはならない（MUST NOT）。次priorityが名前またはdurableなselection ruleで既に委任されていなければ、候補とtrade-offを提示してHuman selectionで停止する。
+
+新しいfeatureをcoreへ入れる判断では[Product Vision](product/vision.md#scope-discipline--何を作らないか)のownership boundaryを使う。外部concernやconvenience integrationは、具体的なcore requirementがない限りfiles / CLI /既存boundaryから外側でcompositionする方向を優先する。これ自体を理由にplugin systemやextension frameworkを先行実装してはならない。
+
 ## Pre-action freshness gate
 
 autonomous run開始時に、trusted working branch / working tree / upstream / remote HEADを確認してfreshness epochを確立する。safe fast-forward以外のreset / stash / rebase / force update / history rewriteをfreshness目的で自動実行してはならない（MUST NOT）。
@@ -102,7 +110,7 @@ implementation中のSpecification Gapは同じrunでspecification workflowへ戻
 
 ## Autonomous continuation
 
-短い「進める」「continue」等は、次のHuman gateまたはCurrent Objective completionまで可能な限り自律的に進めるauthorizationとして扱う。Stage境界を同一turnで跨いでよい。
+短い「進める」「continue」等は、**既に選択済みのCurrent Objective内で**次のHuman gateまたはObjective completionまで可能な限り自律的に進めるauthorizationとして扱う。Stage境界を同一turnで跨いでよい。Objective completion後の新priority選択には適用しない。
 
 Humanが「specだけ」「実装しない」「ここで止める」等のstop boundaryを明示した場合はそれを優先する。
 
@@ -134,7 +142,7 @@ Human gateに到達した場合だけ、必要decision、各choiceのtrade-off�
 
 ## Priority presentation gate for `objective-complete`
 
-新priorityがdurably delegatedされていない場合、current reality / Product Directionから有力候補を比較してHumanへ戻す。事前にroadmap順等のdelegationがある場合だけその範囲で自律選択できる。
+新priorityがdurably delegatedされていない場合、current reality / Product Directionから有力候補を比較してHumanへ戻す。RFC / Deferred / future ideaの記載順や存在自体をdelegationと見なさない。事前にHumanがroadmap順やselection ruleを明示的・durablyに委任している場合だけ、その範囲で自律選択できる。
 
 ## Specification approval within an Objective
 

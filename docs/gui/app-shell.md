@@ -96,4 +96,4 @@ Explorerからfolder、Table、record data、Value Object、Enum等のsource art
 
 ## 未解決事項（Open Questions）
 
-None identified for the initial Desktop existing-record authoring shell. Recent Project一覧、window layout persistence、right inspector、command palette、theme customization等は将来UXとして別途扱う。
+None identified for the initial Desktop existing-record authoring shell. window layout persistence、right inspector、command palette、theme customization等は将来UXとして別途扱う。

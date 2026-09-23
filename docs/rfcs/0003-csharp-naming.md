@@ -119,7 +119,7 @@ ASCII digitを要求する。`A`、`AB`、`ID`、`URL`、`HTTP`、`REWARD`、`It
 ## 補助的な命名事項
 
 generated namespaceのvalidity、generated filename、filesystemのcase collision、Unicode normalizationの高度な互換性、namespace/API
-rename migrationは、将来のgenerated artifactとreleased compatibilityの検討事項である。これらは今回解決した6つのminimum
+rename migrationは、将来のgenerated artifactとrelease policyの検討事項である。これらは今回解決した6つのminimum
 contractとは別であり、current implementationが要求する場合は、conservativeなvalidation guardを別途維持する。
 
 ## 選択肢（Options）

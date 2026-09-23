@@ -17,7 +17,7 @@ Table schemaの`references` sequenceは、explicit `name`、ordered source `fiel
 schema-level declarationでなければならない（MUST）。`name`はlanguage-independentなReference domain nameであり、Table内でuniqueでなければならない（MUST）。
 field-level annotation、MessagePack key、file path、generated type name、language-specific codegen nameをReference target identityへ使用してはならない（MUST NOT）。
 Referenceはoptionalな`csharpName`を持ってもよい（MAY）が、これはgenerated C# helper method identifierのpresentation overrideに限り、Reference
-domain semantics、target identity、released compatibility identityを構成してはならない（MUST NOT）。
+domain semanticsまたはtarget identityを構成してはならない（MUST NOT）。
 
 ### REF-002
 

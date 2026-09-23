@@ -21,7 +21,6 @@ pub struct WorkspaceSourceFile {
     pub kind: String,
     pub table: Option<String>,
     pub type_name: Option<String>,
-    pub name: Option<String>,
     pub diagnostic: Option<Diagnostic>,
 }
 
@@ -198,10 +197,6 @@ impl NativeApplicationService {
                         kind: loaded.document.kind().to_owned(),
                         table: loaded.document.table_identity().map(str::to_owned),
                         type_name: loaded.document.type_name().map(str::to_owned),
-                        name: match &loaded.document {
-                            masterdata_core::SourceDocument::View(view) => Some(view.name.clone()),
-                            _ => None,
-                        },
                         diagnostic: None,
                     }),
                     Err(error) => entries.push(WorkspaceSourceFile {
@@ -210,7 +205,6 @@ impl NativeApplicationService {
                         kind: "invalid".to_owned(),
                         table: None,
                         type_name: None,
-                        name: None,
                         diagnostic: Some(error.diagnostic().clone()),
                     }),
                 },
@@ -220,7 +214,6 @@ impl NativeApplicationService {
                     kind: "unavailable".to_owned(),
                     table: None,
                     type_name: None,
-                    name: None,
                     diagnostic: Some(
                         MasterdataError::new(
                             "E-IO-ACCESS",
@@ -654,118 +647,6 @@ pub(super) fn install_source_candidate(
     candidate: &[u8],
 ) -> masterdata_core::Result<()> {
     install_source_candidate_with_pre_replace_hook(target, expected_current, candidate, |_| {})
-}
-
-/// Remove one source file only after the exact editor-base bytes have been
-/// staged and rechecked.
-///
-/// WHY: `fs::remove_file(target)` after a separate read leaves a replacement
-/// window in which an external edit can be deleted as a lost update.  Moving
-/// the expected bytes into the transaction first gives removal the same
-/// source-preserving, fail-closed boundary as replacement.
-/// IF REMOVED: a concurrent source edit can be deleted despite the stale
-/// editor snapshot.
-/// EVIDENCE: docs/specs/source-edit.md SOURCE-EDIT-008, SOURCE-EDIT-010,
-/// SOURCE-EDIT-012.
-pub(super) fn remove_source_candidate(
-    target: &Path,
-    expected_current: &[u8],
-) -> masterdata_core::Result<()> {
-    let parent = target.parent().ok_or_else(|| {
-        authoring_error(
-            "E-SOURCE-EDIT-PATH-UNSAFE",
-            "source edit target has no parent directory",
-            Some(target.to_path_buf()),
-            "SOURCE-EDIT-012",
-        )
-    })?;
-    let metadata = fs::symlink_metadata(target).map_err(|error| {
-        io_authoring_error(target, format!("could not inspect source file: {error}"))
-    })?;
-    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
-        return Err(authoring_error(
-            "E-SOURCE-EDIT-PATH-UNSAFE",
-            "source edit target is no longer a regular non-symlink file",
-            Some(target.to_path_buf()),
-            "SOURCE-EDIT-008",
-        ));
-    }
-
-    let transaction = TempDir::new_in(parent).map_err(|error| {
-        io_authoring_error(
-            target,
-            format!("could not create source edit staging directory: {error}"),
-        )
-    })?;
-    let backup = transaction.path().join("base");
-    let current = fs::read(target).map_err(|error| {
-        io_authoring_error(
-            target,
-            format!("could not recheck source file before removal: {error}"),
-        )
-    })?;
-    if current != expected_current {
-        return Err(source_conflict(
-            target,
-            "source file changed during removal preflight",
-        ));
-    }
-
-    fs::rename(target, &backup).map_err(|error| {
-        io_authoring_error(
-            target,
-            format!("could not stage existing source for removal: {error}"),
-        )
-    })?;
-    let actual_base = match fs::read(&backup) {
-        Ok(actual_base) => actual_base,
-        Err(error) => {
-            rollback_source_backup(
-                target,
-                &backup,
-                format!("could not verify staged source before removal: {error}"),
-            )?;
-            return Err(io_authoring_error(
-                target,
-                format!("could not verify staged source before removal: {error}"),
-            ));
-        }
-    };
-    if actual_base != expected_current {
-        rollback_source_backup(
-            target,
-            &backup,
-            "source file changed during the removal replacement window",
-        )?;
-        return Err(source_conflict(
-            target,
-            "source file changed during the removal replacement window",
-        ));
-    }
-
-    // A source recreated after the atomic rename belongs to the concurrent
-    // writer.  Preserve it and report an unknown outcome instead of replacing
-    // or deleting it.
-    if target.exists() {
-        return Err(authoring_error(
-            "E-SOURCE-EDIT-OUTCOME-UNKNOWN",
-            "source path was recreated before removal could complete",
-            Some(target.to_path_buf()),
-            "SOURCE-EDIT-010",
-        ));
-    }
-    if let Err(error) = fs::remove_file(&backup) {
-        rollback_source_backup(
-            target,
-            &backup,
-            format!("could not remove staged source: {error}"),
-        )?;
-        return Err(io_authoring_error(
-            target,
-            format!("could not remove staged source: {error}"),
-        ));
-    }
-    Ok(())
 }
 
 fn install_source_candidate_with_pre_replace_hook<F>(

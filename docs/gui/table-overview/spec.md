@@ -3,7 +3,6 @@
 Status: Approved
 
 Table Overviewは分割されたlogical Tableを保存済みsnapshotで横断表示し、Profile selection、query、source navigationをread-onlyで提供する。dataset semanticsは[Authoring Query](../../specs/authoring-query.md)、Profile semanticsは[Build Selection](../../specs/build-selection.md)が所有する。適用記録は[仕様変更0017](../../spec-changes/0017-desktop-workspace-settings.md)を参照する。
-対象Tableの[Computed View](../../specs/computed-view.md)を選択した場合、Overviewはbase columnsの後ろへresolved computed columnsを宣言順で追加表示する。Computed cellはread-onlyで、評価・null・invalid/unavailableとquery compositionはshared Rust snapshotの結果を表示する。frontendはexpression parse/type/evaluationやprofile/query semanticsを実装しない。
 
 ## 規範要件
 
@@ -19,11 +18,9 @@ rowからsourceへ移動するときは、対象file snapshot identityとeditor 
 
 ### GUI-OVERVIEW-003
 
-View選択、computed column表示、definition/cell diagnostic、supported scalar search/filter/sortはshared
-application snapshotをpresentationするだけでなければならない（MUST）。未保存Data Editor bufferをcomputed
-evaluationへ混ぜず、Computed cellをsource fieldとして編集可能にしてはならない（MUST NOT）。view definitionの
-create/edit/removeは別のsource-preserving authoring operationを使用し、Overview表示だけでsource、Build、Publish、Gitを変更してはならない。
+supported scalar search/filter/sortはshared application snapshotをpresentationするだけでなければならない（MUST）。
+Overview表示だけでsource、Build、Publish、Gitを変更してはならない（MUST NOT）。
 
 ## 受け入れ証拠
 
- dirty base一致/不一致、Pending delete、stale response、query clearとfocus、0件とUnavailableの区別、viewのbase+computed column、invalid cell、supported query composition、saved snapshot boundaryを検証する。
+ dirty base一致/不一致、Pending delete、stale response、query clearとfocus、0件とUnavailableの区別、supported query composition、saved snapshot boundaryを検証する。

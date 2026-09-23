@@ -36,8 +36,6 @@ enum Command {
     Build(BuildArgs),
     /// Publish the existing receipt-valid canonical artifact set.
     Publish,
-    /// Compare two explicit canonical project snapshots.
-    Compatibility(CompatibilityArgs),
 }
 
 #[derive(Debug, Args)]
@@ -74,19 +72,6 @@ struct BuildArgs {
     /// Use one explicitly named saved Build Profile.
     #[arg(long, value_name = "NAME")]
     profile: Option<String>,
-}
-
-#[derive(Debug, Args)]
-struct CompatibilityArgs {
-    /// Baseline project directory or masterdata.toml path.
-    #[arg(long, value_name = "PATH")]
-    baseline: PathBuf,
-    /// Current project directory or masterdata.toml path.
-    #[arg(long, value_name = "PATH")]
-    current: PathBuf,
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
 }
 
 fn main() {
@@ -230,61 +215,8 @@ fn run() -> Result<()> {
                 return Err(failure.error);
             }
         },
-        Command::Compatibility(args) => {
-            let report =
-                service.analyze_compatibility(&args.baseline, &args.current, &current_dir)?;
-            if args.json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&report).expect("compatibility report serialize")
-                );
-            } else {
-                render_compatibility_report(&report);
-            }
-        }
     }
     Ok(())
-}
-
-fn render_compatibility_report(report: &masterdata_core::CompatibilityReport) {
-    println!(
-        "compatibility: {} change(s) for project {}",
-        report.summary.change_count, report.current.project_id
-    );
-    println!("baseline version: {}", report.baseline.version);
-    println!("current version: {}", report.current.version);
-    for change in &report.changes {
-        let member = change
-            .subject
-            .member
-            .as_deref()
-            .map(|value| format!(".{value}"))
-            .unwrap_or_default();
-        println!(
-            "  - {:?} {}:{}{} api={:?} migration={:?} artifact={:?} external={:?}",
-            change.kind,
-            format_subject_kind(change.subject.kind),
-            change.subject.owner,
-            member,
-            change.generated_api,
-            change.source_migration,
-            change.artifact_binary,
-            change.external_contract
-        );
-    }
-}
-
-fn format_subject_kind(kind: masterdata_core::CompatibilitySubjectKind) -> &'static str {
-    match kind {
-        masterdata_core::CompatibilitySubjectKind::Type => "type",
-        masterdata_core::CompatibilitySubjectKind::TypeField => "type-field",
-        masterdata_core::CompatibilitySubjectKind::Table => "table",
-        masterdata_core::CompatibilitySubjectKind::Field => "field",
-        masterdata_core::CompatibilitySubjectKind::PrimaryKey => "primary-key",
-        masterdata_core::CompatibilitySubjectKind::SecondaryKey => "secondary-key",
-        masterdata_core::CompatibilitySubjectKind::Reference => "reference",
-        masterdata_core::CompatibilitySubjectKind::Data => "data",
-    }
 }
 
 fn render_build_execution(execution: &BuildExecution, dry_run: bool) {

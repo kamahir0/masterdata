@@ -40,4 +40,4 @@ P3のauthorityはProject Initialization、Build Request / Publish Previewと対�
 
 ## Deferred
 
-P4 existing key / source move、P5 expression / computed view、Reference、およびGit automationは別のspecification changeで扱う。今回のperformance workは測定evidenceを要求するが、未承認のlatency SLAや製品上限を導入しない。
+P4 existing key / source move、将来のProgrammable View、Reference、およびGit automationは別のspecification changeで扱う。今回のperformance workは測定evidenceを要求するが、未承認のlatency SLAや製品上限を導入しない。Programmable Viewの言語、runtime、persisted shapeは未定義であり、現行product capabilityではない。

@@ -1,6 +1,7 @@
 use std::fs;
 
-use masterdata_core::{Project, SourceDocument};
+use masterdata_core::{Project, SourceDocument, parse_yaml_document};
+use std::path::PathBuf;
 use tempfile::tempdir;
 
 fn write_project(root: &std::path::Path, data: &str) {
@@ -109,4 +110,14 @@ fn id_field_is_not_an_implicit_primary_key() {
     let project = Project::discover(Some(directory.path()), directory.path()).expect("project");
     let report = project.validate().expect("validation report");
     assert!(report.valid, "{report:?}");
+}
+
+#[test]
+fn retired_view_kind_is_rejected_as_unknown_source_document() {
+    let error = parse_yaml_document(
+        PathBuf::from("retired-view.yaml"),
+        "kind: view\nname: display\ntable: item\ncolumns: []\n",
+    )
+    .expect_err("retired Computed View documents must not remain a current source kind");
+    assert_eq!(error.diagnostic().code, "E-YAML-UNKNOWN-KIND");
 }

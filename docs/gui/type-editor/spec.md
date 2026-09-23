@@ -72,7 +72,7 @@ Renameはcurrent field nameをselectorとしてshared Type Migration boundaryへ
 
 ### GUI-TYPE-INT-004
 
-source mutation前に必ずcurrent semantic commandに対応するType Migration Planを取得しなければならない（MUST）。Plan surfaceは少なくともoperation / target、destructive state、affected source files、affected value occurrence count、migration validation / diagnosticsを表示しなければならない（MUST）。Planは同じbefore snapshotとin-memory transformed candidateをReleased Compatibilityのshared analyzerへread-onlyで渡し、利用可能な場合はstructured compatibility reportを提示しなければならない（MUST）。Compatibility analysisがunrelated invalid source等で成立しない場合、そのdiagnosticを補助impact情報として提示してよいが（MAY）、Type Migration closureがvalidであるPlan自体をcompatibility analysis failureだけで拒否してはならない（MUST NOT）。Plan作成・表示はsourceを変更してはならない（MUST NOT）。
+source mutation前に必ずcurrent semantic commandに対応するType Migration Planを取得しなければならない（MUST）。Plan surfaceは少なくともoperation / target、destructive state、affected source files、affected value occurrence count、migration validation / diagnosticsを表示しなければならない（MUST）。Plan作成・表示はsourceを変更してはならない（MUST NOT）。
 
 ### GUI-TYPE-INT-005
 

@@ -174,7 +174,8 @@ selected domain datasetが変わらない限り、binary semanticsを単独で�
 - `$tags` のentry order
 - selected domain datasetを変えないirrelevantなtag変更
 
-このfileのpathやdirectoryはtable identityを決めず、既存の[Table identity仕様](compatibility/table-identity.md)に従う。
+このfileのpathやdirectoryはtable identityを決めず、[Table / Primary Key / Secondary Key仕様](table-and-keys.md)の
+`SCHEMA-TABLE-002`に従う。
 
 ### BUILD-SELECT-017
 
@@ -299,7 +300,6 @@ Reference declaration、target identity、cardinality、missing/nullable semanti
 - Primary Key、Unique、Index、Referenceの具体的syntaxと、selected logical datasetに対する詳細なconstraint classificationは何か。
 - canonical record orderingの正確なmechanismと、同じselected datasetの同一性をcache keyへどう表現するか。
 - GUIでprofileやtagを編集・保存する際に、comment、formatting、quoteをどこまで保持するか。
-- profileまたはtag変更をreleased schema compatibilityでどのように分類するか。
 
 ## 非目標
 

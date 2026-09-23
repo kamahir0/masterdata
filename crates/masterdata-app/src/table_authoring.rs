@@ -103,34 +103,6 @@ pub struct TablePlanView {
     pub affected_record_count: usize,
     pub files: Vec<TableFileDiff>,
     pub diagnostics: Vec<Diagnostic>,
-    pub compatibility: MigrationCompatibilityView,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MigrationCompatibilityView {
-    pub report: Option<CompatibilityReport>,
-    pub diagnostic: Option<Diagnostic>,
-}
-
-pub(crate) fn migration_compatibility(
-    project: &Project,
-    before: &ProjectDocuments,
-    after: &ProjectDocuments,
-) -> MigrationCompatibilityView {
-    let metadata = project.config().project.clone();
-    let baseline = CompatibilitySnapshot::new(metadata.clone(), before.clone());
-    let current = CompatibilitySnapshot::new(metadata, after.clone());
-    match compare_compatibility(&baseline, &current) {
-        Ok(report) => MigrationCompatibilityView {
-            report: Some(report),
-            diagnostic: None,
-        },
-        Err(error) => MigrationCompatibilityView {
-            report: None,
-            diagnostic: Some(error.diagnostic().clone()),
-        },
-    }
 }
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,8 +169,6 @@ impl TableAuthoringSession {
                     .clone(),
             })
             .collect();
-        let compatibility =
-            migration_compatibility(&project, &before, &dry_run.transformed_documents);
         let view = TablePlanView {
             token: token.clone(),
             table: dry_run.plan.target_table.clone(),
@@ -216,7 +186,6 @@ impl TableAuthoringSession {
             affected_record_count: dry_run.plan.affected_record_count,
             files,
             diagnostics: dry_run.plan.validation.diagnostics.clone(),
-            compatibility,
         };
         self.plans
             .retain(|_, plan| plan.project.root() != project.root());

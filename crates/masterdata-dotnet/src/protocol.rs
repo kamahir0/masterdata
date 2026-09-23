@@ -8,7 +8,7 @@ use masterdata_core::{
 use serde::{Deserialize, Serialize};
 
 /// Internal handshake version for the repository-owned Rust/.NET builder.
-/// This is intentionally not a released compatibility protocol.
+/// This is intentionally not a public compatibility protocol.
 pub const BUILD_PROTOCOL_VERSION: u32 = 1;
 pub const MASTERMEMORY_VERSION: &str = "3.0.4";
 pub const MESSAGEPACK_VERSION: &str = "3.1.3";

@@ -6,7 +6,7 @@ production pathではRustが生成C#とvalidated/normalized valueを一時的な
 validationを所有する。
 
 RustはMasterMemoryやMessagePackのinternalを再実装せず、YAMLを.NET側で再parseしない。Rust/.NET間のrequest/reportは
-repository同梱builderとのinternal protocolであり、released compatibility contractではない。
+repository同梱builderとのinternal protocolであり、cross-schema binary contractではない。
 
 repositoryにおける実際のdependency/API compatibility experimentは、独立した
 [MasterMemory v3 technical spike](../spike/masterdata-mastermemory-spike.csproj) であり、

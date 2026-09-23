@@ -11,8 +11,7 @@ use std::path::{Path, PathBuf};
 use masterdata_core::{
     AuthoringQuery, AuthoringValue, BuildSelection, Diagnostic, ErrorKind, MasterdataError,
     ProjectDocuments, QueryRow, ResolvedAuthoringField, Result, apply_authoring_query,
-    computed_views_for_table, evaluate_computed_column, project_source_value,
-    project_typed_source_value, record_tags, resolve_authoring_field_shape, resolve_computed_views,
+    project_source_value, project_typed_source_value, record_tags, resolve_authoring_field_shape,
     source_content_identity, validate_documents,
 };
 use serde::{Deserialize, Serialize};
@@ -25,8 +24,6 @@ use crate::authoring::{load_authoring_documents, project_relative_string};
 #[serde(rename_all = "camelCase")]
 pub struct TableOverviewRequest {
     pub table: String,
-    #[serde(default)]
-    pub view: Option<String>,
     #[serde(default)]
     pub profile: Option<String>,
     #[serde(default)]
@@ -42,10 +39,6 @@ pub struct OverviewColumn {
     pub type_name: String,
     pub key_field: bool,
     pub shape: Option<ResolvedAuthoringField>,
-    #[serde(default)]
-    pub computed: bool,
-    #[serde(default)]
-    pub computed_view: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -91,7 +84,6 @@ pub struct TableOverviewRow {
 pub struct TableOverviewSnapshot {
     pub status: OverviewStatus,
     pub table: String,
-    pub view: Option<String>,
     pub result_identity: String,
     pub config_content_identity: String,
     pub sources: Vec<OverviewSourceSnapshot>,
@@ -141,49 +133,6 @@ impl NativeApplicationService {
         };
         let (documents, parse_diagnostics) = load_authoring_documents(&project, None)?;
         let mut diagnostics = parse_diagnostics;
-        let computed_build = resolve_computed_views(&documents);
-        let selected_view_sources = request.view.as_deref().map(|name| {
-            documents
-                .views()
-                .filter(|(_, view)| view.name == name && view.table == request.table)
-                .map(|(path, _)| path.clone())
-                .collect::<BTreeSet<_>>()
-        });
-        if let Some(selected_view_sources) = &selected_view_sources {
-            diagnostics.extend(
-                computed_build
-                    .diagnostics
-                    .iter()
-                    .filter(|diagnostic| {
-                        diagnostic
-                            .source
-                            .as_ref()
-                            .is_some_and(|source| selected_view_sources.contains(source))
-                    })
-                    .cloned(),
-            );
-        }
-        let selected_view = request.view.as_deref().and_then(|name| {
-            computed_views_for_table(&computed_build, &request.table).find(|view| view.name == name)
-        });
-        if request.view.is_some() && selected_view.is_none() {
-            diagnostics.push(overview_error(
-                "E-AUTHORING-OVERVIEW-VIEW-NOT-FOUND",
-                format!(
-                    "computed view `{}` is unavailable for Table `{}`",
-                    request.view.as_deref().unwrap_or_default(),
-                    request.table
-                ),
-            ));
-            return Ok(incomplete_snapshot(
-                &project,
-                request,
-                config_identity,
-                Vec::new(),
-                diagnostics,
-                OverviewStatus::Unavailable,
-            ));
-        }
         let schemas = documents
             .schemas()
             .filter(|(_, schema)| schema.table == request.table)
@@ -232,28 +181,9 @@ impl NativeApplicationService {
                 type_name: field.type_name.clone(),
                 key_field: key_fields.contains(&field.name),
                 shape: resolve_authoring_field_shape(&documents, field),
-                computed: false,
-                computed_view: None,
             })
             .collect::<Vec<_>>();
-        let selected_columns = selected_view
-            .map(|view| {
-                view.columns
-                    .iter()
-                    .map(|column| OverviewColumn {
-                        name: column.name.clone(),
-                        type_name: column.shape.type_name.clone(),
-                        key_field: false,
-                        shape: Some(column.shape.clone()),
-                        computed: true,
-                        computed_view: Some(view.name.clone()),
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let computed_columns = selected_columns.len();
-        let mut columns = base_columns;
-        columns.extend(selected_columns);
+        let columns = base_columns;
         let query_shape_indices = query_shapes(&columns, &request.query)?;
         let mut rows = Vec::new();
         for (path, data) in documents
@@ -264,9 +194,8 @@ impl NativeApplicationService {
             let path = project_relative_string(project.root(), &absolute_path);
             for (record_index, record) in data.records.iter().enumerate() {
                 let tags = record_tags(record, &absolute_path, record_index, &mut diagnostics);
-                let base_values = columns
+                let values = columns
                     .iter()
-                    .take(columns.len() - computed_columns)
                     .map(|column| {
                         record
                             .get(&column.name)
@@ -280,43 +209,6 @@ impl NativeApplicationService {
                             .unwrap_or(AuthoringValue::Null)
                     })
                     .collect::<Vec<_>>();
-                let mut values = base_values;
-                if let Some(view) = selected_view {
-                    let typed_values = schema
-                        .fields
-                        .iter()
-                        .map(|field| {
-                            let value = record
-                                .get(&field.name)
-                                .map(|value| {
-                                    match resolve_authoring_field_shape(&documents, field) {
-                                        Some(shape) => {
-                                            match project_typed_source_value(&shape, value) {
-                                                Ok(value) => value,
-                                                Err(error) => AuthoringValue::Invalid {
-                                                    diagnostic: Box::new(
-                                                        error.diagnostic().clone(),
-                                                    ),
-                                                },
-                                            }
-                                        }
-                                        None => project_source_value(value)
-                                            .unwrap_or(AuthoringValue::Null),
-                                    }
-                                })
-                                .unwrap_or(AuthoringValue::Null);
-                            (field.name.clone(), value)
-                        })
-                        .collect::<std::collections::BTreeMap<_, _>>();
-                    for column in &view.columns {
-                        values.push(evaluate_computed_column(
-                            column,
-                            &typed_values,
-                            &absolute_path,
-                            record_index,
-                        ));
-                    }
-                }
                 let query_values = query_shape_indices
                     .iter()
                     .map(|(_, column_index)| values[*column_index].clone())
@@ -402,7 +294,6 @@ impl NativeApplicationService {
         Ok(TableOverviewSnapshot {
             status,
             table: request.table.clone(),
-            view: request.view.clone(),
             result_identity,
             config_content_identity: config_identity,
             sources: after_sources,
@@ -487,11 +378,7 @@ fn query_shapes(
         let Some(shape) = column.shape.clone() else {
             if requested.contains(&column.name) {
                 return Err(MasterdataError::new(
-                    if column.computed {
-                        "E-VIEW-QUERY-UNAVAILABLE"
-                    } else {
-                        "E-AUTHORING-QUERY-UNAVAILABLE"
-                    },
+                    "E-AUTHORING-QUERY-UNAVAILABLE",
                     ErrorKind::Validation,
                     format!("query field `{}` has no resolved type shape", column.name),
                 )
@@ -536,7 +423,6 @@ fn overview_identity(
     let mut hasher = Sha256::new();
     hasher.update(config_identity.as_bytes());
     hasher.update(request.table.as_bytes());
-    hasher.update(request.view.as_deref().unwrap_or_default().as_bytes());
     hasher.update(serde_json::to_vec(&request.query).unwrap_or_default());
     hasher.update([request.selected_only as u8]);
     for tag in selection.include_tags() {
@@ -567,7 +453,6 @@ fn incomplete_snapshot(
     TableOverviewSnapshot {
         status,
         table: request.table.clone(),
-        view: request.view.clone(),
         result_identity: overview_identity(
             &config_identity,
             &sources,
@@ -616,7 +501,6 @@ fn stale_snapshot(
     TableOverviewSnapshot {
         status: OverviewStatus::Stale,
         table: request.table.clone(),
-        view: request.view.clone(),
         result_identity: overview_identity(
             &config_identity,
             &sources,
@@ -651,9 +535,6 @@ fn overview_error(code: &str, message: impl Into<String>) -> Diagnostic {
 mod tests {
     use super::{OverviewStatus, TableOverviewRequest};
     use crate::NativeApplicationService;
-    use masterdata_core::{
-        AuthoringQuery, AuthoringValue, ColumnFilter, QueryOperator, QuerySort, SortDirection,
-    };
     use std::fs;
     use tempfile::TempDir;
 
@@ -735,7 +616,6 @@ records:
                 temp.path(),
                 &TableOverviewRequest {
                     table: "item".to_owned(),
-                    view: None,
                     profile: Some("release".to_owned()),
                     query: Default::default(),
                     selected_only: false,
@@ -784,7 +664,6 @@ records:
                 temp.path(),
                 &TableOverviewRequest {
                     table: "item".to_owned(),
-                    view: None,
                     profile: Some("release".to_owned()),
                     query: Default::default(),
                     selected_only: true,
@@ -815,7 +694,6 @@ records:
                 temp.path(),
                 &TableOverviewRequest {
                     table: "item".to_owned(),
-                    view: None,
                     profile: Some("missing".to_owned()),
                     query: Default::default(),
                     selected_only: false,
@@ -831,170 +709,6 @@ records:
                 .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == "E-BUILD-PROFILE-NOT-FOUND")
-        );
-    }
-
-    #[test]
-    fn overview_evaluates_selected_computed_view_and_composes_query() {
-        let temp = project();
-        fs::write(
-            temp.path().join("sources/schemas/item-view.yaml"),
-            r#"kind: view
-name: display
-table: item
-columns:
-  - name: displayLabel
-    expression: 'label + "!"'
-"#,
-        )
-        .expect("view");
-        let snapshot = NativeApplicationService::new()
-            .table_overview(
-                Some(temp.path()),
-                temp.path(),
-                &TableOverviewRequest {
-                    table: "item".to_owned(),
-                    view: Some("display".to_owned()),
-                    profile: None,
-                    query: AuthoringQuery {
-                        filters: vec![ColumnFilter {
-                            field: "displayLabel".to_owned(),
-                            operator: QueryOperator::Contains,
-                            value: Some(AuthoringValue::String {
-                                value: "first!".to_owned(),
-                            }),
-                        }],
-                        ..Default::default()
-                    },
-                    selected_only: false,
-                },
-            )
-            .expect("computed overview");
-        assert_eq!(snapshot.view.as_deref(), Some("display"));
-        assert!(
-            snapshot
-                .columns
-                .last()
-                .is_some_and(|column| column.computed)
-        );
-        assert_eq!(snapshot.displayed_count, 1);
-        assert_eq!(
-            snapshot.rows[0].values.last(),
-            Some(&AuthoringValue::String {
-                value: "first!".into()
-            })
-        );
-    }
-
-    #[test]
-    fn invalid_computed_cell_is_visible_without_mutating_source() {
-        let temp = project();
-        let source_path = temp.path().join("sources/data/a.yaml");
-        let before = fs::read_to_string(&source_path).expect("source");
-        fs::write(&source_path, before.replace("label: first", "label: 10"))
-            .expect("invalid source value");
-        let invalid_before = fs::read_to_string(&source_path).expect("invalid source");
-        fs::write(
-            temp.path().join("sources/schemas/item-view.yaml"),
-            r#"kind: view
-name: display
-table: item
-columns:
-  - name: doubled
-    expression: 'label + "!"'
-"#,
-        )
-        .expect("view");
-        let snapshot = NativeApplicationService::new()
-            .table_overview(
-                Some(temp.path()),
-                temp.path(),
-                &TableOverviewRequest {
-                    table: "item".to_owned(),
-                    view: Some("display".to_owned()),
-                    profile: None,
-                    query: Default::default(),
-                    selected_only: false,
-                },
-            )
-            .expect("computed overview");
-        assert!(matches!(
-            snapshot.rows[0].values.last(),
-            Some(AuthoringValue::Invalid { .. })
-        ));
-        assert_eq!(
-            fs::read_to_string(source_path).expect("source"),
-            invalid_before
-        );
-        assert_ne!(before, invalid_before);
-    }
-
-    #[test]
-    fn computed_scalar_uses_shared_search_and_sort_semantics() {
-        let temp = project();
-        fs::write(
-            temp.path().join("sources/schemas/item-view.yaml"),
-            "kind: view\nname: scores\ntable: item\ncolumns:\n  - name: score\n    expression: 'id + 1'\n",
-        )
-        .expect("view");
-        let snapshot = NativeApplicationService::new()
-            .table_overview(
-                Some(temp.path()),
-                temp.path(),
-                &TableOverviewRequest {
-                    table: "item".to_owned(),
-                    view: Some("scores".to_owned()),
-                    profile: None,
-                    query: AuthoringQuery {
-                        search: "3".to_owned(),
-                        sort: Some(QuerySort {
-                            field: "score".to_owned(),
-                            direction: SortDirection::Descending,
-                        }),
-                        ..Default::default()
-                    },
-                    selected_only: false,
-                },
-            )
-            .expect("computed search/sort overview");
-        assert_eq!(snapshot.displayed_count, 2);
-        assert_eq!(
-            snapshot.rows[0].values.last(),
-            Some(&AuthoringValue::Number { value: "4".into() })
-        );
-    }
-
-    #[test]
-    fn invalid_selected_view_is_unavailable_without_showing_a_base_projection() {
-        let temp = project();
-        fs::write(
-            temp.path().join("sources/schemas/item-view.yaml"),
-            "kind: view\nname: broken\ntable: item\ncolumns:\n  - name: computedLabel\n    expression: missing\n",
-        )
-        .expect("invalid view");
-        let snapshot = NativeApplicationService::new()
-            .table_overview(
-                Some(temp.path()),
-                temp.path(),
-                &TableOverviewRequest {
-                    table: "item".to_owned(),
-                    view: Some("broken".to_owned()),
-                    profile: None,
-                    query: Default::default(),
-                    selected_only: false,
-                },
-            )
-            .expect("unavailable computed view");
-        assert!(matches!(snapshot.status, OverviewStatus::Unavailable));
-        assert!(snapshot.rows.is_empty());
-        assert!(snapshot.columns.is_empty());
-        assert!(
-            snapshot
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "E-VIEW-UNKNOWN-FIELD"),
-            "diagnostics: {:?}",
-            snapshot.diagnostics
         );
     }
 }

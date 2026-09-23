@@ -8,12 +8,10 @@ Domain: Table / Index
 
 本仕様は、project-localなlogical Table、Table schemaとdata documentの関係、persisted fieldのMessagePack key、
 Primary Key、およびSecondary Keyのobservable contractを定義する。Tableのidentity boundaryは
-[Table identity仕様](compatibility/table-identity.md)が所有し、本仕様はそのboundaryを変更せず、Table schemaの
-詳細とkey/index semanticsを追加する。
+`table` fieldが所有し、generated C# nameやsource pathとは分離する。本仕様はTable schemaの詳細とkey/index semanticsを定義する。
 
 persisted fieldのMessagePack専用`key`モデルは、[Applied specification change 0003](../spec-changes/0003-field-identity-to-messagepack-key.md)によって
-canonical specificationへ適用済みである。旧Field ID contractは[Field identity仕様](compatibility/field-identity.md)にretired historyとして
-保持し、現在のpersisted field modelのimplementation authorityにはしない。
+canonical specificationへ適用済みである。旧Field ID contractは現在のpersisted field modelのimplementation authorityではない。
 
 Primary KeyとSecondary Keyの検索semanticsは、ApprovedのPrimitive Types、Field Modifiers、Value Objects、Enum / Flags
 仕様が定義するcapabilityを参照する。Referenceの宣言syntaxとtarget resolutionは、本仕様のownerではない。

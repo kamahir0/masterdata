@@ -59,13 +59,6 @@ pub fn validate_documents_with_selection(
         diagnostics.extend(table_build.diagnostics);
     }
 
-    // Computed Views are authoring-only, but their definitions are still
-    // canonical source and must be type-checked by the shared validator. They
-    // are deliberately resolved after the ordinary schema/type pass so an
-    // invalid runtime schema remains a distinct diagnostic from an invalid
-    // expression definition.
-    diagnostics.extend(crate::computed_view::validate_computed_views(documents));
-
     if documents.files.is_empty() {
         diagnostics.push(Diagnostic::new(
             "E-PROJECT-NO-SOURCES",

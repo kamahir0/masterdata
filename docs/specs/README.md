@@ -157,8 +157,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Enum / Flags仕様](type-system/enums.md) — `Status: Approved`
   - [Custom Types仕様](type-system/custom-types.md)
 - [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Approved`
-- [Index / reference仕様](index-and-reference.md) — `Status: Approved`（Reference core semanticsを所有。Table/Keyのsemantic ownerは別document。released evolution comparisonは[Released Compatibility v1仕様](compatibility/released-compatibility.md)へrouting）
-- [Computed View仕様](computed-view.md) — `Status: Implemented`（authoring-onlyのpersisted derived projection、expression、Overview/query、source-preserving migration boundaryを所有）
+- [Index / reference仕様](index-and-reference.md) — `Status: Approved`（Reference core semanticsを所有。Table/Keyのsemantic ownerは別document）
 - [Source Record Edit仕様](source-edit.md) — `Status: Approved`
 - [Source Path Mutation仕様](source-path-mutation.md) — `Status: Approved`
 - [Build Selection仕様](build-selection.md) — `Status: Approved`
@@ -168,12 +167,6 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
 - [CLI surface仕様](cli.md) — `Status: Approved`
 - [Schema Migration v1仕様](schema-migration.md) — `Status: Approved`
 - [Type Migration v1仕様](type-migration.md) — `Status: Approved`
-- [Compatibility仕様](compatibility/README.md)
-  - [Released Compatibility v1仕様](compatibility/released-compatibility.md) — `Status: Implemented`
-  - [Table identity仕様](compatibility/table-identity.md)
-  - [Field identity仕様](compatibility/field-identity.md) — `Status: Deprecated`（旧Field ID modelのhistory）
-  - [Enum identity仕様](compatibility/enum-identity.md)
-  - [Index identity仕様](compatibility/index-identity.md)
 
 このindexはcurrent implementation inventoryや進捗status databaseを所有しない。implementation reality、test evidence、CI status、
 および未実装境界はcurrent code / tests / Gitからfreshに確認する。canonical specificationへ実装statusのmirrorを追加せず、

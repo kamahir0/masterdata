@@ -6,56 +6,45 @@
 
 ## Objective
 
-**Git-native Collaboration & Automationをproduction-readyにし、YAML Source of Truthとshared semantic analysisをGit working tree / review workflowへ接続して、人間とAIが同じchange evidenceから安全にreview・commit・collaborateできる状態へ到達する。**
+**Product Simplification & Scope Cleanupを完了し、新機能へ進む前に、現在のproduct scope・canonical specification・implementationを根源的な用途へ照らして再監査し、不要・過剰・誤って昇格した機能をretireして、保守すべきsurfaceを意図的に小さくする。**
 
 ## Completion slices
 
-### Git-aware review
+### Full-scope audit
 
-- Project rootのGit repository状態をshared application boundaryからread-onlyに取得し、branch / HEAD / dirty / untracked / conflict / detached / ahead-behind等をfilesystem/YAML semanticsと混同せず表現する。
-- raw text diffだけでなく、MasterData semantic change、Migration/Compatibility impact、source provenanceをreview surfaceへcompositionできるようにする。
-- dirty editor buffer、saved workspace、Git index / HEAD snapshotの違いを明示し、未保存bufferをGit changeとして偽装しない。
+- activeなproduct capability、canonical specification、CLI/Tauri/GUI surface、tests/fixtures、CI/dependencyを横断し、各領域を **core / retained-but-deferred / retire** に分類する。
+- 「既に実装済みだから残す」を理由にせず、根源的な利用価値、保守コスト、conceptual complexity、他機能とのcouplingから判断する。
+- Humanが選択していないObjectiveや、Deferred/Ideaからagentが過度に具体化したsurfaceを特に監査する。
 
-### Safe local workflow
+### Known direction
 
-- Human decisionでlocal mutationをscopeへ含める場合、stage / unstage / commitをexplicit operationとして扱い、対象path / diff / commit messageをreviewしてから実行する。
-- unrelated user changesを自動stage / discard / stash / resetしない。
-- conflict / merge / rebase / detached / diverged等のstateをfail closedで扱い、history rewriteを通常automationへ含めない。
-- AI/Human双方が同じstructured change setを参照できるようにする。
+- Git-native Collaboration & Automationは次Objectiveとして進めない。仕様変更0029はRejectedとし、Git client / stage / commit / push / PR等をproduct scopeへ追加しない。
+- Released Compatibilityは独立product capabilityとしてretireする方向とし、baseline/current snapshot comparison、4-axis compatibility classification、compatibility CLI/GUI等をcleanup対象とする。
+- Programmable Viewという将来要件自体は保持するが優先度は低い。現在の独自DSL型Computed Viewを将来設計の最終形として固定せず、このCleanup中に新機能・DSL拡張を行わない。将来再開時に汎用language/runtimeを含めて再設計する。
+- source-preserving edit、lost-update protection、migration operation自身のcorrectness、Build/Publish safety等、Compatibility機能とは独立したcore safety invariantはretirementの巻き添えにしない。
 
-### Remote collaboration boundary
+### Retirement execution
 
-- Human decisionでremote mutationをscopeへ含める場合だけ、push / branch publication / Pull Request等をcredential/trust boundary付きの別phaseとして設計する。
-- local commit successをremote publish successとして扱わない。
-- push / PR作成をhidden side effectやBuild/Publishの付随動作にしない。
+- retire対象はproduction codeだけでなく、public command/adapter、GUI、canonical requirement、tests/fixtures、docs routing、CI/dependency、stale examplesまでdependency closureを追って削除する。
+- 未release/不要surfaceを「将来使うかもしれない」だけでcompatibility shim、dead abstraction、disabled UI、placeholderとして残さない。
+- historical rationaleが必要なものはcompact audit recordまたはGit historyへ寄せ、current authorityにretired behaviorを残さない。
+- 削除によってより単純なownership boundaryへ戻せる場合は、retired subsystem専用のDTO/service/adapterを合わせて除去する。
 
 ### Verification
 
-- temp Git repositoriesによるstatus / diff / conflict / local mutation safety evidenceを作る。
-- existing source-preserving editor、Migration、Compatibility、Build / Publish semanticsをregressさせない。
-- fresh review、repository checks、exact Candidate、required remote CI reconciliationまで完了する。
-
-## Human-gated scope boundary
-
-Git-native v1でproductがどこまでrepository mutationを所有するかは仕様変更0029でHuman decisionを受けて確定する。
-
-推奨は **Option B: read-only Git awareness + explicit local stage/commit**。remote push / PR mutationはv1非対象とする。
-
-この方向ならProduct VisionのGit diff/review/automationを大きく前進させつつ、credential / remote authority / external irreversible effectを別Objectiveへ隔離できる。
+- cleanup後にProject discovery、YAML authoring、Table/Type/Data editing、Reference等のretained domain semantics、Migration、Build/Publish、Unity deliveryの主要core workflowがregressしていないことを確認する。
+- repository checks、fresh review、exact Candidate、required remote CI reconciliationまで完了する。
+- cleanup結果として残るcurrent product surfaceをREADME / Product Vision / specification indexから復元可能にする。
 
 ## Explicit non-scope
 
-Human decisionで選択されない限り、以下はv1へ含めない。
-
-- force push、rebase、reset --hard、history rewrite、automatic stash。
-- merge conflictの自動解決。
-- generated artifact / Unity package artifactのautomatic commit。
-- release tag / GitHub Release / package registry publish。
-- credential storage / token management。
-- repository hosting provider固有のpermission model。
-- arbitrary Git hook installation。
-- cloud collaboration serviceやWeb product surfaceの再導入。
+- cleanup中に新しいproduct featureを追加すること。
+- Programmable Viewの次期runtime/language設計をこのObjectiveで完成させること。
+- Git integrationの代替実装。
+- Released Compatibilityの後継となる別名のimpact-analysis subsystemを作ること。
+- Web / Browser product surfaceの再導入。
+- cleanupを理由にretained core semanticsやsource safetyを全面再設計すること。
 
 ## Audit
 
-2026-09-22 JST、Production Delivery & Unity Integration完了後、Humanは次の大きなObjectiveへ進むことを選択した。Authoring system RFCでDeferredとなっていたGit automationとProduct VisionのGit diff/review/automation方向を次priorityとしてGit-native Collaboration & Automationを開始する。コード編集を伴う実装はimplementation agentへ指示書で委譲する既存運用を継続する。
+2026-09-23 JST、Humanは次の新機能へ進む前に、十分なコストを掛けて不要な機能・仕様・実装を徹底的に除去し、productを一度小さく綺麗にすることをCurrent Objectiveとして選択した。直前のGit-native Collaboration & AutomationはHuman-selected priorityではなかったため進行を中止する。会話上の方向として、Git-nativeはretire、Released Compatibilityは独立機能として全retire、Programmable Viewの要件は将来向けに保持しつつ現行Computed View設計は凍結・再設計対象とする。

@@ -1,6 +1,6 @@
 # 仕様変更0030: Product Simplification — Released Compatibility退役
 
-Status: Proposed
+Status: Approved
 
 ## Affected Specifications
 
@@ -144,8 +144,40 @@ Human gate: Product capability removal / public CLI and adapter surface removal�
 
 ## Review
 
-Pending fresh review.
+Fresh review completed 2026-09-23 JST.
+
+### Blocking Issues
+
+None identified.
+
+### Non-blocking Issues
+
+None identified.
+
+### Questions
+
+None identified.
+
+### Approved as Proposed
+
+Yes.
+
+### Autonomous approval eligibility
+
+- Eligible: No
+- Human gate: product capability / public surface removal
+- Rationale: the required Human decision is already provided by the Current Objective and conversation. Approval therefore proceeds as Human-approved, not agent-autonomous.
+
+### Review dimensions
+
+Intent fidelity、internal/cross-spec consistency、normative strength、testability、backward compatibility、unresolved ambiguity、implementation leakage、documentation ownershipを再確認した。意図的breaking removalは明示済みで、core mutation safetyをretainする境界もtest可能。旧Requirement IDは再利用せず、retired historyをcompact audit/Git historyでrecover可能にすることをimplementation reviewで確認する。
 
 ## Approval Record
 
-Pending review. Human decision basis: 2026-09-23 JST Product Simplification & Scope Cleanup conversation and Current Objective.
+Approval mode: Human.
+
+Approved: 2026-09-23 JST.
+
+Basis: Human-selected Product Simplification & Scope Cleanup Objective、およびReleased Compatibilityを半端に残さず独立機能として全面退役する方針。
+
+Application / implementationはimplementation agentのreviewable branch / PRへ委譲し、merge前にfresh review-codeを行う。

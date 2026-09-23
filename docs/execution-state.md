@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: cd3c5c2c7f681a236a47c2f5943ada2ded1033d7
-Work base: 965431440a196e4cb6b0d14b9e724497d2e8a51e
+Stage: implementation-ready
+Candidate: none
+Work base: fb76f17fc4617903ab6ea966ac2ea07373b5ed68
 
 ## Active work
 
-None.
+In progress: `GUI-SHELL-PROJECT-001`, `GUI-SHELL-LIFECYCLE-001`, `GUI-SHELL-STATE-001` implementation.
 
 ## Blocking findings
 

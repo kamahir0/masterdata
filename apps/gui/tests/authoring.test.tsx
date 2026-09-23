@@ -2,8 +2,9 @@ import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from '../src/App';
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke, openDialog } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: openDialog }));
 const validation = { valid: true, diagnostics: [] };
 // Full-App jsdom/Ant Design flows have meaningful cross-platform CI variance.
  // This timeout is a hang guard, not a product performance budget.
@@ -37,6 +38,9 @@ const workspace = { project: { project_root: '/project', name: 'Demo', project_i
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
 beforeEach(() => {
+  window.localStorage.clear();
+  openDialog.mockReset();
+  openDialog.mockResolvedValue(null);
   openSnapshot = snapshot();
   preview = async () => ({ candidateSource: 'weight: 20', changed: true, validation });
   invoke.mockReset();
@@ -51,8 +55,94 @@ beforeEach(() => {
     throw new Error(`Unexpected command: ${command}`);
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); return await screen.findByRole('textbox', { name: label }); }
+
+test('initial Project-not-found is a Welcome state without an Explorer error', async () => {
+  invoke.mockImplementation(async (command) => {
+    if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  expect(await screen.findByRole('heading', { name: 'Start with a Masterdata project' })).toBeTruthy();
+  await waitFor(() => expect(screen.queryByText('Looking for a configured project…')).toBeNull());
+  expect(screen.queryByText('E-PROJECT-NOT-FOUND')).toBeNull();
+  expect(screen.queryByRole('complementary', { name: 'Workspace Explorer' })).toBeNull();
+  expect(screen.getByRole('complementary', { name: 'Recent Projects' })).toBeTruthy();
+});
+
+test('Open Project uses the native directory picker and remembers a successful selection', async () => {
+  openDialog.mockResolvedValue('/project');
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace' && args.projectPath === null) {
+      throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
+    }
+    if (command === 'authoring_workspace') return workspace;
+    if (command === 'migration_recovery_status') return null;
+    if (command === 'open_data_file') return structuredClone(openSnapshot);
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('heading', { name: 'Start with a Masterdata project' });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
+  expect(await screen.findByRole('complementary', { name: 'Workspace Explorer' })).toBeTruthy();
+  expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
+  expect(JSON.parse(window.localStorage.getItem('masterdata.recent-projects.v1') ?? '[]')).toEqual([
+    { root: '/project', name: 'Demo' },
+  ]);
+});
+
+test('cancelling the native Project picker leaves the Welcome state unchanged', async () => {
+  invoke.mockImplementation(async (command) => {
+    if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('heading', { name: 'Start with a Masterdata project' });
+  const initialCalls = invoke.mock.calls.length;
+  fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
+  await waitFor(() => expect(openDialog).toHaveBeenCalledOnce());
+  expect(screen.getByRole('heading', { name: 'Start with a Masterdata project' })).toBeTruthy();
+  expect(screen.queryByText('E-PROJECT-NOT-FOUND')).toBeNull();
+  expect(invoke.mock.calls).toHaveLength(initialCalls);
+});
+
+test('explicit Project open failure stays on Welcome with a persistent diagnostic', async () => {
+  openDialog.mockResolvedValue('/broken');
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace' && args.projectPath === null) {
+      throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
+    }
+    if (command === 'authoring_workspace') {
+      throw { diagnostic: { code: 'E-PROJECT-CONFIG', message: 'masterdata.toml is invalid' } };
+    }
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('heading', { name: 'Start with a Masterdata project' });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
+  expect(await screen.findByText('E-PROJECT-CONFIG')).toBeTruthy();
+  expect(screen.getByText('masterdata.toml is invalid')).toBeTruthy();
+  expect(screen.queryByRole('complementary', { name: 'Workspace Explorer' })).toBeNull();
+});
+
+test('Recent Project removal changes only user-local history', async () => {
+  window.localStorage.setItem('masterdata.recent-projects.v1', JSON.stringify([{ root: '/recent', name: 'Recent Demo' }]));
+  invoke.mockImplementation(async (command) => {
+    if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  expect(await screen.findByText('Recent Demo')).toBeTruthy();
+  const initialCalls = invoke.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Recent Demo from Recent Projects' }));
+  expect(screen.queryByText('Recent Demo')).toBeNull();
+  expect(window.localStorage.getItem('masterdata.recent-projects.v1')).toBe('[]');
+  expect(invoke.mock.calls).toHaveLength(initialCalls);
+});
 
 test('late pre-save no-op preview cannot discard a new edit after Save resets revision', async () => {
   let resolveOld!: (value: unknown) => void;

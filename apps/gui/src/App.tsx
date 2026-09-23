@@ -1,7 +1,7 @@
 import TypeEditor from "./TypeEditor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Select, Tabs, Tag } from "antd";
-import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
+import { ArrowRight, Database, FolderOpen, Save, RotateCw, ShieldCheck, Play, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type CreationReport } from "./SourceCreation";
 import {
@@ -33,6 +33,7 @@ import {
 } from "./data-editor-types";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 type ProjectInfo = {
   project_root: string;
@@ -288,9 +289,38 @@ type BuildResponse = {
 };
 
 type WorkspaceState =
+  | { kind: "idle"; previous: null }
   | { kind: "loading"; previous: AuthoringWorkspace | null }
   | { kind: "ready"; workspace: AuthoringWorkspace }
   | { kind: "error"; diagnostic: ApiDiagnostic; previous: AuthoringWorkspace | null };
+
+type RecentProject = {
+  root: string;
+  name: string;
+};
+
+const RECENT_PROJECTS_KEY = "masterdata.recent-projects.v1";
+const RECENT_PROJECT_LIMIT = 10;
+
+function readRecentProjects(): RecentProject[] {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(RECENT_PROJECTS_KEY) ?? "[]");
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter((item): item is RecentProject => typeof item?.root === "string" && typeof item?.name === "string")
+      .slice(0, RECENT_PROJECT_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function storeRecentProjects(projects: RecentProject[]): void {
+  try {
+    window.localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(projects));
+  } catch {
+    // Recent Projects is optional user-local convenience; opening a Project must still succeed.
+  }
+}
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
   const element = target instanceof HTMLElement ? target : null;
@@ -549,11 +579,9 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const deliveryBusyRef = useRef(false);
   const [configRevision, setConfigRevision] = useState(0);
 
-  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({
-    kind: "loading",
-    previous: null,
-  });
-  const [projectPathInput, setProjectPathInput] = useState("");
+  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ kind: "loading", previous: null });
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(readRecentProjects);
+  const [projectPickerBusy, setProjectPickerBusy] = useState(false);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
   const [manualValidation, setManualValidation] = useState<OperationState<ValidationReport>>({ kind: "idle" });
@@ -586,6 +614,25 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   useEffect(() => {
     settingsDirtyRef.current = settingsDirty;
   }, [settingsDirty]);
+
+  const rememberProject = useCallback((project: AuthoringWorkspace["project"]) => {
+    setRecentProjects((current) => {
+      const next = [
+        { root: project.project_root, name: project.name },
+        ...current.filter((item) => item.root !== project.project_root),
+      ].slice(0, RECENT_PROJECT_LIMIT);
+      storeRecentProjects(next);
+      return next;
+    });
+  }, []);
+
+  const removeRecentProject = useCallback((root: string) => {
+    setRecentProjects((current) => {
+      const next = current.filter((item) => item.root !== root);
+      storeRecentProjects(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     deliveryBusyRef.current = deliveryBusy;
@@ -731,7 +778,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     }
   }, []);
 
-  const loadWorkspace = useCallback(async (requestedProject: string | null) => {
+  const loadWorkspace = useCallback(async (requestedProject: string | null, initialDiscovery = false) => {
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
     setCreationOpen(false);
@@ -757,7 +804,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       if (workspaceGeneration.current !== generation) return;
       recordRecovery(next.project.project_root, recovery);
       setWorkspaceState({ kind: "ready", workspace: next });
-      setProjectPathInput(next.project.project_root);
+      rememberProject(next.project);
       setEditors({});
       const first = next.files.find((file) => file.kind === "data") ?? next.files[0] ?? null;
       setActivePath(first?.path ?? null);
@@ -766,16 +813,21 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       }
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
+      const diagnostic = asApiError(error).diagnostic;
+      if (initialDiscovery && !previous && diagnostic.code === "E-PROJECT-NOT-FOUND") {
+        setWorkspaceState({ kind: "idle", previous: null });
+        return;
+      }
       setWorkspaceState({
         kind: "error",
-        diagnostic: asApiError(error).diagnostic,
+        diagnostic,
         previous,
       });
     }
-  }, [recordRecovery, openDataFile]);
+  }, [recordRecovery, openDataFile, rememberProject]);
 
   useEffect(() => {
-    void loadWorkspace(null);
+    void loadWorkspace(null, true);
   }, [loadWorkspace]);
 
   const schedulePreview = useCallback((root: string, path: string, editor: EditorState) => {
@@ -1192,6 +1244,25 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       void performAction(action);
     }
   }, [deliveryBusy, performAction, settingsDirty, showNotice]);
+
+  const openProjectPicker = useCallback(async () => {
+    setProjectPickerBusy(true);
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Open Masterdata Project",
+        ...(projectRoot ? { defaultPath: projectRoot } : {}),
+      });
+      if (typeof selected === "string") requestAction({ kind: "open", projectPath: selected });
+    } catch (error) {
+      const state = workspaceStateRef.current;
+      const previous = state.kind === "ready" ? state.workspace : state.kind === "error" ? state.previous : null;
+      setWorkspaceState({ kind: "error", diagnostic: asApiError(error).diagnostic, previous });
+    } finally {
+      setProjectPickerBusy(false);
+    }
+  }, [projectRoot, requestAction]);
 
   useEffect(() => {
     const listener = getCurrentWindow().onCloseRequested((event) => {
@@ -1663,27 +1734,23 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           </div>
         </div>
         <div className="project-open">
-          <Input
-            aria-label="Project path"
-            value={projectPathInput}
-            onChange={(event) => setProjectPathInput(event.target.value)}
-            placeholder="Project folder path"
-          />
+          <span className="project-location" title={projectRoot ?? undefined}>{projectRoot ?? "Choose a folder to begin"}</span>
           <Button
             htmlType="button"
-            onClick={() => projectPathInput.trim() && requestAction({ kind: "open", projectPath: projectPathInput.trim() })}
+            loading={projectPickerBusy}
+            onClick={() => void openProjectPicker()}
           >
             <FolderOpen size={15} /> Open Project
           </Button>
         </div>
         <div className="command-bar">
-          <Button htmlType="button" onClick={() => setSurface("overview")} disabled={!workspace}>Overview</Button>
-          <Button htmlType="button" onClick={() => setSurface("settings")} disabled={!workspace}>Settings</Button>
-          <Button htmlType="button" onClick={() => setSurface("delivery")} disabled={!workspace}>Delivery</Button>
+          {workspace && <Button htmlType="button" onClick={() => setSurface("overview")}>Overview</Button>}
+          {workspace && <Button htmlType="button" onClick={() => setSurface("settings")}>Settings</Button>}
+          {workspace && <Button htmlType="button" onClick={() => setSurface("delivery")}>Delivery</Button>}
           <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
-          <Button htmlType="button" onClick={() => setSurface("editor")} disabled={surface === "editor"}>Editor</Button>
-          <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })} disabled={!workspace}>Reload</Button>
-          <Button
+          {workspace && <Button htmlType="button" onClick={() => setSurface("editor")} disabled={surface === "editor"}>Editor</Button>}
+          {workspace && <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })}>Reload</Button>}
+          {workspace && <Button
             htmlType="button"
             icon={<Save size={15} />}
             onClick={() => surface === "settings" ? void settingsSaveRef.current() : activePath && void saveFile(activePath)}
@@ -1692,13 +1759,13 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               : mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown"}
           >
             {surface === "settings" ? "Save Settings" : activeEditor?.saving ? "Saving…" : "Save"}
-          </Button>
-          <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={!workspace || manualValidation.kind === "loading"}>
+          </Button>}
+          {workspace && <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={manualValidation.kind === "loading"}>
             {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
-          </Button>
-          <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || !workspace || buildState.kind === "loading"}>
+          </Button>}
+          {workspace && <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || buildState.kind === "loading"}>
             {buildState.kind === "loading" ? "Building…" : "Build"}
-          </Button>
+          </Button>}
         </div>
       </header>
 
@@ -1708,6 +1775,48 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           {settingsDirty && "masterdata.toml has unsaved settings. "}
           Build uses saved source and config only after explicit Save.
         </div>
+      )}
+
+      {surface === "editor" && !workspace && (
+        <section className="welcome" aria-label="Welcome">
+          <div className="welcome-intro">
+            <div className="welcome-mark"><Database size={34} /></div>
+            <span className="dialog-kicker">MASTERDATA DESKTOP</span>
+            <h1>Start with a Masterdata project</h1>
+            <p>Open an existing project folder or create a new project. Source discovery and validation stay behind the shared native service.</p>
+            <div className="welcome-actions">
+              <Button type="primary" size="large" icon={<FolderOpen size={17} />} loading={projectPickerBusy} onClick={() => void openProjectPicker()}>
+                Open Project
+              </Button>
+              <Button size="large" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
+            </div>
+            {workspaceState.kind === "loading" && <p className="welcome-status" role="status">Looking for a configured project…</p>}
+            {workspaceState.kind === "error" && !workspaceState.previous && (
+              <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(workspaceState.diagnostic)} />
+            )}
+          </div>
+          <aside className="welcome-recent" aria-label="Recent Projects">
+            <div className="welcome-section-heading">
+              <span className="dialog-kicker">RECENT</span>
+              <h2>Recent Projects</h2>
+            </div>
+            {recentProjects.length === 0 ? (
+              <p className="recent-empty">Projects you open will appear here.</p>
+            ) : (
+              <div className="recent-list">
+                {recentProjects.map((project) => (
+                  <div className="recent-project" key={project.root}>
+                    <Button className="recent-project-open" htmlType="button" onClick={() => requestAction({ kind: "open", projectPath: project.root })}>
+                      <span><strong>{project.name}</strong><small>{project.root}</small></span>
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </Button>
+                    <Button className="recent-project-remove" type="text" aria-label={`Remove ${project.name} from Recent Projects`} icon={<X size={14} />} onClick={() => removeRecentProject(project.root)} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </aside>
+        </section>
       )}
 
       <section className="surface-layout" hidden={surface !== "overview"}>
@@ -1770,7 +1879,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         />
       </section>
 
-      {surface === "editor" && <section className="workspace-layout">
+      {surface === "editor" && workspace && <section className="workspace-layout">
         <aside className="explorer" aria-label="Workspace Explorer">
           <div className="pane-heading">
             <span>EXPLORER</span>
@@ -1784,12 +1893,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               Move
             </Button>
           </div>
-          {workspaceState.kind === "loading" && !workspace && <div className="pane-message">Opening project…</div>}
-          {workspaceState.kind === "error" && !workspace && (
-            <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(workspaceState.diagnostic)} />
-          )}
-          {workspace && (
-            <SourceTree
+          <SourceTree
               workspace={workspace}
               activePath={activePath}
               editors={editors}
@@ -1803,7 +1907,6 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
               revealCreated={revealCreated}
             />
-          )}
         </aside>
 
         <section className="editor-area">
@@ -1812,9 +1915,6 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               <strong>{workspaceState.diagnostic.code}</strong>
               <span>{workspaceState.diagnostic.message}</span>
             </div>
-          )}
-          {!workspace && workspaceState.kind !== "loading" && (
-            <EmptyEditor title="Open a Masterdata project" copy="Enter a project folder path above. Project semantics are resolved by the shared Rust application service." />
           )}
           {recovery && <Alert role="alert" type="error" title="Recovery Required — source changes and Build are blocked"
             description={<><p>{recovery.diagnostic?.message}</p><p>{recovery.files.join(", ")}</p>{recovery.fileStates?.map(file => <p key={file.path}>{file.path}: {file.state}</p>)}{recovery.recoveryWorkspace && <p>Recovery workspace: {recovery.recoveryWorkspace}</p>}</>}
@@ -1918,11 +2018,11 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         </section>
       </section>}
 
-      <footer className="statusbar">
+      {workspace && <footer className="statusbar">
         <span>{activePath ?? "No source selected"}</span>
         <span>{activeEditor ? `${activeEditor.snapshot.rows.length + activeEditor.addedRecords.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
         <span>{totalDirtyCount > 0 ? `${totalDirtyCount} dirty` : "Saved"}</span>
-      </footer>
+      </footer>}
 
       {creationOpen && workspace && projectRoot && <SourceCreation key={projectRoot}
         projectPath={projectRoot}

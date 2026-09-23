@@ -5,6 +5,7 @@ import { test } from "node:test";
 const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const authoringTypes = await readFile(new URL("../src/data-editor-types.ts", import.meta.url), "utf8");
 const editorState = await readFile(new URL("../src/editor-state.ts", import.meta.url), "utf8");
+const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
 
 test("GUI keeps filesystem and YAML semantics behind Tauri commands", () => {
   assert.match(source, /invoke<AuthoringWorkspace>\("authoring_workspace"/);
@@ -35,6 +36,14 @@ test("GUI protects dirty buffers across navigation and external changes", () => 
   assert.match(source, /Reload/);
   assert.match(source, /Overwrite/);
   assert.match(source, /overwriteExpectedIdentity/);
+});
+
+test("Desktop host grants the exact window lifecycle and native directory picker capabilities", () => {
+  assert.ok(capability.permissions.includes("core:window:allow-destroy"));
+  assert.ok(capability.permissions.includes("dialog:allow-open"));
+  assert.match(source, /openDialog\(\{/);
+  assert.match(source, /directory: true/);
+  assert.match(source, /multiple: false/);
 });
 
 test("GUI uses shared manual validation and full canonical build", () => {

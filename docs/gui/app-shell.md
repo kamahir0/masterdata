@@ -22,13 +22,21 @@ Save、Validate、Build、Project Reload等の主要commandは、現在のselect
 
 ### GUI-SHELL-PROJECT-001
 
-Projectが開かれていない状態では、利用者が既存Projectを選択して開ける`Open Project` actionを提示しなければならない（MUST）。Tauri Desktopではhostのnative folder selectionを利用してよい（MAY）が、frontend自身がfilesystemを探索してProject semanticsを判定してはならない（MUST NOT）。
+Projectが開かれていない状態では、利用者が既存Projectを選択して開ける`Open Project` actionを提示しなければならない（MUST）。Tauri Desktopの`Open Project`はhostのnative directory pickerを起動しなければならず（MUST）、事前にpath文字列の入力を要求してはならない（MUST NOT）。picker cancelはProject state、Recent Projects、diagnostic stateを変更してはならない（MUST NOT）。frontend自身がfilesystemを探索してProject semanticsを判定してはならない（MUST NOT）。
 
 選択されたdirectoryはshared application serviceへ渡し、[Project layout](../specs/project-layout.md)のProject identity / config semanticsに従って解決しなければならない（MUST）。Projectを開けない場合はstructured diagnosticを表示し、既存の正常なProject stateまたはProject未選択stateを破壊してはならない（MUST NOT）。
+
+initial implicit discoveryでProjectが見つからないことは正常なProject未選択stateであり、operation failureとしてExplorerへ表示してはならない（MUST NOT）。利用者が明示選択したdirectoryを開けない場合は、原因を再確認できるpersistentなdiagnosticをProject未選択Welcome surfaceまたは保持された既存Project surfaceへ表示しなければならない（MUST）。
 
 ### GUI-SHELL-PROJECT-002
 
 Project Reloadはshared application serviceを通じてworkspace sourceを再取得しなければならない（MUST）。dirty bufferが存在する場合はData Editorの`Save All` / `Don't Save` / `Cancel` lifecycleを先に適用し、local bufferを暗黙に破棄してはならない（MUST NOT）。
+
+## Window lifecycle
+
+### GUI-SHELL-LIFECYCLE-001
+
+OSのwindow close requestは、dirty source、dirty Project Settings、Build / Publish実行中のいずれもない場合、windowを閉じなければならない（MUST）。保護対象stateがある場合はcloseを一旦停止し、既存の`Save All` / `Don't Save` / `Cancel` guardを適用しなければならない（MUST）。利用者がcloseを確定した後、host permission不足やclose eventの再入によってwindowが残ってはならない（MUST NOT）。
 
 ## Architecture boundary
 
@@ -73,6 +81,8 @@ GUIはsurfaceに応じて表示量を調整してよい（MAY）が、diagnostic
 ### GUI-SHELL-STATE-001
 
 Project open / reload / command実行中は、operationが進行中であることを識別できなければならない（MUST）。古いProject stateを新しいProjectの確定stateとして編集可能に表示してはならない（MUST NOT）。
+
+Project未選択時はExplorer、Problems、disabled Project command群を主surfaceとして表示せず、Open / Createと[Project Workflow](project-workflow.md)のRecent Projectsへkeyboardで進めるWelcome surfaceを表示しなければならない（MUST）。
 
 operation failureはmodalだけに依存せず、利用者が原因とrecovery actionを確認できるpersistentまたは再確認可能なsurfaceへ残さなければならない（MUST）。
 

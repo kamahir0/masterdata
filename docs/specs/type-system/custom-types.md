@@ -20,8 +20,7 @@ MessagePackのexact shapeはowner specificationへ委譲する。generated C# id
 Custom Type、Value Object、Primitive Type、Field Modifier、MessagePack field key、Type Declarationというtermは
 [product terminology（用語）](../../product/terminology.md)に従う。Value Objectのnominal scalar semanticsは[Value Objects仕様](value-objects.md)、
 field shapeとArray semanticsは[Field Modifiers仕様](field-modifiers.md)、persisted fieldのMessagePack key ruleは
-[Table / Primary Key / Secondary Key仕様](../table-and-keys.md)の`SCHEMA-KEY-001`が所有する。旧Field IDの履歴は
-[Field identity仕様](../compatibility/field-identity.md)が管理する。
+[Table / Primary Key / Secondary Key仕様](../table-and-keys.md)の`SCHEMA-KEY-001`が所有する。旧Field ID modelは現行contractではない。
 
 ## 規範要件
 

@@ -3,19 +3,15 @@ use std::path::{Path, PathBuf};
 use masterdata_app::{
     AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
     AuthoringBatchRequest, AuthoringClipboardShape, AuthoringEdit, AuthoringRecordDraft,
-    AuthoringRecordMutation, AuthoringWorkspace, ComputedViewEditPreview, ComputedViewEditRequest,
-    ComputedViewRemoveReport, ComputedViewSaveReport, ComputedViewSnapshot, ConfigSaveReport,
-    CreationContext, CreationDestinationState, CreationReport, CreationRequest,
-    DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot, NativeApplicationService,
-    ProjectConfigEditPreviewView, ProjectConfigEditRequest, ProjectConfigSnapshot,
-    ProjectInitReport, ProjectInitRequest, PublishAggregateStatus, PublishExecutionReport,
-    PublishPreview, RecordTagEditRequest, SourceContentState, SourceEditPreview,
-    SourcePathMutationReport, SourcePathMutationRequest, SourcePathStateReport, SourceSaveReport,
-    TableOverviewRequest, TableOverviewSnapshot,
+    AuthoringRecordMutation, AuthoringWorkspace, ConfigSaveReport, CreationContext,
+    CreationDestinationState, CreationReport, CreationRequest, DataFileQueryRequest,
+    DataFileQueryResult, DataFileSnapshot, NativeApplicationService, ProjectConfigEditPreviewView,
+    ProjectConfigEditRequest, ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest,
+    PublishAggregateStatus, PublishExecutionReport, PublishPreview, RecordTagEditRequest,
+    SourceContentState, SourceEditPreview, SourcePathMutationReport, SourcePathMutationRequest,
+    SourcePathStateReport, SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
 };
-use masterdata_core::{
-    CompatibilityReport, Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport,
-};
+use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -456,96 +452,6 @@ fn table_overview(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn open_computed_view(
-    project_path: Option<String>,
-    relative_path: String,
-) -> std::result::Result<ComputedViewSnapshot, ApiError> {
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .open_computed_view(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &relative_path,
-        )
-        .map_err(ApiError::from)
-}
-
-#[tauri::command(rename_all = "camelCase")]
-fn preview_computed_view(
-    project_path: Option<String>,
-    relative_path: String,
-    base_source: String,
-    request: ComputedViewEditRequest,
-) -> std::result::Result<ComputedViewEditPreview, ApiError> {
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .preview_computed_view(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &relative_path,
-            &base_source,
-            &request,
-        )
-        .map_err(ApiError::from)
-}
-
-#[tauri::command(rename_all = "camelCase")]
-fn save_computed_view(
-    project_path: Option<String>,
-    relative_path: String,
-    base_source: String,
-    base_content_identity: String,
-    request: ComputedViewEditRequest,
-) -> std::result::Result<ComputedViewSaveReport, ApiError> {
-    let root = table_root(project_path.clone())?;
-    let _operation = operation_guard(&root)?;
-    table_session()?
-        .ensure_mutation_allowed(&root)
-        .map_err(ApiError::from)?;
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .save_computed_view(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &relative_path,
-            &base_source,
-            &base_content_identity,
-            &request,
-        )
-        .map_err(ApiError::from)
-}
-
-#[tauri::command(rename_all = "camelCase")]
-fn remove_computed_view(
-    project_path: Option<String>,
-    relative_path: String,
-    base_source: String,
-    base_content_identity: String,
-    confirmed: bool,
-) -> std::result::Result<ComputedViewRemoveReport, ApiError> {
-    let root = table_root(project_path.clone())?;
-    let _operation = operation_guard(&root)?;
-    table_session()?
-        .ensure_mutation_allowed(&root)
-        .map_err(ApiError::from)?;
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .remove_computed_view(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &relative_path,
-            &base_source,
-            &base_content_identity,
-            confirmed,
-        )
-        .map_err(ApiError::from)
-}
-
-#[tauri::command(rename_all = "camelCase")]
 fn publish_preview(project_path: Option<String>) -> std::result::Result<PublishPreview, ApiError> {
     let root = table_root(project_path.clone())?;
     let _operation = operation_guard(&root)?;
@@ -796,21 +702,6 @@ fn build(
     })
 }
 
-#[tauri::command(rename_all = "camelCase")]
-fn compatibility_report(
-    baseline_project: String,
-    current_project: String,
-) -> std::result::Result<CompatibilityReport, ApiError> {
-    let current_dir = current_directory()?;
-    NativeApplicationService::new()
-        .analyze_compatibility(
-            Path::new(&baseline_project),
-            Path::new(&current_project),
-            &current_dir,
-        )
-        .map_err(ApiError::from)
-}
-
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -836,10 +727,6 @@ pub fn run() {
             open_data_file,
             query_data_file,
             table_overview,
-            open_computed_view,
-            preview_computed_view,
-            save_computed_view,
-            remove_computed_view,
             publish_preview,
             publish_from_preview,
             preview_data_file,
@@ -848,8 +735,7 @@ pub fn run() {
             source_content,
             save_data_file,
             validate,
-            build,
-            compatibility_report
+            build
         ])
         .run(tauri::generate_context!())
         .expect("error while running masterdata GUI");
@@ -917,42 +803,6 @@ mod tests {
         assert_eq!(outcome.state, "success");
         let error = super::plan_type_migration(path, serde_json::json!({"operation":"add_enum","target":"Rarity","name":"Bad","value":18446744073709551615_u64})).unwrap_err();
         assert_eq!(error.diagnostic.code, "E-TYPE-EDITOR-INPUT");
-    }
-
-    #[test]
-    fn compatibility_command_uses_explicit_projects_and_serializes_axis_report() {
-        let baseline = tempfile::tempdir().expect("baseline");
-        let current = tempfile::tempdir().expect("current");
-        for (root, value) in [(baseline.path(), "before"), (current.path(), "after")] {
-            masterdata_core::initialize_project(
-                root,
-                &masterdata_core::InitOptions {
-                    project_id: "gui.compatibility".into(),
-                    name: "GUI Compatibility".into(),
-                    version: "1.0.0".into(),
-                },
-            )
-            .expect("initialize project");
-            std::fs::write(
-                root.join("sources/schema.yaml"),
-                "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: value\n    type: string\nprimaryKey:\n  fields: [id]\n",
-            )
-            .expect("schema");
-            std::fs::write(
-                root.join("sources/data.yaml"),
-                format!("kind: data\ntable: item\nrecords:\n  - id: 1\n    value: {value}\n"),
-            )
-            .expect("data");
-        }
-
-        let report = super::compatibility_report(
-            baseline.path().to_string_lossy().into_owned(),
-            current.path().to_string_lossy().into_owned(),
-        )
-        .expect("compatibility report");
-        let json = serde_json::to_value(&report).expect("report JSON");
-        assert_eq!(json["summary"]["changeCount"], 1);
-        assert_eq!(json["changes"][0]["artifactBinary"], "rebuild_required");
     }
 
     struct NativeTableFixture;

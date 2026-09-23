@@ -34,18 +34,6 @@ fn plan_is_read_only_and_apply_checks_exact_reviewed_snapshot() {
     let before = fs::read(dir.path().join("sources/data.yaml")).unwrap();
     let plan = session.plan(dir.path(), rename()).unwrap();
     assert_eq!(plan.files.len(), 2);
-    let compatibility = plan
-        .compatibility
-        .report
-        .as_ref()
-        .expect("compatibility report");
-    assert!(compatibility.summary.change_count > 0);
-    assert!(
-        compatibility
-            .changes
-            .iter()
-            .any(|change| change.generated_api == GeneratedApiImpact::Breaking)
-    );
     assert_eq!(
         before,
         fs::read(dir.path().join("sources/data.yaml")).unwrap()
@@ -227,28 +215,6 @@ fn reference_authoring_uses_shared_plan_and_refreshes_snapshot() {
 }
 
 #[test]
-fn compatibility_analysis_failure_does_not_block_safe_table_migration_plan() {
-    let dir = project();
-    fs::write(
-        dir.path().join("sources/broken.yaml"),
-        "kind: type\nname: Broken\ncustom:\n  fields:\n    - key: 0\n      name: value\n      type: MissingType\n",
-    )
-    .unwrap();
-    let mut session = TableAuthoringSession::default();
-    let plan = session
-        .plan(dir.path(), rename())
-        .expect("unrelated invalid type must not become a Migration gate");
-    assert!(plan.compatibility.report.is_none());
-    assert!(plan.compatibility.diagnostic.is_some());
-    for file in &plan.files {
-        assert_eq!(
-            fs::read_to_string(dir.path().join(&file.path)).unwrap(),
-            file.before
-        );
-    }
-}
-
-#[test]
 fn reference_aware_target_rename_surfaces_inbound_schema_in_reviewed_plan() {
     let dir = project();
     fs::write(
@@ -298,5 +264,4 @@ fn reference_aware_target_rename_surfaces_inbound_schema_in_reviewed_plan() {
         .find(|file| file.path == "sources/schema.yaml")
         .expect("inbound Reference schema");
     assert!(inbound.after.contains("fields: [categoryKey]"));
-    assert!(plan.compatibility.report.is_some());
 }

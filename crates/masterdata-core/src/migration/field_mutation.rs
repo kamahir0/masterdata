@@ -1,6 +1,4 @@
 use super::*;
-use crate::dry_run_view_edit;
-
 pub(super) fn prepare(
     documents: &ProjectDocuments,
     table: &str,
@@ -18,20 +16,10 @@ pub(super) fn prepare(
         .cloned()
         .ok_or_else(|| failure("target Table/field does not exist"))?;
     let affected_references = reference_dependencies(documents, table, field);
-    if validate_computed_view_dependencies(documents, table).is_err() {
-        return Err(failure(
-            "target Table has an invalid Computed View dependency; field migration is fail-closed",
-        ));
-    }
     if rename.is_none() && !affected_references.is_empty() {
         return Err(reference_failure(
             "DropField target is used by a Reference source or target; replacement is not inferred",
             "MIGRATION-008",
-        ));
-    }
-    if rename.is_none() && view_depends_on_field(documents, table, field) {
-        return Err(failure(
-            "DropField target is used by a Computed View; replacement is not inferred",
         ));
     }
     let (closure, _) = resolve_target_snapshot(documents, table, &original)?;
@@ -54,104 +42,66 @@ pub(super) fn prepare(
     }
     let mut expected = documents.clone();
     let mut plans = Vec::new();
-    let mut file_indices = (0..expected.files.len()).collect::<Vec<_>>();
-    // A dependent View is validated against the transformed Table semantics.
-    // Process schema/data documents first so a rename never depends on source
-    // discovery order when the View file sorts before its target schema.
-    file_indices
-        .sort_by_key(|&index| matches!(expected.files[index].document, SourceDocument::View(_)));
-    for file_index in file_indices {
+    for file_index in 0..expected.files.len() {
         let path = expected.files[file_index].path.clone();
-        let view_patch = if let Some(name) = rename
-            && let SourceDocument::View(view) = &expected.files[file_index].document
-            && view.table == table
-        {
-            let mut desired = view.clone();
-            let mut changed = false;
-            for column in &mut desired.columns {
-                if let Some(expression) =
-                    crate::rename_field_references(&column.expression, field, name)
-                {
-                    column.expression = expression;
-                    changed = true;
+        let loaded = &mut expected.files[file_index];
+        let patches = match &mut loaded.document {
+            SourceDocument::Schema(schema) => {
+                let mut patches = Vec::new();
+                if let Some(name) = rename {
+                    patches.extend(reference_component_patches(
+                        &loaded.source,
+                        schema,
+                        table,
+                        field,
+                        name,
+                    )?);
                 }
-            }
-            if changed {
-                let view_dry_run = dry_run_view_edit(&expected, &path, &desired)?;
-                expected.files[file_index].document = SourceDocument::View(desired);
-                Some(
-                    view_dry_run.source_candidate.affected_files[0]
-                        .patches
-                        .clone(),
-                )
-            } else {
-                Some(Vec::new())
-            }
-        } else {
-            None
-        };
-        let patches = if let Some(patches) = view_patch {
-            patches
-        } else {
-            let loaded = &mut expected.files[file_index];
-            match &mut loaded.document {
-                SourceDocument::Schema(schema) => {
-                    let mut patches = Vec::new();
+                if schema.table == table {
+                    let index = schema
+                        .fields
+                        .iter()
+                        .position(|candidate| candidate.name == field)
+                        .expect("resolved field");
+                    patches.extend(schema_patches(
+                        &loaded.source,
+                        index,
+                        schema.fields.len(),
+                        field,
+                        rename,
+                    )?);
                     if let Some(name) = rename {
-                        patches.extend(reference_component_patches(
-                            &loaded.source,
-                            schema,
-                            table,
-                            field,
-                            name,
-                        )?);
-                    }
-                    if schema.table == table {
-                        let index = schema
-                            .fields
-                            .iter()
-                            .position(|candidate| candidate.name == field)
-                            .expect("resolved field");
-                        patches.extend(schema_patches(
-                            &loaded.source,
-                            index,
-                            schema.fields.len(),
-                            field,
-                            rename,
-                        )?);
-                        if let Some(name) = rename {
-                            schema.fields[index].name = name.into();
-                            if let Some(key) = &mut schema.primary_key {
-                                replace_names(&mut key.fields, field, name);
-                            }
-                            for key in &mut schema.secondary_keys {
-                                replace_names(&mut key.fields, field, name);
-                            }
-                        } else {
-                            schema.fields.remove(index);
+                        schema.fields[index].name = name.into();
+                        if let Some(key) = &mut schema.primary_key {
+                            replace_names(&mut key.fields, field, name);
                         }
-                    }
-                    if let Some(name) = rename {
-                        rename_reference_components(schema, table, field, name);
-                    }
-                    patches
-                }
-                SourceDocument::Data(data) if data.table == table && !data.records.is_empty() => {
-                    for record in &mut data.records {
-                        let value = record
-                            .remove(field)
-                            .ok_or_else(|| failure("target record member is missing"))?;
-                        if let Some(name) = rename {
-                            if record.contains_key(name) {
-                                return Err(failure("renamed record member already exists"));
-                            }
-                            record.insert(name.into(), value);
+                        for key in &mut schema.secondary_keys {
+                            replace_names(&mut key.fields, field, name);
                         }
+                    } else {
+                        schema.fields.remove(index);
                     }
-                    data_patches(&loaded.source, data.records.len(), field, rename)?
                 }
-                _ => Vec::new(),
+                if let Some(name) = rename {
+                    rename_reference_components(schema, table, field, name);
+                }
+                patches
             }
+            SourceDocument::Data(data) if data.table == table && !data.records.is_empty() => {
+                for record in &mut data.records {
+                    let value = record
+                        .remove(field)
+                        .ok_or_else(|| failure("target record member is missing"))?;
+                    if let Some(name) = rename {
+                        if record.contains_key(name) {
+                            return Err(failure("renamed record member already exists"));
+                        }
+                        record.insert(name.into(), value);
+                    }
+                }
+                data_patches(&loaded.source, data.records.len(), field, rename)?
+            }
+            _ => Vec::new(),
         };
         if !patches.is_empty() {
             plans.push(MigrationFilePlan { path, patches });
@@ -372,16 +322,6 @@ fn find_mapping_line(
     (start..end).find(|line| {
         logical_mapping_indent(lines[*line].text) == indent
             && mapping_entry(lines[*line].text).is_some_and(|entry| entry.key == key)
-    })
-}
-
-fn view_depends_on_field(documents: &ProjectDocuments, table: &str, field: &str) -> bool {
-    documents.views().any(|(_, view)| {
-        view.table == table
-            && view
-                .columns
-                .iter()
-                .any(|column| !crate::field_reference_spans(&column.expression, field).is_empty())
     })
 }
 

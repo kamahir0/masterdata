@@ -182,28 +182,11 @@ pub struct DataDocument {
     pub records: Vec<BTreeMap<String, Value>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ViewDocument {
-    pub kind: String,
-    pub name: String,
-    pub table: String,
-    pub columns: Vec<ViewColumnDefinition>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ViewColumnDefinition {
-    pub name: String,
-    pub expression: String,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceDocument {
     Schema(SchemaDocument),
     Data(DataDocument),
     Type(TypeDocument),
-    View(ViewDocument),
 }
 
 impl SourceDocument {
@@ -212,7 +195,6 @@ impl SourceDocument {
             Self::Schema(_) => "schema",
             Self::Data(_) => "data",
             Self::Type(_) => "type",
-            Self::View(_) => "view",
         }
     }
 
@@ -220,7 +202,6 @@ impl SourceDocument {
         match self {
             Self::Schema(document) => Some(&document.table),
             Self::Data(document) => Some(&document.table),
-            Self::View(document) => Some(&document.table),
             Self::Type(_) => None,
         }
     }
@@ -228,7 +209,7 @@ impl SourceDocument {
     pub fn type_name(&self) -> Option<&str> {
         match self {
             Self::Type(document) => Some(&document.name),
-            Self::Schema(_) | Self::Data(_) | Self::View(_) => None,
+            Self::Schema(_) | Self::Data(_) => None,
         }
     }
 }
@@ -257,7 +238,7 @@ impl ProjectDocuments {
             .iter()
             .filter_map(|loaded| match &loaded.document {
                 SourceDocument::Schema(document) => Some((&loaded.path, document)),
-                SourceDocument::Data(_) | SourceDocument::Type(_) | SourceDocument::View(_) => None,
+                SourceDocument::Data(_) | SourceDocument::Type(_) => None,
             })
     }
 
@@ -266,9 +247,7 @@ impl ProjectDocuments {
             .iter()
             .filter_map(|loaded| match &loaded.document {
                 SourceDocument::Data(document) => Some((&loaded.path, document)),
-                SourceDocument::Schema(_) | SourceDocument::Type(_) | SourceDocument::View(_) => {
-                    None
-                }
+                SourceDocument::Schema(_) | SourceDocument::Type(_) => None,
             })
     }
 
@@ -277,20 +256,7 @@ impl ProjectDocuments {
             .iter()
             .filter_map(|loaded| match &loaded.document {
                 SourceDocument::Type(document) => Some((&loaded.path, document)),
-                SourceDocument::Schema(_) | SourceDocument::Data(_) | SourceDocument::View(_) => {
-                    None
-                }
-            })
-    }
-
-    pub fn views(&self) -> impl Iterator<Item = (&PathBuf, &ViewDocument)> {
-        self.files
-            .iter()
-            .filter_map(|loaded| match &loaded.document {
-                SourceDocument::View(document) => Some((&loaded.path, document)),
-                SourceDocument::Schema(_) | SourceDocument::Data(_) | SourceDocument::Type(_) => {
-                    None
-                }
+                SourceDocument::Schema(_) | SourceDocument::Data(_) => None,
             })
     }
 }
@@ -333,7 +299,6 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
         "schema" => serde_yaml::from_value::<SchemaDocument>(value).map(SourceDocument::Schema),
         "data" => serde_yaml::from_value::<DataDocument>(value).map(SourceDocument::Data),
         "type" => serde_yaml::from_value::<TypeDocument>(value).map(SourceDocument::Type),
-        "view" => serde_yaml::from_value::<ViewDocument>(value).map(SourceDocument::View),
         other => {
             return Err(MasterdataError::new(
                 "E-YAML-UNKNOWN-KIND",

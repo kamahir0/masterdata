@@ -138,5 +138,5 @@ impl NativeProjectService {
     }
 }
 
-/// Compatibility name for existing core consumers.
+/// Public service alias retained for existing core consumers.
 pub type ProjectService = NativeProjectService;

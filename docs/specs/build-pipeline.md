@@ -132,8 +132,7 @@ buildが成功した場合はcompleteなcurrent setを公開し、前回buildで
 build失敗時は、最後のcoherent canonical setを利用不能にするpartial setを公開してはならない（MUST NOT）。
 
 canonical artifactの作成は、raw YAMLをauthorityとするvalidation、Type System/Table resolution、Build Selection、必要なconstraint validation、
-canonical ordering、およびC#/.NET validationを経た後に行う。canonical artifact自体をsource of truth、semantic schema hash、cache key、または
-released compatibility identityとして扱ってはならない（MUST NOT）。
+canonical ordering、およびC#/.NET validationを経た後に行う。canonical artifact自体をsource of truth、semantic schema hash、またはcache keyとして扱ってはならない（MUST NOT）。
 
 ### BUILD-ARTIFACT-005
 
@@ -175,7 +174,7 @@ v1の`version`は`1`、`hash_algorithm`は`sha256`でなければならない（
 lowercase 64桁hexをcanonical representationとする。JSON whitespaceやproperty serialization orderはsemantic contractとしない。receiptはtimestamp、
 random UUID、absolute checkout path、Git commit、machine hostname、またはcurrent cwdを必須identity fieldとして持ってはならない（MUST NOT）。C# pathをdeterministic orderで
 記録するため、同じ`project.id`と同じcanonical artifact bytesから生成されるreceiptのsemantic contentはdeterministicでなければならない（MUST）。
-`version`はreceipt JSON formatのversionであり、MasterMemory binary format、builder protocol、project semantic version、またはreleased compatibility versionを表してはならない（MUST NOT）。
+`version`はreceipt JSON formatのversionであり、MasterMemory binary format、builder protocol、またはproject semantic versionを表してはならない（MUST NOT）。
 
 ### ARTIFACT-SET-003
 
@@ -225,10 +224,10 @@ missingまたはlegacy receiptには、`masterdata build`で新しいcoherent se
 
 receiptはcanonical artifact-set consistency、accidental/manual artifact driftの検出、missing/extra fileの検出、byte mismatch、およびproject identity mismatchを保証する
 integrity receiptである。SHA-256を使用してもreceipt自身が署名されていないため、malicious actorによるartifactとreceiptの同時改変、producer authentication、
-supply-chain attestation、remote provenance、artifact signing、またはreleased compatibilityを防止・証明するsecurity authenticity contractではない（MUST NOT）。
+supply-chain attestation、remote provenance、artifact signing、または外部契約を防止・証明するsecurity authenticity contractではない（MUST NOT）。
 
 receiptはYAML semantics、schema/Table/Type/Reference identity、source of truth、semantic schema hash、compiled builder cache key、incremental compiler identity、または
-released compatibility identityとして扱ってはならない（MUST NOT）。
+release identityとして扱ってはならない（MUST NOT）。
 
 ### ARTIFACT-SET-008
 
@@ -319,7 +318,7 @@ C# publish targetはmanifest-based ownershipを使用しなければならない
 `.masterdata-publish-manifest.json`とする。
 
 manifestは、直前のsuccessful publishでMasterData publisherが所有したrelative file pathsを識別するownership metadataに限る。manifestから
-schema semantics、generated C#のauthority、semantic schema hash、cache key、またはreleased compatibility identityを復元してはならない（MUST NOT）。
+schema semantics、generated C#のauthority、semantic schema hash、またはcache keyを復元してはならない（MUST NOT）。
 manifestが存在しない初回publishでは、previous managed setは空として扱い、destinationに既にある他のentryを拡張子やcontentからmanagedと推測してはならない（MUST NOT）。
 現行implementationにあるlegacy markerは旧artifact migrationの入力候補に限り、新しいpublish targetのownership sourceへ自動昇格させない。
 
@@ -795,7 +794,7 @@ contractを閉じるが、ASCII lowercase、NFC-only normalization、またはOS
 - CLI/Tauri: application serviceを呼び出すadapter。YAML semantics、filesystem discovery、または.NET process invocationを複製しない。
 
 このspecificationでは、Reference、named Build Profile adapter、GUI、Unity importer、semantic schema hash、builder cache/reuse、cache eviction、
-released-schema binary compatibility、exact binary bytes identity、artifact signing/attestation、Git provenance、publish filesystem copy、CLI command追加、config parser変更を
+cross-schema binary compatibility、exact binary bytes identity、artifact signing/attestation、Git provenance、publish filesystem copy、CLI command追加、config parser変更を
 実装または確定しない。
 
 ## Open Questions（未解決事項）
@@ -808,7 +807,7 @@ artifact-set receiptの`ARTIFACT-SET-001`から`ARTIFACT-SET-008`、および複
 以下だけを未解決として残す。
 
 - `masterdata build --publish`を提供するか。提供する場合、canonical build成功とpublish失敗をどのようにCLI resultへ表すか。
-- semantic schema hash、builder cache key、released-schema binary compatibilityをreceiptと独立したspecificationで定義するか。
+- semantic schema hash、builder cache key、cross-schema binary compatibilityをreceiptと独立したspecificationで定義するか。
 - artifact signing、producer authentication、supply-chain attestation、remote provenanceを将来導入する必要があるか。
 - generated .NET projectのownership、cache eviction、およびUnity外のasset import observationを将来定義するか。
 - source discoveryでsymlinkをfollowまたはignoreするproduct-level policy。current traversal guardはcycle防止のためsymlink entryをfollowしない。

@@ -10,7 +10,6 @@ MessagePackとは独立したpersistent numeric Field ID modelを廃止し、`ke
 
 ## Canonical result
 
-- [Field identity history](../specs/compatibility/field-identity.md) — `COMPAT-FIELD-001..004`
 - [Custom Types](../specs/type-system/custom-types.md) — affected `SCHEMA-CUSTOM-*`
 - [Table / Keys](../specs/table-and-keys.md) — `SCHEMA-KEY-001` and persisted field model
 

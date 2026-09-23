@@ -8,8 +8,6 @@ mod application;
 mod authoring_batch;
 mod authoring_query;
 mod authoring_value;
-mod compatibility;
-mod computed_view;
 mod config;
 mod config_edit;
 mod data_authoring;
@@ -27,7 +25,6 @@ mod source_edit;
 mod table;
 mod type_system;
 mod validation;
-mod view_authoring;
 
 pub use application::{NativeProjectService, ProjectService};
 pub use authoring_batch::{
@@ -41,17 +38,6 @@ pub use authoring_query::{
 pub use authoring_value::{
     AuthoringMember, AuthoringSequenceItem, AuthoringValue, project_source_value,
     project_typed_source_value,
-};
-pub use compatibility::{
-    ArtifactBinaryImpact, CompatibilityChange, CompatibilityChangeKind,
-    CompatibilityProjectSnapshot, CompatibilityReport, CompatibilitySnapshot, CompatibilitySubject,
-    CompatibilitySubjectKind, CompatibilitySummary, ExternalContractImpact, GeneratedApiImpact,
-    SourceMigrationImpact, analyze_compatibility, compare_compatibility,
-};
-pub use computed_view::{
-    ComputedViewBuild, ExpressionSpan, ResolvedComputedColumn, ResolvedComputedView,
-    computed_views_for_table, evaluate_computed_column, field_reference_spans, parse_expression,
-    rename_field_references, resolve_computed_views, validate_computed_views,
 };
 pub use config::{
     BuildConfig, BuildProfile, ProjectConfig, ProjectMetadata, PublishConfig, PublishTarget,
@@ -70,7 +56,7 @@ pub use document::{
     FieldDefinition, FlagsDefinition, IntegerLiteral, LoadedDocument, PrimaryKeyDefinition,
     ProjectDocuments, ReferenceDefinition, ReferenceTargetDefinition, SchemaDocument,
     SecondaryKeyDefinition, SourceDocument, TypeDocument, TypeFieldDefinition,
-    ValueObjectDefinition, ViewColumnDefinition, ViewDocument, parse_yaml_document,
+    ValueObjectDefinition, parse_yaml_document,
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use migration::{
@@ -96,6 +82,10 @@ pub use project::{
 pub use schema_authoring::{
     TableSnapshot, TypeMemberView, TypeSnapshot, table_snapshot, type_snapshot,
 };
+pub use source_creation::{
+    CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, creation_choices,
+    prepare_source_creation,
+};
 pub use source_edit::{
     AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceEditDryRun,
     SourceEditPlan, SourceRecordMutation, dry_run_source_edit, dry_run_source_record_mutation,
@@ -114,12 +104,6 @@ pub use type_system::{
     is_csharp_reserved_keyword, resolve_authoring_field_shape, resolve_type_system,
 };
 pub use validation::{ValidationReport, validate_documents, validate_documents_with_selection};
-pub use view_authoring::{ViewEditDryRun, ViewEditPlan, dry_run_view_edit};
-
-pub use source_creation::{
-    CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, creation_choices,
-    prepare_source_creation,
-};
 
 pub use migration_commit::{SourceCommitCandidate, commit_source_candidate_with_failures};
 

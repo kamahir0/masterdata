@@ -12,4 +12,4 @@
 
 current fileは、coreがtyped ASTへ保持し、Type System resolver、Table resolver、C# generatorが扱うdeclarationを使用している。
 Table-level validation、MasterMemoryのC# lowering、staged production binary build、およびbinary reload validationを検証する。
-Reference helper、builder cache、released binary compatibility、Unityへの最終配置は別scopeである。
+Reference helper、builder cache、Unityへの最終配置は別scopeである。

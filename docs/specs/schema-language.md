@@ -71,9 +71,8 @@ schema migration identityを表さない。Custom Typeのpersisted fieldも同�
 
 Table schemaの`references` declaration、target identity、cardinality、nullable semantics、integrity diagnosticsは[IndexとReferenceのmodel](index-and-reference.md)がcanonical ownerである。
 
-このdocument familyが認識するruntime/schema documentは `schema`、`data`、`type` である。authoring-onlyの
-[Computed View仕様](computed-view.md)が定義する`kind: view`は同じsource discovery / typed document boundaryで
-認識するが、Table schema、MasterMemory field、Build artifactへlowerしない。
+このdocument familyが認識するruntime/schema documentは `schema`、`data`、`type` である。未知のdocument kindは
+source discoveryとvalidationでstructured errorとして扱い、runtime schemaやBuild artifactへ暗黙にlowerしてはならない。
 Approvedの
 [Value Objects仕様（Value Objects specification）](type-system/value-objects.md)および[Custom Type仕様](type-system/custom-types.md)は、
 unified type-declaration documentとして `kind: type` を定義する。これらのtype declarationはtyped documentとして扱われ、Type System
@@ -83,9 +82,9 @@ validationとC# generationのimplementation contractを構成する。type docum
 Schema languageは `table` をproject-localなlogical table identityとして使用する。存在する場合の
 `csharpName` はgenerated C# type-name overrideであり、2つ目のtable identityではない。以前に示した
 `tableId` fieldはRust modelやgeneratorがconsumeする第二のidentityとして導入しない。
-この方向のcompatibility implicationは、current-scaffold directionについてAcceptedとなった
+この方向のidentity implicationは、current-scaffold directionについてAcceptedとなった
 [`docs/rfcs/0001-table-identity.md`](../rfcs/0001-table-identity.md) に記録する。global identity、
-rename migration、released-schema compatibility、legacy `tableId` migration、cross-project identityは
+rename migration、legacy `tableId` migration、cross-project identityは
 引き続きOpen Questionである。
 
 ## Type declaration（type declaration）

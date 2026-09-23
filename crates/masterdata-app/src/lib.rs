@@ -32,14 +32,10 @@ mod project_init;
 pub use project_init::*;
 mod overview;
 pub use overview::*;
-mod computed_view;
-pub use computed_view::*;
 mod delivery;
 pub use delivery::*;
 mod authoring;
-mod compatibility;
 mod creation;
-pub use compatibility::*;
 pub use creation::*;
 mod source_path;
 pub use source_path::*;
@@ -477,8 +473,8 @@ impl NativeApplicationService {
     }
 }
 
-/// Compatibility name for existing CLI, Tauri, test, and repository-tool
-/// consumers. The implementation authority is `NativeApplicationService`.
+/// Public service alias for CLI, Tauri, tests, and repository tooling. The
+/// implementation authority is `NativeApplicationService`.
 pub type ApplicationService = NativeApplicationService;
 
 #[derive(Debug, Clone)]

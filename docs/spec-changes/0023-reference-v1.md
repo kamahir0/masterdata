@@ -48,7 +48,7 @@ references:
       fields: [id]
 ```
 
-- `name`はTable内でuniqueなlanguage-independent Reference declaration nameとする。C# helper名そのものではなく、Referenceのdomain-facing presentation名であり、MessagePack identity、field identity、released compatibility identityにはしない。
+- `name`はTable内でuniqueなlanguage-independent Reference declaration nameとする。C# helper名そのものではなく、Referenceのdomain-facing presentation名であり、MessagePack identity、field identity、release identityにはしない。
 - C# helperは`csharpName`省略時に`name`からdeterministically生成する。必要な場合だけoptional `csharpName`でgenerated C# method identifier全体をoverrideできる。C#固有presentationをReferenceのdomain semanticsやtarget identityへ使用してはならない。
 - source `fields`はordered field-symbol sequence。target `fields`とcardinalityが一致しなければならない。
 - targetはproject-local `table`と、そのTableのPrimary KeyまたはSecondary Keyと完全一致するordered `fields`で指定する。

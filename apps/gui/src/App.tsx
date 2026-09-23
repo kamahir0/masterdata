@@ -1,5 +1,4 @@
 import TypeEditor from "./TypeEditor";
-import ComputedViewEditor from "./ComputedViewEditor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Select, Tabs, Tag } from "antd";
 import { Database, FolderOpen, Save, RotateCw, ShieldCheck, Play } from "lucide-react";
@@ -86,7 +85,6 @@ type WorkspaceSourceFile = {
   kind: string;
   table: string | null;
   typeName: string | null;
-  name: string | null;
   diagnostic: Diagnostic | null;
 };
 
@@ -1842,12 +1840,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
             }}
             endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
             onResult={result => migrationResult(projectRoot, result)} />}
-          {activeFile?.kind === "view" && projectRoot && <ComputedViewEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
-            projectPath={projectRoot}
-            path={activeFile.path}
-            canWrite={!mutationBlocked}
-            onSaved={async () => { await loadWorkspace(projectRoot); }} />}
-          {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && activeFile.kind !== "type" && activeFile.kind !== "view" && (
+          {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && activeFile.kind !== "type" && (
             <SourcePlaceholder file={activeFile} />
           )}
           {activeFile?.kind === "data" && activeLoading && (

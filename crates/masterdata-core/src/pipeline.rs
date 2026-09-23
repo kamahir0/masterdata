@@ -142,9 +142,7 @@ pub fn compute_schema_source_content_hash(documents: &ProjectDocuments) -> Strin
             | crate::document::SourceDocument::Type(_) => {
                 Some((&loaded.path, loaded.source.as_bytes()))
             }
-            crate::document::SourceDocument::Data(_) | crate::document::SourceDocument::View(_) => {
-                None
-            }
+            crate::document::SourceDocument::Data(_) => None,
         })
         .collect();
     schema_sources.sort_by(|left, right| left.0.cmp(right.0));

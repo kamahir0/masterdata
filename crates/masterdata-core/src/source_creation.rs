@@ -21,11 +21,6 @@ pub enum SourceCreation {
     Data {
         table: String,
     },
-    View {
-        name: String,
-        table: String,
-        columns: Vec<ViewColumnDefinition>,
-    },
     ValueObject {
         name: String,
         underlying: String,
@@ -162,16 +157,6 @@ pub fn prepare_source_creation(
                 records: Vec::new(),
             })
         }
-        SourceCreation::View {
-            name,
-            table,
-            columns,
-        } => SourceDocument::View(ViewDocument {
-            kind: "view".into(),
-            name: name.clone(),
-            table: table.clone(),
-            columns: columns.clone(),
-        }),
         _ => {
             let mut ty = TypeDocument {
                 kind: "type".into(),
@@ -254,7 +239,6 @@ pub fn prepare_source_creation(
         let collision = match (&document, &existing.document) {
             (SourceDocument::Schema(a), SourceDocument::Schema(b)) => a.table == b.table,
             (SourceDocument::Type(a), SourceDocument::Type(b)) => a.name == b.name,
-            (SourceDocument::View(a), SourceDocument::View(b)) => a.name == b.name,
             _ => false,
         };
         if collision {
@@ -269,7 +253,6 @@ pub fn prepare_source_creation(
         SourceDocument::Schema(d) => serde_yaml::to_value(d),
         SourceDocument::Data(d) => serde_yaml::to_value(d),
         SourceDocument::Type(d) => serde_yaml::to_value(d),
-        SourceDocument::View(d) => serde_yaml::to_value(d),
     }
     .map_err(|error| creation_error("E-SOURCE-CREATE-RENDER", error.to_string(), path))?;
     if let Some(mapping) = value.as_mapping_mut() {
@@ -311,9 +294,6 @@ fn creation_resolution(
     if let SourceDocument::Data(data) = &candidate.document {
         files.extend(documents.files.iter().filter(|file| matches!(&file.document, SourceDocument::Schema(schema) if schema.table == data.table)).cloned());
     }
-    if let SourceDocument::View(view) = &candidate.document {
-        files.extend(documents.files.iter().filter(|file| matches!(&file.document, SourceDocument::Schema(schema) if schema.table == view.table)).cloned());
-    }
     let mut pending = BTreeSet::new();
     for file in &files {
         referenced_types(&file.document, &mut pending);
@@ -345,13 +325,6 @@ fn referenced_types(document: &SourceDocument, names: &mut BTreeSet<String>) {
         SourceDocument::Type(ty) => {
             if let Some(custom) = &ty.custom {
                 names.extend(custom.fields.iter().map(|field| field.type_name.clone()));
-            }
-        }
-        SourceDocument::View(view) => {
-            for column in &view.columns {
-                names.extend(crate::computed_view::expression_type_names(
-                    &column.expression,
-                ));
             }
         }
         _ => {}

@@ -4,7 +4,7 @@
 
 このリポジトリはschema-drivenなMasterMemory binary buildを中心に、project discovery、typed YAML AST、Type System、Table/Key
 validation、Build Selection、C#生成、.NET bridge、artifact-set receipt、CLI、Tauri app shellを同じworkflowで扱います。Reference、
-Unity delivery、builder cache、released binary compatibilityは各canonical ownerで定義します。Unity integration packageは
+Unity delivery、builder cacheは各canonical ownerで定義します。Unity integration packageは
 [`unity/Packages/com.kamahir0.masterdata`](unity/Packages/com.kamahir0.masterdata/README.md)にあります。
 observable contractとlifecycleは各canonical
 specification、current implementation realityはcode / tests / Gitを参照してください。
@@ -133,9 +133,8 @@ records:
     name: Potion
 ```
 
-identity/compatibilityのcanonical contractとlifecycleは[互換性仕様のindex（compatibility specification index）](docs/specs/compatibility/README.md)と
-各owner specificationを参照してください。READMEはimplementation statusの一覧を保持せず、実装の現状はcode / tests / Gitから
-確認します。
+identityと各domain contractのlifecycleは各canonical owner specificationを参照してください。READMEはimplementation statusの一覧を保持せず、
+実装の現状はcode / tests / Gitから確認します。
 
 ## リポジトリガイド
 

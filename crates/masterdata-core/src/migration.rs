@@ -179,7 +179,6 @@ fn prepare_add_field(
     documents: &ProjectDocuments,
     command: &AddFieldCommand,
 ) -> Result<MigrationDryRun> {
-    validate_computed_view_dependencies(documents, &command.table)?;
     let (closure_documents, type_system) =
         resolve_target_snapshot(documents, &command.table, &command.field)?;
 
@@ -268,7 +267,6 @@ fn prepare_add_field(
     file_plans.sort_by(|left, right| left.path.cmp(&right.path));
 
     let transformed_documents = apply_file_plans(documents, &file_plans)?;
-    validate_computed_view_dependencies(&transformed_documents, &command.table)?;
     let (transformed_closure, _post_type_system) =
         resolve_target_snapshot(&transformed_documents, &command.table, &command.field)?;
     let source_inputs = documents
@@ -307,45 +305,6 @@ fn prepare_add_field(
         plan,
         transformed_documents,
     })
-}
-
-/// Field evolution must not leave a target Table's persisted Computed View
-/// stale or newly invalid.  Keep the check at the migration boundary so every
-/// field operation shares the Computed View validator instead of reimplementing
-/// expression/type semantics locally.
-pub(super) fn validate_computed_view_dependencies(
-    documents: &ProjectDocuments,
-    table: &str,
-) -> Result<()> {
-    let target_paths = documents
-        .views()
-        .filter(|(_, view)| view.table == table)
-        .map(|(path, _)| path)
-        .collect::<BTreeSet<_>>();
-    if target_paths.is_empty() {
-        return Ok(());
-    }
-    if let Some(diagnostic) =
-        crate::validate_computed_views(documents)
-            .into_iter()
-            .find(|diagnostic| {
-                diagnostic
-                    .source
-                    .as_ref()
-                    .is_some_and(|source| target_paths.contains(source))
-            })
-    {
-        return Err(migration_error(
-            "E-MIGRATION-COMPUTED-VIEW-PRECONDITION",
-            format!(
-                "Computed View dependency for Table `{table}` is invalid: {}",
-                diagnostic.message
-            ),
-            diagnostic.source,
-            "MIGRATION-015",
-        ));
-    }
-    Ok(())
 }
 
 fn resolve_target_snapshot(
@@ -491,10 +450,7 @@ fn expected_add_field_semantics(
                     }
                 }
             }
-            SourceDocument::Schema(_)
-            | SourceDocument::Data(_)
-            | SourceDocument::Type(_)
-            | SourceDocument::View(_) => {}
+            SourceDocument::Schema(_) | SourceDocument::Data(_) | SourceDocument::Type(_) => {}
         }
         expected.push((loaded.path.clone(), document));
     }
@@ -551,7 +507,6 @@ fn build_resolution_closure(
             // use this closure for target record mutation/count semantics.
             SourceDocument::Data(data) => data.table == table_name,
             SourceDocument::Type(_) => false,
-            SourceDocument::View(_) => false,
         };
         if include {
             included.push(loaded.clone());

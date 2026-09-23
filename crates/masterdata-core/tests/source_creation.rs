@@ -22,7 +22,6 @@ fn creation_all_artifact_categories_roundtrip_with_exact_enum_values() {
     documents.files.push(schema.document);
     let cases = [
         json!({"category":"data","table":"item"}),
-        json!({"category":"view","name":"itemDisplay","table":"item","columns":[{"name":"label","expression":"\"Potion\""}]}),
         json!({"category":"value_object","name":"ItemId","underlying":"long","conversions":{"fromUnderlyingImplicit":true,"toUnderlyingImplicit":false}}),
         json!({"category":"enum","name":"Kind","underlying":"ulong","members":[{"name":"Max","value":"18446744073709551615"}]}),
         json!({"category":"flags","name":"Mode","underlying":"uint","members":[{"name":"None","value":"0"},{"name":"Read","value":"1"}]}),
@@ -44,27 +43,6 @@ fn creation_all_artifact_categories_roundtrip_with_exact_enum_values() {
     }
 }
 
-#[test]
-fn computed_view_creation_is_typed_and_project_local() {
-    let schema = prepare(&ProjectDocuments::default(), &table("item")).unwrap();
-    let mut documents = ProjectDocuments {
-        files: vec![schema.document],
-    };
-    let view = request(json!({
-        "category":"view",
-        "name":"itemDisplay",
-        "table":"item",
-        "columns":[{"name":"label","expression":"\"Potion\""}]
-    }));
-    let plan = prepare(&documents, &view).expect("view creation");
-    assert!(plan.source.contains("kind: view"));
-    assert!(plan.source.contains("expression:"));
-    documents.files.push(plan.document);
-    assert!(
-        prepare(&documents, &view).is_err(),
-        "duplicate view identity"
-    );
-}
 #[test]
 fn creation_rejects_unknown_table_collision_invalid_flags_and_dependencies() {
     let mut documents = ProjectDocuments::default();

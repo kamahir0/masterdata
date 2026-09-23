@@ -3,13 +3,12 @@ import { Alert, Button, Checkbox, Form, Input, InputNumber, Select, Space, Spin,
 import { invoke } from "@tauri-apps/api/core";
 import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
 import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";
-import MigrationCompatibilityImpact, { type MigrationCompatibility } from "./MigrationCompatibilityImpact";
 import { migrationApplyDisabled, migrationBlockedFiles, migrationDestructiveAuthorization } from "./authoring-workflow";
 
 type Field = { key:number; name:string; type:string; nullable:boolean; array:boolean };
 type Reference = { name:string; csharpName?:string|null; effectiveCsharpName?:string; sourceFields:string[]; targetTable:string; targetFields:string[]; targetKeyKind?:"primary"|"secondary"; cardinality?:"single"|"many"; optionality?:"required"|"nullable" };
 type Snapshot = { path:string; schema:{ table:string; fields:Field[]; primaryKey:{fields:string[]}; secondaryKeys:{fields:string[];nonUnique:boolean}[]; references?:Reference[] }; fieldTypes:string[]; initializerShapes:Record<string,ResolvedAuthoringType>; references?:Reference[]; referenceDiagnostics?:{code:string;message:string;source?:string;schemaPath?:string;valuePath?:string;recordIdentity?:string}[] };
-type Plan = { token:string; table:string; operation:string; field:string; destructive:boolean; affectedRecordCount:number; files:{path:string;before:string;after:string}[]; diagnostics:{code:string;message:string}[]; compatibility:MigrationCompatibility };
+type Plan = { token:string; table:string; operation:string; field:string; destructive:boolean; affectedRecordCount:number; files:{path:string;before:string;after:string}[]; diagnostics:{code:string;message:string}[] };
 export type MigrationResult = { state:string; files:string[]; fileStates?:{path:string;state:string}[]; diagnostic?:{code:string;message:string}|null; recoveryWorkspace?:string|null };
 const message = (error:unknown):string => {
   if (!error || typeof error !== "object" || !("diagnostic" in error)) return String(error);
@@ -133,7 +132,6 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
       {plan&&<section aria-label="Migration Plan" className="migration-plan">
         <h3 id="migration-plan-summary" tabIndex={-1}>{plan.operation}: {plan.table}.{plan.field}</h3><p>{plan.files.length} affected files · {plan.affectedRecordCount} affected records · {plan.destructive?"Destructive":"Non-destructive"}</p>
         {plan.diagnostics.map((diagnostic,index)=><Alert key={index} title={`${diagnostic.code}: ${diagnostic.message}`} type="error"/>)}
-        <MigrationCompatibilityImpact value={plan.compatibility}/>
         <Tabs items={plan.files.map(file=>({key:file.path,label:file.path,children:<div className="migration-diff"><section><h4>Before</h4><pre>{file.before}</pre></section><section><h4>After</h4><pre>{file.after}</pre></section></div>}))}/>
         {blocked.length>0&&<Alert type="warning" title="Apply blocked by unsaved affected files" description={blocked.map(file=>file.path).join(", ")}/>}
         {plan.destructive&&<Checkbox disabled={busy} checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}>I confirm dropping {plan.table}.{plan.field} and its record values.</Checkbox>}

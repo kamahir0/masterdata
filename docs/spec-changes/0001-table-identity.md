@@ -10,7 +10,7 @@ current scaffoldのtable identity boundaryを正式採用し、file locationやg
 
 ## Canonical result
 
-- [Table identity](../specs/compatibility/table-identity.md) — `COMPAT-TABLE-001`
+- [Table / Keys](../specs/table-and-keys.md) — `SCHEMA-TABLE-002`
 - [Schema language](../specs/schema-language.md) — current scaffold identity routing
 - [Terminology](../product/terminology.md) — glossary routing
 

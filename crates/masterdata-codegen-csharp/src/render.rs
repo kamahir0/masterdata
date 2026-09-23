@@ -77,7 +77,7 @@ impl CSharpGenerator {
             namespace: self.namespace.clone(),
             files,
             notes: vec![GenerationNote {
-                message: "Reference integrity is resolved by shared Rust core; cache reuse and released binary compatibility remain outside this slice.".to_owned(),
+                message: "Reference integrity is resolved by shared Rust core; cache reuse remains outside this slice.".to_owned(),
                 placeholder: true,
             }],
         })
@@ -863,9 +863,7 @@ pub fn validate_creation_names(
                 Some(masterdata_core::table_csharp_name(schema))
             }
             masterdata_core::SourceDocument::Type(ty) => Some(ty.name.clone()),
-            masterdata_core::SourceDocument::Data(_) | masterdata_core::SourceDocument::View(_) => {
-                None
-            }
+            masterdata_core::SourceDocument::Data(_) => None,
         }
     }
     let Some(candidate) = name(candidate) else {

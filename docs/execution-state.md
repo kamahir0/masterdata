@@ -1,14 +1,14 @@
 # Development State
 
-Stage: designing
+Stage: implementation-ready
 Candidate: none
 Work base: 923f8408be4b1396bdbc0784738553243418e07d
 
 ## Active work
 
-Completed: Human-selected priorityをProduct Simplification & Scope Cleanupへ切り替え、Git-native Collaboration & Automationの進行を停止。
-In progress: active product/spec/code surfaceの全体棚卸しとretirement dependency mapping。
-Remaining: core / deferred / retire分類、retirement proposalのfresh review、承認可能範囲のcanonical cleanup、implementation削除、focused regression、Candidate / remote CI reconciliation。
+Completed: Product Simplification & Scope Cleanupの全体監査を開始し、Git-native CollaborationをRejected化。Released Compatibility全面退役を仕様変更0030としてfresh reviewしHuman-approved implementation authorityへ確定。
+In progress: 本格実装はimplementation agentへ委譲。GitHub Issue #10、branch `agent/retire-released-compatibility` がApproved change 0030のwork package。
+Remaining: agent implementation / self-review / checks / PR、main reviewerによるfresh review-code、必要なcorrection、Candidate / required remote CI reconciliation。並行してCompatibility以外のretire候補監査を継続。
 
 ## Blocking findings
 

@@ -1755,6 +1755,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     setCreationTarget({ root: parent?.sourceRoot ?? workspace?.sourceRoots[0] ?? "", folder: relative.split("/").slice(0, -1).join("/") });
     openCreation("data", table);
   };
+  const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.kind === "data")?.table ?? null;
 
   return (
     <main className="app-shell">
@@ -1861,11 +1862,12 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       />}
       <section className="surface-layout" hidden={surface !== "overview"}>
         <ProjectOverviewPanel
-          key={`${projectRoot ?? "none"}:${configRevision}`}
+          // A Table switch must not show the previous saved snapshot under the new Table heading.
+          key={JSON.stringify([projectRoot, configRevision, overviewTable])}
           active={surface === "overview"}
           projectRoot={projectRoot}
           workspace={workspace as SurfaceWorkspace | null}
-          table={selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.kind === "data")?.table ?? null}
+          table={overviewTable}
           dirtySourceCount={dirtyCount}
           dirtyConfig={settingsDirty}
           profile={selectedProfile}

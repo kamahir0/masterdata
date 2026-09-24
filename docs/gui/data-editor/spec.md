@@ -30,6 +30,11 @@ validation diagnosticsの一覧は、main gridの編集を妨げない下部`Pro
 
 source diffはmain gridとは別のfile単位`Diff` view / editorとして表示しなければならない（MUST）。Diffを確認するためにdirty bufferを保存または破棄する必要があってはならず（MUST NOT）、Diff表示自体をSaveやvalidationのgateとして扱ってはならない（MUST NOT）。
 
+### GUI-DATA-LAYOUT-006
+
+定常的なData編集画面はprimary editing commandと現在のstatusを表示し、query詳細とbatch操作は別々に開閉できる補助領域に置かなければならない（MUST）。閉じても入力・selection・dirty bufferを失ってはならない（MUST NOT）。Problemsは0件時に閉じた状態から開始してよい（MAY）が、件数とvalidation stateへ到達でき、diagnosticとoperation failureは見失わない（MUST）。
+fileまたはProject areaを移動して同じData fileへ戻る際はquery / batch入力を復元し、別fileの入力を混入させてはならない（MUST）。表示中のquery resultとcontrolsのfile identityが食い違ってはならない（MUST NOT）。
+
 ## 状態（States）
 
 ### GUI-DATA-STATE-001

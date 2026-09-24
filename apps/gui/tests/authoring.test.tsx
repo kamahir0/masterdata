@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from '../src/App';
 const { invoke, openDialog, desktopWindow } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn(), desktopWindow: { onCloseRequested: vi.fn(), destroy: vi.fn() } }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => desktopWindow }));
@@ -65,6 +65,19 @@ afterEach(() => {
   window.localStorage.clear();
 });
 async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); return await screen.findByRole('textbox', { name: label }); }
+function navigation() { return within(screen.getByRole('navigation', { name: 'Project navigation' })); }
+function openProjectCommands() {
+  const button = navigation().getByRole('button', { name: 'Project', exact: true });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+}
+function openSourceFiles() {
+  const button = navigation().getByRole('button', { name: 'Source Files', exact: true });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+}
+function reloadProject() {
+  fireEvent.click(within(document.querySelector('.titlebar')!).getByRole('button', { name: 'Project menu' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Reload Project' }));
+}
 
 test('initial Project-not-found is a Welcome state without an Explorer error', async () => {
   invoke.mockImplementation(async (command) => {
@@ -75,7 +88,7 @@ test('initial Project-not-found is a Welcome state without an Explorer error', a
   expect(await screen.findByRole('heading', { name: 'Start with a Masterdata project' })).toBeTruthy();
   await waitFor(() => expect(screen.queryByText('Looking for a configured project…')).toBeNull());
   expect(screen.queryByText('E-PROJECT-NOT-FOUND')).toBeNull();
-  expect(screen.queryByRole('complementary', { name: 'Workspace Explorer' })).toBeNull();
+  expect(screen.queryByRole('navigation', { name: 'Project navigation' })).toBeNull();
   expect(screen.getByRole('complementary', { name: 'Recent Projects' })).toBeTruthy();
 });
 
@@ -93,7 +106,7 @@ test('Open Project uses the native directory picker and remembers a successful s
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   await screen.findByRole('heading', { name: 'Start with a Masterdata project' });
   fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
-  expect(await screen.findByRole('complementary', { name: 'Workspace Explorer' })).toBeTruthy();
+  expect(await screen.findByRole('navigation', { name: 'Project navigation' })).toBeTruthy();
   expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
   expect(JSON.parse(window.localStorage.getItem('masterdata.recent-projects.v1') ?? '[]')).toEqual([
     { root: '/project', name: 'Demo' },
@@ -131,7 +144,7 @@ test('explicit Project open failure stays on Welcome with a persistent diagnosti
   fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
   expect(await screen.findByText('E-PROJECT-CONFIG')).toBeTruthy();
   expect(screen.getByText('masterdata.toml is invalid')).toBeTruthy();
-  expect(screen.queryByRole('complementary', { name: 'Workspace Explorer' })).toBeNull();
+  expect(screen.queryByRole('navigation', { name: 'Project navigation' })).toBeNull();
 });
 
 test('Recent Project removal changes only user-local history', async () => {
@@ -176,10 +189,101 @@ test('diagnostic belonging to the selected source marks its cell', async () => {
   expect(input.closest('td')?.classList.contains('invalid')).toBe(true);
 });
 
+test('filter options stay out of the default grid and retain their draft when reopened', async () => {
+  await open();
+  expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
+  const value = screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement;
+  fireEvent.change(value, { target: { value: 'rare' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
+  expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
+  expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+});
+
+test('Data query draft survives visiting a Project area and returning to the same source', async () => {
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Data filter value' }), { target: { value: 'rare' } });
+  openProjectCommands();
+  fireEvent.click(navigation().getByRole('button', { name: 'Build & Publish' }));
+  expect(await screen.findByRole('heading', { name: 'Build / Publish' })).toBeTruthy();
+  openSourceFiles();
+  fireEvent.click(navigation().getByRole('treeitem', { name: 'data.yaml', exact: true }));
+  expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+});
+
+test('Data query drafts remain file-local when switching between Data documents', async () => {
+  const multiFileWorkspace = { ...workspace, files: [
+    { ...workspace.files[0], table: 'item', typeName: null },
+    { path: 'other.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null },
+  ] };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return multiFileWorkspace;
+    if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
+    return normalInvoke(command, args);
+  });
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Data filter value' }), { target: { value: 'rare' } });
+  fireEvent.click(navigation().getByRole('button', { name: 'Data · other.yaml' }));
+  expect(await screen.findByRole('textbox', { name: 'record 1 weight' })).toBeTruthy();
+  expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
+  fireEvent.click(navigation().getByRole('button', { name: 'Data · data.yaml' }));
+  expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+});
+
+test('Table context opens Data creation with its Table already selected', async () => {
+  const contextWorkspace = { ...workspace, files: [{ ...workspace.files[0], table: 'item', typeName: null }] };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return contextWorkspace;
+    if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: ['item'], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
+    return normalInvoke(command, args);
+  });
+  await open();
+  fireEvent.click(navigation().getByRole('button', { name: '+ Data file' }));
+  expect((await screen.findByRole('combobox', { name: 'Existing Table' })).closest('.ant-select')?.textContent).toContain('item');
+  expect(screen.getByRole('combobox', { name: 'Artifact type' }).closest('.ant-select')?.textContent).toContain('Data');
+});
+
+test('Table Overview follows the selected logical Table rather than the previously active file', async () => {
+  const multiTableWorkspace = { ...workspace, files: [
+    { ...workspace.files[0], table: 'item', typeName: null },
+    { path: 'enemy-schema.yaml', sourceRoot: '.', kind: 'schema', table: 'enemy', typeName: null },
+  ] };
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return multiTableWorkspace;
+    if (command === 'table_overview') return { status: 'complete', table: args.request.table, columns: [], rows: [], totalCount: 0, selectedCount: 0, displayedCount: 0, configContentIdentity: 'config', sources: [], selection: { profile: null, includeTags: [], excludeTags: [], available: true }, diagnostics: [] };
+    return normalInvoke(command, args);
+  });
+  await open();
+  const enemy = navigation().getByRole('button', { name: 'enemy' });
+  fireEvent.click(enemy);
+  fireEvent.click(within(enemy.closest('.nav-table')!).getByRole('button', { name: 'enemy Overview' }));
+  await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'table_overview' && args.request.table === 'enemy')).toBe(true));
+});
+
+test('empty Project offers a contextual Folder action with a folder-safe name', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return { ...workspace, files: [] };
+    if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: [], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  expect(await screen.findByRole('heading', { name: 'Start with a Table' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Create Folder' }));
+  expect((await screen.findByRole('combobox', { name: 'Artifact type' })).closest('.ant-select')?.textContent).toContain('Folder');
+  expect((screen.getByRole('textbox', { name: 'Folder name' }) as HTMLInputElement).value).toBe('new-folder');
+});
+
 test('Ant Design unsaved dialog Cancel preserves edits and does not reload', async () => {
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Reload', exact: true }));
+  reloadProject();
   expect(await screen.findByRole('dialog')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
   expect((input as HTMLInputElement).value).toBe('20');
@@ -189,7 +293,8 @@ test('Ant Design unsaved dialog Cancel preserves edits and does not reload', asy
 test('dirty Build invokes only saved-source Build and preserves exact 64-bit input', async () => {
   const input = await open();
   fireEvent.change(input, { target: { value: '18446744073709551615' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Build', exact: true }));
+  openProjectCommands();
+  fireEvent.click(navigation().getByRole('button', { name: 'Build', exact: true }));
   await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'build')).toBe(true));
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
   expect((input as HTMLInputElement).value).toBe('18446744073709551615');
@@ -210,7 +315,7 @@ test('Ant Design Save All dialog preserves input when source commit fails', asyn
     : normalInvoke(command, args));
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Reload', exact: true }));
+  reloadProject();
   fireEvent.click(await screen.findByRole('button', { name: 'Save All', exact: true }));
   await waitFor(() => expect(screen.getByText('Save failed.')).toBeTruthy());
   expect(screen.getByRole('dialog')).toBeTruthy();
@@ -228,6 +333,7 @@ test('creation refresh selects the new source without discarding an existing dir
     return normalInvoke(command, args);
   });
   const input = await open(); fireEvent.change(input, { target: { value: '20' } });
+  openSourceFiles();
   fireEvent.click(screen.getByRole('button', { name: 'New source artifact' }));
   fireEvent.change(await screen.findByLabelText('Table identity'), { target: { value: 'weapon' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create', exact: true }));
@@ -273,6 +379,8 @@ test('Explorer move refreshes selection and the open data editor at the new path
     return normalInvoke(command, args);
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('navigation', { name: 'Project navigation' });
+  openSourceFiles();
   fireEvent.click(await screen.findByRole('button', { name: 'Rename or move source' }));
   const destination = screen.getByRole('textbox', { name: 'Source destination path' });
   fireEvent.change(destination, { target: { value: 'moved.yaml' } });
@@ -339,6 +447,7 @@ const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml
 const tablePlan = {token:'table-plan',table:'item',operation:'RenameField',field:'id',destructive:false,affectedRecordCount:1,files:[{path:'schema.yaml',before:'name: id',after:'name: itemId'},{path:'data.yaml',before:'id: 1',after:'itemId: 1'}],diagnostics:[]};
 const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
 async function planFromTable(type = false) {
+  openSourceFiles();
   fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
   fireEvent.click(await screen.findByRole('button',{name:'Rename Field',exact:true}));
   fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});
@@ -357,6 +466,7 @@ test('Migration recovery result blocks Create and Build',async()=>{
   const input=await open();fireEvent.change(input,{target:{value:'20'}});
   await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await screen.findByText('Recovery Required — source changes and Build are blocked');
+  openProjectCommands();
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Rename or move source'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
@@ -372,6 +482,8 @@ test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   });
   const input=await open();fireEvent.change(input,{target:{value:'20'}});
   await screen.findByText('Recovery Required — source changes and Build are blocked');
+  openProjectCommands();
+  openSourceFiles();
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('treeitem',{name:'data.yaml, unsaved changes',exact:true}));
@@ -420,7 +532,8 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
   });
 
   await open();
-  fireEvent.click(screen.getByRole('button', { name: 'Settings', exact: true }));
+  openProjectCommands();
+  fireEvent.click(navigation().getByRole('button', { name: 'Settings', exact: true }));
   await screen.findByRole('heading', { name: 'Project Settings' });
   fireEvent.change(screen.getByLabelText('Include tags'), { target: { value: 'new' } });
   fireEvent.keyDown(window, { key: 's', ctrlKey: true });

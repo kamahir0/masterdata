@@ -1,12 +1,13 @@
 # Development State
 
-Stage: objective-complete
-Candidate: ada43f2be408bac904f66ec4db5b2992251c12a7
-Work base: cc0fbd37f9851b4fef2d582532b3c82349a4122d
+Stage: implementation-ready
+Candidate: none
+Work base: 6b0d92cbe8c6b73ea514ebf5d061253afdc8c92d
 
 ## Active work
 
-None.
+- In progress: `GUI-SHELL-NAV-001`、`GUI-DATA-LAYOUT-006`、`GUI-PROJECT-001`のDesktop候補作成。
+- Remaining: candidateのfresh review、required remote CI reconciliation。
 
 ## Blocking findings
 

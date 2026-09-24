@@ -21,6 +21,10 @@ rowからsourceへ移動するときは、対象file snapshot identityとeditor 
 supported scalar search/filter/sortはshared application snapshotをpresentationするだけでなければならない（MUST）。
 Overview表示だけでsource、Build、Publish、Gitを変更してはならない（MUST NOT）。
 
+### GUI-OVERVIEW-004
+
+定常状態ではTable、保存済みsnapshot、検索、Profile、主要な行選択操作を優先し、詳細なfilter / sort設定は明示的に開く補助領域へまとめる。補助領域の開閉だけで入力中の条件や表示中snapshotを失ってはならない（MUST NOT）。適用は既存の明示Query操作に従い、折りたたみ状態をquery semanticsへ影響させない（MUST NOT）。
+
 ## 受け入れ証拠
 
  dirty base一致/不一致、Pending delete、stale response、query clearとfocus、0件とUnavailableの区別、supported query composition、saved snapshot boundaryを検証する。

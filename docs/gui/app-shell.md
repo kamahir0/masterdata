@@ -10,13 +10,19 @@ Tauri v2 applicationをthin desktop adapterとして保ち、Project open、Work
 
 ### GUI-SHELL-LAYOUT-001
 
-Desktop authoring画面は、左の[Workspace Explorer](explorer/spec.md)と中央のtyped editor areaを主要surfaceとして持たなければならない（MUST）。record data YAMLを選択した場合、中央は[Data Editor](data-editor/spec.md)を表示する。
+Desktop authoring画面は、左のworkbench navigation内に開閉可能な[Workspace Explorer](explorer/spec.md)と中央のtyped editor areaを主要surfaceとして持たなければならない（MUST）。record data YAMLを選択した場合、中央は[Data Editor](data-editor/spec.md)を表示する。
 
 validation diagnosticsはData Editorが定義する下部`Problems` panelへ表示できなければならず（MUST）、source diffはfile単位の独立`Diff` viewとして開けなければならない（MUST）。常設right inspectorを初期sliceの必須要件にはしない。
 
 ### GUI-SHELL-LAYOUT-002
 
 Save、Validate、Build、Project Reload等の主要commandは、現在のselectionやcapabilityに応じて到達可能なcommand surfaceから実行できなければならない（MUST）。exact button placement、icon、spacing、themeはnormative contractとして固定しない。
+
+### GUI-SHELL-NAV-001
+
+Projectが開いている間、DesktopはProject名とcurrent selectionを識別可能にし、Table / Type / Project areaへ到達するnavigationを提供しなければならない（MUST）。Table groupはshared workspaceのdeclared Table identityで構成し、schemaと複数Data fileをそのTableの下で識別できなければならない（MUST）。Type groupはshared workspaceのdeclared type nameを使用する。metadataがinvalid / unavailableなfileもsource file treeから失ってはならない（MUST NOT）。
+
+Source file treeは左navigation内で開閉可能な領域として維持し、logical入口とfile入口のいずれも同じfile selection / dirty bufferへrouteしなければならない（MUST）。Project Settings / Build and Publish等のProject areaへ移動しても、Project / Table / Type / Sources navigationへ戻れる文脈を保持する（MUST）。Build、Validate、Project Reload、Saveへの到達を失ってはならない（MUST NOT）。file / Table / area間の移動だけでdirty bufferを保存・破棄・確認しない（MUST NOT）。navigationの項目と開閉操作はkeyboardで到達・実行でき、選択対象と展開状態をassistive technologyから識別できなければならない（MUST）。
 
 ## Project open / reload
 

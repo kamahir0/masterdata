@@ -11,7 +11,7 @@ Explorerはdomain treeではなくworkspace navigationであり、folder配置�
 
 ### GUI-EXPLORER-001
 
-Desktop authoring画面は左側にWorkspace Explorerを持たなければならない（MUST）。ExplorerはProjectに設定されたsource rootごとのfile / folder hierarchyを表示し、中央typed editorとは独立したnavigation surfaceとして扱う。
+Desktop authoring画面は左側のworkbench navigation内に開閉可能なWorkspace Explorerを持たなければならない（MUST）。ExplorerはProjectに設定されたsource rootごとのfile / folder hierarchyを表示し、中央typed editorとは独立したnavigation surfaceとして扱う。
 
 複数source rootがある場合は、利用者がどのconfigured rootに属する項目か識別できなければならない（MUST）。source root外の`.masterdata/output`、cache、generated artifact等をExplorerのsource treeへ暗黙に混在させてはならない（MUST NOT）。
 

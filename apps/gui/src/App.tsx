@@ -1,7 +1,7 @@
 import TypeEditor from "./TypeEditor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Empty, Input, Modal, Select, Tabs, Tag } from "antd";
-import { ArrowRight, Database, FolderOpen, Save, RotateCw, ShieldCheck, Play, X } from "lucide-react";
+import { Alert, Button, Dropdown, Empty, Input, Modal, Select, Tabs, Tag } from "antd";
+import { ArrowRight, ChevronDown, Database, FolderOpen, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type CreationReport } from "./SourceCreation";
 import {
@@ -14,6 +14,7 @@ import {
   type SurfaceWorkspace,
 } from "./ProjectSurfaces";
 import ValueEditor from "./ValueEditor";
+import { WorkspaceNavigation } from "./WorkspaceNavigation";
 import {
   addDraft,
   applyPreviewResult,
@@ -565,6 +566,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   }, []);
   const [creationOpen, setCreationOpen] = useState(false);
   const [creationTarget, setCreationTarget] = useState({ root: "", folder: "" });
+  const [creationPreset, setCreationPreset] = useState<{ category: "folder" | "table" | "data" | "value_object"; table: string }>({ category: "table", table: "" });
   const [revealCreated, setRevealCreated] = useState<{ path: string; root: string } | null>(null);
   const [pathMutationTarget, setPathMutationTarget] = useState<{ sourcePath: string; destinationPath: string; sourceRoot: string } | null>(null);
   const [pathMutationPhase, setPathMutationPhase] = useState<"form" | "dirty" | "result">("form");
@@ -584,10 +586,12 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(readRecentProjects);
   const [projectPickerBusy, setProjectPickerBusy] = useState(false);
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const dataEditorUi = useRef(new Map<string, DataEditorUiState>());
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
   const [manualValidation, setManualValidation] = useState<OperationState<ValidationReport>>({ kind: "idle" });
   const [buildState, setBuildState] = useState<OperationState<BuildResponse>>({ kind: "idle" });
-  const [problemsOpen, setProblemsOpen] = useState(true);
+  const [problemsOpen, setProblemsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [pendingActionBusy, setPendingActionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -809,6 +813,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       setEditors({});
       const first = next.files.find((file) => file.kind === "data") ?? next.files[0] ?? null;
       setActivePath(first?.path ?? null);
+      setSelectedTable(first?.table ?? null);
       if (first?.kind === "data") {
         await openDataFile(next.project.project_root, first.path, true);
       }
@@ -1375,8 +1380,8 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
 
   const runBuild = useCallback(async () => {
     if (!workspace || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading" || deliveryBusy) return;
-    if (dirtyCount > 0) {
-      showNotice("Build uses saved source only; unsaved changes are not included.");
+    if (dirtyCount > 0 || settingsDirty) {
+      showNotice("Build uses saved source and config only; unsaved changes are not included.");
     }
     const generation = workspaceGeneration.current;
     setBuildState({ kind: "loading" });
@@ -1397,10 +1402,14 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     } finally {
       setDeliveryBusy(false);
     }
-  }, [sourceMutationBlocked, buildState.kind, deliveryBusy, dirtyCount, projectRoot, selectedProfile, showNotice, workspace]);
+  }, [sourceMutationBlocked, buildState.kind, deliveryBusy, dirtyCount, projectRoot, selectedProfile, settingsDirty, showNotice, workspace]);
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
     setActivePath(file.path);
+    if (file.table) setSelectedTable(file.table);
+    setSurface("editor");
+    const relative = file.sourceRoot && file.path.startsWith(`${file.sourceRoot}/`) ? file.path.slice(file.sourceRoot.length + 1) : file.path;
+    setCreationTarget({ root: file.sourceRoot, folder: relative.split("/").slice(0, -1).join("/") });
     if (file.kind === "data" && projectRoot) {
       void openDataFile(projectRoot, file.path);
     }
@@ -1459,6 +1468,8 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         // still address the old path before rebinding the editor state.
         workspaceGeneration.current += 1;
         removeEditorForPath(sourcePath);
+        dataEditorUi.current.delete(`${root}:${sourcePath}`);
+        dataEditorUi.current.delete(`${root}:${destinationPath}`);
         setLoadingPaths((current) => {
           if (!current.has(sourcePath)) return current;
           const next = new Set(current);
@@ -1670,6 +1681,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     // EVIDENCE: GUI-CREATE-INT-008, GUI-CREATE-INT-009.
     setWorkspaceState({ kind: "ready", workspace: next });
     setActivePath(report.path);
+    setSelectedTable(next.files.find((file) => file.path === report.path)?.table ?? null);
     const root = report.folder ? next.folders?.find(folder => folder.path === report.path)?.sourceRoot
       : next.files.find(file => file.path === report.path)?.sourceRoot;
     setRevealCreated({ path: report.path, root: root ?? "" });
@@ -1724,6 +1736,25 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     ...manualDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Saved source" })),
     ...operationDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Operation" })),
   ];
+  useEffect(() => {
+    if (problems.length > 0) setProblemsOpen(true);
+  }, [problems.length]);
+  const dirtyPaths = new Set(Object.entries(editors).filter(([, editor]) => editorIsDirty(editor)).map(([path]) => path));
+  const openCreation = (category: "folder" | "table" | "data" | "value_object", table = "") => {
+    setCreationPreset({ category, table });
+    setCreationOpen(true);
+  };
+  const openGroupedCreation = (kind: "table" | "type" | "source") => {
+    if (kind !== "source") setCreationTarget({ root: workspace?.sourceRoots[0] ?? "", folder: "" });
+    openCreation(kind === "type" ? "value_object" : "table");
+  };
+  const openDataCreation = (table: string) => {
+    const parent = workspace?.files.find((file) => file.table === table && file.kind === "schema")
+      ?? workspace?.files.find((file) => file.table === table && file.kind === "data");
+    const relative = parent?.sourceRoot && parent.path.startsWith(`${parent.sourceRoot}/`) ? parent.path.slice(parent.sourceRoot.length + 1) : parent?.path ?? "";
+    setCreationTarget({ root: parent?.sourceRoot ?? workspace?.sourceRoots[0] ?? "", folder: relative.split("/").slice(0, -1).join("/") });
+    openCreation("data", table);
+  };
 
   return (
     <main className="app-shell">
@@ -1737,47 +1768,20 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         </div>
         <div className="project-open">
           <span className="project-location" title={projectRoot ?? undefined}>{projectRoot ?? "Choose a folder to begin"}</span>
-          <Button
-            htmlType="button"
-            loading={projectPickerBusy}
-            onClick={() => void openProjectPicker()}
-          >
-            <FolderOpen size={15} /> Open Project
-          </Button>
         </div>
         <div className="command-bar">
-          {workspace && <Button htmlType="button" onClick={() => setSurface("overview")}>Overview</Button>}
-          {workspace && <Button htmlType="button" onClick={() => setSurface("settings")}>Settings</Button>}
-          {workspace && <Button htmlType="button" onClick={() => setSurface("delivery")}>Delivery</Button>}
-          <Button htmlType="button" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
-          {workspace && <Button htmlType="button" onClick={() => setSurface("editor")} disabled={surface === "editor"}>Editor</Button>}
-          {workspace && <Button htmlType="button" icon={<RotateCw size={15} />} onClick={() => requestAction({ kind: "reload" })}>Reload</Button>}
-          {workspace && <Button
-            htmlType="button"
-            icon={<Save size={15} />}
-            onClick={() => surface === "settings" ? void settingsSaveRef.current() : activePath && void saveFile(activePath)}
-            disabled={surface === "settings"
-              ? mutationBlocked || !settingsDirty
-              : mutationBlocked || !activeEditor || !editorIsDirty(activeEditor) || activeEditor.saving || activeEditor.saveStatus === "outcome_unknown"}
-          >
-            {surface === "settings" ? "Save Settings" : activeEditor?.saving ? "Saving…" : "Save"}
-          </Button>}
-          {workspace && <Button htmlType="button" icon={<ShieldCheck size={15} />} onClick={() => void validateDisk()} disabled={manualValidation.kind === "loading"}>
-            {manualValidation.kind === "loading" ? "Validating…" : "Validate"}
-          </Button>}
-          {workspace && <Button type="primary" htmlType="button" icon={<Play size={15} />} onClick={() => void runBuild()} disabled={mutationBlocked || deliveryBusy || buildState.kind === "loading"}>
-            {buildState.kind === "loading" ? "Building…" : "Build"}
-          </Button>}
+          {totalDirtyCount > 0 && <span className="header-dirty" role="status">{totalDirtyCount} unsaved</span>}
+          {manualValidation.kind === "loading" && <span className="header-operation" role="status">Validating…</span>}
+          {buildState.kind === "loading" && <span className="header-operation" role="status">Building…</span>}
+          <Dropdown menu={{ items: [
+            { key: "open", label: projectPickerBusy ? "Opening Project…" : "Open Project", disabled: projectPickerBusy, onClick: () => void openProjectPicker() },
+            { key: "create", label: "Create Project", onClick: () => requestAction({ kind: "create" }) },
+            ...(workspace ? [{ key: "reload", label: "Reload Project", onClick: () => requestAction({ kind: "reload" }) }] : []),
+          ] }} trigger={["click"]}>
+            <Button htmlType="button" aria-label="Project menu">Project <ChevronDown size={14} aria-hidden="true" /></Button>
+          </Dropdown>
         </div>
       </header>
-
-      {totalDirtyCount > 0 && (
-        <div className="unsaved-build-note">
-          {dirtyCount > 0 && `${dirtyCount} unsaved file${dirtyCount === 1 ? "" : "s"}. `}
-          {settingsDirty && "masterdata.toml has unsaved settings. "}
-          Build uses saved source and config only after explicit Save.
-        </div>
-      )}
 
       {surface === "editor" && !workspace && (
         <section className="welcome" aria-label="Welcome">
@@ -1821,13 +1825,47 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         </section>
       )}
 
+      <div className="workbench" hidden={!workspace && surface !== "create"}>
+      {workspace && surface !== "create" && <WorkspaceNavigation
+        files={workspace.files}
+        activePath={activePath}
+        selectedTable={selectedTable}
+        revealSourcePath={revealCreated?.path ?? null}
+        surface={surface}
+        dirtyPaths={dirtyPaths}
+        canWrite={!mutationBlocked}
+        buildBlocked={mutationBlocked || deliveryBusy}
+        validating={manualValidation.kind === "loading"}
+        building={buildState.kind === "loading"}
+        onSelectFile={(path) => { const file = workspace.files.find((candidate) => candidate.path === path); if (file) selectFile(file); }}
+        onSelectTable={(table) => { setSelectedTable(table); setSurface("overview"); }}
+        onSettings={() => setSurface("settings")}
+        onDelivery={() => setSurface("delivery")}
+        onValidate={() => { setSurface("editor"); void validateDisk(); }}
+        onBuild={() => { setSurface("editor"); void runBuild(); }}
+        onCreate={openGroupedCreation}
+        onCreateData={openDataCreation}
+        sources={<>
+          <div className="source-nav-actions"><Button size="small" aria-label="Rename or move source" disabled={mutationBlocked || surface !== "editor" || !activeFile} onClick={openPathMutation}>Move selected source</Button></div>
+          <SourceTree
+            workspace={workspace}
+            activePath={surface === "editor" ? activePath : null}
+            editors={editors}
+            loadingPaths={loadingPaths}
+            fileOpenErrors={fileOpenErrors}
+            onSelect={selectFile}
+            onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
+            revealCreated={revealCreated}
+          />
+        </>}
+      />}
       <section className="surface-layout" hidden={surface !== "overview"}>
         <ProjectOverviewPanel
           key={`${projectRoot ?? "none"}:${configRevision}`}
           active={surface === "overview"}
           projectRoot={projectRoot}
           workspace={workspace as SurfaceWorkspace | null}
-          table={activeFile?.table ?? workspace?.files.find((file) => file.kind === "data")?.table ?? null}
+          table={selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.kind === "data")?.table ?? null}
           dirtySourceCount={dirtyCount}
           dirtyConfig={settingsDirty}
           profile={selectedProfile}
@@ -1871,7 +1909,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           onBusyChange={setDeliveryBusy}
         />
       </section>
-      <section className="surface-layout" hidden={surface !== "create"}>
+      <section className="surface-layout create-surface" hidden={surface !== "create"}>
         <ProjectCreatePanel
           active={surface === "create"}
           onCancel={() => setSurface(workspace ? createReturnSurface.current : "editor")}
@@ -1882,36 +1920,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         />
       </section>
 
-      {surface === "editor" && workspace && <section className="workspace-layout">
-        <aside className="explorer" aria-label="Workspace Explorer">
-          <div className="pane-heading">
-            <span>EXPLORER</span>
-            <Button size="small" aria-label="New source artifact" disabled={mutationBlocked || !workspace} onClick={() => setCreationOpen(true)}>New</Button>
-            <Button
-              size="small"
-              aria-label="Rename or move source"
-              disabled={mutationBlocked || !activeFile}
-              onClick={openPathMutation}
-            >
-              Move
-            </Button>
-          </div>
-          <SourceTree
-              workspace={workspace}
-              activePath={activePath}
-              editors={editors}
-              loadingPaths={loadingPaths}
-              fileOpenErrors={fileOpenErrors}
-              onSelect={(file) => {
-                selectFile(file);
-                const relative = file.sourceRoot && file.path.startsWith(`${file.sourceRoot}/`) ? file.path.slice(file.sourceRoot.length + 1) : file.path;
-                setCreationTarget({ root: file.sourceRoot, folder: relative.split("/").slice(0, -1).join("/") });
-              }}
-              onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
-              revealCreated={revealCreated}
-            />
-        </aside>
-
+      {workspace && <section className="workspace-layout" hidden={surface !== "editor"}>
         <section className="editor-area">
           {workspaceState.kind === "error" && workspace && (
             <div className="workspace-error-strip">
@@ -1922,7 +1931,13 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           {recovery && <Alert role="alert" type="error" title="Recovery Required — source changes and Build are blocked"
             description={<><p>{recovery.diagnostic?.message}</p><p>{recovery.files.join(", ")}</p>{recovery.fileStates?.map(file => <p key={file.path}>{file.path}: {file.state}</p>)}{recovery.recoveryWorkspace && <p>Recovery workspace: {recovery.recoveryWorkspace}</p>}</>}
             action={<Button onClick={() => void recheckMigration()}>Recheck recovered source</Button>} />}
-          {workspace && !activeFile && (
+          {workspace.files.length === 0 && !activeFile && <div className="empty-project">
+            <span className="dialog-kicker">NEW PROJECT</span>
+            <h2>Start with a Table</h2>
+            <p>Create a Table schema, then add data files and types as your project grows.</p>
+            <div><Button type="primary" disabled={mutationBlocked} onClick={() => openCreation("table")}>Create Table</Button><Button disabled={mutationBlocked} onClick={() => openCreation("value_object")}>Create Type</Button><Button disabled={mutationBlocked} onClick={() => openCreation("folder")}>Create Folder</Button></div>
+          </div>}
+          {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
           {activeFile?.kind === "schema" && projectRoot && <TableEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
@@ -1960,11 +1975,12 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
             <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading records through the shared application service." />
           )}
           {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
-            <DataEditor
+            <DataEditor key={`${projectRoot}:${activeFile.path}`}
               mutationBlocked={mutationBlocked}
               file={activeFile}
               projectRoot={projectRoot!}
               editor={activeEditor}
+              uiCache={dataEditorUi}
               onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
               onDraftCellChange={(draftId, field, value) => updateDraftCell(activeFile.path, draftId, field, value)}
               onCellFocus={(key) => { historyEditKey.current = key; }}
@@ -2020,10 +2036,11 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           </section>
         </section>
       </section>}
+      </div>
 
       {workspace && <footer className="statusbar">
-        <span>{activePath ?? "No source selected"}</span>
-        <span>{activeEditor ? `${activeEditor.snapshot.rows.length + activeEditor.addedRecords.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
+        <span>{surface === "settings" ? "Project Settings" : surface === "delivery" ? "Build & Publish" : surface === "overview" ? `Table ${selectedTable ?? ""}` : activePath ?? "No source selected"}</span>
+        <span>{surface === "editor" && activeEditor ? `${activeEditor.snapshot.rows.length + activeEditor.addedRecords.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
         <span>{totalDirtyCount > 0 ? `${totalDirtyCount} dirty` : "Saved"}</span>
       </footer>}
 
@@ -2031,6 +2048,8 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
         projectPath={projectRoot}
         initialRootIndex={Math.max(0, workspace.sourceRoots.indexOf(creationTarget.root))}
         initialFolder={creationTarget.folder}
+        initialCategory={creationPreset.category}
+        initialTable={creationPreset.table}
         canWrite={!mutationBlocked}
         onCancel={() => {
           setCreationOpen(false);
@@ -2392,11 +2411,24 @@ type GridRange = {
   endColumn: number;
 };
 
+type DataEditorUiState = {
+  batchText: string;
+  querySearch: string;
+  queryField: string;
+  queryValue: string;
+  querySortField: string;
+  queryOperator: string;
+  querySortDirection: string;
+  queryAdvancedOpen: boolean;
+  batchToolsOpen: boolean;
+};
+
 function DataEditor({
   mutationBlocked,
   file,
   projectRoot,
   editor,
+  uiCache,
   onCellChange,
   onDraftCellChange,
   onCellFocus,
@@ -2421,6 +2453,7 @@ function DataEditor({
   file: WorkspaceSourceFile;
   projectRoot: string;
   editor: EditorState;
+  uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
   onCellChange: (recordIndex: number, field: string, value: AuthoringValue) => void;
   onDraftCellChange: (draftId: string, field: string, value: AuthoringValue) => void;
   onCellFocus: (key: string) => void;
@@ -2443,22 +2476,31 @@ function DataEditor({
 }) {
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
+  const uiKey = `${projectRoot}:${file.path}`;
+  const rememberedUi = uiCache.current.get(uiKey);
   const lastFocusedCell = useRef<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<GridRange | null>(null);
   const draggingSelection = useRef(false);
-  const [batchText, setBatchText] = useState("");
+  const [batchText, setBatchText] = useState(rememberedUi?.batchText ?? "");
   const [batchPreview, setBatchPreview] = useState<AuthoringBatchPreview | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
-  const [querySearch, setQuerySearch] = useState("");
-  const [queryField, setQueryField] = useState("");
-  const [queryValue, setQueryValue] = useState("");
-  const [querySortField, setQuerySortField] = useState("");
+  const [querySearch, setQuerySearch] = useState(rememberedUi?.querySearch ?? "");
+  const [queryField, setQueryField] = useState(rememberedUi?.queryField ?? "");
+  const [queryValue, setQueryValue] = useState(rememberedUi?.queryValue ?? "");
+  const [querySortField, setQuerySortField] = useState(rememberedUi?.querySortField ?? "");
   const [queryBusy, setQueryBusy] = useState(false);
   const [queryError, setQueryError] = useState<ApiDiagnostic | null>(null);
   const [queryNotice, setQueryNotice] = useState<string | null>(null);
-  const [queryOperator, setQueryOperator] = useState("contains");
-  const [querySortDirection, setQuerySortDirection] = useState("ascending");
+  const [queryOperator, setQueryOperator] = useState(rememberedUi?.queryOperator ?? "contains");
+  const [querySortDirection, setQuerySortDirection] = useState(rememberedUi?.querySortDirection ?? "ascending");
+  const [queryAdvancedOpen, setQueryAdvancedOpen] = useState(rememberedUi?.queryAdvancedOpen ?? false);
+  const [batchToolsOpen, setBatchToolsOpen] = useState(rememberedUi?.batchToolsOpen ?? false);
+  useEffect(() => {
+    // Query and batch drafts are file-local UI state; switching sources must not
+    // leave an applied query showing controls that belong to another file.
+    uiCache.current.set(uiKey, { batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen });
+  }, [uiCache, uiKey, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen]);
   const queryRequestSequence = useRef(0);
   const previousAddedCount = useRef(editor.addedRecords.length);
   const [batchContext, setBatchContext] = useState<{ revision: number; selectionKey: string } | null>(null);
@@ -2730,13 +2772,20 @@ function DataEditor({
 
       <div className="authoring-toolbar" aria-label="Data authoring tools">
         <Input aria-label="Data search" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onPressEnter={() => void runQuery()} />
+        <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Search</Button>
+        <Button htmlType="button" aria-expanded={queryAdvancedOpen} aria-controls="data-query-options" onClick={() => setQueryAdvancedOpen((open) => !open)}>Filter &amp; sort{queryField || querySortField ? " · set" : ""} <ChevronDown size={13} aria-hidden="true" /></Button>
+        <Button htmlType="button" aria-expanded={batchToolsOpen} aria-controls="data-batch-tools" onClick={() => setBatchToolsOpen((open) => !open)}>Batch tools <ChevronDown size={13} aria-hidden="true" /></Button>
+        {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
+      </div>
+      <div className="authoring-toolbar authoring-options" id="data-query-options" hidden={!queryAdvancedOpen} aria-label="Filter and sort options">
         <Select aria-label="Data filter field" allowClear placeholder="Filter field" value={queryField || undefined} onChange={(value) => setQueryField(value ?? "")} options={editor.snapshot.columns.map((column) => ({ value: column.name, label: column.name }))} />
         <Select aria-label="Data filter operator" value={queryOperator} onChange={setQueryOperator} options={[{ value: "contains", label: "contains" }, { value: "equals", label: "equals" }, { value: "not-equals", label: "not equals" }, { value: "less-than", label: "<" }, { value: "greater-than", label: ">" }, { value: "is-null", label: "is null" }, { value: "is-invalid", label: "is invalid" }]} />
         <Input aria-label="Data filter value" placeholder="Filter contains" value={queryValue} onChange={(event) => setQueryValue(event.target.value)} />
         <Select aria-label="Data sort field" allowClear placeholder="Sort by" value={querySortField || undefined} onChange={(value) => setQuerySortField(value ?? "")} options={editor.snapshot.columns.map((column) => ({ value: column.name, label: column.name }))} />
         <Select aria-label="Data sort direction" value={querySortDirection} onChange={setQuerySortDirection} options={[{ value: "ascending", label: "A→Z" }, { value: "descending", label: "Z→A" }]} />
-        <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Query</Button>
-        {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
+        <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Apply filter &amp; sort</Button>
+      </div>
+      <div className="authoring-toolbar authoring-options" id="data-batch-tools" hidden={!batchToolsOpen} aria-label="Batch tools">
         <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
         <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
         <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>

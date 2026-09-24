@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { DeliveryPanel, ProjectCreatePanel, ProjectSettingsPanel, type SurfaceWorkspace } from "../src/ProjectSurfaces";
+import { DeliveryPanel, ProjectCreatePanel, ProjectOverviewPanel, ProjectSettingsPanel, type SurfaceWorkspace } from "../src/ProjectSurfaces";
 
 const { invoke, openDialog } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openDialog }));
@@ -45,6 +45,18 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+test("Overview keeps detailed query controls folded and retains their draft", () => {
+  render(<ProjectOverviewPanel active projectRoot="/project" workspace={workspace} table={null}
+    dirtySourceCount={0} dirtyConfig={false} profile="" onProfileChange={vi.fn()} onNavigate={vi.fn()} />);
+  expect(screen.queryByRole("textbox", { name: "Overview filter value" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Filter & sort" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Overview filter value" }), { target: { value: "rare" } });
+  fireEvent.click(screen.getByRole("button", { name: "Filter & sort" }));
+  expect(screen.queryByRole("textbox", { name: "Overview filter value" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Filter & sort" }));
+  expect((screen.getByRole("textbox", { name: "Overview filter value" }) as HTMLInputElement).value).toBe("rare");
 });
 
 test("Settings composes profile and target edits in one file buffer before Save", async () => {
@@ -120,6 +132,7 @@ test("Settings composes profile and target edits in one file buffer before Save"
   fireEvent.click(screen.getByRole("button", { name: "Apply Profile to buffer" }));
   await screen.findByText("base1");
 
+  fireEvent.click(screen.getByRole("button", { name: "Publish Targets", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "Edit path" }));
   fireEvent.change(screen.getByLabelText("Publish target path"), { target: { value: "dist2" } });
   fireEvent.click(screen.getByRole("button", { name: "Apply Target Path to buffer" }));

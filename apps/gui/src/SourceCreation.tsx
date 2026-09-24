@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 type Field = { key: number | null; name: string; type: string; nullable: boolean; array: boolean };
 type Member = { name: string; value: string };
 type Secondary = { fields: string[]; nonUnique: boolean };
-type Category = "folder" | "table" | "data" | "value_object" | "enum" | "flags" | "custom_type";
+export type Category = "folder" | "table" | "data" | "value_object" | "enum" | "flags" | "custom_type";
 type Context = { roots: { index: number; label: string; folders: string[] }[]; choices: { fieldTypes: string[]; tables: string[]; valueObjectUnderlyings: string[]; enumUnderlyings: string[] } };
 type CreationRequest = { sourceRoot: string; destination: string; artifact: Record<string, unknown> };
 export type CreationReport = { status: "success" | "conflict" | "failure" | "outcome_unknown"; path: string; folder: boolean; diagnostic: { code: string; message: string; schema_path?: string; schemaPath?: string } | null };
@@ -67,17 +67,17 @@ function diagnosticOf(error: unknown) {
   return { code: "E-CREATION-REQUEST", message: String(error) };
 }
 
-export default function SourceCreation({ projectPath, initialRootIndex, initialFolder, canWrite, onCancel, onCreated }: {
-  projectPath: string; initialRootIndex: number; initialFolder: string; canWrite: boolean;
+export default function SourceCreation({ projectPath, initialRootIndex, initialFolder, initialCategory = "table", initialTable = "", canWrite, onCancel, onCreated }: {
+  projectPath: string; initialRootIndex: number; initialFolder: string; initialCategory?: Category; initialTable?: string; canWrite: boolean;
   onCancel: () => void; onCreated: (report: CreationReport) => Promise<void>;
 }) {
   const [context, setContext] = useState<Context | null>(null);
-  const [category, setCategory] = useState<Category>("table");
+  const [category, setCategory] = useState<Category>(initialCategory);
   const [root, setRoot] = useState("");
   const [folder, setFolder] = useState(initialFolder);
-  const [filename, setFilename] = useState("new.yaml");
+  const [filename, setFilename] = useState(initialCategory === "folder" ? "new-folder" : "new.yaml");
   const [name, setName] = useState("");
-  const [table, setTable] = useState("");
+  const [table, setTable] = useState(initialTable);
   const [csharpName, setCsharpName] = useState("");
   const [underlying, setUnderlying] = useState("int");
   const [fromImplicit, setFromImplicit] = useState(false);

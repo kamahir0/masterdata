@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Select, Space, Tag } from "antd";
+import { ChevronDown } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { type AuthoringValue, type ResolvedAuthoringField } from "./data-editor-types";
@@ -238,6 +239,7 @@ export function ProjectOverviewPanel({
   const [sortField, setSortField] = useState("");
   const [sortDirection, setSortDirection] = useState("ascending");
   const [selectedOnly, setSelectedOnly] = useState(false);
+  const [queryOptionsOpen, setQueryOptionsOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<OverviewSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
@@ -312,13 +314,17 @@ export function ProjectOverviewPanel({
       <div className="surface-toolbar">
         <Input aria-label="Overview search" placeholder="Search all displayed fields" value={search} onChange={(event) => setSearch(event.target.value)} onPressEnter={() => void load()} />
         <Select aria-label="Overview profile" value={profile || "__unfiltered"} onChange={(value) => onProfileChange(value === "__unfiltered" ? "" : value)} options={[{ value: "__unfiltered", label: "Unfiltered" }, ...profiles.map((item) => ({ value: item.name, label: item.name }))]} />
+        <Button htmlType="button" onClick={() => void load()} type="primary">Apply</Button>
+        <Button htmlType="button" onClick={() => setSelectedOnly((value) => !value)} aria-pressed={selectedOnly}>{selectedOnly ? "All rows" : "Selected only"}</Button>
+        <Button htmlType="button" aria-expanded={queryOptionsOpen} aria-controls="overview-query-options" onClick={() => setQueryOptionsOpen((open) => !open)}>Filter &amp; sort{filterField || sortField ? " · set" : ""} <ChevronDown size={13} aria-hidden="true" /></Button>
+      </div>
+      <div className="surface-toolbar surface-options" id="overview-query-options" hidden={!queryOptionsOpen} aria-label="Overview filter and sort options">
         <Select aria-label="Overview filter field" allowClear placeholder="Filter field" value={filterField || undefined} onChange={(value) => setFilterField(value ?? "")} options={columns.map((column) => ({ value: column.name, label: column.name }))} />
         <Select aria-label="Overview filter operator" value={filterOperator} onChange={setFilterOperator} options={[{ value: "contains", label: "contains" }, { value: "equals", label: "equals" }, { value: "not-equals", label: "not equals" }, { value: "less-than", label: "<" }, { value: "greater-than", label: ">" }, { value: "is-null", label: "is null" }, { value: "is-invalid", label: "is invalid" }]} />
         <Input aria-label="Overview filter value" placeholder="Filter value" value={filterValue} onChange={(event) => setFilterValue(event.target.value)} />
         <Select aria-label="Overview sort field" allowClear placeholder="Sort by" value={sortField || undefined} onChange={(value) => setSortField(value ?? "")} options={columns.map((column) => ({ value: column.name, label: column.name }))} />
         <Select aria-label="Overview sort direction" value={sortDirection} onChange={setSortDirection} options={[{ value: "ascending", label: "A→Z" }, { value: "descending", label: "Z→A" }]} />
-        <Button htmlType="button" onClick={() => void load()} type="primary">Apply</Button>
-        <Button htmlType="button" onClick={() => setSelectedOnly((value) => !value)} aria-pressed={selectedOnly}>{selectedOnly ? "All rows" : "Selected only"}</Button>
+        <Button htmlType="button" onClick={() => void load()}>Apply filter &amp; sort</Button>
       </div>
       {profileMissing && <Alert type="warning" showIcon title="Profile unavailable" description={`Profile “${profile}” is not available in the current project configuration. Refresh or choose another profile.`} />}
       {diagnostic && <Alert type="error" showIcon title={diagnostic.code} description={diagnostic.message} />}
@@ -374,6 +380,7 @@ export function ProjectSettingsPanel({
   const [bufferIdentity, setBufferIdentity] = useState("");
   const [pendingRequests, setPendingRequests] = useState<ConfigEditRequest[]>([]);
   const [selectedProfile, setSelectedProfile] = useState("");
+  const [settingsSection, setSettingsSection] = useState<"profiles" | "targets">("profiles");
   const [profileDrafts, setProfileDrafts] = useState<Record<string, { name: string; includeTags: string; excludeTags: string }>>({});
   const [profileName, setProfileName] = useState("");
   const [includeTags, setIncludeTags] = useState("");
@@ -615,7 +622,11 @@ export function ProjectSettingsPanel({
       {!snapshot && !loading && !diagnostic && <Empty description="Open Settings to inspect masterdata.toml." />}
       {snapshot && (
         <div className="settings-content">
-          <section className="settings-card" aria-label="Build Profiles">
+          <div className="settings-switch" role="group" aria-label="Settings area">
+            <Button htmlType="button" type={settingsSection === "profiles" ? "primary" : "default"} aria-pressed={settingsSection === "profiles"} onClick={() => setSettingsSection("profiles")}>Build Profiles</Button>
+            <Button htmlType="button" type={settingsSection === "targets" ? "primary" : "default"} aria-pressed={settingsSection === "targets"} onClick={() => setSettingsSection("targets")}>Publish Targets</Button>
+          </div>
+          <section className="settings-card" aria-label="Build Profiles" hidden={settingsSection !== "profiles"}>
             <h3>Build Profiles</h3>
             <Select aria-label="Settings profile" allowClear placeholder="New profile" value={selectedProfile || undefined} onChange={(value) => void selectProfile(value ?? "")} options={profileOptions} />
             <Input aria-label="Profile name" placeholder="Profile name" value={profileName} onChange={(event) => { setProfileName(event.target.value); markDirty("profile"); }} />
@@ -637,7 +648,7 @@ export function ProjectSettingsPanel({
             >Apply Profile to buffer</Button>
             {snapshot.profiles.map((profile) => <div className="settings-line" key={profile.name}><strong>{profile.name}</strong><span>include: {profile.include_tags.join(", ") || "∅"}</span><span>exclude: {profile.exclude_tags.join(", ") || "∅"}</span></div>)}
           </section>
-          <section className="settings-card" aria-label="Publish Targets">
+          <section className="settings-card" aria-label="Publish Targets" hidden={settingsSection !== "targets"}>
             <h3>Publish Targets</h3>
             <Select aria-label="Publish target kind" value={targetKind} onChange={(value) => { setTargetKind(value); markDirty("target"); }} options={[{ value: "csharp", label: "C# directory" }, { value: "binary", label: "Binary file" }]} />
             <Input aria-label="Publish target path" placeholder="Path relative to project or absolute" value={targetPath} onChange={(event) => { setTargetPath(event.target.value); markDirty("target"); }} />

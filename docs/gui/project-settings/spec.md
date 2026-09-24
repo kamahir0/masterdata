@@ -9,6 +9,7 @@ Project Settingsは`masterdata.toml`のProfileとPublish targetをtyped formで�
 ### GUI-SETTINGS-001
 
 Project SettingsはProfileとPublish targetsをtyped formで編集し、config file単位のdirty / Diff / Saveを持たなければならない（MUST）。section移動や他editorへのnavigationでbufferを保存・破棄しない。Cmd/Ctrl+Sはactive settingsのconfigだけを保存する。
+ProfilesとPublish Targetsは区別した領域で表示し、一方を閲覧しても他方の未保存form draftを破棄してはならない（MUST NOT）。Migration / Publishの確認、Recovery Required、Conflict等のsafety surfaceは関連operation中に引き続き確認できなければならない（MUST）。
 form editのactive textを確定してからSaveし、表現不能なら入力を保持して停止する。domain-invalidならdiagnostics付きで確定できる。Save中は当該config編集を停止する。
 settingsのgeneral Undo/Redoはv1必須ではない。text input内Undoは維持し、config全体の明示Discardは確認を経る。YAML file履歴と混同してはならない（MUST NOT）。
 

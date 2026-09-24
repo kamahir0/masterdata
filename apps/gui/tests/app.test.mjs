@@ -23,7 +23,7 @@ test("GUI exposes file-scoped dirty, save, validation, and diff interactions", (
   assert.match(source, /activePath\) void saveFile\(activePath\)/);
   assert.match(source, /Buffer validation pending/);
   assert.match(source, /Unsaved source diff/);
-  assert.match(source, /Build uses saved source only/);
+  assert.match(source, /Build uses saved source and config only/);
 });
 
 test("GUI protects dirty buffers across navigation and external changes", () => {

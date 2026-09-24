@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, Select, Space, Tag } from "antd";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { type AuthoringValue, type ResolvedAuthoringField } from "./data-editor-types";
 
 export type SurfaceProjectInfo = {
@@ -816,9 +817,11 @@ export function DeliveryPanel({
 export function ProjectCreatePanel({
   active,
   onCreated,
+  onCancel,
 }: {
   active: boolean;
   onCreated: (projectRoot: string) => void;
+  onCancel: () => void;
 }) {
   const [destination, setDestination] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -826,6 +829,19 @@ export function ProjectCreatePanel({
   const [version, setVersion] = useState("0.1.0");
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<ProjectInitReport | null>(null);
+  const [picking, setPicking] = useState(false);
+
+  const chooseDestination = async () => {
+    setPicking(true);
+    try {
+      const selected = await openDialog({ directory: true, multiple: false, title: "Choose Project Folder" });
+      if (typeof selected === "string") setDestination(selected);
+    } catch (error) {
+      setReport({ status: "failure", destination, project: null, createdEntries: [], diagnostic: errorDiagnostic(error) });
+    } finally {
+      setPicking(false);
+    }
+  };
 
   useEffect(() => {
     if (active) setReport(null);
@@ -849,13 +865,13 @@ export function ProjectCreatePanel({
 
   return (
     <section className="surface-panel create-panel" aria-label="Create Project">
-      <header className="surface-header"><div><span className="dialog-kicker">EXCLUSIVE INITIALIZATION</span><h2>Create Project</h2><p>Only an empty existing directory or a new child directory is accepted.</p></div></header>
+      <header className="surface-header"><div><span className="dialog-kicker">NEW PROJECT</span><h2>Create Project</h2><p>Choose an empty folder, or enter a new folder path inside an existing folder.</p></div></header>
       <div className="create-form">
-        <label>Destination<Input aria-label="Project destination" value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="/path/to/project" /></label>
-        <label>Project ID<Input aria-label="New project ID" value={projectId} onChange={(event) => setProjectId(event.target.value)} placeholder="game.masterdata" /></label>
-        <label>Name<Input aria-label="New project name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Game Master Data" /></label>
-        <label>Version<Input aria-label="New project version" value={version} onChange={(event) => setVersion(event.target.value)} /></label>
-        <Button type="primary" htmlType="button" loading={busy} disabled={!destination.trim() || !projectId.trim() || !name.trim() || !version.trim()} onClick={() => void create()}>Create Project</Button>
+        <label>Destination<Space.Compact block><Input aria-label="Project destination" disabled={busy || picking} value={destination} onChange={(event) => setDestination(event.target.value)} placeholder="/path/to/project" /><Button htmlType="button" aria-label="Choose Folder…" disabled={busy} loading={picking} onClick={() => void chooseDestination()}>Choose Folder…</Button></Space.Compact></label>
+        <label>Project ID<Input aria-label="New project ID" disabled={busy} value={projectId} onChange={(event) => setProjectId(event.target.value)} placeholder="game.masterdata" /></label>
+        <label>Name<Input aria-label="New project name" disabled={busy} value={name} onChange={(event) => setName(event.target.value)} placeholder="Game Master Data" /></label>
+        <label>Version<Input aria-label="New project version" disabled={busy} value={version} onChange={(event) => setVersion(event.target.value)} /></label>
+        <Space className="create-actions"><Button htmlType="button" disabled={busy || picking} onClick={onCancel}>Cancel</Button><Button type="primary" htmlType="button" loading={busy} disabled={picking || !destination.trim() || !projectId.trim() || !name.trim() || !version.trim()} onClick={() => void create()}>Create Project</Button></Space>
       </div>
       {report?.diagnostic && <Alert type="error" showIcon title={report.diagnostic.code} description={report.diagnostic.message} />}
       {report?.status === "success" && <Alert type="success" showIcon title="Project created" description={report.destination} />}

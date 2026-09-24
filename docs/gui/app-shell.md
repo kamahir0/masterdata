@@ -38,6 +38,8 @@ Project Reloadはshared application serviceを通じてworkspace sourceを再取
 
 OSのwindow close requestは、dirty source、dirty Project Settings、Build / Publish実行中のいずれもない場合、windowを閉じなければならない（MUST）。保護対象stateがある場合はcloseを一旦停止し、既存の`Save All` / `Don't Save` / `Cancel` guardを適用しなければならない（MUST）。利用者がcloseを確定した後、host permission不足やclose eventの再入によってwindowが残ってはならない（MUST NOT）。
 
+OSの通常のアプリ終了（macOSのQuit menu / Cmd+Qを含む）にも`GUI-SHELL-LIFECYCLE-001`のguardを適用しなければならない（MUST）。CancelまたはSave failureではアプリと未保存変更を保持しなければならない（MUST）。clean stateまたはguardで確定後は終了できなければならない（MUST）。強制終了やOS crashへの復旧保証は対象外とする。
+
 ## Architecture boundary
 
 ### GUI-SHELL-ARCH-001

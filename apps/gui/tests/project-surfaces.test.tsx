@@ -1,9 +1,10 @@
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { DeliveryPanel, ProjectSettingsPanel, type SurfaceWorkspace } from "../src/ProjectSurfaces";
+import { DeliveryPanel, ProjectCreatePanel, ProjectSettingsPanel, type SurfaceWorkspace } from "../src/ProjectSurfaces";
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke, openDialog } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openDialog }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 const configSnapshot = {
@@ -38,6 +39,7 @@ const workspace: SurfaceWorkspace = {
 
 beforeEach(() => {
   invoke.mockReset();
+  openDialog.mockReset();
 });
 
 afterEach(() => {
@@ -387,4 +389,39 @@ test("Delivery shares busy state while a Build is unresolved", async () => {
   await waitFor(() => expect(onBusyChange).toHaveBeenCalledWith(true));
   resolveBuild({ profile: null, generatedFiles: [], artifactRoot: "/project/.masterdata/output" });
   await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+});
+
+
+test.each(['cancel', 'select', 'error'])('Create Project folder picker handles %s without creating a Project', async (outcome) => {
+  if (outcome === 'error') openDialog.mockRejectedValue(new Error('Picker unavailable'));
+  else openDialog.mockResolvedValue(outcome === 'select' ? '/chosen' : null);
+  render(<ProjectCreatePanel active onCreated={vi.fn()} onCancel={vi.fn()} />);
+  const destination = screen.getByRole('textbox', { name: 'Project destination' });
+  fireEvent.change(destination, { target: { value: '/typed/new' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Choose Folder…' }));
+  await waitFor(() => expect(openDialog).toHaveBeenCalledOnce());
+  if (outcome === 'error') expect(await screen.findByText('Error: Picker unavailable')).toBeTruthy();
+  await waitFor(() => {
+    expect((destination as HTMLInputElement).disabled).toBe(false);
+    expect((destination as HTMLInputElement).value).toBe(outcome === 'select' ? '/chosen' : '/typed/new');
+  });
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+test("Create Project disables cancellation and edits until shared creation finishes", async () => {
+  const onCancel = vi.fn();
+  const onCreated = vi.fn();
+  let finish!: (result: unknown) => void;
+  invoke.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<ProjectCreatePanel active onCreated={onCreated} onCancel={onCancel} />);
+  fireEvent.change(screen.getByLabelText('Project destination'), { target: { value: '/new' } });
+  fireEvent.change(screen.getByLabelText('New project ID'), { target: { value: 'new' } });
+  fireEvent.change(screen.getByLabelText('New project name'), { target: { value: 'New' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Project' }));
+  expect(invoke).toHaveBeenCalledWith('create_project', { request: { destination: '/new', projectId: 'new', name: 'New', version: '0.1.0' } });
+  expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByLabelText('New project name') as HTMLInputElement).disabled).toBe(true);
+  finish({ status: 'success', destination: '/new', project: { project_root: '/new' }, createdEntries: [] });
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith('/new'));
+  expect(onCancel).not.toHaveBeenCalled();
 });

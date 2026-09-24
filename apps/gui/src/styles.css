@@ -335,7 +335,7 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .create-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 620px; padding: 20px 0; }
 .create-form label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
 .create-form label:first-child { grid-column: 1 / -1; }
-.create-form .ant-btn { grid-column: 1 / -1; justify-self: start; }
+.create-actions { grid-column: 1 / -1; }
 .record-grid .tag-column { min-width: 190px; }
 .record-grid .tag-cell { min-width: 190px; padding: 5px 7px; vertical-align: top; background: #111923; }
 .record-tags { display: grid; gap: 4px; min-width: 175px; }

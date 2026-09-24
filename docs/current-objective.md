@@ -6,15 +6,14 @@
 
 ## Objective
 
-**macOS Desktopの初回起動とProject入口を、OS標準操作が確実に機能し、未選択状態をエラーとして見せないWelcome experienceへ修正する。**
+**macOS Desktopを実操作して不自然なUXと不具合を検出し、通常のProject操作・編集・保存・終了を安全に行える状態へ改善する。**
 
 ## Completion slices
 
-- macOSのwindow close requestが、clean stateではwindowを閉じ、dirty stateでは既存のSave All / Don't Save / Cancel guardを経て安全に閉じる。
-- `Open Project`からnative folder pickerを開き、選択したdirectoryをshared application serviceで開く。cancelは現在stateを変更しない。
-- Project未選択時はExplorer errorではなく、Open / CreateとRecent Projectsへ進めるWelcome surfaceを表示する。
-- explicitに選択したProjectを開けない場合は、未選択または既存Project stateを壊さず、recovery可能なdiagnosticをWelcomeまたはcurrent Project surfaceへ残す。
-- focused frontend tests、Tauri compile validation、macOS実機操作、repository checks、fresh review、required remote CI reconciliationを完了する。
+- Computer UseでProject入口、Create画面、編集、保存、Settings、終了の主要操作を検証し、再現した不具合を修正する。
+- macOS標準のアプリ終了経路でも未保存変更を保護する。
+- Project作成のdestination選択と中止・元画面への復帰を改善する。
+- focused regression tests、Tauri compile validation、macOS実機操作、repository checks、fresh review、required remote CI reconciliationを完了する。
 
 ## Canonical requirements
 
@@ -29,5 +28,7 @@
 - Desktop全体のvisual redesign。
 
 ## Audit
+
+2026-09-24 JST、Humanは前セッションを引き継ぎ、Computer Use等によるデスクトップUXの検出・改善と、発見した不具合への自律的な対処を指示した。
 
 2026-09-24 JST、HumanはmacOS検証で、window closeが機能しないこと、初回画面の`Open Project`が機能しないこと、Project未選択時にExplorerへerrorを表示するUXが不適切であることを報告し、VS CodeのWelcome pageを参考として提示した。

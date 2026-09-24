@@ -571,6 +571,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const [pathMutationBusy, setPathMutationBusy] = useState(false);
   const [pathMutationResult, setPathMutationResult] = useState<PathMutationResult | null>(null);
   const [surface, setSurface] = useState<Surface>("editor");
+  const createReturnSurface = useRef<Surface>("editor");
   const [selectedProfile, setSelectedProfile] = useState("");
   const [settingsDirty, setSettingsDirty] = useState(false);
   const settingsSaveRef = useRef<() => Promise<boolean>>(async () => true);
@@ -1222,6 +1223,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       return;
     }
     if (action.kind === "create") {
+      if (surface !== "create") createReturnSurface.current = surface;
       setSurface("create");
       return;
     }
@@ -1233,7 +1235,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       return;
     }
     await loadWorkspace(action.projectPath);
-  }, [loadWorkspace]);
+  }, [loadWorkspace, surface]);
 
   const requestAction = useCallback((action: PendingAction) => {
     const hasDirty = settingsDirty || Object.values(editorsRef.current).some(editorIsDirty);
@@ -1783,7 +1785,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
             <div className="welcome-mark"><Database size={34} /></div>
             <span className="dialog-kicker">MASTERDATA DESKTOP</span>
             <h1>Start with a Masterdata project</h1>
-            <p>Open an existing project folder or create a new project. Source discovery and validation stay behind the shared native service.</p>
+            <p>Open an existing project folder or create a new project to start editing your master data.</p>
             <div className="welcome-actions">
               <Button type="primary" size="large" icon={<FolderOpen size={17} />} loading={projectPickerBusy} onClick={() => void openProjectPicker()}>
                 Open Project
@@ -1872,6 +1874,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       <section className="surface-layout" hidden={surface !== "create"}>
         <ProjectCreatePanel
           active={surface === "create"}
+          onCancel={() => setSurface(workspace ? createReturnSurface.current : "editor")}
           onCreated={(root) => {
             setSurface("editor");
             void loadWorkspace(root);
@@ -2118,7 +2121,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
             if (ok) await performAction(action);
           }}>Save All</Button>,
         ]}>
-        <p>{deliveryBusy ? "A Build or Publish operation is still running. This action will remain blocked until it finishes. " : ""}{dirtyCount} source file{dirtyCount === 1 ? " has" : "s have"}{settingsDirty ? " and masterdata.toml has" : ""} unsaved changes. The requested action would discard the current buffers.</p>
+        <p>{deliveryBusy && "A Build or Publish operation is still running. Wait for it to finish before continuing. "}{totalDirtyCount > 0 && <>Unsaved changes in {[dirtyCount > 0 ? `${dirtyCount} source file${dirtyCount === 1 ? "" : "s"}` : null, settingsDirty ? "Project Settings (masterdata.toml)" : null].filter(Boolean).join(" and ")}. Continuing without saving will discard these changes.</>}</p>
       </Modal>
 
       {notice && <Alert className="toast" title={notice} type="info" showIcon role="status" />}

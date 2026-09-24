@@ -11,6 +11,8 @@ Status: Approved
 未選択時にOpen / Createを提示し、Createはdestinationとproject inputを確認してから実行しなければならない（MUST）。既存Projectが開いている場合は、作成開始前に全dirtyのSave All / Don't Save / Cancel guardを通す。Cancelでは作成しない。成功後は新Projectを開き、失敗時は旧Projectを保持する。
 入口はfolder作成、型、Table、Data file、Add Rowへのguided actionを提供するが、それぞれを独立した明示operationにしなければならない（MUST）。schema creationでData fileを暗黙作成しない。empty stateもkeyboardで次操作へ進める。
 
+Create画面はnative directory pickerと手入力でdestinationを指定でき、picker cancelは入力を変更しない（MUST）。作成開始前のCancelはProjectを作成せず元の画面へ戻り、Project未選択ならWelcomeとRecent Projectsへ戻る（MUST）。作成実行中はCancelとform編集を無効にする（MUST）。destinationの有効性は既存shared serviceが判定し、frontendへfilesystem semanticsを追加しない。
+
 ### GUI-PROJECT-002
 
 Explorerのsource treeを維持し、logical Table一覧からOverview / schema、Type一覧からType Editorへ到達できなければならない（MUST）。一覧はshared workspace情報を使い、pathからidentityを導出しない。どの入口も同一sourceのbufferを共有する。

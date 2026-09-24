@@ -2033,6 +2033,8 @@ version = "0.1.0"
 dependencies = [
  "masterdata-app",
  "masterdata-core",
+ "objc2",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "tauri",

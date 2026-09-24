@@ -13,6 +13,10 @@ use masterdata_app::{
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
+use tauri::Manager;
+
+#[cfg(target_os = "macos")]
+mod macos_lifecycle;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -705,6 +709,13 @@ fn build(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            macos_lifecycle::install_quit_guard(app.handle())?;
+            #[cfg(not(target_os = "macos"))]
+            let _ = app;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             open_table,
             open_type,
@@ -738,8 +749,22 @@ pub fn run() {
             validate,
             build
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running masterdata GUI");
+        .build(tauri::generate_context!())
+        .expect("error while building masterdata GUI")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if let Some(window) = app.get_webview_window("main") {
+                    // Runtime/programmatic exit can bypass CloseRequested. Use the
+                    // frontend guard so dirty settings/sources and running delivery
+                    // remain protected (GUI-SHELL-LIFECYCLE-001). Once the last
+                    // window is gone, allow the resulting exit without re-entry.
+                    api.prevent_exit();
+                    if let Err(error) = window.close() {
+                        eprintln!("Could not request guarded window close: {error}");
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]

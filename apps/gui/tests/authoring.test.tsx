@@ -2,7 +2,8 @@ import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from '../src/App';
-const { invoke, openDialog } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn() }));
+const { invoke, openDialog, desktopWindow } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn(), desktopWindow: { onCloseRequested: vi.fn(), destroy: vi.fn() } }));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => desktopWindow }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: openDialog }));
 const validation = { valid: true, diagnostics: [] };
@@ -39,6 +40,10 @@ let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
 beforeEach(() => {
   window.localStorage.clear();
+  desktopWindow.onCloseRequested.mockReset();
+  desktopWindow.onCloseRequested.mockResolvedValue(() => {});
+  desktopWindow.destroy.mockReset();
+  desktopWindow.destroy.mockResolvedValue(undefined);
   openDialog.mockReset();
   openDialog.mockResolvedValue(null);
   openSnapshot = snapshot();
@@ -478,4 +483,65 @@ test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of f
   ]);
   expect(batchArgs.request.clipboardText).toBe('11\tx\n22\ty');
   expect(batchArgs.request.fill).toBe(false);
+});
+
+function requestDesktopClose() {
+  const event = { preventDefault: vi.fn() };
+  act(() => desktopWindow.onCloseRequested.mock.calls.at(-1)![0](event));
+  return event;
+}
+
+test('desktop close allows clean state and Cancel preserves dirty input', async () => {
+  const input = await open();
+  expect(requestDesktopClose().preventDefault).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: '20' } });
+  expect(requestDesktopClose().preventDefault).toHaveBeenCalledOnce();
+  fireEvent.click(await screen.findByRole('button', { name: 'Cancel', exact: true }));
+  expect((input as HTMLInputElement).value).toBe('20');
+  expect(desktopWindow.destroy).not.toHaveBeenCalled();
+});
+
+test("desktop close Don't Save destroys the window without writing source", async () => {
+  const input = await open();
+  fireEvent.change(input, { target: { value: '20' } });
+  requestDesktopClose();
+  fireEvent.click(await screen.findByRole('button', { name: "Don't Save", exact: true }));
+  await waitFor(() => expect(desktopWindow.destroy).toHaveBeenCalledOnce());
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
+});
+
+test.each(['success', 'failure'])('desktop close Save All respects source save %s', async (status) => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  let finishSave!: (result: unknown) => void;
+  invoke.mockImplementation((command, args) => command === 'save_data_file'
+    ? new Promise(resolve => { finishSave = resolve; }) : normalInvoke(command, args));
+  const input = await open();
+  fireEvent.change(input, { target: { value: '20' } });
+  requestDesktopClose();
+  fireEvent.click(await screen.findByRole('button', { name: 'Save All', exact: true }));
+  await waitFor(() => expect(finishSave).toBeTypeOf('function'));
+  expect(desktopWindow.destroy).not.toHaveBeenCalled();
+  await act(async () => finishSave(status === 'success'
+    ? { status, snapshot: snapshot() }
+    : { status, diagnostic: { code: 'E-IO', message: 'Cannot write source' } }));
+  if (status === 'success') {
+    await waitFor(() => expect(desktopWindow.destroy).toHaveBeenCalledOnce());
+  } else {
+    expect(desktopWindow.destroy).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect((input as HTMLInputElement).value).toBe('20');
+  }
+});
+
+
+test('Create Project Cancel returns to Welcome without creating a Project', async () => {
+  invoke.mockRejectedValue({ diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('heading', { name: 'Start with a Masterdata project' });
+  fireEvent.click(screen.getAllByRole('button', { name: 'Create Project', exact: true })[0]);
+  fireEvent.change(await screen.findByLabelText('New project name'), { target: { value: 'Draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  expect(await screen.findByRole('heading', { name: 'Start with a Masterdata project' })).toBeTruthy();
+  expect(screen.getByRole('complementary', { name: 'Recent Projects' })).toBeTruthy();
+  expect(invoke.mock.calls.some(([command]) => command === 'create_project')).toBe(false);
 });

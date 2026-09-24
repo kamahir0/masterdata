@@ -1935,7 +1935,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       </section>
 
       {workspace && <section className="workspace-layout" hidden={surface !== "editor"}>
-        <section className="editor-area">
+        <section className="editor-area" aria-label="Editor" tabIndex={-1}>
           {workspaceState.kind === "error" && workspace && (
             <div className="workspace-error-strip">
               <strong>{workspaceState.diagnostic.code}</strong>
@@ -2388,6 +2388,15 @@ function SourceTree({
         onClick={() => onSelect(node.file)}
         onKeyDown={(event) => {
           if (event.key === "F2") { event.preventDefault(); onRename(node.file); return; }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            onSelect(node.file);
+            window.requestAnimationFrame(() => {
+              const editor = document.querySelector<HTMLElement>(".editor-area");
+              (editor?.querySelector<HTMLElement>("[data-cell]") ?? editor?.querySelector<HTMLElement>("button:not([disabled])") ?? editor)?.focus();
+            });
+            return;
+          }
           handleTreeKey(event);
         }}
         title={node.file.path}

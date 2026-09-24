@@ -200,6 +200,13 @@ test('Explorer exposes only source roots and F2 opens source move', async () => 
   expect(screen.getByText('Rename or move source')).toBeTruthy();
 });
 
+test('Explorer Enter opens a source and moves keyboard focus into the editor', async () => {
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const file = await screen.findByRole('treeitem', { name: 'data.yaml', exact: true });
+  fireEvent.keyDown(file, { key: 'Enter' });
+  await waitFor(() => expect(document.activeElement?.closest('.editor-area')).not.toBeNull());
+});
+
 test('scalar edit stays local until commit, Escape cancels, and Tab moves to the next cell', async () => {
   openSnapshot = mutationSnapshot() as any;
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);

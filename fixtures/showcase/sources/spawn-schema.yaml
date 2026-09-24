@@ -1,0 +1,46 @@
+kind: schema
+table: spawn
+csharpName: SpawnMaster
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 1
+    name: itemId
+    type: int
+  - key: 2
+    name: itemCode
+    type: ItemCode
+  - key: 3
+    name: worldId
+    type: int
+  - key: 4
+    name: regionCode
+    type: string
+  - key: 5
+    name: fallbackItemId
+    type: int
+    nullable: true
+primaryKey:
+  fields: [id]
+references:
+  - name: item
+    fields: [itemId]
+    target:
+      table: item
+      fields: [id]
+  - name: itemsWithCode
+    fields: [itemCode]
+    target:
+      table: item
+      fields: [code]
+  - name: region
+    fields: [worldId, regionCode]
+    target:
+      table: region
+      fields: [worldId, regionCode]
+  - name: fallbackItem
+    fields: [fallbackItemId]
+    target:
+      table: item
+      fields: [id]

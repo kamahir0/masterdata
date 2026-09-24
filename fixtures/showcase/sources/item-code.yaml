@@ -1,0 +1,6 @@
+kind: type
+name: ItemCode
+valueObject:
+  underlying: string
+  conversions:
+    toUnderlyingImplicit: true

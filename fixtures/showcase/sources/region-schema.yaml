@@ -1,0 +1,17 @@
+kind: schema
+table: region
+csharpName: RegionMaster
+fields:
+  - key: 0
+    name: worldId
+    type: int
+  - key: 1
+    name: regionCode
+    type: string
+  - key: 2
+    name: displayName
+    type: string
+primaryKey:
+  fields: [worldId, regionCode]
+secondaryKeys:
+  - fields: [displayName]

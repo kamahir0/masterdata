@@ -1,0 +1,12 @@
+kind: schema
+table: future-item
+csharpName: FutureItemMaster
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 1
+    name: label
+    type: string
+primaryKey:
+  fields: [id]

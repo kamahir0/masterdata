@@ -27,9 +27,9 @@ struct Cli {
 enum CommandKind {
     /// Inspect OS, architecture, compilers, SDKs, and GUI prerequisites.
     Doctor,
-    /// Copy minimal fixture into target/dev-project and run the CLI smoke flow.
+    /// Copy showcase fixture into target/dev-project and run the CLI smoke flow.
     Cli,
-    /// Copy minimal fixture and start the Tauri development application.
+    /// Copy showcase fixture and start the Tauri development application.
     Gui,
     /// Run the local GUI development/package/install/smoke workflow.
     App(app::AppArgs),
@@ -45,7 +45,7 @@ enum CommandKind {
     CheckAll,
     /// Run checks whose evidence depends on the host OS or native toolchain.
     CheckPlatform,
-    /// Recreate target/dev-project from fixtures/minimal.
+    /// Recreate target/dev-project from fixtures/showcase.
     DevReset,
     /// Check the repository Unity package boundary without requiring Unity Editor.
     CheckUnityPackage,
@@ -89,7 +89,7 @@ fn repository_root() -> PathBuf {
 }
 
 fn fixture_root() -> PathBuf {
-    repository_root().join("fixtures").join("minimal")
+    repository_root().join("fixtures").join("showcase")
 }
 
 fn development_project_root() -> PathBuf {
@@ -103,7 +103,7 @@ fn reset_dev_project() -> Result<PathBuf> {
         return Err(MasterdataError::new(
             "E-XTASK-FIXTURE-MISSING",
             ErrorKind::Io,
-            "minimal fixture directory is missing",
+            "showcase fixture directory is missing",
         )
         .with_source(source));
     }
@@ -276,7 +276,7 @@ fn test_integration() -> Result<()> {
         return Err(MasterdataError::new(
             "E-XTASK-INTEGRATION-VALIDATION",
             ErrorKind::Validation,
-            "minimal fixture validation failed",
+            "showcase fixture validation failed",
         ));
     }
     let service = NativeApplicationService::new();

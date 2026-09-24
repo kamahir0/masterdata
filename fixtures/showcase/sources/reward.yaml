@@ -1,0 +1,18 @@
+kind: type
+name: Reward
+custom:
+  fields:
+    - key: 9
+      name: values
+      type: long
+      array: true
+    - key: 0
+      name: itemId
+      type: ItemId
+    - key: 5
+      name: note
+      type: string
+      nullable: true
+    - key: 2
+      name: amount
+      type: uint

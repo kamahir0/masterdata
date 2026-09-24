@@ -1,0 +1,11 @@
+kind: data
+table: region
+records:
+  - worldId: 1
+    regionCode: north
+    displayName: North
+    $tags: [production, development]
+  - worldId: 1
+    regionCode: south
+    displayName: South
+    $tags: [production, development]

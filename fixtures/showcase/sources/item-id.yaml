@@ -1,0 +1,6 @@
+kind: type
+name: ItemId
+valueObject:
+  underlying: int
+  conversions:
+    fromUnderlyingImplicit: true

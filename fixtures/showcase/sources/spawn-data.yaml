@@ -1,0 +1,17 @@
+kind: data
+table: spawn
+records:
+  - id: 1
+    itemId: 1001
+    itemCode: sword
+    worldId: 1
+    regionCode: north
+    fallbackItemId: null
+    $tags: [production]
+  - id: 2
+    itemId: 1002
+    itemCode: sword
+    worldId: 1
+    regionCode: south
+    fallbackItemId: null
+    $tags: [development]

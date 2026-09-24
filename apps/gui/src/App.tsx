@@ -1,7 +1,7 @@
 import TypeEditor from "./TypeEditor";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Dropdown, Empty, Input, Modal, Select, Tabs, Tag } from "antd";
-import { ArrowRight, ChevronDown, Database, FolderOpen, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag } from "antd";
+import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type CreationReport } from "./SourceCreation";
 import {
@@ -14,7 +14,6 @@ import {
   type SurfaceWorkspace,
 } from "./ProjectSurfaces";
 import ValueEditor from "./ValueEditor";
-import { WorkspaceNavigation } from "./WorkspaceNavigation";
 import {
   addDraft,
   applyPreviewResult,
@@ -549,7 +548,10 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
     const nested = document.querySelector<HTMLElement>(`[data-value-path="${CSS.escape(valuePath)}"]`);
     if (focusElement(nested)) return true;
   }
-  return focusElement(document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`));
+  const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`);
+  if (!focusElement(target)) return false;
+  if (valuePath !== null) document.dispatchEvent(new CustomEvent("masterdata:focus-value", { detail: { cell, valuePath } }));
+  return true;
 }
 
 function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourcePollingIntervalMs?: number | null; previewDelayMs?: number } = {}) {
@@ -602,7 +604,6 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const workspaceStateRef = useRef(workspaceState);
   const workspaceGeneration = useRef(0);
   const draftSequence = useRef(0);
-  const cellFocusStart = useRef(new Map<string, AuthoringValue>());
   const historyEditKey = useRef<string | null>(null);
   const pendingCellFocus = useRef<string | null>(null);
   const pendingValueFocus = useRef<string | null>(null);
@@ -1415,12 +1416,13 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     }
   }, [openDataFile, projectRoot]);
 
-  const openPathMutation = useCallback(() => {
-    if (!activeFile || !projectRoot || mutationBlocked) return;
+  const openPathMutation = useCallback((requested?: WorkspaceSourceFile) => {
+    const target = requested ?? activeFile;
+    if (!target || !projectRoot || mutationBlocked) return;
     setPathMutationTarget({
-      sourcePath: activeFile.path,
-      destinationPath: activeFile.path,
-      sourceRoot: activeFile.sourceRoot,
+      sourcePath: target.path,
+      destinationPath: target.path,
+      sourceRoot: target.sourceRoot,
     });
     setPathMutationResult(null);
     setPathMutationPhase("form");
@@ -1739,14 +1741,9 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   useEffect(() => {
     if (problems.length > 0) setProblemsOpen(true);
   }, [problems.length]);
-  const dirtyPaths = new Set(Object.entries(editors).filter(([, editor]) => editorIsDirty(editor)).map(([path]) => path));
   const openCreation = (category: "folder" | "table" | "data" | "value_object", table = "") => {
     setCreationPreset({ category, table });
     setCreationOpen(true);
-  };
-  const openGroupedCreation = (kind: "table" | "type" | "source") => {
-    if (kind !== "source") setCreationTarget({ root: workspace?.sourceRoots[0] ?? "", folder: "" });
-    openCreation(kind === "type" ? "value_object" : "table");
   };
   const openDataCreation = (table: string) => {
     const parent = workspace?.files.find((file) => file.table === table && file.kind === "schema")
@@ -1756,6 +1753,16 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     openCreation("data", table);
   };
   const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.kind === "data")?.table ?? null;
+  const [collapseTreeSignal, setCollapseTreeSignal] = useState(0);
+  const refreshExplorer = async () => {
+    if (!projectRoot) return;
+    try {
+      const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: projectRoot });
+      if (next.project.project_root === projectRoot) setWorkspaceState({ kind: "ready", workspace: next });
+    } catch (error) {
+      showNotice(asApiError(error).diagnostic.message);
+    }
+  };
 
   return (
     <main className="app-shell">
@@ -1778,6 +1785,12 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
             { key: "open", label: projectPickerBusy ? "Opening Project…" : "Open Project", disabled: projectPickerBusy, onClick: () => void openProjectPicker() },
             { key: "create", label: "Create Project", onClick: () => requestAction({ kind: "create" }) },
             ...(workspace ? [{ key: "reload", label: "Reload Project", onClick: () => requestAction({ kind: "reload" }) }] : []),
+            ...(workspace ? [
+              { key: "settings", label: "Project Settings", onClick: () => setSurface("settings") },
+              { key: "delivery", label: "Build & Publish", onClick: () => setSurface("delivery") },
+              { key: "validate", label: "Validate", onClick: () => { setSurface("editor"); void validateDisk(); } },
+              { key: "build", label: "Build", disabled: mutationBlocked || deliveryBusy, onClick: () => { setSurface("editor"); void runBuild(); } },
+            ] : []),
           ] }} trigger={["click"]}>
             <Button htmlType="button" aria-label="Project menu">Project <ChevronDown size={14} aria-hidden="true" /></Button>
           </Dropdown>
@@ -1827,39 +1840,38 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       )}
 
       <div className="workbench" hidden={!workspace && surface !== "create"}>
-      {workspace && surface !== "create" && <WorkspaceNavigation
-        files={workspace.files}
-        activePath={activePath}
-        selectedTable={selectedTable}
-        revealSourcePath={revealCreated?.path ?? null}
-        surface={surface}
-        dirtyPaths={dirtyPaths}
-        canWrite={!mutationBlocked}
-        buildBlocked={mutationBlocked || deliveryBusy}
-        validating={manualValidation.kind === "loading"}
-        building={buildState.kind === "loading"}
-        onSelectFile={(path) => { const file = workspace.files.find((candidate) => candidate.path === path); if (file) selectFile(file); }}
-        onSelectTable={(table) => { setSelectedTable(table); setSurface("overview"); }}
-        onSettings={() => setSurface("settings")}
-        onDelivery={() => setSurface("delivery")}
-        onValidate={() => { setSurface("editor"); void validateDisk(); }}
-        onBuild={() => { setSurface("editor"); void runBuild(); }}
-        onCreate={openGroupedCreation}
-        onCreateData={openDataCreation}
-        sources={<>
-          <div className="source-nav-actions"><Button size="small" aria-label="Rename or move source" disabled={mutationBlocked || surface !== "editor" || !activeFile} onClick={openPathMutation}>Move selected source</Button></div>
-          <SourceTree
-            workspace={workspace}
-            activePath={surface === "editor" ? activePath : null}
-            editors={editors}
-            loadingPaths={loadingPaths}
-            fileOpenErrors={fileOpenErrors}
-            onSelect={selectFile}
-            onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
-            revealCreated={revealCreated}
-          />
-        </>}
-      />}
+      {workspace && surface !== "create" && <aside className="workspace-navigation explorer-pane" aria-label="Explorer">
+        <div className="explorer-toolbar">
+          <strong>EXPLORER</strong>
+          <Dropdown menu={{ items: [
+            { key: "table", label: "Table", onClick: () => openCreation("table") },
+            { key: "data", label: "Data", onClick: () => openCreation("data") },
+            { key: "type", label: "Type", onClick: () => openCreation("value_object") },
+          ] }} trigger={["click"]}>
+            <Button type="text" size="small" aria-label="New source artifact" disabled={mutationBlocked} icon={<FilePlus2 size={15} />} />
+          </Dropdown>
+          <Button type="text" size="small" aria-label="New folder" disabled={mutationBlocked} icon={<FolderPlus size={15} />} onClick={() => openCreation("folder")} />
+          <Button type="text" size="small" aria-label="Refresh Explorer" icon={<RefreshCw size={15} />} onClick={() => void refreshExplorer()} />
+          <Button type="text" size="small" aria-label="Collapse folders" icon={<ChevronsUp size={15} />} onClick={() => setCollapseTreeSignal((value) => value + 1)} />
+          <Dropdown menu={{ items: [
+            { key: "move", label: "Rename or Move Source", disabled: mutationBlocked || !activeFile, onClick: () => openPathMutation() },
+          ] }} trigger={["click"]}>
+            <Button type="text" size="small" aria-label="More Explorer actions" icon={<MoreHorizontal size={15} />} />
+          </Dropdown>
+        </div>
+        <SourceTree
+          workspace={workspace}
+          activePath={activePath}
+          editors={editors}
+          loadingPaths={loadingPaths}
+          fileOpenErrors={fileOpenErrors}
+          onSelect={selectFile}
+          onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
+          onRename={(file) => openPathMutation(file)}
+          collapseSignal={collapseTreeSignal}
+          revealCreated={revealCreated}
+        />
+      </aside>}
       <section className="surface-layout" hidden={surface !== "overview"}>
         <ProjectOverviewPanel
           // A Table switch must not show the previous saved snapshot under the new Table heading.
@@ -1944,6 +1956,8 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           )}
           {activeFile?.kind === "schema" && projectRoot && <TableEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
             projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
+            onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
+            onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
             dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
             beginApply={paths => {
               if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
@@ -1982,6 +1996,11 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               file={activeFile}
               projectRoot={projectRoot!}
               editor={activeEditor}
+              onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
+              onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
+              onOpenSchema={workspace.files.some((candidate) => candidate.kind === "schema" && candidate.table === activeFile.table)
+                ? () => { const schema = workspace.files.find((candidate) => candidate.kind === "schema" && candidate.table === activeFile.table); if (schema) selectFile(schema); }
+                : undefined}
               uiCache={dataEditorUi}
               onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
               onDraftCellChange={(draftId, field, value) => updateDraftCell(activeFile.path, draftId, field, value)}
@@ -2001,7 +2020,6 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               onSwitchView={(view) => switchView(activeFile.path, view)}
               onReloadConflict={() => void reloadConflict(activeFile.path)}
               onOverwriteConflict={() => void overwriteConflict(activeFile.path)}
-              cellFocusStart={cellFocusStart}
             />
           )}
 
@@ -2177,6 +2195,8 @@ function SourceTree({
   fileOpenErrors,
   onSelect,
   onFolderSelect,
+  onRename,
+  collapseSignal,
   revealCreated,
 }: {
   workspace: AuthoringWorkspace;
@@ -2186,6 +2206,8 @@ function SourceTree({
   fileOpenErrors: Record<string, ApiDiagnostic>;
   onSelect: (file: WorkspaceSourceFile) => void;
   onFolderSelect: (root: string, folder: string) => void;
+  onRename: (file: WorkspaceSourceFile) => void;
+  collapseSignal: number;
   revealCreated: { path: string; root: string } | null;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -2237,6 +2259,16 @@ function SourceTree({
     sortNodes(children);
     return { root, children };
   }), [workspace]);
+
+  useEffect(() => {
+    if (collapseSignal === 0) return;
+    const keys = new Set<string>();
+    const visit = (nodes: SourceTreeNode[]) => {
+      for (const node of nodes) if (node.kind === "folder") { keys.add(node.key); visit(node.children); }
+    };
+    for (const group of groups) { keys.add(`root:${group.root}`); visit(group.children); }
+    setCollapsed(keys);
+  }, [collapseSignal]);
 
   useEffect(() => {
     if (!revealCreated) return;
@@ -2343,8 +2375,8 @@ function SourceTree({
       editor?.conflict ? "external change conflict" : null,
     ].filter(Boolean);
     return (
+      <Dropdown key={node.key} menu={{ items: [{ key: "rename", label: "Rename or Move", onClick: () => onRename(node.file) }] }} trigger={["contextMenu"]}>
       <Button
-        key={node.key}
         htmlType="button"
         role="treeitem"
         data-depth={node.depth}
@@ -2354,7 +2386,10 @@ function SourceTree({
         className={`tree-file ${activePath === node.file.path ? "active" : ""}`}
         style={{ paddingLeft: `${10 + node.depth * 14}px` }}
         onClick={() => onSelect(node.file)}
-        onKeyDown={handleTreeKey}
+        onKeyDown={(event) => {
+          if (event.key === "F2") { event.preventDefault(); onRename(node.file); return; }
+          handleTreeKey(event);
+        }}
         title={node.file.path}
       >
         <span className={`file-kind ${node.file.kind}`}>{node.file.kind === "data" ? "▦" : node.file.kind === "schema" ? "T" : node.file.kind === "type" ? "◇" : "!"}</span>
@@ -2367,6 +2402,7 @@ function SourceTree({
         {editor?.saveStatus === "outcome_unknown" && <span className="file-state-badge warning" title="Save outcome unknown">?</span>}
         {editor?.conflict && <span className="conflict-badge" title="External change conflict">!</span>}
       </Button>
+      </Dropdown>
     );
   };
 
@@ -2430,6 +2466,9 @@ function DataEditor({
   file,
   projectRoot,
   editor,
+  onOverview,
+  onCreateData,
+  onOpenSchema,
   uiCache,
   onCellChange,
   onDraftCellChange,
@@ -2449,12 +2488,14 @@ function DataEditor({
   onSwitchView,
   onReloadConflict,
   onOverwriteConflict,
-  cellFocusStart,
 }: {
   mutationBlocked: boolean;
   file: WorkspaceSourceFile;
   projectRoot: string;
   editor: EditorState;
+  onOverview?: () => void;
+  onCreateData?: () => void;
+  onOpenSchema?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
   onCellChange: (recordIndex: number, field: string, value: AuthoringValue) => void;
   onDraftCellChange: (draftId: string, field: string, value: AuthoringValue) => void;
@@ -2474,7 +2515,6 @@ function DataEditor({
   onSwitchView: (view: EditorState["view"]) => void;
   onReloadConflict: () => void;
   onOverwriteConflict: () => void;
-  cellFocusStart: React.MutableRefObject<Map<string, AuthoringValue>>;
 }) {
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
@@ -2482,6 +2522,11 @@ function DataEditor({
   const rememberedUi = uiCache.current.get(uiKey);
   const lastFocusedCell = useRef<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<GridRange | null>(null);
+  const [editingCell, setEditingCell] = useState<{
+    key: string; value: AuthoringValue; rowIndex: number; columnIndex: number; selectAll: boolean; baseIdentity: string;
+    target: { kind: "existing"; recordIndex: number; field: string } | { kind: "added"; draftId: string; field: string };
+  } | null>(null);
+  const pendingGridFocus = useRef<string | null>(null);
   const draggingSelection = useRef(false);
   const [batchText, setBatchText] = useState(rememberedUi?.batchText ?? "");
   const [batchPreview, setBatchPreview] = useState<AuthoringBatchPreview | null>(null);
@@ -2529,6 +2574,75 @@ function DataEditor({
     row.kind === "existing"
       ? cellKey(row.recordIndex, column.name)
       : draftCellKey(row.draft.draftId, column.name)));
+  const focusGridCell = (rowIndex: number, columnIndex: number) => {
+    const key = gridCellKeys[rowIndex]?.[columnIndex];
+    if (!key) return;
+    pendingGridFocus.current = key;
+    setSelectedRange({ startRow: rowIndex, startColumn: columnIndex, endRow: rowIndex, endColumn: columnIndex });
+  };
+  const finishCellEdit = (commit: boolean, nextRow?: number, nextColumn?: number, restoreFocus = true) => {
+    if (!editingCell) return;
+    if (commit && !mutationBlocked && !editor.saving && editor.snapshot.baseContentIdentity === editingCell.baseIdentity) {
+      if (editingCell.target.kind === "existing") onCellChange(editingCell.target.recordIndex, editingCell.target.field, editingCell.value);
+      else onDraftCellChange(editingCell.target.draftId, editingCell.target.field, editingCell.value);
+    } else if (commit) setQueryNotice("Source changed or editing became unavailable. This cell change was not applied; reopen the cell to edit the current source.");
+    const { rowIndex, columnIndex, key } = editingCell;
+    setEditingCell(null);
+    if (nextRow !== undefined && nextColumn !== undefined) focusGridCell(nextRow, nextColumn);
+    else if (restoreFocus) pendingGridFocus.current = key;
+  };
+  const beginCellEdit = (key: string, value: AuthoringValue, rowIndex: number, columnIndex: number, selectAll = false) => {
+    const row = gridRows[rowIndex];
+    const column = editor.snapshot.columns[columnIndex];
+    if (!row || !column) return;
+    // A query may reorder visible rows while a cell is open. Commit to its source identity.
+    const target = row.kind === "existing" ? { kind: "existing" as const, recordIndex: row.recordIndex, field: column.name }
+      : { kind: "added" as const, draftId: row.draft.draftId, field: column.name };
+    setEditingCell({ key, value, rowIndex, columnIndex, selectAll, baseIdentity: editor.snapshot.baseContentIdentity, target });
+  };
+  useEffect(() => {
+    const focusRequestedValue = (event: Event) => {
+      const { cell, valuePath } = (event as CustomEvent<{ cell: string; valuePath: string }>).detail;
+      const rowIndex = gridCellKeys.findIndex((row) => row.includes(cell));
+      const columnIndex = rowIndex < 0 ? -1 : gridCellKeys[rowIndex].indexOf(cell);
+      const row = gridRows[rowIndex];
+      const column = editor.snapshot.columns[columnIndex];
+      if (!row || !column || !column.shape) return;
+      const value = row.kind === "existing" ? currentCellValue(editor, row.recordIndex, column.name) : row.draft.values[column.name] ?? nullAuthoringValue();
+      beginCellEdit(cell, value, rowIndex, columnIndex);
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        focusElement(document.querySelector<HTMLElement>(`[data-value-path="${CSS.escape(valuePath)}"]`));
+      }));
+    };
+    document.addEventListener("masterdata:focus-value", focusRequestedValue);
+    return () => document.removeEventListener("masterdata:focus-value", focusRequestedValue);
+  }, [editor, gridCellKeys, gridRows]);
+  const commitAndSave = () => {
+    if (editingCell) {
+      finishCellEdit(true, undefined, undefined, false);
+      window.setTimeout(onSave, 0);
+    } else onSave();
+  };
+  useLayoutEffect(() => {
+    if (!editingCell) return;
+    const focusInput = () => {
+      const input = document.querySelector<HTMLElement>(`[data-edit-cell="${CSS.escape(editingCell.key)}"] input:not([disabled]), [data-edit-cell="${CSS.escape(editingCell.key)}"] button:not([disabled]), [data-edit-cell="${CSS.escape(editingCell.key)}"] [tabindex="0"]`);
+      input?.focus();
+      if (editingCell.selectAll && input instanceof HTMLInputElement) input.select();
+      return Boolean(input);
+    };
+    if (focusInput()) return;
+    // Ant Design mounts the popover portal after the cell commit. Focus when it appears.
+    const observer = new MutationObserver(() => { if (focusInput()) observer.disconnect(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [editingCell?.key]);
+  useLayoutEffect(() => {
+    const key = pendingGridFocus.current;
+    if (!key) return;
+    document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();
+    pendingGridFocus.current = null;
+  }, [editingCell, selectedRange]);
 
   useEffect(() => {
     lastFocusedCell.current = null;
@@ -2758,6 +2872,9 @@ function DataEditor({
             ...(editor.conflict ? [{ key: "compare", label: "Conflict" }] : [])]} />
         <div className="editor-actions">
           <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
+          {onOverview && <Button htmlType="button" onClick={onOverview}>Table Overview</Button>}
+          {onOpenSchema && <Button htmlType="button" onClick={onOpenSchema}>Schema</Button>}
+          {onCreateData && <Button htmlType="button" onClick={onCreateData}>New data file</Button>}
           <Button
             htmlType="button"
             aria-label="Add Row"
@@ -2768,7 +2885,7 @@ function DataEditor({
           </Button>
           <Button htmlType="button" aria-label="Undo" onClick={onUndo} disabled={mutationBlocked || editor.saving || editor.historyPast.length === 0}>Undo</Button>
           <Button htmlType="button" aria-label="Redo" onClick={onRedo} disabled={mutationBlocked || editor.saving || editor.historyFuture.length === 0}>Redo</Button>
-          <Button htmlType="button" onClick={onSave} disabled={mutationBlocked || !dirty || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
+          <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !editingCell) || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
         </div>
       </header>
 
@@ -2861,44 +2978,10 @@ function DataEditor({
                   className={gridRow.kind === "existing" && gridRow.pendingDelete ? "pending-delete" : ""}
                 >
                   <th className="row-number">
-                    {gridRow.kind === "existing" ? gridRow.recordIndex + 1 : "new"}
-                    {gridRow.kind === "existing" && gridRow.pendingDelete ? (
-                      <>
-                        <span className="row-state pending">Pending delete</span>
-                        <Button
-                          size="small"
-                          htmlType="button"
-                          aria-label={`Undo Delete record ${gridRow.recordIndex + 1}`}
-                          onClick={() => onUndoExistingDelete(gridRow.recordIndex)}
-                          disabled={mutationBlocked || editor.saving}
-                        >
-                          Undo Delete
-                        </Button>
-                      </>
-                    ) : gridRow.kind === "existing" ? (
-                      <Button
-                        size="small"
-                        htmlType="button"
-                        aria-label={`Delete record ${gridRow.recordIndex + 1}`}
-                        onClick={() => onDeleteExistingRow(gridRow.recordIndex)}
-                        disabled={mutationBlocked || editor.saving}
-                      >
-                        Delete
-                      </Button>
-                    ) : (
-                      <>
-                        <span className="row-state added">New draft</span>
-                        <Button
-                          size="small"
-                          htmlType="button"
-                          aria-label={`Delete new row ${gridRowIndex + 1}`}
-                          onClick={() => onDeleteDraftRow(gridRow.draft.draftId)}
-                          disabled={mutationBlocked || editor.saving}
-                        >
-                          Delete
-                        </Button>
-                      </>
-                    )}
+                    <span title={gridRow.kind === "existing" && gridRow.pendingDelete ? "Pending delete" : gridRow.kind === "added" ? "New draft" : undefined}>{gridRow.kind === "existing" ? gridRow.recordIndex + 1 : "+"}</span>
+                    <Dropdown menu={{ items: gridRow.kind === "existing" ? [{ key: "delete", label: gridRow.pendingDelete ? "Undo Delete" : "Delete Record", danger: !gridRow.pendingDelete, disabled: mutationBlocked || editor.saving, onClick: () => gridRow.pendingDelete ? onUndoExistingDelete(gridRow.recordIndex) : onDeleteExistingRow(gridRow.recordIndex) }] : [{ key: "delete", label: "Delete New Row", danger: true, disabled: mutationBlocked || editor.saving, onClick: () => onDeleteDraftRow(gridRow.draft.draftId) }] }} trigger={["click"]}>
+                      <Button type="text" size="small" aria-label={`Actions for record ${gridRowIndex + 1}`} icon={<MoreHorizontal size={13} />} />
+                    </Dropdown>
                   </th>
                   {editor.snapshot.columns.map((column, columnIndex) => {
                     const key = gridCellKeys[gridRowIndex][columnIndex];
@@ -2929,13 +3012,31 @@ function DataEditor({
                     const readOnlyReason = gridRow.kind === "added"
                       ? undefined
                       : snapshotCell?.readOnlyReason ?? column.readOnlyReason ?? undefined;
+                    const complex = column.shape?.modifier === "array" || column.shape?.shape.kind === "custom" || column.shape?.shape.kind === "flags";
+                    const isEditing = editingCell?.key === key;
+                    const label = `${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`;
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
+                        <Popover open={Boolean(isEditing && complex)} trigger={["click"]} onOpenChange={(open) => { if (!open && isEditing) finishCellEdit(false, undefined, undefined, false); }} placement="bottomLeft" overlayClassName="complex-cell-popover"
+                          content={isEditing && column.shape ? <div data-edit-cell={key} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); event.stopPropagation(); commitAndSave(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finishCellEdit(false); } }}>
+                            <ValueEditor field={column.shape} value={editingCell.value} label={label} cellKey={key} editable={editable} invalidPaths={invalidPaths}
+                              onChange={(next) => setEditingCell((current) => current?.key === key ? { ...current, value: next } : current)} />
+                            <div className="complex-cell-actions"><Button type="primary" size="small" onClick={() => finishCellEdit(true)}>Apply to buffer</Button><Button size="small" onClick={() => finishCellEdit(false)}>Cancel</Button></div>
+                          </div> : null}>
                         <div
                           className="cell-wrap"
                           data-cell={key}
+                          data-edit-cell={isEditing && !complex ? key : undefined}
+                          tabIndex={0}
+                          role="gridcell"
+                          aria-label={`${label}: ${authoringValueSummary(value)}${readOnlyReason ? `, ${readOnlyReason}` : ""}`}
                           onMouseDown={(event) => {
                             if (event.button !== 0) return;
+                            if (editingCell && editingCell.key !== key) {
+                              const previousShape = editor.snapshot.columns[editingCell.columnIndex]?.shape;
+                              const previousComplex = previousShape?.modifier === "array" || previousShape?.shape.kind === "custom" || previousShape?.shape.kind === "flags";
+                              finishCellEdit(!previousComplex, undefined, undefined, false);
+                            }
                             draggingSelection.current = true;
                             setSelectedRange((current) => event.shiftKey && current
                               ? { ...current, endRow: gridRowIndex, endColumn: columnIndex }
@@ -2948,12 +3049,18 @@ function DataEditor({
                                 : { startRow: gridRowIndex, startColumn: columnIndex, endRow: gridRowIndex, endColumn: columnIndex });
                             }
                           }}
+                          onDoubleClick={() => { if (editable) beginCellEdit(key, value, gridRowIndex, columnIndex); }}
                           onFocusCapture={() => {
                             onCellFocus(key);
-                            cellFocusStart.current.set(key, value);
                             lastFocusedCell.current = key;
                           }}
+                          onBlurCapture={(event) => {
+                            if (!isEditing || complex) return;
+                            if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+                            finishCellEdit(true, undefined, undefined, false);
+                          }}
                           onKeyDown={(event) => {
+                            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s" && isEditing) { event.preventDefault(); event.stopPropagation(); commitAndSave(); return; }
                             const input = event.target instanceof HTMLInputElement ? event.target : null;
                             const textSelectionActive = input?.selectionStart != null
                               && input.selectionEnd != null
@@ -2968,37 +3075,45 @@ function DataEditor({
                               else void readClipboardAndPreview();
                               return;
                             }
-                            handleGridKey(event, gridRowIndex, columnIndex, gridCellKeys, selectedRange, setSelectedRange, () => {
-                              const initial = cellFocusStart.current.get(key);
-                              if (initial === undefined) return;
-                              if (gridRow.kind === "added") {
-                                onDraftCellChange(gridRow.draft.draftId, column.name, initial);
-                              } else {
-                                onCellChange(gridRow.recordIndex, column.name, initial);
+                            if (isEditing) {
+                              if (event.key === "Escape") { event.preventDefault(); finishCellEdit(false); return; }
+                              if (!complex && (event.key === "Enter" || event.key === "Tab")) {
+                                event.preventDefault();
+                                const nextRow = event.key === "Enter" ? gridRowIndex + (event.shiftKey ? -1 : 1) : gridRowIndex;
+                                const nextColumn = event.key === "Tab" ? columnIndex + (event.shiftKey ? -1 : 1) : columnIndex;
+                                finishCellEdit(true, Math.max(0, Math.min(gridRows.length - 1, nextRow)), Math.max(0, Math.min(editor.snapshot.columns.length - 1, nextColumn)));
                               }
-                            });
+                              return;
+                            }
+                            if ((event.key === "Enter" || event.key === "F2") && editable) { event.preventDefault(); beginCellEdit(key, value, gridRowIndex, columnIndex, event.key === "Enter"); return; }
+                            if (event.key === "Escape" && selectedRange) { event.preventDefault(); setSelectedRange({ startRow: gridRowIndex, startColumn: columnIndex, endRow: gridRowIndex, endColumn: columnIndex }); return; }
+                            const nextRow = gridRowIndex + (event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0);
+                            const nextColumn = columnIndex + (event.key === "ArrowRight" || event.key === "Tab" && !event.shiftKey ? 1 : event.key === "ArrowLeft" || event.key === "Tab" && event.shiftKey ? -1 : 0);
+                            if (nextRow !== gridRowIndex || nextColumn !== columnIndex) {
+                              event.preventDefault();
+                              const row = Math.max(0, Math.min(gridRows.length - 1, nextRow));
+                              const col = Math.max(0, Math.min(editor.snapshot.columns.length - 1, nextColumn));
+                              if (event.shiftKey && event.key.startsWith("Arrow")) setSelectedRange((current) => ({ startRow: current?.startRow ?? gridRowIndex, startColumn: current?.startColumn ?? columnIndex, endRow: row, endColumn: col }));
+                              else focusGridCell(row, col);
+                            }
                           }}
                         >
-                          {column.shape && (editable || column.keyField || snapshotCell?.editable === true) ? (
+                          {isEditing && !complex && column.shape ? (
                             <ValueEditor
                               field={column.shape}
-                              value={value}
-                              label={`${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`}
+                              value={editingCell.value}
+                              label={label}
                               cellKey={key}
                               editable={editable}
                               invalidPaths={invalidPaths}
-                              onChange={(next) => gridRow.kind === "added"
-                                ? onDraftCellChange(gridRow.draft.draftId, column.name, next)
-                                : onCellChange(gridRow.recordIndex, column.name, next)}
+                              onChange={(next) => setEditingCell((current) => current?.key === key ? { ...current, value: next } : current)}
                             />
                           ) : (
-                            <div className="read-only-value">
-                              <output data-value-path={key}>{authoringValueSummary(value)}</output>
-                              {readOnlyReason && <span>{readOnlyReason}</span>}
-                            </div>
+                            <output className="cell-summary" data-value-path={key} title={readOnlyReason ?? authoringValueSummary(value)}>{authoringValueSummary(value)}</output>
                           )}
                           {hasDiagnostic && <span className="cell-error" title="Validation diagnostic">!</span>}
                         </div>
+                        </Popover>
                       </td>
                     );
                   })}
@@ -3013,7 +3128,7 @@ function DataEditor({
                       const editable = !mutationBlocked && !editor.saving && (gridRow.kind === "added"
                         ? true
                         : snapshotRow?.tagsEditable !== false && !gridRow.pendingDelete);
-                      return <RecordTagEditor
+                      return <Popover trigger="click" placement="bottomLeft" overlayClassName="tags-cell-popover" content={<RecordTagEditor
                         tags={tags}
                         suggestions={editor.snapshot.tagCandidates ?? []}
                         suggestionsComplete={editor.snapshot.tagCandidatesComplete !== false}
@@ -3023,7 +3138,7 @@ function DataEditor({
                         onChange={(next) => gridRow.kind === "added"
                           ? onDraftTagsChange(gridRow.draft.draftId, next)
                           : onTagsChange(gridRow.recordIndex, next)}
-                      />;
+                      />}><Button type="text" size="small" className="tag-summary" aria-label={`Edit tags for ${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`}`}>{tags.length ? tags.join(", ") : "—"}</Button></Popover>;
                     })()}
                   </td>
                 </tr>
@@ -3137,56 +3252,6 @@ function validationLabel(editor: EditorState): string {
   if (editor.previewState === "pending") return "Validating buffer…";
   if (editor.previewState === "unavailable") return "Validation unavailable";
   return editor.preview.validation.valid ? "Buffer valid" : `${editor.preview.validation.diagnostics.length} problems`;
-}
-
-function handleGridKey(
-  event: React.KeyboardEvent<HTMLDivElement>,
-  rowIndex: number,
-  columnIndex: number,
-  cellKeys: string[][],
-  selectedRange: GridRange | null,
-  onRangeChange: (range: GridRange) => void,
-  cancel: () => void,
-) {
-  const input = event.target instanceof HTMLInputElement ? event.target : null;
-  if (event.key === "Escape") {
-    event.preventDefault();
-    if (selectedRange
-      && (selectedRange.startRow !== selectedRange.endRow || selectedRange.startColumn !== selectedRange.endColumn)) {
-      onRangeChange({ startRow: rowIndex, startColumn: columnIndex, endRow: rowIndex, endColumn: columnIndex });
-      input?.blur();
-      return;
-    }
-    cancel();
-    input?.blur();
-    return;
-  }
-  if (event.key === "F2") {
-    if (input?.type === "text") {
-      event.preventDefault();
-      input.select();
-    }
-    return;
-  }
-  if (!input || input.type !== "text") return;
-  let nextRow = rowIndex;
-  let nextColumn = columnIndex;
-  if (event.key === "ArrowUp") nextRow -= 1;
-  else if (event.key === "ArrowDown" || event.key === "Enter") nextRow += 1;
-  else if (event.key === "ArrowLeft" && input.selectionStart === 0) nextColumn -= 1;
-  else if (event.key === "ArrowRight" && input.selectionStart === input.value.length) nextColumn += 1;
-  else return;
-  if (nextRow < 0 || nextRow >= cellKeys.length || nextColumn < 0 || nextColumn >= (cellKeys[nextRow]?.length ?? 0)) return;
-  event.preventDefault();
-  if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-    const anchorRow = selectedRange?.startRow ?? rowIndex;
-    const anchorColumn = selectedRange?.startColumn ?? columnIndex;
-    onRangeChange({ startRow: anchorRow, startColumn: anchorColumn, endRow: nextRow, endColumn: nextColumn });
-  } else {
-    onRangeChange({ startRow: nextRow, startColumn: nextColumn, endRow: nextRow, endColumn: nextColumn });
-  }
-  const next = cellKeys[nextRow][nextColumn];
-  focusValuePathOrCell(next, null);
 }
 
 function DiffView({

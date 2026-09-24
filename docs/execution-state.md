@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: aed15e14a11f1c62c86eb2e65d6885b92320dad8
-Work base: 6b0d92cbe8c6b73ea514ebf5d061253afdc8c92d
+Stage: implementation-ready
+Candidate: none
+Work base: 259d4ff445a182723dad619f55844c05f70a23b8
 
 ## Active work
 
-None.
+Completed: Explorer / Data / Schema / Typeの仕様更新。In progress: implementation。Remaining: 検証。
 
 ## Blocking findings
 

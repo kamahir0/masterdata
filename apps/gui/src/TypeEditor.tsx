@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Checkbox, Form, Input, InputNumber, Select, Space, Spin, Table, Tabs, Tag } from "antd";
+import { Alert, Button, Checkbox, Dropdown, Form, Input, InputNumber, Modal, Select, Space, Spin, Table, Tabs, Tag } from "antd";
+import { MoreHorizontal } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { MigrationResult } from "./TableEditor";
 import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
@@ -35,6 +36,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MigrationResult | null>(null);
   const revision = useRef(0);
+  const actionOrigin = useRef<HTMLElement | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { if (plan) document.getElementById("type-plan-summary")?.focus(); }, [plan]);
@@ -49,12 +51,12 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
   }, [projectPath, path]);
   const change = (fn: () => void) => { revision.current += 1; fn(); setPlan(null); setConfirmed(false); setError(null); setResult(null); };
   const custom = snapshot?.category === "Custom Type";
-  const protectedMember = snapshot?.category === "Flags Enum" && selected === "None";
-  const start = (op: Operation) => {
-    change(() => { setOperation(op); setName(op === "rename" ? selected : ""); setValue(""); setFrom(snapshot?.conversions?.fromUnderlyingImplicit ?? false); setTo(snapshot?.conversions?.toUnderlyingImplicit ?? false); if (op === "add") { setHasInitializer(false); setInitializer(resetInitializer()); } });
+  const start = (op: Operation, target = selected, origin?: HTMLElement | null) => {
+    actionOrigin.current = origin ?? document.activeElement as HTMLElement;
+    change(() => { setSelected(target); setOperation(op); setName(op === "rename" ? target : ""); setValue(""); setFrom(snapshot?.conversions?.fromUnderlyingImplicit ?? false); setTo(snapshot?.conversions?.toUnderlyingImplicit ?? false); if (op === "add") { setHasInitializer(false); setInitializer(resetInitializer()); } });
     window.requestAnimationFrame(() => document.getElementById(op === "drop" ? "type-plan" : op === "conversions" ? "type-from" : "type-name")?.focus());
   };
-  const cancel = () => { const old = operation; change(() => setOperation(null)); window.requestAnimationFrame(() => document.getElementById(`type-${old}-action`)?.focus()); };
+  const cancel = () => { change(() => setOperation(null)); window.requestAnimationFrame(() => actionOrigin.current?.focus()); };
   const getPlan = async () => {
     if (inFlight.current || !snapshot || !operation) return;
     const current = revision.current;
@@ -92,25 +94,23 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
   const blocked = migrationBlockedFiles(plan?.files ?? [], dirtyPaths);
   const stale = result?.state === "not_started" && /stale/i.test(result.diagnostic?.code + " " + result.diagnostic?.message);
   return <section className="table-editor" aria-label="Type Editor" tabIndex={0}>
-    {error && <Alert role="alert" type="error" title={error} />}
+    {error && !operation && <Alert role="alert" type="error" title={error} />}
     {!snapshot && !error && <Spin tip="Loading Type"><div style={{ minHeight: 80 }} /></Spin>}
     {snapshot && <>
       <h2>{snapshot.name} <Tag>{snapshot.category}</Tag></h2><p className="source-provenance">{snapshot.path}</p>
       {snapshot.underlying && <p>Underlying: {snapshot.underlying}</p>}
       {snapshot.conversions ? <>
         <p>fromUnderlyingImplicit: {String(snapshot.conversions.fromUnderlyingImplicit)} · toUnderlyingImplicit: {String(snapshot.conversions.toUnderlyingImplicit)}</p>
-        <Button id="type-conversions-action" disabled={!canWrite || busy} onClick={() => start("conversions")}>Edit conversions</Button>
+        <Button id="type-conversions-action" disabled={!canWrite || busy} onClick={(event) => start("conversions", "", event.currentTarget)}>Edit conversions</Button>
       </> : <>
+        <div className="typed-list-heading"><h3>{custom ? "Fields" : "Members"} <span>{custom ? snapshot.fields.length : snapshot.members.length}</span></h3><Button id="type-add-action" disabled={!canWrite || busy} onClick={(event) => start("add", "", event.currentTarget)}>Add {custom ? "Field" : "Member"}</Button></div>
         {custom ? <Table<Field> size="small" pagination={false} rowKey="name" dataSource={snapshot.fields}
-          rowSelection={{ type: "radio", selectedRowKeys: [selected], onChange: keys => change(() => { setSelected(String(keys[0])); setOperation(null); }), getCheckboxProps: field => ({ disabled: busy, "aria-label": `Select field ${field.name}` }) }}
-          columns={[{ title: "Key", dataIndex: "key" }, { title: "Field", dataIndex: "name" }, { title: "Type", dataIndex: "type" }, { title: "Modifier", render: (_, f) => f.array ? "Array" : f.nullable ? "Nullable" : "Required" }]} />
+          columns={[{ title: "Key", dataIndex: "key" }, { title: "Field", dataIndex: "name" }, { title: "Type", dataIndex: "type" }, { title: "Modifier", render: (_, f) => f.array ? "Array" : f.nullable ? "Nullable" : "Required" }, {title:"",key:"actions",width:46,render:(_,field)=><Dropdown menu={{items:[{key:"rename",label:"Rename Field",disabled:!canWrite||busy,onClick:()=>start("rename",field.name,document.querySelector<HTMLElement>(`[data-type-action="${CSS.escape(field.name)}"]`))},{key:"drop",label:"Drop Field",danger:true,disabled:!canWrite||busy,onClick:()=>start("drop",field.name,document.querySelector<HTMLElement>(`[data-type-action="${CSS.escape(field.name)}"]`))}]}} trigger={["click"]}><Button type="text" size="small" data-type-action={field.name} aria-label={`Actions for field ${field.name}`} icon={<MoreHorizontal size={16}/>} /></Dropdown>}]} />
           : <Table size="small" pagination={false} rowKey="name" dataSource={snapshot.members}
-            rowSelection={{ type: "radio", selectedRowKeys: [selected], onChange: keys => change(() => { setSelected(String(keys[0])); setOperation(null); }), getCheckboxProps: member => ({ disabled: busy, "aria-label": `Select member ${member.name}` }) }}
-            columns={[{ title: "Member", dataIndex: "name" }, { title: "Numeric value", dataIndex: "value" }]} />}
-        <Space><Button id="type-add-action" disabled={!canWrite || busy} onClick={() => start("add")}>Add {custom ? "Field" : "Member"}</Button>
-          <Button id="type-rename-action" disabled={!selected || protectedMember || !canWrite || busy} onClick={() => start("rename")}>Rename {custom ? "Field" : "Member"}</Button>
-          <Button id="type-drop-action" danger disabled={!selected || protectedMember || !canWrite || busy} onClick={() => start("drop")}>Drop {custom ? "Field" : "Member"}</Button></Space>
+            columns={[{ title: "Member", dataIndex: "name" }, { title: "Numeric value", dataIndex: "value" }, {title:"",key:"actions",width:46,render:(_,member)=><Dropdown menu={{items:[{key:"rename",label:"Rename Member",disabled:!canWrite||busy||(snapshot.category==="Flags Enum"&&member.name==="None"),onClick:()=>start("rename",member.name,document.querySelector<HTMLElement>(`[data-type-action="${CSS.escape(member.name)}"]`))},{key:"drop",label:"Drop Member",danger:true,disabled:!canWrite||busy||(snapshot.category==="Flags Enum"&&member.name==="None"),onClick:()=>start("drop",member.name,document.querySelector<HTMLElement>(`[data-type-action="${CSS.escape(member.name)}"]`))}]}} trigger={["click"]}><Button type="text" size="small" data-type-action={member.name} aria-label={`Actions for member ${member.name}`} disabled={snapshot.category==="Flags Enum"&&member.name==="None"} icon={<MoreHorizontal size={16}/>} /></Dropdown>}]} />}
       </>}
+      <Modal open={operation!==null} title="Type change" onCancel={cancel} footer={null} width={780} destroyOnHidden>
+      {error && <Alert role="alert" type="error" title={error} />}
       {operation && <Form layout="vertical" disabled={busy} className="migration-form">
         <h3>{operation} {snapshot.name}{operation !== "add" && operation !== "conversions" ? `.${selected}` : ""}</h3>
         {operation === "conversions" ? <Space><Checkbox id="type-from" checked={from} onChange={event => change(() => setFrom(event.target.checked))}>fromUnderlyingImplicit</Checkbox><Checkbox checked={to} onChange={event => change(() => setTo(event.target.checked))}>toUnderlyingImplicit</Checkbox></Space>
@@ -143,7 +143,9 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
         {plan.destructive && <Checkbox disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}>I confirm dropping {plan.target}.{plan.selector}{custom ? " and its values" : ""}.</Checkbox>}
         <Button type="primary" danger={plan.destructive} loading={busy} disabled={migrationApplyDisabled({ canWrite, stale, blocked: blocked.length > 0, destructive: plan.destructive, confirmed, succeeded: result?.state === "success" })} onClick={() => void apply()}>Apply reviewed Plan</Button>
       </section>}
+      {result && <Alert role="status" type={result.state === "success" ? "success" : "warning"} title={stale ? "Stale Plan — re-plan required" : result.state} description={<>{result.diagnostic?.message}{result.fileStates?.map(f => <p key={f.path}>{f.path}: {f.state}</p>)}{result.recoveryWorkspace && <p>Recovery workspace: {result.recoveryWorkspace}</p>}</>} />}
+      </Modal>
     </>}
-    {result && <Alert role="status" type={result.state === "success" ? "success" : "warning"} title={stale ? "Stale Plan — re-plan required" : result.state} description={<>{result.diagnostic?.message}{result.fileStates?.map(f => <p key={f.path}>{f.path}: {f.state}</p>)}{result.recoveryWorkspace && <p>Recovery workspace: {result.recoveryWorkspace}</p>}</>} />}
+    {result && !operation && <Alert role="status" type={result.state === "success" ? "success" : "warning"} title={stale ? "Stale Plan — re-plan required" : result.state} description={<>{result.diagnostic?.message}{result.fileStates?.map(f => <p key={f.path}>{f.path}: {f.state}</p>)}{result.recoveryWorkspace && <p>Recovery workspace: {result.recoveryWorkspace}</p>}</>} />}
   </section>;
 }

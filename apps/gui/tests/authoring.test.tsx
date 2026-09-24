@@ -64,16 +64,14 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
 });
-async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); return await screen.findByRole('textbox', { name: label }); }
-function navigation() { return within(screen.getByRole('navigation', { name: 'Project navigation' })); }
+async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); const cell = await screen.findByRole('gridcell', { name: new RegExp(`^${label}:`) }); fireEvent.keyDown(cell, { key: 'Enter' }); return await screen.findByRole('textbox', { name: label }); }
+function commit(input: HTMLElement) { fireEvent.keyDown(input, { key: 'Enter' }); }
+async function edit(label: string) { const cell = await screen.findByRole('gridcell', { name: new RegExp(`^${label}:`) }); fireEvent.keyDown(cell, { key: 'Enter' }); return await screen.findByRole('textbox', { name: label }); }
+function navigation() { return within(screen.getByRole('complementary', { name: 'Explorer' })); }
 function openProjectCommands() {
-  const button = navigation().getByRole('button', { name: 'Project', exact: true });
-  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
+  fireEvent.click(within(document.querySelector('.titlebar')!).getByRole('button', { name: 'Project menu' }));
 }
-function openSourceFiles() {
-  const button = navigation().getByRole('button', { name: 'Source Files', exact: true });
-  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
-}
+function openSourceFiles() { /* Explorer is the persistent source tree. */ }
 function reloadProject() {
   fireEvent.click(within(document.querySelector('.titlebar')!).getByRole('button', { name: 'Project menu' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Reload Project' }));
@@ -88,7 +86,7 @@ test('initial Project-not-found is a Welcome state without an Explorer error', a
   expect(await screen.findByRole('heading', { name: 'Start with a Masterdata project' })).toBeTruthy();
   await waitFor(() => expect(screen.queryByText('Looking for a configured project…')).toBeNull());
   expect(screen.queryByText('E-PROJECT-NOT-FOUND')).toBeNull();
-  expect(screen.queryByRole('navigation', { name: 'Project navigation' })).toBeNull();
+  expect(screen.queryByRole('complementary', { name: 'Explorer' })).toBeNull();
   expect(screen.getByRole('complementary', { name: 'Recent Projects' })).toBeTruthy();
 });
 
@@ -106,7 +104,7 @@ test('Open Project uses the native directory picker and remembers a successful s
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   await screen.findByRole('heading', { name: 'Start with a Masterdata project' });
   fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
-  expect(await screen.findByRole('navigation', { name: 'Project navigation' })).toBeTruthy();
+  expect(await screen.findByRole('complementary', { name: 'Explorer' })).toBeTruthy();
   expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
   expect(JSON.parse(window.localStorage.getItem('masterdata.recent-projects.v1') ?? '[]')).toEqual([
     { root: '/project', name: 'Demo' },
@@ -144,7 +142,7 @@ test('explicit Project open failure stays on Welcome with a persistent diagnosti
   fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
   expect(await screen.findByText('E-PROJECT-CONFIG')).toBeTruthy();
   expect(screen.getByText('masterdata.toml is invalid')).toBeTruthy();
-  expect(screen.queryByRole('navigation', { name: 'Project navigation' })).toBeNull();
+  expect(screen.queryByRole('complementary', { name: 'Explorer' })).toBeNull();
 });
 
 test('Recent Project removal changes only user-local history', async () => {
@@ -167,12 +165,15 @@ test('late pre-save no-op preview cannot discard a new edit after Save resets re
   preview = () => new Promise(resolve => { resolveOld = resolve; });
   const input = await open();
   fireEvent.change(input, { target: { value: '10 ' } });
+  commit(input);
   await waitFor(() => expect(resolveOld).toBeDefined());
   fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
-  await waitFor(() => expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('10'));
-  fireEvent.change(screen.getByRole('textbox', { name: 'record 1 weight' }), { target: { value: '20' } });
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /record 1 weight: 10/ })).toBeTruthy());
+  const nextInput = await edit('record 1 weight');
+  fireEvent.change(nextInput, { target: { value: '20' } });
+  commit(nextInput);
   await act(async () => resolveOld({ changed: false, candidateSource: 'weight: 10', validation }));
-  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
+  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(screen.getByText('1 dirty')).toBeTruthy();
 });
 
@@ -187,6 +188,53 @@ test('diagnostic belonging to the selected source marks its cell', async () => {
   openSnapshot.validation = { valid: false, diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', source: '/project/data.yaml', record_identity: 'record[0]', message: 'field `weight` is invalid' }] } as any;
   const input = await open();
   expect(input.closest('td')?.classList.contains('invalid')).toBe(true);
+});
+
+test('Explorer exposes only source roots and F2 opens source move', async () => {
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const tree = await screen.findByRole('tree', { name: 'Project source files' });
+  expect(within(tree).getByRole('treeitem', { name: '.', exact: true })).toBeTruthy();
+  expect(navigation().queryByRole('button', { name: 'Tables' })).toBeNull();
+  fireEvent.keyDown(within(tree).getByRole('treeitem', { name: 'data.yaml', exact: true }), { key: 'F2' });
+  expect(await screen.findByRole('dialog')).toBeTruthy();
+  expect(screen.getByText('Rename or move source')).toBeTruthy();
+});
+
+test('scalar edit stays local until commit, Escape cancels, and Tab moves to the next cell', async () => {
+  openSnapshot = mutationSnapshot() as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const idCell = await screen.findByRole('gridcell', { name: /record 1 id: 1/ });
+  fireEvent.keyDown(idCell, { key: 'Enter' });
+  const input = await screen.findByRole('textbox', { name: 'record 1 id' });
+  fireEvent.change(input, { target: { value: '2' } });
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.getByRole('gridcell', { name: /record 1 id: 1/ })).toBeTruthy();
+  expect(screen.queryByText('1 dirty')).toBeNull();
+  fireEvent.keyDown(idCell, { key: 'Enter' });
+  const reopened = await screen.findByRole('textbox', { name: 'record 1 id' });
+  fireEvent.change(reopened, { target: { value: '2' } });
+  fireEvent.keyDown(reopened, { key: 'Tab' });
+  expect(screen.getByRole('gridcell', { name: /record 1 id: 2/ })).toBeTruthy();
+  expect((document.activeElement as HTMLElement).getAttribute('aria-label')).toContain('record 1 weight');
+});
+
+test('complex values remain summarized in rows and keyboard opens the nested editor', async () => {
+  const arrayShape = { name: 'values', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'values', typeName: 'int[]', editable: true, keyField: false, shape: arrayShape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'values', text: '[1, 2]', value: { kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: 0, value: { kind: 'number', value: '1' } }, { sourceIndex: 1, value: { kind: 'number', value: '2' } }] }, editable: true, readOnlyReason: null }] },
+    { recordIndex: 1, cells: [{ field: 'values', text: '[3]', value: { kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: 0, value: { kind: 'number', value: '3' } }] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const first = await screen.findByRole('gridcell', { name: /record 1 values:/ });
+  expect(screen.getByRole('gridcell', { name: /record 2 values:/ })).toBeTruthy();
+  expect(screen.queryByRole('textbox', { name: 'record 1 values item 1' })).toBeNull();
+  fireEvent.keyDown(first, { key: 'Enter' });
+  const nested = await screen.findByRole('textbox', { name: 'record 1 values item 1' });
+  await waitFor(() => expect(document.activeElement).toBe(nested));
+  fireEvent.keyDown(nested, { key: 'Escape' });
+  expect(screen.queryByRole('textbox', { name: 'record 1 values item 1' })).toBeNull();
+  expect(screen.getByRole('gridcell', { name: /record 2 values:/ })).toBeTruthy();
+  expect(screen.queryByText('1 dirty')).toBeNull();
 });
 
 test('filter options stay out of the default grid and retain their draft when reopened', async () => {
@@ -206,7 +254,7 @@ test('Data query draft survives visiting a Project area and returning to the sam
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Data filter value' }), { target: { value: 'rare' } });
   openProjectCommands();
-  fireEvent.click(navigation().getByRole('button', { name: 'Build & Publish' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Build & Publish' }));
   expect(await screen.findByRole('heading', { name: 'Build / Publish' })).toBeTruthy();
   openSourceFiles();
   fireEvent.click(navigation().getByRole('treeitem', { name: 'data.yaml', exact: true }));
@@ -227,10 +275,10 @@ test('Data query drafts remain file-local when switching between Data documents'
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Data filter value' }), { target: { value: 'rare' } });
-  fireEvent.click(navigation().getByRole('button', { name: 'Data · other.yaml' }));
-  expect(await screen.findByRole('textbox', { name: 'record 1 weight' })).toBeTruthy();
+  fireEvent.click(navigation().getByRole('treeitem', { name: 'other.yaml', exact: true }));
+  expect(await screen.findByRole('gridcell', { name: /record 1 weight:/ })).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
-  fireEvent.click(navigation().getByRole('button', { name: 'Data · data.yaml' }));
+  fireEvent.click(navigation().getByRole('treeitem', { name: 'data.yaml', exact: true }));
   expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
 });
 
@@ -243,7 +291,7 @@ test('Table context opens Data creation with its Table already selected', async 
     return normalInvoke(command, args);
   });
   await open();
-  fireEvent.click(navigation().getByRole('button', { name: '+ Data file' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New data file' }));
   expect((await screen.findByRole('combobox', { name: 'Existing Table' })).closest('.ant-select')?.textContent).toContain('item');
   expect(screen.getByRole('combobox', { name: 'Artifact type' }).closest('.ant-select')?.textContent).toContain('Data');
 });
@@ -251,7 +299,7 @@ test('Table context opens Data creation with its Table already selected', async 
 test('Table Overview follows the selected logical Table rather than the previously active file', async () => {
   const multiTableWorkspace = { ...workspace, files: [
     { ...workspace.files[0], table: 'item', typeName: null },
-    { path: 'enemy-schema.yaml', sourceRoot: '.', kind: 'schema', table: 'enemy', typeName: null },
+    { path: 'enemy-data.yaml', sourceRoot: '.', kind: 'data', table: 'enemy', typeName: null },
   ] };
   const normalInvoke = invoke.getMockImplementation()!;
   invoke.mockImplementation(async (command, args) => {
@@ -260,9 +308,8 @@ test('Table Overview follows the selected logical Table rather than the previous
     return normalInvoke(command, args);
   });
   await open();
-  const enemy = navigation().getByRole('button', { name: 'enemy' });
-  fireEvent.click(enemy);
-  fireEvent.click(within(enemy.closest('.nav-table')!).getByRole('button', { name: 'enemy Overview' }));
+  fireEvent.click(navigation().getByRole('treeitem', { name: 'enemy-data.yaml', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Table Overview' }));
   await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'table_overview' && args.request.table === 'enemy')).toBe(true));
 });
 
@@ -283,10 +330,11 @@ test('empty Project offers a contextual Folder action with a folder-safe name', 
 test('Ant Design unsaved dialog Cancel preserves edits and does not reload', async () => {
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
+  commit(input);
   reloadProject();
   expect(await screen.findByRole('dialog')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
-  expect((input as HTMLInputElement).value).toBe('20');
+  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(invoke.mock.calls.filter(([command]) => command === 'authoring_workspace')).toHaveLength(1);
 });
 
@@ -294,7 +342,7 @@ test('dirty Build invokes only saved-source Build and preserves exact 64-bit inp
   const input = await open();
   fireEvent.change(input, { target: { value: '18446744073709551615' } });
   openProjectCommands();
-  fireEvent.click(navigation().getByRole('button', { name: 'Build', exact: true }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Build', exact: true }));
   await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'build')).toBe(true));
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
   expect((input as HTMLInputElement).value).toBe('18446744073709551615');
@@ -303,6 +351,7 @@ test('dirty Build invokes only saved-source Build and preserves exact 64-bit inp
 test('current preview updates the Diff after old snapshot responses are rejected', async () => {
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
+  commit(input);
   await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'preview_data_file')).toBe(true));
   fireEvent.click(screen.getByRole('tab', { name: 'Diff', exact: true }));
   expect(await screen.findByText('weight: 20')).toBeTruthy();
@@ -315,11 +364,12 @@ test('Ant Design Save All dialog preserves input when source commit fails', asyn
     : normalInvoke(command, args));
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
+  commit(input);
   reloadProject();
   fireEvent.click(await screen.findByRole('button', { name: 'Save All', exact: true }));
   await waitFor(() => expect(screen.getByText('Save failed.')).toBeTruthy());
   expect(screen.getByRole('dialog')).toBeTruthy();
-  expect((input as HTMLInputElement).value).toBe('20');
+  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(invoke.mock.calls.filter(([command]) => command === 'authoring_workspace')).toHaveLength(1);
 });
 
@@ -332,15 +382,16 @@ test('creation refresh selects the new source without discarding an existing dir
     if (command === 'authoring_workspace' && created) return { ...workspace, files: [...workspace.files, { path: 'new.yaml', sourceRoot: '.', kind: 'schema' }] };
     return normalInvoke(command, args);
   });
-  const input = await open(); fireEvent.change(input, { target: { value: '20' } });
+  const input = await open(); fireEvent.change(input, { target: { value: '20' } }); commit(input);
   openSourceFiles();
   fireEvent.click(screen.getByRole('button', { name: 'New source artifact' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Table' }));
   fireEvent.change(await screen.findByLabelText('Table identity'), { target: { value: 'weapon' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create', exact: true }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(screen.getByRole('treeitem', { name: 'new.yaml', exact: true }).getAttribute('aria-selected')).toBe('true');
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
-  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
+  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
@@ -352,9 +403,10 @@ test('Existing primary key direct edit uses the ordinary cell mutation lifecycle
     return { candidateSource: 'id: 2', changed: true, validation };
   };
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
-  const id = await screen.findByRole('textbox', { name: 'record 1 id' }) as HTMLInputElement;
+  const id = await edit('record 1 id') as HTMLInputElement;
   expect(id.readOnly).toBe(false);
   fireEvent.change(id, { target: { value: '2' } });
+  commit(id);
   await waitFor(() => expect(previewArgs?.edits?.[0]).toEqual({
     recordIndex: 0,
     field: 'id',
@@ -379,9 +431,10 @@ test('Explorer move refreshes selection and the open data editor at the new path
     return normalInvoke(command, args);
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
-  await screen.findByRole('navigation', { name: 'Project navigation' });
+  await screen.findByRole('complementary', { name: 'Explorer' });
   openSourceFiles();
-  fireEvent.click(await screen.findByRole('button', { name: 'Rename or move source' }));
+  fireEvent.click(screen.getByRole('button', { name: 'More Explorer actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Rename or Move Source' }));
   const destination = screen.getByRole('textbox', { name: 'Source destination path' });
   fireEvent.change(destination, { target: { value: 'moved.yaml' } });
   fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
@@ -396,7 +449,8 @@ test('complex table scope disables Add Row with a reason but keeps existing Dele
   const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
   expect((add as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Delete record 1', exact: true })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for record 1' }));
+  expect(screen.getByRole('menuitem', { name: 'Delete Record' })).toBeTruthy();
 });
 
 test('structural mutation state survives Failure, Conflict, and Outcome Unknown recovery', async () => {
@@ -413,11 +467,12 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
 
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
-  const draftId = await screen.findByRole('textbox', { name: 'new record id' }) as HTMLInputElement;
+  const draftId = await edit('new record id') as HTMLInputElement;
   fireEvent.change(draftId, { target: { value: '1' } });
+  commit(draftId);
   fireEvent.click(screen.getAllByRole('button', { name: 'Save', exact: true })[0]);
   await waitFor(() => expect(screen.getByText('Save failed.')).toBeTruthy());
-  expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+  expect(screen.getByRole('gridcell', { name: /new record id: 1/ })).toBeTruthy();
 
   saveResponse = {
     status: 'conflict',
@@ -429,7 +484,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   fireEvent.click(screen.getByRole('button', { name: 'Retry Save', exact: true }));
   await waitFor(() => expect(screen.getByText('File changed outside masterdata.')).toBeTruthy());
   fireEvent.click(screen.getByRole('tab', { name: 'Data', exact: true }));
-  expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+  expect(screen.getByRole('gridcell', { name: /new record id: 1/ })).toBeTruthy();
 
   saveResponse = {
     status: 'outcome_unknown',
@@ -439,7 +494,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   };
   fireEvent.click(screen.getByRole('button', { name: 'Overwrite', exact: true }));
   await waitFor(() => expect(screen.getByText('Previous save outcome is unknown.')).toBeTruthy());
-  expect(screen.getByRole('textbox', { name: 'new record id' })).toBeTruthy();
+  expect(screen.getByRole('gridcell', { name: /new record id: 1/ })).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 const tableSnapshot = {path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string']};
@@ -449,7 +504,8 @@ const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagn
 async function planFromTable(type = false) {
   openSourceFiles();
   fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
-  fireEvent.click(await screen.findByRole('button',{name:'Rename Field',exact:true}));
+  fireEvent.click(await screen.findByRole('button',{name:'Actions for field id'}));
+  fireEvent.click(screen.getByRole('menuitem',{name:'Rename Field'}));
   fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});
   fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
   await screen.findByRole('region',{name:type?'Type Migration Plan':'Migration Plan'});
@@ -463,13 +519,14 @@ test('Migration recovery result blocks Create and Build',async()=>{
     if(command==='apply_table_migration')return recoveryRequired;
     return normal(command,args);
   });
-  const input=await open();fireEvent.change(input,{target:{value:'20'}});
+  const input=await open();fireEvent.change(input,{target:{value:'20'}});commit(input);
   await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   openProjectCommands();
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole('button',{name:'Rename or move source'}) as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'More Explorer actions'}));
+  expect(screen.getByRole('menuitem',{name:'Rename or Move Source'}).getAttribute('aria-disabled')).toBe('true');
+  expect(screen.getByRole('menuitem',{name:'Build',exact:true}).getAttribute('aria-disabled')).toBe('true');
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   const normal=invoke.getMockImplementation()!;
@@ -480,19 +537,20 @@ test('Recovery Required blocks Save until host recheck succeeds',async()=>{
     if(command==='recheck_migration'){recovery=null;return null;}
     return normal(command,args);
   });
-  const input=await open();fireEvent.change(input,{target:{value:'20'}});
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('gridcell', { name: /record 1 weight: 10/ });
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   openProjectCommands();
   openSourceFiles();
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('treeitem',{name:'data.yaml, unsaved changes',exact:true}));
+  expect(screen.getByRole('menuitem',{name:'Build',exact:true}).getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(screen.getByRole('treeitem',{name:'data.yaml',exact:true}));
   expect(screen.getAllByRole('button',{name:'Save',exact:true}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
   fireEvent.keyDown(window,{key:'s',metaKey:true});
   expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:'Recheck recovered source'}));
-  await waitFor(()=>expect((screen.getByRole('button',{name:'Build',exact:true}) as HTMLButtonElement).disabled).toBe(false));
-  expect((screen.getByRole('textbox',{name:'record 1 weight'}) as HTMLInputElement).value).toBe('20');
+  await waitFor(()=>expect(screen.getByRole('menuitem',{name:'Build',exact:true}).getAttribute('aria-disabled')).not.toBe('true'));
+  expect(screen.getByRole('gridcell',{name:/record 1 weight: 10/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 
@@ -533,7 +591,7 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
 
   await open();
   openProjectCommands();
-  fireEvent.click(navigation().getByRole('button', { name: 'Settings', exact: true }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Project Settings', exact: true }));
   await screen.findByRole('heading', { name: 'Project Settings' });
   fireEvent.change(screen.getByLabelText('Include tags'), { target: { value: 'new' } });
   fireEvent.keyDown(window, { key: 's', ctrlKey: true });
@@ -581,11 +639,10 @@ test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of f
     value: { readText: vi.fn(async () => '11\tx\n22\ty'), writeText: vi.fn(async () => {}) },
   });
 
-  const input = await open('record 1 weight');
-  const cell = input.closest('.cell-wrap');
-  expect(cell).toBeTruthy();
-  fireEvent.mouseDown(cell!, { button: 0 });
-  fireEvent.keyDown(input, { key: 'v', ctrlKey: true });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /record 1 weight:/ });
+  fireEvent.mouseDown(cell, { button: 0 });
+  fireEvent.keyDown(cell, { key: 'v', ctrlKey: true });
 
   await waitFor(() => expect(batchArgs).toBeDefined());
   expect(batchArgs.request.targets).toEqual([
@@ -608,15 +665,17 @@ test('desktop close allows clean state and Cancel preserves dirty input', async 
   const input = await open();
   expect(requestDesktopClose().preventDefault).not.toHaveBeenCalled();
   fireEvent.change(input, { target: { value: '20' } });
+  commit(input);
   expect(requestDesktopClose().preventDefault).toHaveBeenCalledOnce();
   fireEvent.click(await screen.findByRole('button', { name: 'Cancel', exact: true }));
-  expect((input as HTMLInputElement).value).toBe('20');
+  expect(screen.getByRole('gridcell',{name:/record 1 weight: 20/})).toBeTruthy();
   expect(desktopWindow.destroy).not.toHaveBeenCalled();
 });
 
 test("desktop close Don't Save destroys the window without writing source", async () => {
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
+  commit(input);
   requestDesktopClose();
   fireEvent.click(await screen.findByRole('button', { name: "Don't Save", exact: true }));
   await waitFor(() => expect(desktopWindow.destroy).toHaveBeenCalledOnce());
@@ -630,6 +689,7 @@ test.each(['success', 'failure'])('desktop close Save All respects source save %
     ? new Promise(resolve => { finishSave = resolve; }) : normalInvoke(command, args));
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });
+  commit(input);
   requestDesktopClose();
   fireEvent.click(await screen.findByRole('button', { name: 'Save All', exact: true }));
   await waitFor(() => expect(finishSave).toBeTypeOf('function'));
@@ -642,7 +702,7 @@ test.each(['success', 'failure'])('desktop close Save All respects source save %
   } else {
     expect(desktopWindow.destroy).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeTruthy();
-    expect((input as HTMLInputElement).value).toBe('20');
+    expect(screen.getByRole('gridcell',{name:/record 1 weight: 20/})).toBeTruthy();
   }
 });
 

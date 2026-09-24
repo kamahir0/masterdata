@@ -11,7 +11,7 @@ Explorerはdomain treeではなくworkspace navigationであり、folder配置�
 
 ### GUI-EXPLORER-001
 
-Desktop authoring画面は左側のworkbench navigation内に開閉可能なWorkspace Explorerを持たなければならない（MUST）。ExplorerはProjectに設定されたsource rootごとのfile / folder hierarchyを表示し、中央typed editorとは独立したnavigation surfaceとして扱う。
+Desktop authoring画面は左側にWorkspace Explorerを持たなければならない（MUST）。ExplorerはProjectに設定されたsource rootごとのfile / folder hierarchyのみを密なtreeとして表示し、中央typed editorとは独立したnavigation surfaceとして扱う。folder展開、file選択、dirty / loading / error状態は該当行で識別できなければならない（MUST）。
 
 複数source rootがある場合は、利用者がどのconfigured rootに属する項目か識別できなければならない（MUST）。source root外の`.masterdata/output`、cache、generated artifact等をExplorerのsource treeへ暗黙に混在させてはならない（MUST NOT）。
 
@@ -48,6 +48,8 @@ Success後はworkspaceをshared application authorityから更新し、selected 
 ### GUI-EXPLORER-INT-001
 
 file selectionは対応するtyped editorを開かなければならない（MUST）。record / Tableのdomain selectionをfilesystem pathのsemantic identityとして扱ってはならない（MUST NOT）。
+
+Explorer文脈からNew artifact / New folder、Refresh、Collapse、source Rename / Moveへ到達できなければならない（MUST）。生成とpath mutation、folder inventoryはshared application authorityへ委譲する。treeのArrow Up / Down / Left / Right、Home / End、Enter、Rename / Move shortcutはkeyboardで操作でき、選択fileから編集領域へfocusを移せなければならない（MUST）。
 
 ### GUI-EXPLORER-INT-002
 

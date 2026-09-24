@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TableEditor from '../src/TableEditor';
 const {invoke}=vi.hoisted(()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/api/core',()=>({invoke}));
@@ -16,7 +16,7 @@ beforeEach(()=>{plan=structuredClone(planned);outcome={state:'success',files:['d
 });});
 afterEach(cleanup);
 async function open(dirtyPaths:string[]=[]) {render(<TableEditor projectPath="/project" path="schema.yaml" canWrite dirtyPaths={dirtyPaths} beginApply={beginApply} onResult={onResult} endApply={endApply}/>);await screen.findByText('note',{selector:'.ant-table-cell'});}
-async function rename() {fireEvent.click(screen.getByRole('button',{name:'Rename Field',exact:true}));fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));await screen.findByRole('region',{name:'Migration Plan'});}
+async function rename() {fireEvent.click(screen.getByRole('button',{name:'Actions for field note'}));fireEvent.click(screen.getByRole('menuitem',{name:'Rename Field'}));fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));await screen.findByRole('region',{name:'Migration Plan'});}
 test('input changes invalidate the reviewed plan and Diff uses its captured source',async()=>{
   await open();await rename();expect(screen.getByText('note: before')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'another'}});
@@ -35,7 +35,7 @@ test('unrelated dirty file allows Apply',async()=>{
 });
 test('Drop requires explicit confirmation and passes destructive authorization separately',async()=>{
   plan.destructive=true;plan.operation='DropField';await open();
-  fireEvent.click(screen.getByRole('button',{name:'Drop Field',exact:true}));fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
+  fireEvent.click(screen.getByRole('button',{name:'Actions for field note'}));fireEvent.click(screen.getByRole('menuitem',{name:'Drop Field'}));fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
   const apply=await screen.findByRole('button',{name:'Apply reviewed Plan'});
   expect((apply as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('checkbox',{name:/I confirm dropping/}));fireEvent.click(apply);
@@ -46,6 +46,7 @@ test('stale preflight preserves inputs but prevents retrying the old Plan',async
   outcome={state:'not_started',files:[],diagnostic:{code:'E-MIGRATION-PATCH-INVALID',message:'migration plan is stale'}};
   await open();await rename();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
   await screen.findByText('Stale Plan — re-plan required');
+  expect(within(screen.getByRole('dialog')).getByText('Stale Plan — re-plan required')).toBeTruthy();
   expect((screen.getByLabelText('Field name') as HTMLInputElement).value).toBe('itemId');
   expect((screen.getByRole('button',{name:'Apply reviewed Plan'}) as HTMLButtonElement).disabled).toBe(true);
 });

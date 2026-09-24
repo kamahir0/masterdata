@@ -35,6 +35,10 @@ source diffはmain gridとは別のfile単位`Diff` view / editorとして表示
 定常的なData編集画面はprimary editing commandと現在のstatusを表示し、query詳細とbatch操作は別々に開閉できる補助領域に置かなければならない（MUST）。閉じても入力・selection・dirty bufferを失ってはならない（MUST NOT）。Problemsは0件時に閉じた状態から開始してよい（MAY）が、件数とvalidation stateへ到達でき、diagnosticとoperation failureは見失わない（MUST）。
 fileまたはProject areaを移動して同じData fileへ戻る際はquery / batch入力を復元し、別fileの入力を混入させてはならない（MUST）。表示中のquery resultとcontrolsのfile identityが食い違ってはならない（MUST NOT）。
 
+### GUI-DATA-LAYOUT-007
+
+record gridの定常行高を複合値の内部要素数に依存させてはならない（MUST NOT）。column headerにはfield nameとread-onlyのtype / key情報を表示しなければならない（MUST）。array / struct等は定常時に値を要約し、選択時に対象cellが明確な一時的editorで編集できなければならない（MUST）。一時的editorを閉じても他cellのselectionとdirty bufferを失ってはならない（MUST NOT）。
+
 ## 状態（States）
 
 ### GUI-DATA-STATE-001
@@ -151,7 +155,7 @@ file Saveにはplatform標準のSave shortcut（macOSではCmd+S、その他一�
 
 ### GUI-DATA-KEY-002
 
-gridはkeyboardだけでcell selectionとsingle-cell editingを行えなければならない（MUST）。Arrow keysでselection移動、EnterまたはF2相当でedit開始、Escapeで現在のcell edit cancel、Enter / Tab相当でedit確定と移動を可能にする。platform / component library差によりexact keyを追加してもよいが（MAY）、keyboard-only編集経路を失ってはならない（MUST NOT）。complex editor内のnested controlもkeyboardで到達・操作可能でなければならない（MUST）。
+gridはkeyboardだけでcell selectionとsingle-cell editingを行えなければならない（MUST）。Arrow keysでselection移動、Enter / F2でedit開始、Tab / Shift+Tabで横移動、Enter / Shift+Enterで縦移動、Escapeで現在のcellの未確定editを破棄する（MUST）。complex editorをkeyboardで開いた時は最初の操作可能controlへfocusし、内部controlもTabで到達・操作可能でなければならない（MUST）。
 
 ## フォーカス（Focus）
 

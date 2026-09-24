@@ -127,25 +127,6 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .workbench > .surface-layout, .workbench > .workspace-layout { grid-column: 2; min-height: 0; }
 .workbench > .create-surface { grid-column: 1 / -1; }
 .workspace-navigation { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; overflow: auto; margin-top: 14px; padding: 9px 7px 18px; border: 1px solid #283149; border-right: 0; border-radius: 12px 0 0 0; background: #131a2a; }
-.nav-section { margin-bottom: 3px; }
-.nav-section-heading { display: flex; align-items: center; width: 100%; }
-.nav-section-heading > .ant-btn { flex: 0 0 auto; color: #a3afc3; }
-.nav-disclosure, .nav-table-heading, .nav-item { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; text-align: left; }
-.nav-disclosure { flex: 1; border: 0 !important; background: transparent !important; color: #dce3f1 !important; font-size: 12px !important; font-weight: 650; }
-.nav-disclosure span { margin-left: auto; color: #738197; font-size: 10px; }
-.nav-table-heading { padding-left: 16px !important; border: 0 !important; background: transparent !important; color: #bfc9da !important; font-size: 11px !important; }
-.nav-table-heading > span:first-of-type, .nav-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-children { padding-left: 21px; }
-.nav-item { min-height: 28px !important; padding: 4px 8px !important; border: 0 !important; background: transparent !important; color: #a8b7cc !important; font-size: 11px !important; }
-.nav-item:hover, .nav-table-heading:hover, .nav-disclosure:hover { background: #202b42 !important; }
-.nav-item.selected { background: #2b2849 !important; color: #e5dfff !important; }
-.nav-dirty { flex: 0 0 auto; margin-left: auto; color: #e6b663; font-size: 10px; }
-.nav-empty { margin: 6px 8px 10px 30px; color: #77859a; font-size: 10px; }
-.nav-add-data.ant-btn { margin-left: 4px; color: #a89eff; font-size: 10px; }
-.nav-project-section { margin-top: 12px; padding-top: 9px; border-top: 1px solid #2a3449; }
-.nav-action.ant-btn { display: block; width: calc(100% - 22px); margin: 4px 11px; text-align: left; }
-.source-nav-actions { padding: 5px 9px 0; }
-.source-nav-actions .ant-btn { width: 100%; color: #a3afc3; }
 .empty-project { align-self: center; max-width: 520px; margin: auto; padding: 30px; }
 .empty-project h2 { margin: 8px 0; color: #e5e8f1; font-size: 24px; }
 .empty-project p { color: #9ba8bb; font-size: 13px; line-height: 1.6; }
@@ -454,12 +435,6 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .migration-diff section { min-width: 0; }
 .migration-diff pre { overflow: auto; white-space: pre; max-height: 360px; padding: 12px; background: #111723; }
 
-/* Schema-aware values can contain nested fields or collection controls. Keep
-   the surrounding grid compact for scalar rows while allowing complex cells
-   to grow vertically without clipping their controls. */
-.record-grid tbody td { vertical-align: top; }
-.cell-wrap { display: grid; align-content: start; gap: 3px; height: auto; min-height: 36px; padding: 4px; }
-.cell-wrap:focus-within { outline: 2px solid #8b7cf7; outline-offset: -2px; }
 .value-editor {
   min-width: 0; margin: 0; padding: 5px 7px;
   border: 1px solid #2a3545; border-radius: 5px;
@@ -496,3 +471,40 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .nested-value-error { display: block; margin-top: 4px; color: #ff9fa5; font-size: 9px; }
 .read-only-value { display: grid; gap: 4px; min-height: 24px; padding: 4px 5px; }
 .cell-error { z-index: 3; }
+
+/* The Explorer is a file tree; keep its controls and rows at editor density. */
+.explorer-pane.workspace-navigation { margin-top: 8px; padding: 0 0 12px; border-radius: 0; background: #181c26; }
+.explorer-toolbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; height: 34px; padding: 0 5px 0 12px; background: #202531; }
+.explorer-toolbar strong { flex: 1; min-width: 0; font-size: 10px; letter-spacing: .08em; color: #bcc6d5; }
+.explorer-toolbar .ant-btn { width: 23px; min-width: 23px; height: 23px; padding: 3px; color: #a9b5c6; }
+.source-tree { padding: 3px 0 16px; }
+.source-tree .ant-btn { height: 25px; min-height: 25px; border-radius: 0; font-size: 12px; }
+.source-tree .tree-root-label { font-weight: 650; color: #d5dce7; }
+.source-tree .tree-folder { color: #c1cad5; }
+.source-tree .tree-file.active, .source-tree .tree-folder[aria-selected="true"] { background: #293c56; color: #f0f4fa; }
+.source-tree .tree-file-name { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; }
+.workspace-layout, .workbench > .surface-layout:not(.create-surface) { margin-top: 8px; border-radius: 0; }
+.typed-editor-heading, .typed-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.typed-list-heading { margin: 20px 0 8px; }
+.typed-list-heading h3 { margin: 0; font-size: 13px; }
+.typed-list-heading h3 span { margin-left: 6px; color: #77869b; font-weight: 400; }
+.table-editor .ant-table-tbody > tr > td { padding: 6px 9px; }
+.table-editor .ant-table-thead > tr > th { padding: 7px 9px; }
+
+/* Record height does not depend on nested value shape. */
+.record-grid tbody tr { height: 32px; }
+.record-grid tbody td, .record-grid tbody .row-number { height: 32px; min-height: 32px; max-height: 32px; vertical-align: middle; }
+.record-grid tbody .row-number { display: flex; flex-wrap: nowrap; justify-content: space-between; padding: 0 2px 0 6px; }
+.record-grid tbody .row-number .ant-btn { opacity: 0; width: 20px; height: 20px; min-height: 20px; padding: 0; }
+.record-grid tbody tr:hover .row-number .ant-btn, .record-grid tbody .row-number .ant-btn:focus-visible { opacity: 1; }
+.record-grid .cell-wrap { display: flex; align-items: center; height: 31px; min-height: 31px; padding: 0 7px; cursor: cell; }
+.record-grid .cell-wrap:focus { outline: 2px solid #8b7cf7; outline-offset: -2px; }
+.record-grid .cell-wrap .value-editor { width: 100%; height: 29px; padding: 0; border: 0; background: transparent; }
+.record-grid .cell-wrap .value-editor legend, .record-grid .cell-wrap .value-editor-type { display: none; }
+.record-grid .cell-wrap .value-editor .ant-input, .record-grid .cell-wrap .value-editor .ant-select { height: 28px; }
+.record-grid .cell-summary { display: block; overflow: hidden; width: 100%; color: #d7dfeb; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.record-grid .tag-cell { height: 32px; min-height: 32px; max-height: 32px; padding: 0 5px; vertical-align: middle; }
+.record-grid .tag-summary.ant-btn { display: block; overflow: hidden; max-width: 100%; width: 100%; height: 28px; padding: 0 4px; color: #b9c5d4; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.complex-cell-popover .ant-popover-inner, .tags-cell-popover .ant-popover-inner { max-height: min(65vh, 540px); overflow: auto; min-width: 310px; max-width: 500px; background: #202838; }
+.complex-cell-popover .value-editor { margin: 0; }
+.complex-cell-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

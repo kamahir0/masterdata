@@ -20,9 +20,9 @@ Save、Validate、Build、Project Reload等の主要commandは、現在のselect
 
 ### GUI-SHELL-NAV-001
 
-Projectが開いている間、DesktopはProject名とcurrent selectionを識別可能にし、Table / Type / Project areaへ到達するnavigationを提供しなければならない（MUST）。Table groupはshared workspaceのdeclared Table identityで構成し、schemaと複数Data fileをそのTableの下で識別できなければならない（MUST）。Type groupはshared workspaceのdeclared type nameを使用する。metadataがinvalid / unavailableなfileもsource file treeから失ってはならない（MUST NOT）。
+Projectが開いている間、DesktopはProject名とcurrent selectionを識別可能にしなければならない（MUST）。左ペインの常設navigationはconfigured source rootとそのfile / folder hierarchyだけで構成し、Table / Type / Project areaの並列groupを置いてはならない（MUST NOT）。metadataがinvalid / unavailableなfileもsource treeから失ってはならない（MUST NOT）。
 
-Source file treeは左navigation内で開閉可能な領域として維持し、logical入口とfile入口のいずれも同じfile selection / dirty bufferへrouteしなければならない（MUST）。Project Settings / Build and Publish等のProject areaへ移動しても、Project / Table / Type / Sources navigationへ戻れる文脈を保持する（MUST）。Build、Validate、Project Reload、Saveへの到達を失ってはならない（MUST NOT）。file / Table / area間の移動だけでdirty bufferを保存・破棄・確認しない（MUST NOT）。navigationの項目と開閉操作はkeyboardで到達・実行でき、選択対象と展開状態をassistive technologyから識別できなければならない（MUST）。
+Project Settings / Delivery / Build等のProject areaは上部Project command surfaceから、Table Overviewは選択中のTable schema / Data文脈から到達できなければならない（MUST）。Build、Validate、Project Reload、Saveへの到達を失ってはならない（MUST NOT）。file / area間の移動だけでdirty bufferを保存・破棄・確認してはならない（MUST NOT）。navigationとcommandはkeyboardで到達・実行でき、選択対象と展開状態をassistive technologyから識別できなければならない（MUST）。
 
 ## Project open / reload
 

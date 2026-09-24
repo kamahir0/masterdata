@@ -248,30 +248,22 @@ test('Table context opens Data creation with its Table already selected', async 
   expect(screen.getByRole('combobox', { name: 'Artifact type' }).closest('.ant-select')?.textContent).toContain('Data');
 });
 
-test('Table Overview switches logical Tables without showing the previous saved snapshot', async () => {
+test('Table Overview follows the selected logical Table rather than the previously active file', async () => {
   const multiTableWorkspace = { ...workspace, files: [
     { ...workspace.files[0], table: 'item', typeName: null },
     { path: 'enemy-schema.yaml', sourceRoot: '.', kind: 'schema', table: 'enemy', typeName: null },
   ] };
-  const overview = (table: string, rows: unknown[] = []) => ({ status: 'complete', table, columns: [], rows, totalCount: rows.length, selectedCount: rows.length, displayedCount: rows.length, configContentIdentity: 'config', sources: [{ path: 'data.yaml', contentIdentity: 'base' }], selection: { profile: null, includeTags: [], excludeTags: [], available: true }, diagnostics: [] });
-  let resolveEnemy!: (value: ReturnType<typeof overview>) => void;
-  const enemyResponse = new Promise<ReturnType<typeof overview>>((resolve) => { resolveEnemy = resolve; });
   const normalInvoke = invoke.getMockImplementation()!;
   invoke.mockImplementation(async (command, args) => {
     if (command === 'authoring_workspace') return multiTableWorkspace;
-    if (command === 'table_overview') return args.request.table === 'enemy' ? enemyResponse : overview('item', [{ table: 'item', sourcePath: 'data.yaml', recordIndex: 0, values: [], selected: true, matchedIncludeTags: [], matchedExcludeTags: [], selectionReason: null }]);
+    if (command === 'table_overview') return { status: 'complete', table: args.request.table, columns: [], rows: [], totalCount: 0, selectedCount: 0, displayedCount: 0, configContentIdentity: 'config', sources: [], selection: { profile: null, includeTags: [], excludeTags: [], available: true }, diagnostics: [] };
     return normalInvoke(command, args);
   });
   await open();
-  const item = navigation().getByRole('button', { name: 'item' });
-  fireEvent.click(within(item.closest('.nav-table')!).getByRole('button', { name: 'item Overview' }));
-  expect(await screen.findByRole('button', { name: 'data.yaml · record 1' })).toBeTruthy();
   const enemy = navigation().getByRole('button', { name: 'enemy' });
   fireEvent.click(enemy);
   fireEvent.click(within(enemy.closest('.nav-table')!).getByRole('button', { name: 'enemy Overview' }));
   await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'table_overview' && args.request.table === 'enemy')).toBe(true));
-  expect(screen.queryByRole('button', { name: 'data.yaml · record 1' })).toBeNull();
-  await act(async () => resolveEnemy(overview('enemy')));
 });
 
 test('empty Project offers a contextual Folder action with a folder-safe name', async () => {

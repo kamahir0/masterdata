@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DeliveryPanel, ProjectCreatePanel, ProjectOverviewPanel, ProjectSettingsPanel, type SurfaceWorkspace } from "../src/ProjectSurfaces";
 
 const { invoke, openDialog } = vi.hoisted(() => ({ invoke: vi.fn(), openDialog: vi.fn() }));
@@ -57,6 +57,26 @@ test("Overview keeps detailed query controls folded and retains their draft", ()
   expect(screen.queryByRole("textbox", { name: "Overview filter value" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Filter & sort" }));
   expect((screen.getByRole("textbox", { name: "Overview filter value" }) as HTMLInputElement).value).toBe("rare");
+});
+
+test("Overview hides a previous Table snapshot while the next Table loads", async () => {
+  const itemSnapshot = {
+    status: "complete", table: "item", columns: [],
+    rows: [{ table: "item", sourcePath: "data.yaml", recordIndex: 0, values: [], selected: true, matchedIncludeTags: [], matchedExcludeTags: [], selectionReason: null }],
+    totalCount: 1, selectedCount: 1, displayedCount: 1, configContentIdentity: "config",
+    sources: [{ path: "data.yaml", contentIdentity: "base" }],
+    selection: { profile: null, includeTags: [], excludeTags: [], available: true }, diagnostics: [],
+  };
+  let resolveEnemy!: (value: typeof itemSnapshot) => void;
+  const enemyResponse = new Promise<typeof itemSnapshot>((resolve) => { resolveEnemy = resolve; });
+  invoke.mockImplementation((command, args) => command === "table_overview" && args.request.table === "enemy" ? enemyResponse : Promise.resolve(itemSnapshot));
+  const props = { active: true, projectRoot: "/project", workspace, dirtySourceCount: 0, dirtyConfig: false, profile: "", onProfileChange: vi.fn(), onNavigate: vi.fn() };
+  const { rerender } = render(<ProjectOverviewPanel {...props} table="item" />);
+  expect(await screen.findByRole("button", { name: "data.yaml · record 1" })).toBeTruthy();
+  rerender(<ProjectOverviewPanel {...props} table="enemy" />);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("table_overview", expect.objectContaining({ request: expect.objectContaining({ table: "enemy" }) })));
+  expect(screen.queryByRole("button", { name: "data.yaml · record 1" })).toBeNull();
+  await act(async () => resolveEnemy({ ...itemSnapshot, table: "enemy", rows: [], totalCount: 0, selectedCount: 0, displayedCount: 0 }));
 });
 
 test("Settings composes profile and target edits in one file buffer before Save", async () => {

@@ -256,7 +256,7 @@ export function ProjectOverviewPanel({
         ? [{
             field: filterField,
             operator: filterOperator,
-            ...(noValueOperator ? {} : { value: queryInputValue(snapshot?.columns.find((column) => column.name === filterField), filterValue) }),
+            ...(noValueOperator ? {} : { value: queryInputValue(snapshot?.table === table ? snapshot.columns.find((column) => column.name === filterField) : undefined, filterValue) }),
           }]
         : [];
       const next = await invoke<OverviewSnapshot>("table_overview", {
@@ -290,7 +290,8 @@ export function ProjectOverviewPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, projectRoot, table]);
 
-  const columns = snapshot?.columns ?? [];
+  const currentSnapshot = snapshot?.table === table ? snapshot : null;
+  const columns = currentSnapshot?.columns ?? [];
   const profiles = workspace?.project.profiles ?? [];
   const profileMissing = profile.length > 0 && !profiles.some((item) => item.name === profile);
 
@@ -328,31 +329,31 @@ export function ProjectOverviewPanel({
       </div>
       {profileMissing && <Alert type="warning" showIcon title="Profile unavailable" description={`Profile “${profile}” is not available in the current project configuration. Refresh or choose another profile.`} />}
       {diagnostic && <Alert type="error" showIcon title={diagnostic.code} description={diagnostic.message} />}
-      {snapshot && snapshot.status !== "complete" && <Alert type={snapshot.status === "stale" ? "warning" : "info"} showIcon title={`Overview ${snapshot.status}`} description={snapshot.diagnostics.map((item) => item.message).join(" ")} />}
+      {currentSnapshot && currentSnapshot.status !== "complete" && <Alert type={currentSnapshot.status === "stale" ? "warning" : "info"} showIcon title={`Overview ${currentSnapshot.status}`} description={currentSnapshot.diagnostics.map((item) => item.message).join(" ")} />}
       {loading && <div className="surface-loading">Loading saved snapshot…</div>}
-      {!loading && !snapshot && !diagnostic && <Empty description="Open Overview for a saved Table snapshot." />}
-      {snapshot && (
+      {!loading && !currentSnapshot && !diagnostic && <Empty description="Open Overview for a saved Table snapshot." />}
+      {currentSnapshot && (
         <>
           <div className="surface-metrics" aria-label="Overview metrics">
-            <span><strong>{snapshot.displayedCount}</strong> displayed / {snapshot.totalCount} total</span>
-            <span>{snapshot.selectedCount == null ? "Selection unavailable" : `${snapshot.selectedCount} selected`}</span>
-            <span>{snapshot.sources.length} source files</span>
-            <span>Profile: {snapshot.selection.profile ?? "unfiltered"}</span>
+            <span><strong>{currentSnapshot.displayedCount}</strong> displayed / {currentSnapshot.totalCount} total</span>
+            <span>{currentSnapshot.selectedCount == null ? "Selection unavailable" : `${currentSnapshot.selectedCount} selected`}</span>
+            <span>{currentSnapshot.sources.length} source files</span>
+            <span>Profile: {currentSnapshot.selection.profile ?? "unfiltered"}</span>
           </div>
           <div className="surface-table-scroll">
             <table className="surface-table">
-              <thead><tr><th>Source occurrence</th><th>Selection</th>{snapshot.columns.map((column) => <th key={column.name}>{column.name}{column.keyField ? " · KEY" : ""}</th>)}</tr></thead>
+              <thead><tr><th>Source occurrence</th><th>Selection</th>{currentSnapshot.columns.map((column) => <th key={column.name}>{column.name}{column.keyField ? " · KEY" : ""}</th>)}</tr></thead>
               <tbody>
-                {snapshot.rows.map((row) => (
+                {currentSnapshot.rows.map((row) => (
                   <tr key={`${row.sourcePath}:${row.recordIndex}`}>
-                    <td><Button type="link" htmlType="button" onClick={() => onNavigate(row.sourcePath, row.recordIndex, snapshot.sources.find((source) => source.path === row.sourcePath)?.contentIdentity ?? "")}>{row.sourcePath} · record {row.recordIndex + 1}</Button></td>
+                    <td><Button type="link" htmlType="button" onClick={() => onNavigate(row.sourcePath, row.recordIndex, currentSnapshot.sources.find((source) => source.path === row.sourcePath)?.contentIdentity ?? "")}>{row.sourcePath} · record {row.recordIndex + 1}</Button></td>
                     <td>{row.selected === true ? "selected" : row.selected === false ? "excluded" : "unavailable"}{row.selectionReason && <small>{row.selectionReason}</small>}</td>
                     {row.values.map((value, index) => <td key={`${row.sourcePath}:${row.recordIndex}:${index}`}>{valueLabel(value)}</td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
-            {snapshot.rows.length === 0 && <Empty description="No rows match the current query." />}
+            {currentSnapshot.rows.length === 0 && <Empty description="No rows match the current query." />}
           </div>
         </>
       )}

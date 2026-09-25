@@ -86,6 +86,7 @@ type WorkspaceSourceFile = {
   kind: string;
   table: string | null;
   typeName: string | null;
+  hasInlineRecords: boolean;
   diagnostic: Diagnostic | null;
 };
 
@@ -812,10 +813,10 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       setWorkspaceState({ kind: "ready", workspace: next });
       rememberProject(next.project);
       setEditors({});
-      const first = next.files.find((file) => file.kind === "data") ?? next.files[0] ?? null;
+      const first = next.files.find((file) => file.kind === "data" || file.hasInlineRecords) ?? next.files[0] ?? null;
       setActivePath(first?.path ?? null);
       setSelectedTable(first?.table ?? null);
-      if (first?.kind === "data") {
+      if (first && (first.kind === "data" || first.hasInlineRecords)) {
         await openDataFile(next.project.project_root, first.path, true);
       }
     } catch (error) {
@@ -1411,7 +1412,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     setSurface("editor");
     const relative = file.sourceRoot && file.path.startsWith(`${file.sourceRoot}/`) ? file.path.slice(file.sourceRoot.length + 1) : file.path;
     setCreationTarget({ root: file.sourceRoot, folder: relative.split("/").slice(0, -1).join("/") });
-    if (file.kind === "data" && projectRoot) {
+    if ((file.kind === "data" || file.hasInlineRecords) && projectRoot) {
       void openDataFile(projectRoot, file.path);
     }
   }, [openDataFile, projectRoot]);
@@ -1491,7 +1492,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           const destinationFile = next.files.find((file) => file.path === destinationPath);
           const destinationRoot = destinationFile?.sourceRoot ?? sourceRoot;
           setRevealCreated({ path: destinationPath, root: destinationRoot });
-          if (destinationFile?.kind === "data") await openDataFile(root, destinationPath, true);
+          if (destinationFile && (destinationFile.kind === "data" || destinationFile.hasInlineRecords)) await openDataFile(root, destinationPath, true);
           showNotice(`${sourceName(sourcePath)} moved to ${destinationPath}`);
         } catch (error) {
           // The mutation report is authoritative even if the post-success
@@ -1653,7 +1654,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     if (!file) return;
     const record = diagnosticRecordIndex(diagnostic);
     const field = diagnosticField(diagnostic);
-    if (file.kind === "data" && record !== null && field) {
+    if ((file.kind === "data" || file.hasInlineRecords) && record !== null && field) {
       const editor = editorsRef.current[file.path];
       const target = editor && diagnosticCellKey(editor, record, field);
       if (target) {
@@ -1689,7 +1690,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     setRevealCreated({ path: report.path, root: root ?? "" });
     setCreationOpen(false);
     const file = next.files.find(file => file.path === report.path);
-    if (file?.kind === "data") await openDataFile(projectRoot, file.path);
+    if (file && (file.kind === "data" || file.hasInlineRecords)) await openDataFile(projectRoot, file.path);
     showNotice(`${sourceName(report.path)} created`);
   }, [projectRoot, openDataFile, showNotice]);
 
@@ -1709,7 +1710,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     if (workspaceGeneration.current !== generation) return;
     setWorkspaceState({ kind: "ready", workspace: next });
     setTableEpoch(epoch => epoch + 1);
-    await Promise.all(reload.filter(path => next.files.some(file => file.path === path && file.kind === "data")).map(path => openDataFile(root, path, true)));
+    await Promise.all(reload.filter(path => next.files.some(file => file.path === path && (file.kind === "data" || file.hasInlineRecords))).map(path => openDataFile(root, path, true)));
   }, [openDataFile]);
   const migrationResult = useCallback(async (root: string, result: MigrationResult) => {
     if (result.state === "recovery_required") recordRecovery(root, result);
@@ -1752,7 +1753,23 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
     setCreationTarget({ root: parent?.sourceRoot ?? workspace?.sourceRoots[0] ?? "", folder: relative.split("/").slice(0, -1).join("/") });
     openCreation("data", table);
   };
-  const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.kind === "data")?.table ?? null;
+  const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.table)?.table ?? null;
+  const recordFileActive = activeFile?.kind === "data" || !!activeFile?.hasInlineRecords;
+  const activeTableName = activeFile?.table ?? null;
+  const activeSchema = activeFile?.kind === "schema"
+    ? activeFile
+    : workspace?.files.find(file => file.kind === "schema" && file.table === activeTableName);
+  const tableEditor = activeSchema && projectRoot && activeTableName ? <TableEditor key={`${projectRoot}:${activeSchema.path}:${tableEpoch}`}
+    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded={recordFileActive}
+    onOverview={() => { setSelectedTable(activeTableName); setSurface("overview"); }}
+    onCreateData={() => openDataCreation(activeTableName)}
+    dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
+    beginApply={paths => {
+      if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
+      migrationBusyRef.current = projectRoot; setMigrationBusyRoot(projectRoot); return true;
+    }}
+    endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
+    onResult={result => migrationResult(projectRoot, result)} /> : null;
   const [collapseTreeSignal, setCollapseTreeSignal] = useState(0);
   const refreshExplorer = async () => {
     if (!projectRoot) return;
@@ -1948,23 +1965,13 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           {workspace.files.length === 0 && !activeFile && <div className="empty-project">
             <span className="dialog-kicker">NEW PROJECT</span>
             <h2>Start with a Table</h2>
-            <p>Create a Table schema, then add data files and types as your project grows.</p>
+            <p>Create a Table with records in one file, or keep records in separate data files.</p>
             <div><Button type="primary" disabled={mutationBlocked} onClick={() => openCreation("table")}>Create Table</Button><Button disabled={mutationBlocked} onClick={() => openCreation("value_object")}>Create Type</Button><Button disabled={mutationBlocked} onClick={() => openCreation("folder")}>Create Folder</Button></div>
           </div>}
           {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
-          {activeFile?.kind === "schema" && projectRoot && <TableEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
-            projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
-            onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
-            onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
-            dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
-            beginApply={paths => {
-              if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
-              migrationBusyRef.current = projectRoot; setMigrationBusyRoot(projectRoot); return true;
-            }}
-            endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
-            onResult={result => migrationResult(projectRoot, result)} />}
+          {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableEditor}
           {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
             projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
             dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
@@ -1977,30 +1984,28 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && activeFile.kind !== "type" && (
             <SourcePlaceholder file={activeFile} />
           )}
-          {activeFile?.kind === "data" && activeLoading && (
+          {recordFileActive && activeLoading && (
             <EmptyEditor title={`Loading ${sourceName(activeFile.path)}…`} copy="Refreshing records through the shared application service." />
           )}
-          {activeFile?.kind === "data" && !activeLoading && activeLoadDiagnostic && (
+          {recordFileActive && !activeLoading && activeLoadDiagnostic && (
             <section className="placeholder-editor">
               <h2>{sourceName(activeFile.path)} is unavailable</h2>
               <p>The previous clean snapshot is not editable until the source can be loaded safely.</p>
               <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(activeLoadDiagnostic)} />
             </section>
           )}
-          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && !activeEditor && (
+          {recordFileActive && !activeLoading && !activeLoadDiagnostic && !activeEditor && (
             <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading records through the shared application service." />
           )}
-          {activeFile?.kind === "data" && !activeLoading && !activeLoadDiagnostic && activeEditor && (
+          {recordFileActive && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor key={`${projectRoot}:${activeFile.path}`}
               mutationBlocked={mutationBlocked}
               file={activeFile}
               projectRoot={projectRoot!}
               editor={activeEditor}
+              schemaEditor={tableEditor}
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
-              onOpenSchema={workspace.files.some((candidate) => candidate.kind === "schema" && candidate.table === activeFile.table)
-                ? () => { const schema = workspace.files.find((candidate) => candidate.kind === "schema" && candidate.table === activeFile.table); if (schema) selectFile(schema); }
-                : undefined}
               uiCache={dataEditorUi}
               onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
               onDraftCellChange={(draftId, field, value) => updateDraftCell(activeFile.path, draftId, field, value)}
@@ -2475,9 +2480,9 @@ function DataEditor({
   file,
   projectRoot,
   editor,
+  schemaEditor,
   onOverview,
   onCreateData,
-  onOpenSchema,
   uiCache,
   onCellChange,
   onDraftCellChange,
@@ -2502,9 +2507,9 @@ function DataEditor({
   file: WorkspaceSourceFile;
   projectRoot: string;
   editor: EditorState;
+  schemaEditor?: React.ReactNode;
   onOverview?: () => void;
   onCreateData?: () => void;
-  onOpenSchema?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
   onCellChange: (recordIndex: number, field: string, value: AuthoringValue) => void;
   onDraftCellChange: (draftId: string, field: string, value: AuthoringValue) => void;
@@ -2552,6 +2557,7 @@ function DataEditor({
   const [querySortDirection, setQuerySortDirection] = useState(rememberedUi?.querySortDirection ?? "ascending");
   const [queryAdvancedOpen, setQueryAdvancedOpen] = useState(rememberedUi?.queryAdvancedOpen ?? false);
   const [batchToolsOpen, setBatchToolsOpen] = useState(rememberedUi?.batchToolsOpen ?? false);
+  const [schemaOpen, setSchemaOpen] = useState(false);
   useEffect(() => {
     // Query and batch drafts are file-local UI state; switching sources must not
     // leave an applied query showing controls that belong to another file.
@@ -2882,7 +2888,7 @@ function DataEditor({
         <div className="editor-actions">
           <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
           {onOverview && <Button htmlType="button" onClick={onOverview}>Table Overview</Button>}
-          {onOpenSchema && <Button htmlType="button" onClick={onOpenSchema}>Schema</Button>}
+          {schemaEditor && <Button htmlType="button" aria-expanded={schemaOpen} aria-controls="data-table-structure" onClick={() => setSchemaOpen(open => !open)}>Table structure <ChevronDown size={13} aria-hidden="true" /></Button>}
           {onCreateData && <Button htmlType="button" onClick={onCreateData}>New data file</Button>}
           <Button
             htmlType="button"
@@ -2897,6 +2903,8 @@ function DataEditor({
           <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !editingCell) || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
         </div>
       </header>
+
+      {schemaEditor && schemaOpen && <section id="data-table-structure" className="data-table-structure" aria-label="Table structure">{schemaEditor}</section>}
 
       <div className="authoring-toolbar" aria-label="Data authoring tools">
         <Input aria-label="Data search" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onPressEnter={() => void runQuery()} />

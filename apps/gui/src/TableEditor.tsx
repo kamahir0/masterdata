@@ -16,11 +16,12 @@ const message = (error:unknown):string => {
   const diagnostic = (error as {diagnostic:{code:string;message:string;source?:string;schemaPath?:string;schema_path?:string}}).diagnostic;
   return [diagnostic.source, diagnostic.schemaPath ?? diagnostic.schema_path, `${diagnostic.code}: ${diagnostic.message}`].filter(Boolean).join(" · ");
 };
-export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData}: {
+export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false}: {
   projectPath:string; path:string; canWrite:boolean; dirtyPaths:string[];
   beginApply:(paths:string[])=>boolean; onResult:(result:MigrationResult)=>Promise<void>; endApply:()=>void;
   onOverview?:()=>void;
   onCreateData?:()=>void;
+  embedded?:boolean;
 }) {
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [selected,setSelected]=useState("");
@@ -77,7 +78,8 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
     {error&&!operation&&!referenceOperation&&<Alert role="alert" type="error" title={error}/>}
     {!snapshot&&!error&&<Spin tip="Loading Table"><div style={{minHeight:80}}/></Spin>}
     {snapshot&&<>
-      <div className="typed-editor-heading"><div><h2>{snapshot.schema.table} <Tag>Table</Tag></h2><p className="source-provenance">{snapshot.path}</p></div><Space>{onOverview&&<Button onClick={onOverview}>Table Overview</Button>}{onCreateData&&<Button onClick={onCreateData}>New data file</Button>}</Space></div>
+      {embedded ? <div className="table-context-line"><strong>{snapshot.schema.table}</strong><span>{snapshot.path}</span></div>
+        : <div className="typed-editor-heading"><div><h2>{snapshot.schema.table} <Tag>Table</Tag></h2><p className="source-provenance">{snapshot.path}</p></div><Space>{onOverview&&<Button onClick={onOverview}>Table Overview</Button>}{onCreateData&&<Button onClick={onCreateData}>New data file</Button>}</Space></div>}
       <div className="typed-list-heading"><h3>Fields <span>{snapshot.schema.fields.length}</span></h3><Button id="table-add" disabled={!canWrite||busy} onClick={event=>start("add","",event.currentTarget)}>Add Field</Button></div>
       <Table<Field> size="small" pagination={false} rowKey="name" dataSource={snapshot.schema.fields}
         columns={[{title:"Key",dataIndex:"key"},{title:"Field",dataIndex:"name"},{title:"Type",dataIndex:"type"},{title:"Modifier",render:(_,field)=>field.array?"Array":field.nullable?"Nullable":"Required"},{title:"Indexes",render:(_,field)=><>{snapshot.schema.primaryKey?.fields.includes(field.name)&&<Tag>Primary Key</Tag>}{snapshot.schema.secondaryKeys?.map((key,index)=>key.fields.includes(field.name)?<Tag key={index}>Secondary {index+1}{key.nonUnique?" · non-unique":""}</Tag>:null)}</>},{title:"",key:"actions",width:46,render:(_,field)=><Dropdown menu={{items:[{key:"rename",label:"Rename Field",disabled:!canWrite||busy,onClick:()=>start("rename",field.name,document.querySelector<HTMLElement>(`[data-field-action="${CSS.escape(field.name)}"]`))},{key:"drop",label:"Drop Field",danger:true,disabled:!canWrite||busy,onClick:()=>start("drop",field.name,document.querySelector<HTMLElement>(`[data-field-action="${CSS.escape(field.name)}"]`))}]}} trigger={["click"]}><Button type="text" size="small" data-field-action={field.name} aria-label={`Actions for field ${field.name}`} icon={<MoreHorizontal size={16}/>} /></Dropdown>}]} />

@@ -6,7 +6,7 @@ Domain: Source Editing
 
 ## 概要
 
-本仕様は、GUI等のauthoring surfaceから既存Data document内のrecord valueを変更し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
+本仕様は、GUI等のauthoring surfaceからrecord-bearing source document内のrecord valueを変更し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
 
 YAML syntax / scalar classificationは[Masterdata YAML subset](yaml-subset.md)、Table / record semanticsは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、CLI / GUIのshared boundaryは[ADR 0002](../adr/0002-rust-core-shared-by-cli-and-gui.md)に従う。本仕様はそれらを再定義せず、source snapshot、record provenance、resolved value authoring boundary、source-preserving patch、file commit、lost-update防止、およびsave resultを所有する。
 
@@ -16,7 +16,7 @@ Schema Migrationはproject-wideなschema transformationであり、通常のreco
 
 - **Base snapshot**: editorが対象fileを読み込んだ時点、または最後の成功Save後に確定した、そのsource fileのexact content identityとsource provenance。
 - **Local buffer**: base snapshotに対する未保存のrecord value変更を反映したeditor側の作業状態。
-- **Source provenance**: logical Table identityとは別に、base snapshot内のどのData document・record occurrence・field source locationを編集対象としているかを特定する情報。
+- **Source provenance**: logical Table identityとは別に、base snapshot内のどのsource document・record occurrence・field source locationを編集対象としているかを特定する情報。
 - **Save candidate**: 1つのsource fileについて、base snapshotへ現在のlocal editsをsource-preservingに適用して得る保存予定content。
 - **Conflict**: Save直前のworkspace sourceがbase snapshotと一致せず、通常Saveでlost updateを避けるためcommitを停止した状態。
 - **Outcome Unknown**: write開始後のI/Oまたはhost failureにより、workspace上の最終contentがold/newのどちらであるかを安全に断定できない状態。
@@ -27,11 +27,11 @@ Schema Migrationはproject-wideなschema transformationであり、通常のreco
 
 既存record value editは、exactなbase snapshotとsource provenanceに対して実行しなければならない（MUST）。編集対象recordをPrimary Key valueだけ、source record orderだけ、またはfilesystem pathから導出したdomain identityだけで特定してはならない（MUST NOT）。
 
-同一logical Tableに複数Data documentが存在し、Build Selection前には同じPrimary Key valueを持つsource recordが共存し得るため、source provenanceは少なくとも選択されたData document内のrecord occurrenceとfield source locationを、そのbase snapshotに対して一意に再特定できなければならない（MUST）。exact internal handle shapeは固定しない。
+同一logical Tableに複数Data documentが存在し、Build Selection前には同じPrimary Key valueを持つsource recordが共存し得るため、source provenanceは少なくとも選択されたsource document内のrecord occurrenceとfield source locationを、そのbase snapshotに対して一意に再特定できなければならない（MUST）。exact internal handle shapeは固定しない。
 
 ### SOURCE-EDIT-002
 
-本仕様のoperationは、既存Data document内の既存record member valueの変更だけを対象としなければならない（MUST）。recordの追加・削除、schema変更、field追加・削除・rename、`$tags`変更、Table identity変更、source file rename/moveをこのoperationへ暗黙に含めてはならない（MUST NOT）。
+本仕様のoperationは、既存Data document、または`records`を明示したschema document内の既存record member valueの変更だけを対象としなければならない（MUST）。recordの追加・削除、schema変更、field追加・削除・rename、`$tags`変更、Table identity変更、source file rename/moveをこのoperationへ暗黙に含めてはならない（MUST NOT）。`records`のないschemaをrecord保存対象にしてはならない（MUST NOT）。
 
 GUIの編集可能field範囲はGUI specificationが所有する。本source-edit contractがvalue shapeを安全に表現できることだけから、GUIでのeditabilityやkey mutationを自動的に許可してはならない（MUST NOT）。
 
@@ -67,7 +67,7 @@ base snapshotに対して編集対象source location、nested logical value path
 
 ### SOURCE-EDIT-007
 
-通常Saveのcommit unitは1つのsource data fileでなければならない（MUST）。同じfileのlocal bufferに含まれる複数record / field変更は、1つのSave candidateとしてまとめてcommitしなければならない（MUST）。
+通常Saveのcommit unitは1つのrecord-bearing source fileでなければならない（MUST）。同じfileのlocal bufferに含まれる複数record / field変更は、1つのSave candidateとしてまとめてcommitしなければならない（MUST）。
 
 1つのfileの通常Saveを理由に別のdirty source fileを暗黙に保存してはならず（MUST NOT）、別fileのcontentを変更してはならない（MUST NOT）。複数fileを保存する`Save All`は、各fileのSOURCE-EDIT-008以降のpreflight / resultを独立に満たす上位workflowとして扱う。
 

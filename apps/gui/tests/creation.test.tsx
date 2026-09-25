@@ -25,6 +25,14 @@ async function open(canWrite = true) {
 }
 const createCalls = () => invoke.mock.calls.filter(([command]) => command === 'create_source');
 
+test('new Table defaults to records in the same YAML file', async () => {
+  await open();
+  expect(screen.getByLabelText('Record storage')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Create', exact: true }));
+  await waitFor(() => expect(createCalls()).toHaveLength(1));
+  expect(createCalls()[0][1].request.artifact.inlineRecords).toBe(true);
+});
+
 test('Conflict preserves input, exposes no Overwrite and Cancel does not create again', async () => {
   result = { status: 'conflict', diagnostic: { code: 'E-SOURCE-CREATE-CONFLICT', message: 'exists' } };
   await open(); fireEvent.change(screen.getByLabelText('Table identity'), { target: { value: 'weapon' } });

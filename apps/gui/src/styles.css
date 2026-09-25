@@ -173,6 +173,11 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .workspace-error-strip strong { font-family: ui-monospace, monospace; }
 
 .data-editor { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.data-table-structure { flex: none; max-height: 42vh; overflow: auto; border-bottom: 1px solid var(--border); background: #151d29; }
+.data-table-structure .table-editor { flex: none; min-height: auto; overflow: visible; padding: 10px 12px; }
+.data-table-structure .typed-editor-heading { margin-bottom: 8px; }
+.table-context-line { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; font-size: 11px; }
+.table-context-line span { color: var(--muted); }
 .editor-tabs {
   display: flex; align-items: stretch; justify-content: space-between;
   min-width: 0; border-bottom: 1px solid var(--border); background: #111820;

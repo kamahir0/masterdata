@@ -35,6 +35,8 @@ test("Table creation preserves explicit field order while destination stays inde
   expect((request.artifact as any).table).toBe("weapon");
   expect((request.artifact as any).fields.map((field: any) => field.name)).toEqual(["count", "id"]);
   expect((request.artifact as any).primaryKey.fields).toEqual(["id"]);
+  expect((request.artifact as any).inlineRecords).toBe(true);
+  expect((buildCreationRequest({ ...base, category: "table", inlineRecords: false }).artifact as any).inlineRecords).toBe(false);
 });
 
 test("Enum creation preserves the full ulong value as text", () => {

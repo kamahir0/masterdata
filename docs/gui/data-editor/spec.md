@@ -4,7 +4,7 @@ Status: Approved
 
 ## 目的
 
-record Data documentをsource textへ直接触れずtable形式で編集できるmain editor surfaceとして提供する。選択中source data fileに含まれるrecordsをspreadsheet形式で表示・編集し、file単位でdirty / Saveを管理する。
+record-bearing source documentをsource textへ直接触れずtable形式で編集できるmain editor surfaceとして提供する。選択中source fileに含まれるrecordsをspreadsheet形式で表示・編集し、file単位でdirty / Saveを管理する。
 
 source保存のcanonical contractは[Source Record Edit](../../specs/source-edit.md)が所有し、Data EditorはそのGUI interactionを定義する。
 
@@ -12,7 +12,7 @@ source保存のcanonical contractは[Source Record Edit](../../specs/source-edit
 
 ### GUI-DATA-LAYOUT-001
 
-record Data documentを選択した場合、main areaはspreadsheet形式のgridを表示しなければならない（MUST）。列はlogical Tableのfield、行は選択中source data file内のrecord occurrenceに対応する。
+record Data document、または`records`を明示したTable schema documentを選択した場合、main areaはspreadsheet形式のgridを表示しなければならない（MUST）。列はlogical Tableのfield、行は選択中source file内のrecord occurrenceに対応する。
 
 ### GUI-DATA-LAYOUT-002
 
@@ -20,7 +20,7 @@ fieldの表示順は[Table / Key](../../specs/table-and-keys.md)のschema declar
 
 ### GUI-DATA-LAYOUT-003
 
-同じlogical Tableが複数source data fileへ分割されていても、gridは選択中fileに属するrecordsだけを表示しなければならない（MUST）。rowは選択file内のsource record orderで表示し、同一Primary Key valueを持つ複数source recordが存在してもdeduplicateしてはならない（MUST NOT）。この表示順をdomain / binary semanticsへ昇格させてはならない（MUST NOT）。
+同じlogical Tableのrecordsがschema fileと複数data fileへ分かれていても、gridは選択中fileに属するrecordsだけを表示しなければならない（MUST）。rowは選択file内のsource record orderで表示し、同一Primary Key valueを持つ複数source recordが存在してもdeduplicateしてはならない（MUST NOT）。この表示順をdomain / binary semanticsへ昇格させてはならない（MUST NOT）。
 
 ### GUI-DATA-LAYOUT-004
 
@@ -51,7 +51,7 @@ base snapshotに存在しないAdded record draftは既存Record Mutation contra
 
 ### GUI-DATA-STATE-002
 
-cell変更によりsource data fileが未保存状態になった場合、そのfileをdirtyとして扱わなければならない（MUST）。dirtyの単位はrecordやTableではなくsource data fileである。
+cell変更によりrecord-bearing source fileが未保存状態になった場合、そのfileをdirtyとして扱わなければならない（MUST）。dirtyの単位はrecordやTableではなくrecord-bearing source fileである。
 
 ### GUI-DATA-STATE-003
 
@@ -59,19 +59,19 @@ cell変更によりsource data fileが未保存状態になった場合、その
 
 ### GUI-DATA-STATE-004
 
-cleanなsource data fileが外部変更された場合、GUIはdisk / workspace上の最新内容へ自動Reloadしなければならない（MUST）。利用者の未保存bufferが存在しない状態で古いsnapshotを編集可能に表示し続けてはならない（MUST NOT）。
+cleanなrecord-bearing source fileが外部変更された場合、GUIはdisk / workspace上の最新内容へ自動Reloadしなければならない（MUST）。利用者の未保存bufferが存在しない状態で古いsnapshotを編集可能に表示し続けてはならない（MUST NOT）。
 
 ### GUI-DATA-STATE-005
 
-dirtyなsource data fileが外部変更された場合、GUIはlocal dirty bufferを保持したままConflict状態へ遷移しなければならない（MUST）。外部変更を理由にdirty bufferを自動破棄してはならず（MUST NOT）、local bufferでdisk内容を自動上書きしてもならない（MUST NOT）。
+dirtyなrecord-bearing source fileが外部変更された場合、GUIはlocal dirty bufferを保持したままConflict状態へ遷移しなければならない（MUST）。外部変更を理由にdirty bufferを自動破棄してはならず（MUST NOT）、local bufferでdisk内容を自動上書きしてもならない（MUST NOT）。
 
 ### GUI-DATA-STATE-006
 
-複数source data fileは同時にdirtyであってよい（MAY）。file / record / Table間のnavigationだけを理由にdirty bufferを破棄、保存、または確認dialog表示してはならない（MUST NOT）。
+複数record-bearing source fileは同時にdirtyであってよい（MAY）。file / record / Table間のnavigationだけを理由にdirty bufferを破棄、保存、または確認dialog表示してはならない（MUST NOT）。
 
 ### GUI-DATA-STATE-007
 
-dirty stateは「一度編集したか」ではなく、現在のlocal bufferと最後に保存・読込されたbase snapshotとの差分有無で決定しなければならない（MUST）。全変更をbase snapshotと同一の内容へ戻した場合、そのsource data fileは自動的にcleanへ戻らなければならない（MUST）。
+dirty stateは「一度編集したか」ではなく、現在のlocal bufferと最後に保存・読込されたbase snapshotとの差分有無で決定しなければならない（MUST）。全変更をbase snapshotと同一の内容へ戻した場合、そのrecord-bearing source fileは自動的にcleanへ戻らなければならない（MUST）。
 
 ### GUI-DATA-STATE-008
 
@@ -101,7 +101,7 @@ frontendはeditorを構成するためにYAML parse、type lookup、Enum / Flags
 
 ### GUI-DATA-SAVE-001
 
-Saveは現在activeなsource data fileに対する明示操作でなければならない（MUST）。Saveによって別のdirty fileを暗黙に保存してはならない（MUST NOT）。
+Saveは現在activeなrecord-bearing source fileに対する明示操作でなければならない（MUST）。Saveによって別のdirty fileを暗黙に保存してはならない（MUST NOT）。
 
 ### GUI-DATA-SAVE-002
 
@@ -129,11 +129,11 @@ Saveの`Success`後はcommitされたcontentを新しいbase snapshotとしてdi
 
 ### GUI-DATA-DIFF-002
 
-Diff viewは選択中source data fileのbase snapshotと現在のlocal bufferに対応するSave candidateとの差分をfile単位で表示しなければならない（MUST）。Diff viewとgridの間を移動してもdirty bufferを保持し、可能な範囲でgrid selection / focus contextを復元しなければならない（MUST）。
+Diff viewは選択中source fileのbase snapshotと現在のlocal bufferに対応するSave candidateとの差分をfile単位で表示しなければならない（MUST）。Diff viewとgridの間を移動してもdirty bufferを保持し、可能な範囲でgrid selection / focus contextを復元しなければならない（MUST）。
 
 ### GUI-DATA-BUILD-001
 
-source data fileがdirtyでもBuildの開始を禁止してはならない（MUST NOT）。Buildは保存済みsourceだけを入力とし、dirty bufferの未保存変更を暗黙に含めてはならない（MUST NOT）。
+record-bearing source fileがdirtyでもBuildの開始を禁止してはならない（MUST NOT）。Buildは保存済みsourceだけを入力とし、dirty bufferの未保存変更を暗黙に含めてはならない（MUST NOT）。
 
 ### GUI-DATA-BUILD-002
 
@@ -151,7 +151,7 @@ Conflict状態のfileに通常Saveを実行した場合、外部変更を暗黙�
 
 ### GUI-DATA-KEY-001
 
-file Saveにはplatform標準のSave shortcut（macOSではCmd+S、その他一般的DesktopではCtrl+S）を提供しなければならない（MUST）。shortcutはactiveなsource data fileだけを通常Saveし、Save Allとして動作してはならない（MUST NOT）。
+file Saveにはplatform標準のSave shortcut（macOSではCmd+S、その他一般的DesktopではCtrl+S）を提供しなければならない（MUST）。shortcutはactiveなrecord-bearing source fileだけを通常Saveし、Save Allとして動作してはならない（MUST NOT）。
 
 ### GUI-DATA-KEY-002
 
@@ -208,7 +208,7 @@ None.
 ## 初期sliceの非目標
 
 - recordの追加・削除（別のApproved Record Mutation仕様が所有する）。
-- schema、Table、Value Object、Enum等の編集・作成。
+- Value Object、Enum等の編集・作成。Table schema編集への到達は[Table Editor](../table-editor/spec.md)が所有する。
 - logical Table全体を複数file横断で一括編集するview。
 - range operation、一括paste、fill handle、multi-cell editing、履歴付きUndo/Redo。
 - Git stage / commit / push。

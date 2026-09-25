@@ -26,6 +26,8 @@ pub struct SchemaDocument {
     pub secondary_keys: Vec<SecondaryKeyDefinition>,
     #[serde(default)]
     pub references: Vec<ReferenceDefinition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub records: Option<Vec<BTreeMap<String, Value>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -190,6 +192,21 @@ pub enum SourceDocument {
 }
 
 impl SourceDocument {
+    /// Record-bearing schema files and data files have the same record semantics.
+    /// The synthetic view is never serialized: physical source identity stays with
+    /// the LoadedDocument that owns the records.
+    pub fn record_data(&self) -> Option<DataDocument> {
+        match self {
+            Self::Schema(schema) => schema.records.as_ref().map(|records| DataDocument {
+                kind: "data".to_owned(),
+                table: schema.table.clone(),
+                records: records.clone(),
+            }),
+            Self::Data(data) => Some(data.clone()),
+            Self::Type(_) => None,
+        }
+    }
+
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Schema(_) => "schema",
@@ -251,6 +268,23 @@ impl ProjectDocuments {
             })
     }
 
+    pub fn record_sources(
+        &self,
+    ) -> impl Iterator<Item = (&PathBuf, &str, &[BTreeMap<String, Value>])> {
+        self.files
+            .iter()
+            .filter_map(|loaded| match &loaded.document {
+                SourceDocument::Schema(schema) => schema
+                    .records
+                    .as_ref()
+                    .map(|records| (&loaded.path, schema.table.as_str(), records.as_slice())),
+                SourceDocument::Data(data) => {
+                    Some((&loaded.path, data.table.as_str(), data.records.as_slice()))
+                }
+                SourceDocument::Type(_) => None,
+            })
+    }
+
     pub fn types(&self) -> impl Iterator<Item = (&PathBuf, &TypeDocument)> {
         self.files
             .iter()
@@ -291,6 +325,20 @@ pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocumen
             )
             .with_source(path.clone())
         })?;
+
+    if kind == "schema"
+        && let Some(records) = value
+            .as_mapping()
+            .and_then(|mapping| mapping.get(Value::String("records".to_owned())))
+        && !records.is_sequence()
+    {
+        return Err(MasterdataError::new(
+            "E-YAML-SHAPE",
+            ErrorKind::Parse,
+            "schema `records` must be a sequence when present",
+        )
+        .with_source(path));
+    }
 
     // Dispatching through a typed struct is intentional: type declarations
     // must not remain a stringly-typed map whose category or modifier meaning

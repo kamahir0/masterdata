@@ -11,6 +11,7 @@ Domain: Source Editing
 ### SOURCE-TAG-001
 
 Tag editは通常record member editと別のsemantic requestで、base snapshot内のoccurrenceまたはAdded draftの`$tags`だけを対象にしなければならない（MUST）。既存domain fieldsのeditorへ`$tags`をschema fieldとして加えてはならない（MUST NOT）。Pending deleteにはTag edit不可。
+`records`を明示したschema document内のrecord occurrenceも対象に含め、schema declaration自体をTag editで変更してはならない（MUST NOT）。
 requestはordered string entriesを保持し、Add / Remove / Replace entryを提供する。case修正、trim、deduplicate、sortを暗黙実行してはならない（MUST NOT）。invalid lexical tag / duplicateはshared diagnosticとし、安全なsource candidateならSaveを拒否しない。
 
 ### SOURCE-TAG-002

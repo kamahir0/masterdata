@@ -70,6 +70,12 @@ pub(super) fn prepare(
                         field,
                         rename,
                     )?);
+                    if let Some(records) = &mut schema.records
+                        && !records.is_empty()
+                    {
+                        patches.extend(data_patches(&loaded.source, records.len(), field, rename)?);
+                        rename_or_drop_record_members(records, field, rename)?;
+                    }
                     if let Some(name) = rename {
                         schema.fields[index].name = name.into();
                         if let Some(key) = &mut schema.primary_key {
@@ -88,17 +94,7 @@ pub(super) fn prepare(
                 patches
             }
             SourceDocument::Data(data) if data.table == table && !data.records.is_empty() => {
-                for record in &mut data.records {
-                    let value = record
-                        .remove(field)
-                        .ok_or_else(|| failure("target record member is missing"))?;
-                    if let Some(name) = rename {
-                        if record.contains_key(name) {
-                            return Err(failure("renamed record member already exists"));
-                        }
-                        record.insert(name.into(), value);
-                    }
-                }
+                rename_or_drop_record_members(&mut data.records, field, rename)?;
                 data_patches(&loaded.source, data.records.len(), field, rename)?
             }
             _ => Vec::new(),
@@ -155,6 +151,25 @@ pub(super) fn prepare(
         },
         transformed_documents: transformed,
     })
+}
+
+fn rename_or_drop_record_members(
+    records: &mut [std::collections::BTreeMap<String, serde_yaml::Value>],
+    field: &str,
+    rename: Option<&str>,
+) -> Result<()> {
+    for record in records {
+        let value = record
+            .remove(field)
+            .ok_or_else(|| failure("target record member is missing"))?;
+        if let Some(name) = rename {
+            if record.contains_key(name) {
+                return Err(failure("renamed record member already exists"));
+            }
+            record.insert(name.into(), value);
+        }
+    }
+    Ok(())
 }
 fn replace_names(names: &mut [String], old: &str, new: &str) {
     for name in names {

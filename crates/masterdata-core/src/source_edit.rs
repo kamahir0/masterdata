@@ -109,11 +109,11 @@ pub fn dry_run_source_record_mutation(
                 "SOURCE-EDIT-001",
             )
         })?;
-    let SourceDocument::Data(data) = &loaded.document else {
+    let Some(data) = loaded.document.record_data() else {
         return Err(source_edit_error(
-            "E-SOURCE-EDIT-NOT-DATA",
+            "E-SOURCE-EDIT-NO-RECORDS",
             format!(
-                "source edit target `{}` is not a Data document",
+                "source edit target `{}` has no records sequence",
                 path.display()
             ),
             Some(path.to_path_buf()),
@@ -123,7 +123,7 @@ pub fn dry_run_source_record_mutation(
 
     let schema = unique_schema_for_table(documents, &data.table, path)?;
     let editable = editable_fields(schema, documents);
-    let deleted = deleted_record_indices(data, &mutation.deletions, path)?;
+    let deleted = deleted_record_indices(&data, &mutation.deletions, path)?;
     let mut seen = BTreeSet::new();
     let mut expected = data.clone();
     let mut patches = Vec::new();
@@ -190,7 +190,7 @@ pub fn dry_run_source_record_mutation(
         let member_source = if let Some(member_source) = member_source.as_ref() {
             member_source
         } else {
-            member_source = Some(RecordMemberSource::new(&loaded.source, data, path)?);
+            member_source = Some(RecordMemberSource::new(&loaded.source, &data, path)?);
             member_source.as_ref().expect("member source initialized")
         };
         let span = member_source.locate(&loaded.source, edit.record_index, &edit.field, path)?;
@@ -245,7 +245,7 @@ pub fn dry_run_source_record_mutation(
                         .insert("$tags".to_owned(), tag_sequence_yaml(&tag_edit.tags));
                     patches.push(insert_record_tags_patch(
                         &loaded.source,
-                        data,
+                        &data,
                         tag_edit.record_index,
                         &tag_edit.tags,
                         path,
@@ -269,7 +269,7 @@ pub fn dry_run_source_record_mutation(
                 let member_source = if let Some(member_source) = member_source.as_ref() {
                     member_source
                 } else {
-                    member_source = Some(RecordMemberSource::new(&loaded.source, data, path)?);
+                    member_source = Some(RecordMemberSource::new(&loaded.source, &data, path)?);
                     member_source.as_ref().expect("member source initialized")
                 };
                 let span =
@@ -313,7 +313,7 @@ pub fn dry_run_source_record_mutation(
         .extend(additions.iter().map(|addition| addition.values.clone()));
 
     if !deleted.is_empty() || !additions.is_empty() {
-        let sequence = locate_record_sequence(&loaded.source, data, path)?;
+        let sequence = locate_record_sequence(&loaded.source, &data, path)?;
         patches.extend(delete_record_patches(&loaded.source, &sequence, &deleted));
         if !additions.is_empty() {
             patches.extend(add_record_patches(
@@ -330,15 +330,16 @@ pub fn dry_run_source_record_mutation(
     let candidate_source = apply_patches(&loaded.source, &patches, path)?;
     let reparsed = parse_yaml_document(path.to_path_buf(), &candidate_source)
         .map_err(|error| with_requirement(error, "SOURCE-EDIT-005"))?;
-    let SourceDocument::Data(reparsed_data) = &reparsed.document else {
-        return Err(source_edit_error(
-            "E-SOURCE-EDIT-POSTCONDITION",
-            "source edit candidate no longer parses as the target Data document",
-            Some(path.to_path_buf()),
-            "SOURCE-EDIT-005",
-        ));
+    let expected_document = match &loaded.document {
+        SourceDocument::Schema(schema) => {
+            let mut schema = schema.clone();
+            schema.records = Some(expected.records.clone());
+            SourceDocument::Schema(schema)
+        }
+        SourceDocument::Data(_) => SourceDocument::Data(expected),
+        SourceDocument::Type(_) => unreachable!("record source was checked above"),
     };
-    if reparsed_data != &expected {
+    if reparsed.document != expected_document {
         return Err(source_edit_error(
             "E-SOURCE-EDIT-POSTCONDITION",
             "source edit candidate does not match the expected record-value transformation",

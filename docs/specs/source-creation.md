@@ -58,6 +58,7 @@ initial source creation operationは次のartifact categoryをtyped requestと�
 ### SOURCE-CREATE-005
 
 Table schema creation requestは、[Table / Primary Key / Secondary Key](table-and-keys.md)と[Field Modifiers](type-system/field-modifiers.md)のcurrent Approved contractに従うcomplete initial declarationを表現できなければならない（MUST）。少なくとも次をtyped inputとして扱う。
+作成時にはschemaのみ、またはschemaとempty `records: []`を同じfileに持つ形式を選択できなければならない（MUST）。後者を選んでも別Data fileを自動生成してはならない（MUST NOT）。
 
 - logical `table` identity
 - optional `csharpName`
@@ -173,7 +174,7 @@ filesystem destination resolution、path safety、exclusive create、Outcome Unk
 
 ## 互換性
 
-本仕様は新しいauthoring operationを追加するものであり、既存YAML document format、Table/type semantics、Build artifact、CLI grammarを変更しない。既存source fileはcreation operationを実行しない限り変更されない。
+本仕様はauthoring operationを追加するものであり、既存の分離YAML、Table/type semantics、Build artifact、CLI grammarの解釈を維持する。Table作成時にはoptionalなinline records形式を追加する。既存source fileはcreation operationを実行しない限り変更されない。
 
 ## 初期sliceの非目標
 

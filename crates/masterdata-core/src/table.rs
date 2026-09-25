@@ -256,11 +256,11 @@ pub fn resolve_tables(
         );
 
         let mut selected_records = Vec::new();
-        for (data_path, data) in documents
-            .data()
-            .filter(|(_, data)| data.table == *table_name)
+        for (data_path, _, records) in documents
+            .record_sources()
+            .filter(|(_, table, _)| table == table_name)
         {
-            for (record_index, record) in data.records.iter().enumerate() {
+            for (record_index, record) in records.iter().enumerate() {
                 let tags = match record_tags(record, data_path, record_index, &mut diagnostics) {
                     Some(tags) => tags,
                     None => continue,

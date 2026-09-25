@@ -243,7 +243,22 @@ fn prepare_add_field(
         SourceDocument::Schema(schema) => schema,
         _ => unreachable!("target schema lookup returned a non-schema document"),
     };
-    let schema_patches = plan_schema_patch(&schema_loaded.source, schema_document, &command.field)?;
+    let mut schema_patches =
+        plan_schema_patch(&schema_loaded.source, schema_document, &command.field)?;
+    if let (Some(records), Some(initializer)) = (&schema_document.records, &initializer)
+        && !records.is_empty()
+    {
+        let inline = schema_loaded
+            .document
+            .record_data()
+            .expect("inline records exist");
+        schema_patches.extend(plan_data_patches(
+            &schema_loaded.source,
+            &inline,
+            &command.field,
+            initializer,
+        )?);
+    }
     file_plans.push(MigrationFilePlan {
         path: schema_loaded.path.clone(),
         patches: schema_patches,
@@ -374,6 +389,12 @@ fn validate_table_schema_resolution(
             .iter()
             .filter(|loaded| !matches!(&loaded.document, SourceDocument::Data(_)))
             .cloned()
+            .map(|mut loaded| {
+                if let SourceDocument::Schema(schema) = &mut loaded.document {
+                    schema.records = None;
+                }
+                loaded
+            })
             .collect(),
     };
     let table_build = resolve_tables(
@@ -431,23 +452,18 @@ fn expected_add_field_semantics(
         match &mut document {
             SourceDocument::Schema(schema) if schema.table == command.table => {
                 schema.fields.push(command.field.clone());
+                if let (Some(records), Some(initializer)) = (&mut schema.records, initializer) {
+                    add_field_to_records(records, &command.field.name, initializer, &loaded.path)?;
+                }
             }
             SourceDocument::Data(data) if data.table == command.table => {
                 if let Some(initializer) = initializer {
-                    for (record_index, record) in data.records.iter_mut().enumerate() {
-                        if record.contains_key(&command.field.name) {
-                            return Err(migration_error(
-                                "E-TABLE-UNKNOWN-RECORD-FIELD",
-                                format!(
-                                    "record {record_index} already contains member `{}` while the schema does not declare it",
-                                    command.field.name
-                                ),
-                                Some(loaded.path.clone()),
-                                "MIGRATION-006",
-                            ));
-                        }
-                        record.insert(command.field.name.clone(), initializer.clone());
-                    }
+                    add_field_to_records(
+                        &mut data.records,
+                        &command.field.name,
+                        initializer,
+                        &loaded.path,
+                    )?;
                 }
             }
             SourceDocument::Schema(_) | SourceDocument::Data(_) | SourceDocument::Type(_) => {}
@@ -456,6 +472,28 @@ fn expected_add_field_semantics(
     }
     expected.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(expected)
+}
+
+fn add_field_to_records(
+    records: &mut [std::collections::BTreeMap<String, Value>],
+    name: &str,
+    initializer: &Value,
+    path: &Path,
+) -> Result<()> {
+    for (record_index, record) in records.iter_mut().enumerate() {
+        if record.contains_key(name) {
+            return Err(migration_error(
+                "E-TABLE-UNKNOWN-RECORD-FIELD",
+                format!(
+                    "record {record_index} already contains member `{name}` while the schema does not declare it"
+                ),
+                Some(path.to_path_buf()),
+                "MIGRATION-006",
+            ));
+        }
+        record.insert(name.to_owned(), initializer.clone());
+    }
+    Ok(())
 }
 
 fn semantic_documents(documents: &ProjectDocuments) -> Vec<(PathBuf, SourceDocument)> {
@@ -1124,11 +1162,10 @@ fn target_data_documents<'a>(
 }
 
 fn target_record_count(documents: &ProjectDocuments, table_name: &str) -> usize {
-    target_data_documents(documents, table_name)
-        .filter_map(|loaded| match &loaded.document {
-            SourceDocument::Data(data) => Some(data.records.len()),
-            _ => None,
-        })
+    documents
+        .record_sources()
+        .filter(|(_, table, _)| *table == table_name)
+        .map(|(_, _, records)| records.len())
         .sum()
 }
 

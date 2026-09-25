@@ -37,6 +37,7 @@ export function buildCreationRequest({
   fields,
   primaryKey,
   secondaryKeys,
+  inlineRecords = true,
   members,
 }: {
   category: Category;
@@ -52,10 +53,11 @@ export function buildCreationRequest({
   fields: Field[];
   primaryKey: string[];
   secondaryKeys: Secondary[];
+  inlineRecords?: boolean;
   members: Member[];
 }): CreationRequest {
   let artifact: Record<string, unknown> = { category };
-  if (category === "table") artifact = { category, table: name, csharpName: csharpName || null, fields, primaryKey: { fields: primaryKey }, secondaryKeys };
+  if (category === "table") artifact = { category, table: name, csharpName: csharpName || null, fields, primaryKey: { fields: primaryKey }, secondaryKeys, inlineRecords };
   if (category === "data") artifact = { category, table };
   if (category === "value_object") artifact = { category, name, underlying, conversions: { fromUnderlyingImplicit: fromImplicit, toUnderlyingImplicit: toImplicit } };
   if (category === "enum" || category === "flags") artifact = { category, name, underlying, members };
@@ -85,6 +87,7 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
   const [fields, setFields] = useState<Field[]>([initialField()]);
   const [primaryKey, setPrimaryKey] = useState<string[]>(["id"]);
   const [secondaryKeys, setSecondaryKeys] = useState<Secondary[]>([]);
+  const [inlineRecords, setInlineRecords] = useState(true);
   const [members, setMembers] = useState<Member[]>([{ name: "", value: "" }]);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
@@ -117,6 +120,7 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
     fields,
     primaryKey,
     secondaryKeys,
+    inlineRecords,
     members,
   });
   const focusError = (diagnostic: NonNullable<CreationReport["diagnostic"]>) => {
@@ -194,6 +198,7 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
           <Button icon={<Plus size={14} />} onClick={() => setFields([...fields, { ...initialField(), key: fields.length ? Math.max(...fields.map(field => field.key ?? -1)) + 1 : 0, name: "" }])}>Add field</Button>
         </>}
         {category === "table" && <>
+          <Form.Item label="Record storage"><Select aria-label="Record storage" value={inlineRecords ? "inline" : "separate"} options={[{ value: "inline", label: "In this Table file" }, { value: "separate", label: "Separate data files" }]} onChange={value => setInlineRecords(value === "inline")} /></Form.Item>
           <Form.Item label="Primary Key (ordered)" required><Select mode="multiple" aria-label="Primary Key" value={primaryKey} options={options(fields.map(field => field.name).filter(Boolean))} onChange={setPrimaryKey} /></Form.Item>
           <p className="creation-hint">Key order follows selection order. Remove and reselect a field to change its position.</p>
           <h3>Secondary Keys</h3>

@@ -35,7 +35,7 @@ const mutationSnapshot = (rows = [{ recordIndex: 0, cells: [
   addRow: { supported: true, reason: null }, validation,
 });
 const workspace = { project: { project_root: '/project', name: 'Demo', project_id: 'demo' }, sourceRoots: ['.'],
-  files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data' }] };
+  files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null, hasInlineRecords: false }] };
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
 beforeEach(() => {
@@ -505,9 +505,37 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 const tableSnapshot = {path:'schema.yaml',schema:{table:'item',fields:[{key:0,name:'id',type:'int',nullable:false,array:false}],primaryKey:{fields:['id']},secondaryKeys:[]},fieldTypes:['int','string']};
-const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml',sourceRoot:'.',kind:'data'},{path:'schema.yaml',sourceRoot:'.',kind:'schema'}]};
+const tableWorkspace = {...workspace,files:[...workspace.files,{path:'other.yaml',sourceRoot:'.',kind:'data',table:'item',typeName:null,hasInlineRecords:false},{path:'schema.yaml',sourceRoot:'.',kind:'schema',table:'item',typeName:null,hasInlineRecords:false}]};
 const tablePlan = {token:'table-plan',table:'item',operation:'RenameField',field:'id',destructive:false,affectedRecordCount:1,files:[{path:'schema.yaml',before:'name: id',after:'name: itemId'},{path:'data.yaml',before:'id: 1',after:'itemId: 1'}],diagnostics:[]};
 const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagnostic:{code:'E-IO-ACCESS',message:'rollback failed'},recoveryWorkspace:'/recovery' };
+test('inline Table file opens record grid and its schema editor in one surface', async () => {
+  const normal = invoke.getMockImplementation()!;
+  const inlineWorkspace = {...workspace, files: [{path:'schema.yaml',sourceRoot:'.',kind:'schema',table:'item',typeName:null,hasInlineRecords:true}]};
+  invoke.mockImplementation(async (command,args) => {
+    if (command === 'authoring_workspace') return inlineWorkspace;
+    if (command === 'open_table') return tableSnapshot;
+    if (command === 'open_data_file') return {...snapshot(), path:'schema.yaml', baseSource:'kind: schema\ntable: item\nrecords:\n  - weight: 10\n'};
+    return normal(command,args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  expect(await screen.findByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Table structure/}));
+  expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
+  expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('split Data file exposes its Table schema without leaving the record grid', async () => {
+  const normal = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command,args) => {
+    if (command === 'authoring_workspace') return tableWorkspace;
+    if (command === 'open_table') return tableSnapshot;
+    return normal(command,args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  expect(await screen.findByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Table structure/}));
+  expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
+  expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 async function planFromTable(type = false) {
   openSourceFiles();
   fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));

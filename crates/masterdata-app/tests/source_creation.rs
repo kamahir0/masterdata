@@ -34,6 +34,39 @@ fn table(dir: &Path, destination: &str, name: &str) -> CreationRequest {
         json!({"category":"table","table":name,"fields":[{"key":0,"name":"id","type":"int"}],"primaryKey":{"fields":["id"]}}),
     )
 }
+
+#[test]
+fn creates_inline_table_and_opens_its_empty_record_grid() {
+    let dir = project();
+    let app = NativeApplicationService::new();
+    let request = request(
+        dir.path(),
+        "item.yaml",
+        json!({"category":"table","table":"item","inlineRecords":true,"fields":[{"key":0,"name":"id","type":"int"}],"primaryKey":{"fields":["id"]}}),
+    );
+    assert_eq!(
+        app.create_source(Some(dir.path()), dir.path(), &request)
+            .unwrap()
+            .status,
+        CreationStatus::Success
+    );
+    let source = fs::read_to_string(dir.path().join("sources/item.yaml")).unwrap();
+    assert!(source.contains("records: []"));
+    let snapshot = app
+        .open_data_file(Some(dir.path()), dir.path(), "sources/item.yaml")
+        .unwrap();
+    assert!(snapshot.rows.is_empty());
+    assert!(snapshot.add_row.supported);
+    let workspace = app
+        .authoring_workspace(Some(dir.path()), dir.path())
+        .unwrap();
+    assert!(
+        workspace
+            .files
+            .iter()
+            .any(|file| file.path == "sources/item.yaml" && file.has_inline_records)
+    );
+}
 #[test]
 fn creates_one_artifact_and_folder_without_touching_existing_sources() {
     let dir = project();

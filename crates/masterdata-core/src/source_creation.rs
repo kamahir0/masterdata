@@ -10,6 +10,8 @@ pub enum SourceCreation {
     Folder,
     Table {
         table: String,
+        #[serde(rename = "inlineRecords", default)]
+        inline_records: bool,
         #[serde(rename = "csharpName")]
         csharp_name: Option<String>,
         fields: Vec<FieldDefinition>,
@@ -125,6 +127,7 @@ pub fn prepare_source_creation(
         }
         SourceCreation::Table {
             table,
+            inline_records,
             csharp_name,
             fields,
             primary_key,
@@ -137,6 +140,7 @@ pub fn prepare_source_creation(
             primary_key: Some(primary_key.clone()),
             secondary_keys: secondary_keys.clone(),
             references: Vec::new(),
+            records: inline_records.then(Vec::new),
         }),
         SourceCreation::Data { table } => {
             if documents

@@ -21,6 +21,7 @@ pub struct WorkspaceSourceFile {
     pub kind: String,
     pub table: Option<String>,
     pub type_name: Option<String>,
+    pub has_inline_records: bool,
     pub diagnostic: Option<Diagnostic>,
 }
 
@@ -197,6 +198,7 @@ impl NativeApplicationService {
                         kind: loaded.document.kind().to_owned(),
                         table: loaded.document.table_identity().map(str::to_owned),
                         type_name: loaded.document.type_name().map(str::to_owned),
+                        has_inline_records: matches!(&loaded.document, masterdata_core::SourceDocument::Schema(schema) if schema.records.is_some()),
                         diagnostic: None,
                     }),
                     Err(error) => entries.push(WorkspaceSourceFile {
@@ -205,6 +207,7 @@ impl NativeApplicationService {
                         kind: "invalid".to_owned(),
                         table: None,
                         type_name: None,
+                        has_inline_records: false,
                         diagnostic: Some(error.diagnostic().clone()),
                     }),
                 },
@@ -214,6 +217,7 @@ impl NativeApplicationService {
                     kind: "unavailable".to_owned(),
                     table: None,
                     type_name: None,
+                    has_inline_records: false,
                     diagnostic: Some(
                         MasterdataError::new(
                             "E-IO-ACCESS",

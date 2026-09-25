@@ -137,10 +137,10 @@ fn closure(
                     .all(|f| known(documents, &f.type_name, seen))
             })
     }
-    for (_, data) in documents.data() {
+    for (_, table, _) in documents.record_sources() {
         let schemas: Vec<_> = documents
             .schemas()
-            .filter(|(_, s)| s.table == data.table)
+            .filter(|(_, s)| s.table == table)
             .collect();
         if schemas.len() != 1
             || schemas[0]
@@ -151,7 +151,7 @@ fn closure(
         {
             return Err(failure(format!(
                 "data table `{}` dependencies cannot be classified",
-                data.table
+                table
             )));
         }
     }
@@ -281,21 +281,26 @@ pub fn dry_run_type_migration(
         ) {
             continue;
         }
-        let SourceDocument::Data(data) = &mut loaded.document else {
-            continue;
+        let (table_name, records) = match &mut loaded.document {
+            SourceDocument::Schema(schema) => match &mut schema.records {
+                Some(records) => (&schema.table, records),
+                None => continue,
+            },
+            SourceDocument::Data(data) => (&data.table, &mut data.records),
+            SourceDocument::Type(_) => continue,
         };
         let schema = documents
             .schemas()
-            .find(|(_, s)| s.table == data.table)
+            .find(|(_, s)| s.table == *table_name)
             .expect("classified table")
             .1;
-        for (index, record) in data.records.iter_mut().enumerate() {
+        for (index, record) in records.iter_mut().enumerate() {
             for f in &schema.fields {
                 if !dependent.contains(&f.type_name) {
                     continue;
                 }
                 let value = record.get_mut(&f.name).ok_or_else(|| {
-                    failure(format!("{} record {index} missing {}", data.table, f.name))
+                    failure(format!("{} record {index} missing {}", table_name, f.name))
                 })?;
                 let resolved =
                     resolve_field(&types, &f.name, &f.type_name, f.key, f.nullable, f.array)?;

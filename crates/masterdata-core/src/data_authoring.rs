@@ -85,10 +85,10 @@ pub fn data_file_snapshot(
                 "GUI-DATA-LAYOUT-001",
             )
         })?;
-    let SourceDocument::Data(data) = &loaded.document else {
+    let Some(data) = loaded.document.record_data() else {
         return Err(snapshot_error(
             "E-GUI-DATA-FILE-KIND",
-            "selected source is not a Data document",
+            "selected source has no records sequence",
             Some(target.to_path_buf()),
             "GUI-EXPLORER-003",
         ));
@@ -198,8 +198,8 @@ pub fn data_file_snapshot(
         .iter()
         .flat_map(|profile| profile.include_tags.iter().chain(&profile.exclude_tags))
         .cloned()
-        .chain(documents.data().flat_map(|(_, data)| {
-            data.records.iter().flat_map(|record| {
+        .chain(documents.record_sources().flat_map(|(_, _, records)| {
+            records.iter().flat_map(|record| {
                 record
                     .get("$tags")
                     .and_then(serde_yaml::Value::as_sequence)

@@ -50,6 +50,7 @@ MessagePack serialization layoutの変更を表すが、他のidentity changeを
 ### SCHEMA-TABLE-001
 
 1つのproject-local logical `table` identityには、正確に1つのschema documentと、0個以上のdata documentが対応しなければならない（MUST）。
+schema documentはoptionalなtop-level `records` sequenceを持てる（MAY）。明示されたrecordsは同じTableのdata documentのrecordsと同じTable検証、Build Selection、key / Reference制約へ寄与しなければならない（MUST）。inline recordsと分離data documentを同じTableで併用してよい（MAY）。record provenanceは実際のsource fileとそのfile内のrecord occurrenceを指す。`records`を省略したschemaは従来通りschemaだけを宣言する。
 同じlogical `table`を宣言する複数のschema document、またはschema fragmentのmergeはinvalidでなければならない（MUST）。複数のdata documentは
 同じ`table`へrecordsを供給してもよい（MAY）。data documentまたはBuild Selection後のselected logical datasetが0件でも、Tableとschemaは存在する
 validなempty Tableとして扱わなければならない（MUST）。
@@ -289,7 +290,7 @@ deltaはそれらを導入しない。
 | --- | --- | --- |
 | `SCHEMA-KEY-001` | persisted fieldごとにnon-negativeでuniqueな`key`があり、generated memberの`[Key(n)]`が同じ値を使う。field declaration orderを変えてもkey mappingが変わらない。 | `key`欠落、negative、同一container内のduplicate、またはYAML keyと異なる`[Key(n)]`が生成される。`key`からField ID/rename/migration identityが推測される。 |
 | `SCHEMA-KEY-002` | GUIの新field default候補がactive keyの最大値+1となる。authorがkeyを変更してもよい。 | GUI候補が必ずserialization identityを固定する、またはkey再採番からlogical field lifecycleを推測する。 |
-| `SCHEMA-TABLE-001` | 同じ`table`にschema 1件とdata 0件以上を結合でき、0-record source/selected Tableもvalidなままschema/APIを持つ。 | schemaが2件、schema fragment merge、またはempty Tableが必ずrejectされる。 |
+| `SCHEMA-TABLE-001` | 同じ`table`にschema 1件とdata 0件以上を結合でき、schema内recordsとdata recordsの混在、0-record source/selected Tableもvalidなままschema/APIを持つ。 | schemaが2件、schema fragment merge、またはempty Tableが必ずrejectされる。 |
 | `SCHEMA-TABLE-002` | validな`item-category`がproject-local identityとなり、未指定時に`ItemCategory`、override時に`HTTPServer`などdeterministicなtype nameになる。 | path/filenameがidentityを変える、invalid `table` grammarが受理される、generated type collisionがsuffix/escapeで修復される。 |
 | `SCHEMA-TABLE-003` | Primitive、Value Object、Custom Type、Enum、Flags EnumをTable fieldのbase typeとして使用でき、例えば`Reward`または`Feature`へresolveする。`T`、`T?`、`T[]`はField Modifiers仕様どおりに解決される。 | Table、Index、Primary Key、Secondary Key、Reference等のschema construct、unknown type category、unsupported type referenceがfield base typeとして受理される。Custom Type/Flags Enumをfieldとして許可したことだけを理由にkey componentとして許可する。 |
 | `SCHEMA-TABLE-004` | YAML field orderがGUI columnとgenerated property declaration orderへ反映され、`[Key(n)]`は明示keyを保持する。 | propertyがkeyやalphabetical順へsortされ、field reorderがrecord/key semanticsを変更する。 |
@@ -402,13 +403,24 @@ secondaryKeys:
 
 ### Data documents
 
+小規模Tableは上のschema documentに直接`records`を追加してよい。
+
 ```yaml
-kind: data
-table: item-category
 records:
   - id: 1001
     category: Weapon
     displayName: Sword
+```
+
+これはschema document末尾へ追加する部分例であり、別data documentと併用できる。
+
+```yaml
+kind: data
+table: item-category
+records:
+  - id: 1002
+    category: Weapon
+    displayName: Shield
 ```
 
 同じ`table`を宣言する別のdata documentのrecordsもこのlogical Tableへmergeされる。recordのfield orderはdomain semanticsを持たず、Approved Build

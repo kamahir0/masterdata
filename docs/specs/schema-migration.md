@@ -258,6 +258,8 @@ Migration commitの前提にしてはならない。
 
 ### MIGRATION-014
 
+schema document自身にrecordsを持つ場合、Migrationは同一source file内のschema declarationとrecordsへの必要なpatchを合成し、1 fileのPlan、postcondition、commitとして扱わなければならない（MUST）。別data documentには従来通り適用する。
+
 MigrationによるYAML source mutationは、source-preservingかつdeterministicでなければならない
 （MUST）。同じexact source snapshot、同じMigration Command semantic input、および同じ
 execution optionsからは、同じtransformed source bytesを生成しなければならない（MUST）。

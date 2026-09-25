@@ -13,6 +13,7 @@ Table / field / key / type semantics、Migration dependency resolution、source-
 ### GUI-TABLE-LAYOUT-001
 
 Workspace Explorerでshared source semantics上のTable schema documentを選択した場合、main areaはTable Editorを表示しなければならない（MUST）。folder名やphysical pathをTable identityとして扱ってはならない（MUST NOT）。Table Editorは少なくともlogical Table identity、schema source provenance、field declaration orderを確認できなければならない（MUST）。
+Data record編集画面からも対応Tableのfield / key / Referenceを確認・編集するsectionへ到達できなければならない（MUST）。schema fileがinline recordsを持つ場合、同じ編集画面でschemaとそのfileのrecord gridの両方へ到達できなければならない（MUST）。schema編集は既存のPlan / Diff / Applyとaffected dirty file gateを維持する。
 
 ### GUI-TABLE-LAYOUT-002
 

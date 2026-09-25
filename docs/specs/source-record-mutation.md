@@ -6,7 +6,7 @@ Domain: Source Editing
 
 ## 概要
 
-本仕様は、既存Data documentにrecord occurrenceを追加・削除し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
+本仕様は、既存のrecord-bearing source documentにrecord occurrenceを追加・削除し、YAMLをSource of Truthのままfile単位で安全に保存するためのobservable contractを定義する。
 
 既存record member valueの変更は[Source Record Edit](source-edit.md)、Table / record validityは[Table / Primary Key / Secondary Key](table-and-keys.md)、value domainとfield shapeは[Type System](type-system/README.md)、native commit I/Oは[Source Record Edit](source-edit.md)の`SOURCE-EDIT-014`に従う。本仕様はそれらを再定義せず、record sequenceのstructural mutation、source-preserving insertion/removal、および既存value editとのcompositionを所有する。
 
@@ -14,22 +14,23 @@ Source Record Editの`SOURCE-EDIT-007`から`SOURCE-EDIT-016`が定義するfile
 
 ## 用語
 
-- **Existing record occurrence**: base snapshotの選択Data document内に存在する1つのphysical record sequence item。Primary Key valueとは別のsource provenanceで識別する。
+- **Existing record occurrence**: base snapshotの選択source document内に存在する1つのphysical record sequence item。Primary Key valueとは別のsource provenanceで識別する。
 - **Added record draft**: base snapshotには存在せず、local buffer内だけに存在する未保存record。
 - **Pending delete**: existing record occurrenceをSave candidateから除外するが、まだworkspace sourceを変更していないlocal buffer state。
-- **Record mutation set**: 1つのsource data fileに対するexisting value edits、added record drafts、pending deletesを合わせたlocal mutation state。
+- **Record mutation set**: 1つのrecord-bearing source fileに対するexisting value edits、added record drafts、pending deletesを合わせたlocal mutation state。
 
 ## 規範要件
 
 ### SOURCE-RECORD-001
 
-record追加・削除はexactなbase snapshotとselected source data fileに対して実行しなければならない（MUST）。existing recordの削除対象はbase snapshot内のrecord occurrenceとして識別しなければならず（MUST）、Primary Key valueだけ、logical Table内のrecord identityだけ、または他Data fileを含むmerged dataset上の位置だけで対象を選んではならない（MUST NOT）。
+record追加・削除はexactなbase snapshotとselected record-bearing source fileに対して実行しなければならない（MUST）。existing recordの削除対象はbase snapshot内のrecord occurrenceとして識別しなければならず（MUST）、Primary Key valueだけ、logical Table内のrecord identityだけ、または他Data fileを含むmerged dataset上の位置だけで対象を選んではならない（MUST NOT）。
+`records`を明示したschema fileもselected sourceとして同じrecord mutationを受けられなければならない（MUST）。この場合もschema declarationをrecord mutationへ暗黙に含めず、file単位Saveとlost-update preflightを適用する。
 
 同一Primary Key valueを持つrecordが同一または別Data documentに共存しても、選択したsource occurrence以外を削除してはならない（MUST NOT）。
 
 ### SOURCE-RECORD-002
 
-Add Record operationは、選択Data documentがexactly 1つのTable schemaへresolveし、そのschemaの全fieldが[Source Record Edit](source-edit.md)の`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくv1 supported resolved value shapeへ安全にresolveできる場合にsupportedでなければならない（MUST）。Primitive、Value Object、Enum、Flags Enum、Custom Typeと、それらに対するRequired / Nullable / Array shapeを対象に含める。
+Add Record operationは、選択source documentがexactly 1つのTable schemaへresolveし、そのschemaの全fieldが[Source Record Edit](source-edit.md)の`SOURCE-EDIT-015` / `SOURCE-EDIT-016`に基づくv1 supported resolved value shapeへ安全にresolveできる場合にsupportedでなければならない（MUST）。Primitive、Value Object、Enum、Flags Enum、Custom Typeと、それらに対するRequired / Nullable / Array shapeを対象に含める。
 
 unknown、unresolved、またはshared applicationがlosslessなtyped authoring stateとして安全に扱えないfield shapeを1つでも含むTableについて、Add Record operationをsupportedとして扱ってはならない（MUST NOT）。この制限はexisting recordのDelete capabilityや、既存[Source Record Edit](source-edit.md)が許可するfield編集 capabilityを自動的に無効化してはならない（MUST NOT）。
 
@@ -49,7 +50,7 @@ Custom Type等のcompound draftを利用者が具体的なmapping valueとして
 
 ### SOURCE-RECORD-005
 
-Add Recordはselected source data fileの`records` sequence末尾へAdded record draftを追加するSave candidateを生成しなければならない（MUST）。source record orderをdomain / binary semanticsへ昇格させてはならない（MUST NOT）が、source-preserving authoring上のdeterministic presentationとしてappend位置を固定する。
+Add Recordはselected record-bearing source fileの`records` sequence末尾へAdded record draftを追加するSave candidateを生成しなければならない（MUST）。source record orderをdomain / binary semanticsへ昇格させてはならない（MUST NOT）が、source-preserving authoring上のdeterministic presentationとしてappend位置を固定する。
 
 GUI Source Creationが生成するsemantic empty records representation（少なくとも`records: []`）から、最初のblock-sequence recordを安全に生成できなければならない（MUST）。
 
@@ -113,7 +114,7 @@ Added record draftとexisting record editは、base snapshot presenceやkey edit
 
 少なくとも次をfocused unit / integration / GUI workflow evidenceで検証する。
 
-- `records: []`のData documentへ最初のrecordを追加でき、schema declaration orderでfieldがrenderされる。
+- `records: []`のrecord-bearing source documentへ最初のrecordを追加でき、schema declaration orderでfieldがrenderされる。
 - Primitive / Value Object / Enum / Flags / Custom TypeとRequired / Nullable / Arrayを含むsupported TableでAdd Recordが利用できる。
 - 既存block sequenceの末尾へAddしても既存record、comments、blank lines、line endings、quote / indentationが保持される。
 - nested `long` / `ulong` boundary valueがaddition boundaryでroundingされない。
@@ -134,7 +135,7 @@ fixtureを使用する場合、既存fixture sourceを通常GUI/CLI executionで
 
 ## 互換性
 
-既存YAML syntax、Table identity、field semantics、MessagePack key、generated C#、binary formatを変更しない。record addition / deletionはexisting Data documentの`records` sequenceへauthoring operationを追加するだけであり、source record orderを新しいdomain identityへ昇格させない。
+既存YAML syntax、Table identity、field semantics、MessagePack key、generated C#、binary formatを変更しない。record addition / deletionはexisting record-bearing source documentの`records` sequenceへauthoring operationを追加するだけであり、source record orderを新しいdomain identityへ昇格させない。
 
 Add Recordのvalue category対応をApproved Type System全体へ拡張するが、保存後のvalue semanticsやkey semanticsを変更しない。Added record draftの未入力typed valueはYAML `null`としてcandidateへ含め、Nullable以外でのinvalidityは既存validation non-blocking contractに従う。
 

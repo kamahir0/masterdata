@@ -373,6 +373,13 @@ pub(super) fn patch_document(
     let old: Value = serde_yaml::from_str(&before.source).map_err(|e| failure(e.to_string()))?;
     let mut new = old.clone();
     match desired {
+        SourceDocument::Schema(schema) => {
+            let records = schema
+                .records
+                .as_ref()
+                .ok_or_else(|| failure("schema has no inline records"))?;
+            new["records"] = yaml(records)?;
+        }
         SourceDocument::Data(data) => {
             new["records"] = yaml(&data.records)?;
         }
@@ -442,7 +449,6 @@ pub(super) fn patch_document(
                 }
             }
         }
-        _ => return Err(failure("unsupported source kind")),
     }
     let locator = Locator::new(&before.source);
     let first = locator.next(0).ok_or_else(|| failure("empty source"))?;

@@ -186,13 +186,13 @@ impl NativeApplicationService {
         let columns = base_columns;
         let query_shape_indices = query_shapes(&columns, &request.query)?;
         let mut rows = Vec::new();
-        for (path, data) in documents
-            .data()
-            .filter(|(_, data)| data.table == request.table)
+        for (path, _, records) in documents
+            .record_sources()
+            .filter(|(_, table, _)| *table == request.table)
         {
             let absolute_path = path.clone();
             let path = project_relative_string(project.root(), &absolute_path);
-            for (record_index, record) in data.records.iter().enumerate() {
+            for (record_index, record) in records.iter().enumerate() {
                 let tags = record_tags(record, &absolute_path, record_index, &mut diagnostics);
                 let values = columns
                     .iter()

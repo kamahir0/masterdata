@@ -6,23 +6,23 @@
 
 ## Objective
 
-**Desktop applicationの表示テーマとしてLight / Dark / Systemを提供し、Project非依存のApplication preferenceとして即時反映・永続化する。**
+**設定保存scopeをProject Settings / Project Local State / Application User Settings・UI Stateの3区分として確定し、Color Themeの永続化仕様をProject非依存のApplication storage authorityへ修正する。**
 
 ## Completion slices
 
-- GUI Color Themeの規範要件（GUI-THEME-001〜007）をApproved仕様へ反映する。
-- Desktop GUIでThemePreference（System / Light / Dark）の選択、OS preference追従、localStorage永続化、初回描画時の復元を実装する。
-- Application Settings surfaceでAppearance（System / Light / Dark）の選択UIを提供する。
-- Light / Dark双方のsemantic color tokenとAnt Design ConfigProvider連携を整え、可読性とアクセシビリティを確保する。
-- focused regression tests、GUI build、実操作確認、repository checksを完了する。
+- `PROJECT-CONFIG-007`で3つのpersistence scopeを明確化する。
+- Project Local Stateのdefault namespaceを`.masterdata/**`、Project非依存Application User SettingsのauthorityをOS標準per-user application data/config領域として定義する。
+- `GUI-THEME-002` / `GUI-THEME-004` / Color Theme architecture boundaryを`PROJECT-CONFIG-007`へ整合させる。
+- current WebView `localStorage`実装との差分をcanonical statusへ反映し、実装済みと誤表示しない。
+- specification changeをreviewし、canonical specificationへ適用する。
 
 ## Canonical requirements
 
-- [Color Theme](gui/color-theme/spec.md) — `GUI-THEME-001`, `GUI-THEME-002`, `GUI-THEME-003`, `GUI-THEME-004`, `GUI-THEME-005`, `GUI-THEME-006`, `GUI-THEME-007`
-- [GUI app shell](gui/app-shell.md)
+- [Project layout](specs/project-layout.md) — `PROJECT-CONFIG-007`
+- [Color Theme](gui/color-theme/spec.md) — `GUI-THEME-002`, `GUI-THEME-004`
 
 ## Explicit non-scope
 
-- ProjectごとのTheme override、custom theme、user-defined color palette。
-- syntax highlighting themeの独立選択、OS high contrast theme、CLI color scheme、Project共有theme。
-
+- Application preference storageの実装変更。
+- legacy `localStorage`からの実migration実装。
+- Project Local State / Application User Settingsのexact file名、serialization format。

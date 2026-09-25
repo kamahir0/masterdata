@@ -167,24 +167,32 @@ publish targetがない初期projectでも、canonical buildがproject-local art
 
 ### PROJECT-CONFIG-007
 
-Project Settings、Project Tool State、User Settings / UI Stateは、互いに異なるscopeとして扱わなければ
-ならない（MUST）。current v1のProject Settingsのcanonical configuration entrypointは
-`masterdata.toml`であり、shared、reproducible、project-scopedで、通常Git trackedである。
-project identity、source roots、build artifact/cache paths、Build Profiles、publish targets、および
-project/compiler/schema semanticsに影響するfuture optionはProject Settingsに属する。
+Project Settings、Project Local State、Application User Settings / UI Stateは、互いに異なる
+persistence scopeとして扱わなければならない（MUST）。
+
+**Project Settings**のcanonical configuration entrypointは`masterdata.toml`であり、project-scoped、
+shared、reproducibleで、通常Git trackedである。project identity、source roots、build artifact/cache
+paths、Build Profiles、publish targets、およびproject/compiler/schema semanticsに影響するfuture
+optionはProject Settingsに属する。
 
 同じcanonical sourceと同じexplicit operationに対するsemantic、build、publish resultへ影響するvalueを
-User Settingsから取得してはならず（MUST NOT）、そのようなvalueはProject Settingsとして扱わなければ
-ならない（MUST）。`.masterdata/settings.toml`などのsecond semantic settings layerや、user-local
-overrideでbuild resultを変更するmechanismは導入してはならない（MUST NOT）。将来のconfig
-composition/includeは別のspecification changeで扱わなければならない。これは、将来すべての設定を常に
-1つの物理TOML fileへ置くことを要求するものではない。
+Project Local StateまたはApplication User Settingsから取得してはならず（MUST NOT）、そのようなvalueは
+Project Settingsとして扱わなければならない（MUST）。`.masterdata/settings.toml`などのsecond
+semantic settings layerや、user-local overrideでbuild resultを変更するmechanismは導入してはならない
+（MUST NOT）。将来のconfig composition/includeは別のspecification changeで扱わなければならない。
+これは、将来すべてのProject Settingsを常に1つの物理TOML fileへ置くことを要求するものではない。
 
-Project Tool Stateのdefault namespaceは`.masterdata/**`である。少なくとも`.masterdata/output/`と
-`.masterdata/cache/`を含み、project-local、tool-owned、canonical YAML source authorityではない
-derived/reconstructable stateとして扱う。`.masterdata/`をUser Settings storageとして扱ってはならない
-（MUST NOT）。`build.artifact_dir`と`build.cache`のconfigurabilityは維持し、custom pathに対する
-automatic Git ignore policyはこのrequirementで決定しない。
+**Project Local State**のdefault namespaceは`.masterdata/**`である。project-scopedかつlocal-onlyで、
+defaultではGit trackedにせず、canonical YAML source authorityやshared Project Settingsとして扱わない
+（MUST NOT）。少なくとも`.masterdata/output/`と`.masterdata/cache/`を含み、derived/reconstructable
+tool stateに加えて、project固有だが共有不要なUI/tool stateを保持してよい（MAY）。例えばlast selected
+table、project固有のpanel size、column width、sort/filter UI、expanded tree等が該当し得る。
+
+Project Local Stateはcanonical source interpretation、validation semantics、Build Selection、generated C#、
+binary、canonical artifact-set identity、publish target configuration、publish semanticsを変更しては
+ならない（MUST NOT）。複数user/checkout間で共有すべきvalue、または同じsource/operationのresultへ影響する
+valueをProject Local Stateへ置いてはならない（MUST NOT）。Project Local Stateのexact file名、
+serialization format、subdirectory layoutは必要なfeature specificationが所有する。
 
 default recommended Git policyでは、projectは次のentryを`.gitignore`に含めることが望ましい
 （SHOULD）。
@@ -197,24 +205,23 @@ default recommended Git policyでは、projectは次のentryを`.gitignore`に�
 ignoreする。artifact setにおける「canonical」はbuild/publish artifact authorityを意味し、YAML source
 authorityを意味しない。`.masterdata/output/`をsource of truthへ昇格させてはならない（MUST NOT）。
 
-User Settings / UI Stateはproject source treeではなくhost/user-local storageへ置かなければならない
-（MUST）。DesktopではOSまたはapplication user-data storageを使用してよい（MAY）が、exact technologyはこのrequirementで固定しない。theme、language、
-recent projects、last selected table、panel sizes、column widths、sort/filter UI、expanded treeなどが
-該当する。project-specific UI stateを`project.id`またはuser-local workspace identityへ紐付けるmechanismは未決定であり、canonical source semanticsへ影響させてはならない。
+**Application User Settings / UI State**はProject非依存のhost/user-local preference/stateであり、
+Project source treeや`.masterdata/**`ではなく、DesktopではOS標準のper-user application data / config
+領域をcanonical persistence authorityとして使用しなければならない（MUST）。theme、language、
+recent projects等が該当する。exact directory API、file名、serialization formatはadapter implementationへ
+委ね、このrequirementでは固定しない。
 
-User Settings / UI Stateは、次を変更してはならない（MUST NOT）。
+WebView/browserの`localStorage`、`sessionStorage`、`IndexedDB`等をdurable Application User
+Settings / UI Stateのcanonical persistence authorityとして扱ってはならない（MUST NOT）。legacy値の
+one-time migration sourceやreconstructable cacheとして参照してもよい（MAY）が、migration成功後の
+canonical valueはapplication-owned user-local storageから取得しなければならない（MUST）。
 
-- canonical source interpretation
-- validation result semantics
-- Build Selection semantics
-- generated C# semantics
-- binary semantics
-- canonical artifact-set identity
-- publish target configuration
-- publish semantics
+Application User Settings / UI StateはProject Settingsと同様のsemantic/build/publish resultを変更しては
+ならない（MUST NOT）。Project固有のlocal stateが必要な場合はProject Local Stateとして扱い、
+Application User Settingsへ暗黙に混在させない（SHOULD）。
 
-source自体が持つpresentation semantics、例えばschema field declaration orderはUser Settingsへ移しては
-ならず、既存のsource/domain ownerに留まる。
+source自体が持つpresentation semantics、例えばschema field declaration orderはProject Local Stateや
+Application User Settingsへ移してはならず、既存のsource/domain ownerに留まる。
 
 ### PROJECT-CONFIG-008
 
@@ -247,9 +254,8 @@ Unity packageのimport/compile/runtime observationと`.meta` ownershipは[Unity 
 
 Open Questions: configがnamed source group、ignore pattern、明示的なUnity project linkを将来
 サポートするか、設定されたsource rootがsymlinkをfollowするか、custom artifact/cache pathのautomatic
-Git ignoreを行うか、User Settingsのserializationとhost-local physical storageをどう定義するか、
-project-specific UI stateをどのlocal identityへ紐付けるか、empty source convention directoryをGit上で
-どう保持するか。source discoveryのsymlink policyはproduct-level decisionとして別途解決し、internal guardから
+Git ignoreを行うか、Project Local State / Application User Settingsのexact serializationとfile layoutを
+どう定義するか、empty source convention directoryをGit上でどう保持するか。source discoveryのsymlink policyはproduct-level decisionとして別途解決し、internal guardから
 permissionまたは禁止の意味を推測しない。
 
 ## Acceptance expectations
@@ -272,7 +278,7 @@ inventory、fixture、manual pass/fail statusはこのspecificationのownerで�
 | PROJECT-CONFIG-005 | legacy rejectionはbuild/publishとfilesystem mutationを開始せず、自動変換もしない。 | 旧artifactを残したままoperation開始を拒否する。 | rejection後にcanonical/legacy/external artifactが変更されない。 |
 | PROJECT-CONFIG-006 | `init`はcanonical build configだけを生成し、publish targetを任意で省略できる。 | `artifact_dir`と`cache`を持つconfigが生成される。 | legacy keysが生成される、またはpublish targetが必須になる。 |
 | PROJECT-CONVENTION-001 | recommended kind-first source organizationがsemantic identityを作らず、alternate layoutとnested dataを許容する。 | `sources/schemas/`、`sources/types/`、`sources/data/`をorganizationとして使用できる。 | directory/file pathからTable/type/index identityを推測する。 |
-| PROJECT-CONFIG-007 | Project Settings、Project Tool State、User Settings / UI Stateを分離し、User Settingsがproject/build/publish semanticsを変更しない。 | 同一sourceとoperationがUser Settings変更で同じsemantic/artifact/publish resultになる。 | User Settingsがvalidation、Build Selection、artifact identity、publish targetを変更する。 |
+| PROJECT-CONFIG-007 | Project Settings、Project Local State、Application User Settings / UI Stateを3 scopeへ分離し、local/user stateがproject/build/publish semanticsを変更しない。 | shared semantic configは`masterdata.toml`、project-local stateは`.masterdata/**`、Project非依存のTheme等はOS側Application storageへ保持され、同一source/operationのresultはlocal preferenceで変わらない。 | semantic settingを`.masterdata/**`やApplication storageへ置く、Project非依存preferenceをProject treeへ置く、またはWebView storageをdurable Application Settings authorityにする。 |
 | PROJECT-CONFIG-008 | `init`がsource scaffoldを作り、missing-only `.gitignore`と`.masterdata` lazy creationを守る。 | source directoriesとconfigを作り、missing `.gitignore`に`/.masterdata/`を含め、tool stateをeager-createしない。 | existing `.gitignore`をrewrite/appendする、またはinitが`.masterdata`を作成する。 |
 | PROJECT-PATH-001 | relative source/canonical artifact pathはproject rootを基準にresolveされ、canonical artifactはproject-localに留まる。relative publish targetのbaseもproject rootであり、absolute publish targetはconfigured absolute filesystem destinationとして扱う。publish targetの詳細なsafetyは`PUBLISH-PATH-*`が所有する。 | project rootからrelative canonical/publish pathを解決し、absolute publish pathをabsolute locationとして扱う。 | canonical artifactがproject外へescapeする、relative pathがprocess working directory基準になる、またはpublish targetが`PUBLISH-PATH-*`のprotected path safetyを迂回する。 |
 

@@ -1,6 +1,6 @@
 # GUI仕様: Color Theme
 
-Status: Implemented
+Status: Approved
 
 ## 目的
 
@@ -45,7 +45,9 @@ OS preferenceを取得できない場合は`Light`をfallbackとする（MUST）
 
 ### GUI-THEME-002
 
-Theme preferenceはProject非依存のuser-local Application preferenceとして永続化しなければならない（MUST）。
+Theme preferenceは[Project layout](../../specs/project-layout.md)の`PROJECT-CONFIG-007`が定義する
+Project非依存のApplication User Settings / UI Stateとして、OS標準のper-user application data / config
+領域へ永続化しなければならない（MUST）。
 
 Theme preferenceを以下へ保存してはならない（MUST NOT）。
 
@@ -53,6 +55,11 @@ Theme preferenceを以下へ保存してはならない（MUST NOT）。
 - Project配下のYAML
 - `.masterdata/`
 - その他Project repositoryへ含まれるfile
+- WebView/browser storageをdurable canonical persistence authorityとするstorage
+
+legacy WebView storageにTheme preferenceが存在する場合、one-time migration sourceとして読み取ってもよい
+（MAY）。migration後のcanonical valueはapplication-owned user-local storageから取得しなければならない
+（MUST）。
 
 Theme preferenceの変更によってProject dirty state、Project Settings dirty state、Save All、Project close guardを発生させてはならない（MUST NOT）。
 
@@ -72,7 +79,7 @@ Theme preferenceの変更によって現在のProject、selection、editor buffe
 
 ### GUI-THEME-004
 
-保存済みTheme preferenceはapplication起動時に復元しなければならない（MUST）。
+保存済みTheme preferenceはcanonical Application preference storageからapplication起動時に復元しなければならない（MUST）。
 
 可能な限り初回content描画より前に`EffectiveTheme`を決定し、起動時にLight themeが一瞬表示されてからDarkへ切り替わる等の不要なtheme flashを避けなければならない（SHOULD）。
 
@@ -164,7 +171,9 @@ Theme preferenceとtheme resolutionはGUI application concernとする。
 
 `masterdata-app`のProject/application serviceへTheme semanticsを追加する必要はない。
 
-永続化はDesktop applicationのuser-local preference storageが所有する。
+永続化はDesktop application hostのApplication preference storageが所有する。React/WebView層は
+WebView storageをdurable canonical authorityとして所有してはならない（MUST NOT）。exact native API、
+file名、serialization formatは`PROJECT-CONFIG-007`のboundary内でimplementationへ委ねる。
 
 React componentは個別にOS preferenceを問い合わせず、application-levelで解決された共通の`EffectiveTheme`を利用しなければならない（SHOULD）。
 
@@ -180,7 +189,8 @@ React componentは個別にOS preferenceを問い合わせず、application-leve
 - CLI color scheme
 - Project共有theme
 
-将来Project単位のappearance preferenceが必要になった場合でも、`masterdata.toml`ではなくProject-local user stateとして別途仕様化する。
+将来Project単位のappearance preferenceが必要になった場合は、`masterdata.toml`ではなく
+`PROJECT-CONFIG-007`のProject Local Stateとして`.masterdata/**`配下へ保持する方向で別途仕様化する。
 
 ## 受け入れ証拠
 
@@ -196,3 +206,4 @@ React componentは個別にOS preferenceを問い合わせず、application-leve
 8. 不正な保存値で起動してもSystemへfallbackする。
 9. Light / Dark双方で主要screen、dialog、form、Explorer、editor、diagnostic、Diffが利用可能である。
 10. theme変更前後でeditor bufferやselectionが失われない。
+11. canonical Theme preferenceがProject tree、`.masterdata/**`、WebView storageではなくOS側のapplication-owned user-local storageへ保持される。

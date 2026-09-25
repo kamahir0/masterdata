@@ -1,15 +1,13 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 69b6c37231f8eeb3456fd27cab0aa0e397991cdf
-Work base: c2f84d32ccef2637a99ea986cd617e281d9b0fd1
+Stage: designing
+Candidate: none
+Work base: d95f19fe364ef47ea9fc304e5ea21d35dafb3591
 
 ## Active work
 
-None.
+In progress: PROJECT-CONFIG-007 / GUI-THEME-002 / GUI-THEME-004 specification correction.
 
 ## Blocking findings
 
 None.
-
-

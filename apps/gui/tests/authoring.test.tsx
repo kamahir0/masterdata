@@ -50,6 +50,9 @@ beforeEach(() => {
   preview = async () => ({ candidateSource: 'weight: 20', changed: true, validation });
   invoke.mockReset();
   invoke.mockImplementation(async (command, args) => {
+    if (command === 'load_application_user_state') return {};
+    if (command === 'set_theme_preference') return {};
+    if (command === 'set_recent_projects') return {};
     if (command === 'migration_recovery_status') return null;
     if (command === 'authoring_workspace') return workspace;
     if (command === 'open_data_file') return structuredClone(openSnapshot);
@@ -93,6 +96,9 @@ test('initial Project-not-found is a Welcome state without an Explorer error', a
 test('Open Project uses the native directory picker and remembers a successful selection', async () => {
   openDialog.mockResolvedValue('/project');
   invoke.mockImplementation(async (command, args) => {
+    if (command === 'load_application_user_state') return {};
+    if (command === 'set_theme_preference') return {};
+    if (command === 'set_recent_projects') return {};
     if (command === 'authoring_workspace' && args.projectPath === null) {
       throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
     }
@@ -106,13 +112,16 @@ test('Open Project uses the native directory picker and remembers a successful s
   fireEvent.click(screen.getAllByRole('button', { name: 'Open Project', exact: true })[0]);
   expect(await screen.findByRole('complementary', { name: 'Explorer' })).toBeTruthy();
   expect(openDialog).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
-  expect(JSON.parse(window.localStorage.getItem('masterdata.recent-projects.v1') ?? '[]')).toEqual([
-    { root: '/project', name: 'Demo' },
-  ]);
+  expect(invoke).toHaveBeenCalledWith('set_recent_projects', {
+    projects: [{ root: '/project', name: 'Demo' }],
+  });
 });
 
 test('cancelling the native Project picker leaves the Welcome state unchanged', async () => {
   invoke.mockImplementation(async (command) => {
+    if (command === 'load_application_user_state') return {};
+    if (command === 'set_theme_preference') return {};
+    if (command === 'set_recent_projects') return {};
     if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
     throw new Error(`Unexpected command: ${command}`);
   });
@@ -129,6 +138,9 @@ test('cancelling the native Project picker leaves the Welcome state unchanged', 
 test('explicit Project open failure stays on Welcome with a persistent diagnostic', async () => {
   openDialog.mockResolvedValue('/broken');
   invoke.mockImplementation(async (command, args) => {
+    if (command === 'load_application_user_state') return {};
+    if (command === 'set_theme_preference') return {};
+    if (command === 'set_recent_projects') return {};
     if (command === 'authoring_workspace' && args.projectPath === null) {
       throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
     }
@@ -146,18 +158,25 @@ test('explicit Project open failure stays on Welcome with a persistent diagnosti
 });
 
 test('Recent Project removal changes only user-local history', async () => {
-  window.localStorage.setItem('masterdata.recent-projects.v1', JSON.stringify([{ root: '/recent', name: 'Recent Demo' }]));
-  invoke.mockImplementation(async (command) => {
+  let storedRecent: Array<{ root: string; name: string }> = [{ root: '/recent', name: 'Recent Demo' }];
+  invoke.mockImplementation(async (command, args: any) => {
+    if (command === 'load_application_user_state') return { recentProjects: storedRecent };
+    if (command === 'set_recent_projects') {
+      storedRecent = args.projects;
+      return { recentProjects: storedRecent };
+    }
+    if (command === 'set_theme_preference') return {};
     if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
     throw new Error(`Unexpected command: ${command}`);
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByText('Recent Demo')).toBeTruthy();
-  const initialCalls = invoke.mock.calls.length;
   fireEvent.click(screen.getByRole('button', { name: 'Remove Recent Demo from Recent Projects' }));
   expect(screen.queryByText('Recent Demo')).toBeNull();
-  expect(window.localStorage.getItem('masterdata.recent-projects.v1')).toBe('[]');
-  expect(invoke.mock.calls).toHaveLength(initialCalls);
+  expect(storedRecent).toEqual([]);
+  expect(invoke).toHaveBeenCalledWith('set_recent_projects', { projects: [] });
+  // Verify no disk mutation command was called
+  expect(invoke.mock.calls.some(([cmd]) => cmd === 'save_data_file' || cmd === 'save_project_config_edit')).toBe(false);
 });
 
 test('late pre-save no-op preview cannot discard a new edit after Save resets revision', async () => {

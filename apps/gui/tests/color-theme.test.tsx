@@ -8,8 +8,11 @@ import {
   getOsPrefersDark,
   readStoredThemePreference,
   resolveEffectiveTheme,
-  storeThemePreference,
 } from '../src/theme';
+import {
+  type ApplicationUserStateDto,
+  persistNativeThemePreference,
+} from '../src/user-state';
 
 const { invoke, openDialog, desktopWindow } = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -41,6 +44,7 @@ const workspace = {
 
 let matchMediaListeners: Array<(e: { matches: boolean }) => void> = [];
 let osPrefersDarkValue = false;
+let currentNativeUserState: ApplicationUserStateDto = {};
 
 function setupMatchMedia(initialDark = false) {
   osPrefersDarkValue = initialDark;
@@ -69,7 +73,6 @@ function setupMatchMedia(initialDark = false) {
   });
 }
 
-
 function triggerOsAppearanceChange(newDark: boolean) {
   osPrefersDarkValue = newDark;
   act(() => {
@@ -80,6 +83,7 @@ function triggerOsAppearanceChange(newDark: boolean) {
 beforeEach(() => {
   window.localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
+  currentNativeUserState = {};
   setupMatchMedia(false);
   desktopWindow.onCloseRequested.mockReset();
   desktopWindow.onCloseRequested.mockResolvedValue(() => {});
@@ -88,7 +92,16 @@ beforeEach(() => {
   openDialog.mockReset();
   openDialog.mockResolvedValue(null);
   invoke.mockReset();
-  invoke.mockImplementation(async (command) => {
+  invoke.mockImplementation(async (command, args: any) => {
+    if (command === 'load_application_user_state') return structuredClone(currentNativeUserState);
+    if (command === 'set_theme_preference') {
+      currentNativeUserState.themePreference = args.preference;
+      return structuredClone(currentNativeUserState);
+    }
+    if (command === 'set_recent_projects') {
+      currentNativeUserState.recentProjects = args.projects;
+      return structuredClone(currentNativeUserState);
+    }
     if (command === 'migration_recovery_status') return null;
     if (command === 'authoring_workspace') return workspace;
     if (command === 'open_data_file') return structuredClone(snapshot());
@@ -104,9 +117,9 @@ afterEach(() => {
   cleanup();
 });
 
-// --- Unit Tests for theme.ts ---
+// --- Unit Tests for theme.ts and user-state persistence contract ---
 
-test('GUI-THEME-001 & GUI-THEME-004: readStoredThemePreference returns system by default or on invalid values', () => {
+test('GUI-THEME-001 & GUI-THEME-004: readStoredThemePreference returns system by default or on invalid legacy values', () => {
   expect(readStoredThemePreference()).toBe('system');
 
   window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'light');
@@ -130,9 +143,10 @@ test('GUI-THEME-001 & GUI-THEME-003: resolveEffectiveTheme resolves correctly', 
   expect(resolveEffectiveTheme('system', true)).toBe('dark');
 });
 
-test('GUI-THEME-002: storeThemePreference writes only to user-local storage', () => {
-  storeThemePreference('dark');
-  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('dark');
+test('GUI-THEME-002: persistNativeThemePreference writes to native storage, not localStorage', async () => {
+  await persistNativeThemePreference('dark');
+  expect(invoke).toHaveBeenCalledWith('set_theme_preference', { preference: 'dark' });
+  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBeNull();
 });
 
 // --- Integration Tests for App theme behavior ---
@@ -141,41 +155,50 @@ test('GUI-THEME-001 & GUI-THEME-004: launches as System when no stored value exi
   setupMatchMedia(true); // OS prefers dark
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
 });
 
-test('GUI-THEME-004: launches as System when stored value is invalid', async () => {
-  window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'corrupted_theme');
+test('GUI-THEME-004: launches as System when stored native value is unset or invalid', async () => {
+  currentNativeUserState = { themePreference: null };
   setupMatchMedia(false); // OS prefers light
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
 });
 
-test('GUI-THEME-002, GUI-THEME-003, GUI-THEME-007: switching to Light/Dark updates DOM and persists without restarting', async () => {
+test('GUI-THEME-002, GUI-THEME-003, GUI-THEME-007: switching to Light/Dark updates DOM and persists to native without restarting', async () => {
   setupMatchMedia(true); // OS prefers dark
   const { unmount } = render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  // Initial state should be dark because OS prefers dark and theme is system
-  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  // Wait for workspace and bootstrap to be ready
+  await screen.findByRole('complementary', { name: 'Explorer' });
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
 
   // Open Application Settings dialog
   fireEvent.click(screen.getByRole('button', { name: 'Application Settings' }));
-  expect(await screen.findByRole('dialog', { name: 'Application Settings' })).toBeTruthy();
-
-  // Select Light theme
-  const lightRadio = screen.getByRole('radio', { name: 'Light' });
+  const lightRadio = await screen.findByRole('radio', { name: 'Light' });
   fireEvent.click(lightRadio);
 
-  // Immediately applied to DOM and persisted (GUI-THEME-003, GUI-THEME-002)
+  // Immediately applied to DOM and persisted to native storage (GUI-THEME-003, GUI-THEME-002)
   expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('light');
+  expect(invoke).toHaveBeenCalledWith('set_theme_preference', { preference: 'light' });
+  expect(currentNativeUserState.themePreference).toBe('light');
+  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBeNull();
 
   unmount();
 
-  // Re-launching app preserves Light theme (GUI-THEME-004)
+  // Re-launching app preserves Light theme from native storage (GUI-THEME-004)
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
-  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  await screen.findByRole('complementary', { name: 'Explorer' });
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
 
   // Open Application Settings again and switch to Dark
   fireEvent.click(screen.getByRole('button', { name: 'Application Settings' }));
@@ -183,14 +206,18 @@ test('GUI-THEME-002, GUI-THEME-003, GUI-THEME-007: switching to Light/Dark updat
   fireEvent.click(darkRadio);
 
   expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('dark');
+  expect(invoke).toHaveBeenCalledWith('set_theme_preference', { preference: 'dark' });
+  expect(currentNativeUserState.themePreference).toBe('dark');
+  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBeNull();
 });
 
 test('GUI-THEME-003: System theme tracks live OS appearance changes', async () => {
   setupMatchMedia(false); // initially OS is light
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
 
   // OS changes to Dark while app is running
   triggerOsAppearanceChange(true);
@@ -202,11 +229,13 @@ test('GUI-THEME-003: System theme tracks live OS appearance changes', async () =
 });
 
 test('GUI-THEME-003: Explicit Light/Dark choice does not track live OS changes', async () => {
-  window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'light');
+  currentNativeUserState = { themePreference: 'light' };
   setupMatchMedia(false);
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
 
   // OS changes to Dark, but explicit Light must remain (MUST NOT change)
   triggerOsAppearanceChange(true);
@@ -240,13 +269,16 @@ test('GUI-THEME-002 & GUI-THEME-003: changing theme does not dirty project or lo
 
   // Dirty count is still exactly 1 (no project/settings dirty caused by theme change) (GUI-THEME-002)
   expect(screen.getByText('1 unsaved')).toBeTruthy();
+  expect(invoke).toHaveBeenCalledWith('set_theme_preference', { preference: 'dark' });
 });
 
 test('GUI-THEME-002: Project switching retains user theme preference', async () => {
-  window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'dark');
+  currentNativeUserState = { themePreference: 'dark' };
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
 
   // Switch project by opening another workspace
   const otherWorkspace = {
@@ -255,6 +287,7 @@ test('GUI-THEME-002: Project switching retains user theme preference', async () 
     files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null, hasInlineRecords: false, diagnostic: null }],
   };
   invoke.mockImplementation(async (command, args) => {
+    if (command === 'load_application_user_state') return structuredClone(currentNativeUserState);
     if (command === 'authoring_workspace') return otherWorkspace;
     if (command === 'migration_recovery_status') return null;
     if (command === 'open_data_file') return structuredClone(snapshot());
@@ -264,15 +297,17 @@ test('GUI-THEME-002: Project switching retains user theme preference', async () 
 
   // Theme remains dark after switching project
   expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('dark');
+  expect(currentNativeUserState.themePreference).toBe('dark');
 });
 
 test('GUI-THEME-007: Selecting System does not overwrite storage with resolved effective theme', async () => {
   setupMatchMedia(true); // OS prefers dark
-  window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, 'light');
+  currentNativeUserState = { themePreference: 'light' };
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
 
-  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  await waitFor(() => {
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
 
   // Open Application Settings and choose System
   fireEvent.click(screen.getByRole('button', { name: 'Application Settings' }));
@@ -281,6 +316,7 @@ test('GUI-THEME-007: Selecting System does not overwrite storage with resolved e
 
   // Effective theme is dark (because OS prefers dark), but stored value MUST remain 'system' (GUI-THEME-007)
   expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBe('system');
+  expect(invoke).toHaveBeenCalledWith('set_theme_preference', { preference: 'system' });
+  expect(currentNativeUserState.themePreference).toBe('system');
+  expect(window.localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY)).toBeNull();
 });
-

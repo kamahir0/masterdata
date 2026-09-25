@@ -1,16 +1,26 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { applyThemeToDom, getOsPrefersDark, readStoredThemePreference, resolveEffectiveTheme } from "./theme";
+import { bootstrapApplicationUserState } from "./user-state";
 import "./styles.css";
 
-// Immediate pre-render theme application to avoid any visual flash (GUI-THEME-004)
-applyThemeToDom(resolveEffectiveTheme(readStoredThemePreference(), getOsPrefersDark()));
+async function bootstrap() {
+  const initialState = await bootstrapApplicationUserState();
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App initialState={initialState} />
+    </StrictMode>,
+  );
+}
+
+bootstrap().catch((error) => {
+  console.error("Failed to bootstrap application user state, falling back to default:", error);
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+});
 
 

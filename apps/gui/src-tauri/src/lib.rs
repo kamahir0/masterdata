@@ -18,6 +18,8 @@ use tauri::Manager;
 #[cfg(target_os = "macos")]
 mod macos_lifecycle;
 
+mod user_state;
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDto {
@@ -747,7 +749,10 @@ pub fn run() {
             source_content,
             save_data_file,
             validate,
-            build
+            build,
+            user_state::load_application_user_state,
+            user_state::set_theme_preference,
+            user_state::set_recent_projects
         ])
         .build(tauri::generate_context!())
         .expect("error while building masterdata GUI")

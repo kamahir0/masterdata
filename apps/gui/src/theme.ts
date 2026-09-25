@@ -1,11 +1,15 @@
 export type ThemePreference = "system" | "light" | "dark";
 export type EffectiveTheme = "light" | "dark";
 
+/**
+ * Legacy storage key used for migration only.
+ * localStorage MUST NOT be used as the canonical persistence authority (PROJECT-CONFIG-007, GUI-THEME-002).
+ */
 export const THEME_PREFERENCE_STORAGE_KEY = "masterdata.theme-preference.v1";
 
 /**
- * Read the user's stored theme preference from user-local storage.
- * Defaults to "system" if no preference is stored or if stored value is invalid (GUI-THEME-001, GUI-THEME-004).
+ * Read the legacy stored theme preference from localStorage.
+ * Only used as fallback migration source when native storage has no preference.
  */
 export function readStoredThemePreference(): ThemePreference {
   try {
@@ -17,18 +21,6 @@ export function readStoredThemePreference(): ThemePreference {
     // If storage is unavailable or throws, fallback to system.
   }
   return "system";
-}
-
-/**
- * Store the user's theme preference in user-local storage.
- * Does not mutate project-scoped files or cause project dirty state (GUI-THEME-002).
- */
-export function storeThemePreference(preference: ThemePreference): void {
-  try {
-    window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, preference);
-  } catch {
-    // Storage write failure is handled gracefully without crashing.
-  }
 }
 
 /**

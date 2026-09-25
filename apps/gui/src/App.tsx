@@ -10,10 +10,16 @@ import {
   type ThemePreference,
   applyThemeToDom,
   getOsPrefersDark,
-  readStoredThemePreference,
   resolveEffectiveTheme,
-  storeThemePreference,
 } from "./theme";
+import {
+  type InitialApplicationUserState,
+  type RecentProject,
+  bootstrapApplicationUserState,
+  persistNativeRecentProjects,
+  persistNativeThemePreference,
+  sanitizeRecentProjects,
+} from "./user-state";
 
 import {
   DeliveryPanel,
@@ -306,33 +312,6 @@ type WorkspaceState =
   | { kind: "ready"; workspace: AuthoringWorkspace }
   | { kind: "error"; diagnostic: ApiDiagnostic; previous: AuthoringWorkspace | null };
 
-type RecentProject = {
-  root: string;
-  name: string;
-};
-
-const RECENT_PROJECTS_KEY = "masterdata.recent-projects.v1";
-const RECENT_PROJECT_LIMIT = 10;
-
-function readRecentProjects(): RecentProject[] {
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(RECENT_PROJECTS_KEY) ?? "[]");
-    if (!Array.isArray(stored)) return [];
-    return stored
-      .filter((item): item is RecentProject => typeof item?.root === "string" && typeof item?.name === "string")
-      .slice(0, RECENT_PROJECT_LIMIT);
-  } catch {
-    return [];
-  }
-}
-
-function storeRecentProjects(projects: RecentProject[]): void {
-  try {
-    window.localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(projects));
-  } catch {
-    // Recent Projects is optional user-local convenience; opening a Project must still succeed.
-  }
-}
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
   const element = target instanceof HTMLElement ? target : null;
@@ -566,7 +545,15 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
   return true;
 }
 
-function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourcePollingIntervalMs?: number | null; previewDelayMs?: number } = {}) {
+function App({
+  sourcePollingIntervalMs = 1600,
+  previewDelayMs = 320,
+  initialState,
+}: {
+  sourcePollingIntervalMs?: number | null;
+  previewDelayMs?: number;
+  initialState?: InitialApplicationUserState;
+} = {}) {
   const [recoveries, setRecoveries] = useState<Record<string, MigrationResult>>({});
   const recoveryRef = useRef<Record<string, MigrationResult>>({});
   const [tableEpoch, setTableEpoch] = useState(0);
@@ -597,7 +584,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const [configRevision, setConfigRevision] = useState(0);
 
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ kind: "loading", previous: null });
-  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(readRecentProjects);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => initialState?.recentProjects ?? []);
   const [projectPickerBusy, setProjectPickerBusy] = useState(false);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -609,9 +596,18 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [pendingActionBusy, setPendingActionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(readStoredThemePreference);
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => initialState?.themePreference ?? "system");
   const [osDark, setOsDark] = useState<boolean>(getOsPrefersDark);
   const [appSettingsOpen, setAppSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!initialState) {
+      bootstrapApplicationUserState().then((loaded) => {
+        setThemePreferenceState(loaded.themePreference);
+        setRecentProjects(loaded.recentProjects);
+      }).catch(() => {});
+    }
+  }, [initialState]);
 
   const effectiveTheme = useMemo(
     () => resolveEffectiveTheme(themePreference, osDark),
@@ -633,7 +629,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   }, [effectiveTheme]);
 
   const handleThemePreferenceChange = useCallback((pref: ThemePreference) => {
-    storeThemePreference(pref);
+    persistNativeThemePreference(pref).catch(() => {});
     setThemePreferenceState(pref);
   }, []);
 
@@ -680,11 +676,11 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
 
   const rememberProject = useCallback((project: AuthoringWorkspace["project"]) => {
     setRecentProjects((current) => {
-      const next = [
+      const next = sanitizeRecentProjects([
         { root: project.project_root, name: project.name },
         ...current.filter((item) => item.root !== project.project_root),
-      ].slice(0, RECENT_PROJECT_LIMIT);
-      storeRecentProjects(next);
+      ]);
+      persistNativeRecentProjects(next).catch(() => {});
       return next;
     });
   }, []);
@@ -692,7 +688,7 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const removeRecentProject = useCallback((root: string) => {
     setRecentProjects((current) => {
       const next = current.filter((item) => item.root !== root);
-      storeRecentProjects(next);
+      persistNativeRecentProjects(next).catch(() => {});
       return next;
     });
   }, []);

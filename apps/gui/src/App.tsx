@@ -1,9 +1,20 @@
 import TypeEditor from "./TypeEditor";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag } from "antd";
-import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, X } from "lucide-react";
+import { Alert, Button, ConfigProvider, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag, theme as antdTheme } from "antd";
+import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Settings, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type CreationReport } from "./SourceCreation";
+import { ApplicationSettingsModal } from "./ApplicationSettings";
+import {
+  type EffectiveTheme,
+  type ThemePreference,
+  applyThemeToDom,
+  getOsPrefersDark,
+  readStoredThemePreference,
+  resolveEffectiveTheme,
+  storeThemePreference,
+} from "./theme";
+
 import {
   DeliveryPanel,
   ProjectCreatePanel,
@@ -598,6 +609,51 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [pendingActionBusy, setPendingActionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(readStoredThemePreference);
+  const [osDark, setOsDark] = useState<boolean>(getOsPrefersDark);
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
+
+  const effectiveTheme = useMemo(
+    () => resolveEffectiveTheme(themePreference, osDark),
+    [themePreference, osDark]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      setOsDark(e.matches);
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  useEffect(() => {
+    applyThemeToDom(effectiveTheme);
+  }, [effectiveTheme]);
+
+  const handleThemePreferenceChange = useCallback((pref: ThemePreference) => {
+    storeThemePreference(pref);
+    setThemePreferenceState(pref);
+  }, []);
+
+  const antThemeConfig = useMemo(() => {
+    const isDark = effectiveTheme === "dark";
+    return {
+      algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+      token: {
+        colorPrimary: isDark ? "#8b7cf7" : "#6355d8",
+        borderRadius: 8,
+        colorBgContainer: isDark ? "#171e30" : "#ffffff",
+        colorBgElevated: isDark ? "#1c2438" : "#f8fafc",
+        colorText: isDark ? "#d7dde7" : "#1a202c",
+        colorBorder: isDark ? "#273241" : "#d0d7de",
+        fontSize: 13,
+        fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif',
+      },
+    };
+  }, [effectiveTheme]);
+
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(() => new Set());
   const [fileOpenErrors, setFileOpenErrors] = useState<Record<string, ApiDiagnostic>>({});
   const previewTimers = useRef(new Map<string, number>());
@@ -1782,7 +1838,8 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
   };
 
   return (
-    <main className="app-shell">
+    <ConfigProvider theme={antThemeConfig}>
+      <main className="app-shell">
       <header className="titlebar">
         <div className="brand-block">
           <div className="brand-mark"><Database size={18} /></div>
@@ -1798,6 +1855,14 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
           {totalDirtyCount > 0 && <span className="header-dirty" role="status">{totalDirtyCount} unsaved</span>}
           {manualValidation.kind === "loading" && <span className="header-operation" role="status">Validating…</span>}
           {buildState.kind === "loading" && <span className="header-operation" role="status">Building…</span>}
+          <Button
+            htmlType="button"
+            aria-label="Application Settings"
+            icon={<Settings size={14} aria-hidden="true" />}
+            onClick={() => setAppSettingsOpen(true)}
+          >
+            Settings
+          </Button>
           <Dropdown menu={{ items: [
             { key: "open", label: projectPickerBusy ? "Opening Project…" : "Open Project", disabled: projectPickerBusy, onClick: () => void openProjectPicker() },
             { key: "create", label: "Create Project", onClick: () => requestAction({ kind: "create" }) },
@@ -1808,6 +1873,8 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
               { key: "validate", label: "Validate", onClick: () => { setSurface("editor"); void validateDisk(); } },
               { key: "build", label: "Build", disabled: mutationBlocked || deliveryBusy, onClick: () => { setSurface("editor"); void runBuild(); } },
             ] : []),
+            { type: "divider" },
+            { key: "app-settings", label: "Application Settings…", onClick: () => setAppSettingsOpen(true) },
           ] }} trigger={["click"]}>
             <Button htmlType="button" aria-label="Project menu">Project <ChevronDown size={14} aria-hidden="true" /></Button>
           </Dropdown>
@@ -1826,7 +1893,9 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
                 Open Project
               </Button>
               <Button size="large" onClick={() => requestAction({ kind: "create" })}>Create Project</Button>
+              <Button size="large" icon={<Settings size={16} />} onClick={() => setAppSettingsOpen(true)}>Settings</Button>
             </div>
+
             {workspaceState.kind === "loading" && <p className="welcome-status" role="status">Looking for a configured project…</p>}
             {workspaceState.kind === "error" && !workspaceState.previous && (
               <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(workspaceState.diagnostic)} />
@@ -2169,7 +2238,16 @@ function App({ sourcePollingIntervalMs = 1600, previewDelayMs = 320 }: { sourceP
       </Modal>
 
       {notice && <Alert className="toast" title={notice} type="info" showIcon role="status" />}
+
+      <ApplicationSettingsModal
+        open={appSettingsOpen}
+        onClose={() => setAppSettingsOpen(false)}
+        themePreference={themePreference}
+        effectiveTheme={effectiveTheme}
+        onThemePreferenceChange={handleThemePreferenceChange}
+      />
     </main>
+  </ConfigProvider>
   );
 }
 

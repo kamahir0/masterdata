@@ -104,4 +104,5 @@ Explorerからfolder、Table、record data、Value Object、Enum等のsource art
 
 ## 未解決事項（Open Questions）
 
-None identified for the initial Desktop existing-record authoring shell. window layout persistence、right inspector、command palette、theme customization等は将来UXとして別途扱う。
+None identified for the initial Desktop existing-record authoring shell. window layout persistence、right inspector、command palette等は将来UXとして別途扱う。表示テーマは[Color Theme](color-theme/spec.md)が所有する。
+

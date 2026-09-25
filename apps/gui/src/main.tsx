@@ -1,16 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ConfigProvider, theme } from "antd";
 import App from "./App";
+import { applyThemeToDom, getOsPrefersDark, readStoredThemePreference, resolveEffectiveTheme } from "./theme";
 import "./styles.css";
+
+// Immediate pre-render theme application to avoid any visual flash (GUI-THEME-004)
+applyThemeToDom(resolveEffectiveTheme(readStoredThemePreference(), getOsPrefersDark()));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, token: {
-      colorPrimary: "#8b7cf7", borderRadius: 8, colorBgContainer: "#171e30",
-      colorBgElevated: "#1c2438", fontSize: 13,
-      fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif',
-    } }}><App /></ConfigProvider>
+    <App />
   </StrictMode>,
 );
+
 

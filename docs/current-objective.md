@@ -6,25 +6,23 @@
 
 ## Objective
 
-**Table schema YAMLにrecordsを同居させる1ファイル形式を追加し、従来の分離形式と共存させる。Data編集画面からTable schemaも編集できる一体的な編集体験を提供する。**
+**Desktop applicationの表示テーマとしてLight / Dark / Systemを提供し、Project非依存のApplication preferenceとして即時反映・永続化する。**
 
 ## Completion slices
 
-- source formatと混在時のTable解決、record編集、Migrationの挙動をApproved仕様へ反映する。
-- shared Rust core/applicationで1ファイル形式の読み込み、検証、作成、source-preserving保存、Migrationを実装する。
-- GUIで1ファイル形式の作成・record編集と、Data編集画面からのschema編集を提供する。
-- focused regression tests、GUI build、実操作、repository checks、fresh review、required remote CI reconciliationを完了する。
+- GUI Color Themeの規範要件（GUI-THEME-001〜007）をApproved仕様へ反映する。
+- Desktop GUIでThemePreference（System / Light / Dark）の選択、OS preference追従、localStorage永続化、初回描画時の復元を実装する。
+- Application Settings surfaceでAppearance（System / Light / Dark）の選択UIを提供する。
+- Light / Dark双方のsemantic color tokenとAnt Design ConfigProvider連携を整え、可読性とアクセシビリティを確保する。
+- focused regression tests、GUI build、実操作確認、repository checksを完了する。
 
 ## Canonical requirements
 
-- [Table / Keys](specs/table-and-keys.md) — `SCHEMA-TABLE-001`
-- [Source Record Edit](specs/source-edit.md) — `SOURCE-EDIT-001`, `SOURCE-EDIT-002`
-- [Source Creation](specs/source-creation.md) — `SOURCE-CREATE-004`, `SOURCE-CREATE-005`
-- [Schema Migration](specs/schema-migration.md) — `MIGRATION-014`, `MIGRATION-015`
-- [Data Editor](gui/data-editor/spec.md) — `GUI-DATA-LAYOUT-001`
-- [Table Editor](gui/table-editor/spec.md) — `GUI-TABLE-LAYOUT-001`
+- [Color Theme](gui/color-theme/spec.md) — `GUI-THEME-001`, `GUI-THEME-002`, `GUI-THEME-003`, `GUI-THEME-004`, `GUI-THEME-005`, `GUI-THEME-006`, `GUI-THEME-007`
+- [GUI app shell](gui/app-shell.md)
 
 ## Explicit non-scope
 
-- 既存sourceの自動変換、既存recordのschema fileへの移動、public APIのversion保守。
-- YAMLとGit以外をsource authorityとする変更。
+- ProjectごとのTheme override、custom theme、user-defined color palette。
+- syntax highlighting themeの独立選択、OS high contrast theme、CLI color scheme、Project共有theme。
+

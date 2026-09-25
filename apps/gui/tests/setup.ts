@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
-Object.defineProperty(window, 'matchMedia', { value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
+Object.defineProperty(window, 'matchMedia', { writable: true, configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }) });
+
 globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 Object.defineProperty(globalThis, 'CSS', { value: { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '\\$&') } });
 const storage = new Map<string, string>();

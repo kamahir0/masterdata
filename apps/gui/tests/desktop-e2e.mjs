@@ -294,7 +294,7 @@ try {
   await fill("//*[@aria-label='New project ID']", "desktop.evidence");
   await fill("//*[@aria-label='New project name']", "Desktop Evidence");
   await click("//section[@aria-label='Create Project']//button[normalize-space(.)='Create Project']");
-  await waitElement("//aside[@aria-label='Workspace Explorer']", 30_000);
+  await waitElement("//aside[@aria-label='Explorer']", 30_000);
   record("project-created-through-gui");
 
   await click("//*[@aria-label='New source artifact']");

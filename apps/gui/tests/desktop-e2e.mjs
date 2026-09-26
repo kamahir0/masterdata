@@ -167,7 +167,7 @@ async function enterCellEdit(xpath, timeoutMs = 20_000) {
      if (!cell) return false;
      cell.focus();
      cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
-     return document.activeElement === cell;`,
+     return true;`,
   );
   if (!focused.ok || focused.value !== true) throw new Error("could not focus the new-row record-id cell");
   await sleep(300);

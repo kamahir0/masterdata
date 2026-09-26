@@ -333,7 +333,8 @@ try {
   const enteredCellEdit = await execute(
     `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
      if (!cell) return false;
-     cell.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
+     cell.focus();
+     cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
      return true;`,
   );
   if (!enteredCellEdit.ok || enteredCellEdit.value !== true) throw new Error("could not enter new record cell editing");

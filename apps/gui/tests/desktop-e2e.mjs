@@ -154,7 +154,7 @@ async function click(xpath, timeoutMs = 20_000) {
 }
 
 async function enterCellEdit(xpath, timeoutMs = 20_000) {
-  const element = await waitElement(xpath, timeoutMs);
+  await waitElement(xpath, timeoutMs);
   await execute(
     `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
      if (!cell) return false;
@@ -162,18 +162,14 @@ async function enterCellEdit(xpath, timeoutMs = 20_000) {
      return true;`,
   );
   await sleep(200);
-  await request("POST", `/session/${sessionId}/element/${element}/click`, {});
-  await sleep(120);
-  await request("POST", `/session/${sessionId}/actions`, {
-    actions: [{
-      type: "key",
-      id: "keyboard",
-      actions: [
-        { type: "keyDown", value: "\uE007" },
-        { type: "keyUp", value: "\uE007" },
-      ],
-    }],
-  });
+  const focused = await execute(
+    `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
+     if (!cell) return false;
+     cell.focus();
+     cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+     return document.activeElement === cell;`,
+  );
+  if (!focused.ok || focused.value !== true) throw new Error("could not focus the new-row record-id cell");
   await sleep(300);
 }
 

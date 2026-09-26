@@ -1,4 +1,7 @@
-use masterdata_app::{CreationRequest, CreationStatus, NativeApplicationService};
+use masterdata_app::{
+    CreationRequest, CreationStatus, DefaultCreationIntent, NativeApplicationService,
+    default_creation_proposal,
+};
 use masterdata_core::{InitOptions, initialize_project};
 use serde_json::json;
 use std::fs;
@@ -33,6 +36,64 @@ fn table(dir: &Path, destination: &str, name: &str) -> CreationRequest {
         destination,
         json!({"category":"table","table":name,"fields":[{"key":0,"name":"id","type":"int"}],"primaryKey":{"fields":["id"]}}),
     )
+}
+
+#[test]
+fn default_proposals_create_explicit_identity_and_valid_minimal_documents() {
+    let dir = project();
+    let app = NativeApplicationService::new();
+    let root = dir.path().join("sources").to_string_lossy().into_owned();
+    for (category, destination, expected) in [
+        ("table", "item-catalog.yaml", "item-catalog"),
+        ("value_object", "item-code.yaml", "ItemCode"),
+        ("enum", "rarity.yaml", "Rarity"),
+        ("flags", "item-tags.yaml", "ItemTags"),
+        ("custom_type", "position.yaml", "Position"),
+    ] {
+        let proposal = default_creation_proposal(DefaultCreationIntent {
+            source_root: root.clone(),
+            destination: destination.into(),
+            category: category.into(),
+            table: None,
+            inline_records: true,
+        })
+        .unwrap();
+        assert_eq!(proposal.identity.as_deref(), Some(expected));
+        assert_eq!(
+            app.create_source(Some(dir.path()), dir.path(), &proposal.request)
+                .unwrap()
+                .status,
+            CreationStatus::Success
+        );
+        let source = fs::read_to_string(dir.path().join("sources").join(destination)).unwrap();
+        assert!(source.contains(expected));
+    }
+    let source = fs::read_to_string(dir.path().join("sources/item-catalog.yaml")).unwrap();
+    assert!(source.contains("records: []"));
+    assert!(
+        default_creation_proposal(DefaultCreationIntent {
+            source_root: root,
+            destination: "9bad.yaml".into(),
+            category: "table".into(),
+            table: None,
+            inline_records: true,
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn data_proposal_keeps_filename_independent_of_existing_table_identity() {
+    let proposal = default_creation_proposal(DefaultCreationIntent {
+        source_root: "/project/sources".into(),
+        destination: "2026/9月.yaml".into(),
+        category: "data".into(),
+        table: Some("item-catalog".into()),
+        inline_records: true,
+    })
+    .unwrap();
+    assert_eq!(proposal.identity.as_deref(), Some("item-catalog"));
+    assert_eq!(proposal.request.destination, "2026/9月.yaml");
 }
 
 #[test]

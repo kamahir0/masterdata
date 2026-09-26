@@ -5,7 +5,8 @@ use crate::{
 use cap_fs_ext::DirExt;
 use cap_std::fs::{Dir, OpenOptions};
 use masterdata_core::{
-    CreationChoices, Diagnostic, ErrorKind, MasterdataError, Project, SourceCreation,
+    ConversionDefinition, CreationChoices, CreationMember, Diagnostic, ErrorKind, FieldDefinition,
+    MasterdataError, PrimaryKeyDefinition, Project, SourceCreation, TypeFieldDefinition,
     creation_choices, prepare_source_creation,
 };
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,161 @@ pub struct CreationRequest {
     pub source_root: String,
     pub destination: String,
     pub artifact: SourceCreation,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DefaultCreationIntent {
+    pub source_root: String,
+    pub destination: String,
+    pub category: String,
+    #[serde(default)]
+    pub table: Option<String>,
+    #[serde(default = "default_inline_records")]
+    pub inline_records: bool,
+}
+fn default_inline_records() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultCreationProposal {
+    pub request: CreationRequest,
+    pub identity: Option<String>,
+}
+
+pub fn default_creation_proposal(
+    intent: DefaultCreationIntent,
+) -> masterdata_core::Result<DefaultCreationProposal> {
+    let name = Path::new(&intent.destination)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    let stem = name
+        .strip_suffix(".yaml")
+        .or_else(|| name.strip_suffix(".yml"))
+        .unwrap_or(name);
+    let segments = stem.split(['-', '_', ' ']).collect::<Vec<_>>();
+    let valid_segments = !segments.is_empty()
+        && segments.iter().all(|segment| {
+            !segment.is_empty() && segment.chars().all(|letter| letter.is_ascii_alphanumeric())
+        });
+    let identity = if intent.category == "table" {
+        segments
+            .iter()
+            .map(|segment| segment.to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join("-")
+    } else {
+        segments
+            .iter()
+            .map(|segment| {
+                let mut chars = segment.chars();
+                chars
+                    .next()
+                    .map(|first| format!("{}{}", first.to_ascii_uppercase(), chars.as_str()))
+                    .unwrap_or_default()
+            })
+            .collect::<String>()
+    };
+    if intent.category != "folder"
+        && intent.category != "data"
+        && (stem == name
+            || !valid_segments
+            || !identity
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic()))
+    {
+        return Err(MasterdataError::new(
+            "E-SOURCE-CREATE-IDENTITY",
+            ErrorKind::Validation,
+            "Filename must end in .yaml or .yml and suggest a nonempty ASCII name; use Advanced for another identity",
+        ));
+    }
+    let field = FieldDefinition {
+        key: 0,
+        name: "id".into(),
+        type_name: "int".into(),
+        nullable: false,
+        array: false,
+    };
+    let artifact = match intent.category.as_str() {
+        "folder" => SourceCreation::Folder,
+        "table" => SourceCreation::Table {
+            table: identity.clone(),
+            inline_records: intent.inline_records,
+            csharp_name: None,
+            fields: vec![field],
+            primary_key: PrimaryKeyDefinition {
+                fields: vec!["id".into()],
+            },
+            secondary_keys: vec![],
+        },
+        "data" => SourceCreation::Data {
+            table: intent
+                .table
+                .filter(|table| !table.is_empty())
+                .ok_or_else(|| {
+                    MasterdataError::new(
+                        "E-SOURCE-CREATE-TABLE",
+                        ErrorKind::Validation,
+                        "Select an existing Table",
+                    )
+                })?,
+        },
+        "value_object" => SourceCreation::ValueObject {
+            name: identity.clone(),
+            underlying: "int".into(),
+            conversions: ConversionDefinition::default(),
+        },
+        "enum" => SourceCreation::Enum {
+            name: identity.clone(),
+            underlying: "int".into(),
+            members: vec![CreationMember {
+                name: "None".into(),
+                value: "0".into(),
+            }],
+        },
+        "flags" => SourceCreation::Flags {
+            name: identity.clone(),
+            underlying: "int".into(),
+            members: vec![CreationMember {
+                name: "None".into(),
+                value: "0".into(),
+            }],
+        },
+        "custom_type" => SourceCreation::CustomType {
+            name: identity.clone(),
+            fields: vec![TypeFieldDefinition {
+                key: 0,
+                name: "id".into(),
+                type_name: "int".into(),
+                nullable: false,
+                array: false,
+            }],
+        },
+        _ => {
+            return Err(MasterdataError::new(
+                "E-SOURCE-CREATE-CATEGORY",
+                ErrorKind::Validation,
+                "Unknown source artifact category",
+            ));
+        }
+    };
+    let identity = match &artifact {
+        SourceCreation::Folder => None,
+        SourceCreation::Data { table } => Some(table.clone()),
+        _ => Some(identity),
+    };
+    Ok(DefaultCreationProposal {
+        request: CreationRequest {
+            source_root: intent.source_root,
+            destination: intent.destination,
+            artifact,
+        },
+        identity,
+    })
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

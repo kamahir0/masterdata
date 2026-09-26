@@ -99,7 +99,8 @@ test("array editing preserves source occurrence identity while reordering", () =
     onChange={onChange}
   />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Move tags item 2 up" }));
+  fireEvent.click(screen.getByRole("button", { name: "Actions for tags item 2" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move tags item 2 up" }));
   expect(onChange).toHaveBeenLastCalledWith({
     kind: "sequence",
     sourceIdentity: true,

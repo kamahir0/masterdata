@@ -276,6 +276,12 @@ fn creation_context(
         .map_err(ApiError::from)
 }
 #[tauri::command(rename_all = "camelCase")]
+fn default_creation_proposal(
+    intent: masterdata_app::DefaultCreationIntent,
+) -> std::result::Result<masterdata_app::DefaultCreationProposal, ApiError> {
+    masterdata_app::default_creation_proposal(intent).map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
 fn create_source(
     project_path: Option<String>,
     request: serde_json::Value,
@@ -730,6 +736,7 @@ pub fn run() {
             create_project,
             authoring_workspace,
             creation_context,
+            default_creation_proposal,
             create_source,
             recheck_creation,
             rename_source_file,

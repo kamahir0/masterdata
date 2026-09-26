@@ -1,4 +1,5 @@
-import { Button, Checkbox, Input, Select } from "antd";
+import { Button, Checkbox, Dropdown, Input, Select } from "antd";
+import { MoreHorizontal } from "lucide-react";
 import type { AuthoringMember, AuthoringSequenceItem, AuthoringValue, ResolvedAuthoringField, ResolvedAuthoringType } from "./data-editor-types";
 import { authoringValueSummary, nullAuthoringValue } from "./data-editor-types";
 
@@ -44,42 +45,20 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
                       : existing),
                   })}
                 />
-                <div className="array-item-actions">
-                  <Button
-                    size="small"
-                    htmlType="button"
-                    aria-label={`Move ${label} item ${index + 1} up`}
-                    disabled={!editable || index === 0}
-                    onClick={() => {
-                      const items = [...value.items];
-                      [items[index - 1], items[index]] = [items[index], items[index - 1]];
-                      onChange({ kind: "sequence", sourceIdentity: true, items });
-                    }}
-                  >Move up</Button>
-                  <Button
-                    size="small"
-                    htmlType="button"
-                    aria-label={`Move ${label} item ${index + 1} down`}
-                    disabled={!editable || index === value.items.length - 1}
-                    onClick={() => {
-                      const items = [...value.items];
-                      [items[index], items[index + 1]] = [items[index + 1], items[index]];
-                      onChange({ kind: "sequence", sourceIdentity: true, items });
-                    }}
-                  >Move down</Button>
-                  <Button
-                    size="small"
-                    danger
-                    htmlType="button"
-                    aria-label={`Remove ${label} item ${index + 1}`}
-                    disabled={!editable}
-                    onClick={() => onChange({
-                      kind: "sequence",
-                      sourceIdentity: true,
-                      items: value.items.filter((_, itemIndex) => itemIndex !== index),
-                    })}
-                  >Remove</Button>
-                </div>
+                <Dropdown trigger={["click"]} menu={{ items: [
+                  { key: "up", label: `Move ${label} item ${index + 1} up`, disabled: !editable || index === 0, onClick: () => {
+                    const items = [...value.items]; [items[index - 1], items[index]] = [items[index], items[index - 1]];
+                    onChange({ kind: "sequence", sourceIdentity: true, items });
+                  } },
+                  { key: "down", label: `Move ${label} item ${index + 1} down`, disabled: !editable || index === value.items.length - 1, onClick: () => {
+                    const items = [...value.items]; [items[index], items[index + 1]] = [items[index + 1], items[index]];
+                    onChange({ kind: "sequence", sourceIdentity: true, items });
+                  } },
+                  { key: "remove", label: `Remove ${label} item ${index + 1}`, danger: true, disabled: !editable, onClick: () => onChange({
+                    kind: "sequence", sourceIdentity: true, items: value.items.filter((_, itemIndex) => itemIndex !== index),
+                  }) },
+                ] }}><Button className="array-item-menu" type="text" size="small" htmlType="button" data-value-path={valuePathKey(cellKey, joinPath(path, String(index)))}
+                  aria-label={`Actions for ${label} item ${index + 1}`} disabled={!editable} icon={<MoreHorizontal size={15} />} /></Dropdown>
               </div>
             ))}
           </div>

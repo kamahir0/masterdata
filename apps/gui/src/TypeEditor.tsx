@@ -69,6 +69,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
     catch (error) { if (mounted.current && current === revision.current) setError(message(error)); }
     finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   };
+  useEffect(() => { if (operation === "drop") void getPlan(); }, [operation, selected]);
   const apply = async () => {
     if (inFlight.current || !plan || !canWrite || (plan.destructive && !confirmed) || result?.state === "success") return;
     if (!beginApply(plan.files.map(file => file.path))) { setError("Affected files have unsaved changes or a Save in progress. Resolve them before Apply."); return; }
@@ -109,12 +110,12 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
           : <Table size="small" pagination={false} rowKey="name" dataSource={snapshot.members}
             columns={[{ title: "Member", dataIndex: "name" }, { title: "Numeric value", dataIndex: "value" }, {title:"",key:"actions",width:46,render:(_,member)=><Dropdown menu={{items:[{key:"rename",label:"Rename Member",disabled:!canWrite||busy||(snapshot.category==="Flags Enum"&&member.name==="None"),onClick:()=>start("rename",member.name,document.querySelector<HTMLElement>(`[data-type-action="${CSS.escape(member.name)}"]`))},{key:"drop",label:"Drop Member",danger:true,disabled:!canWrite||busy||(snapshot.category==="Flags Enum"&&member.name==="None"),onClick:()=>start("drop",member.name,document.querySelector<HTMLElement>(`[data-type-action="${CSS.escape(member.name)}"]`))}]}} trigger={["click"]}><Button type="text" size="small" data-type-action={member.name} aria-label={`Actions for member ${member.name}`} disabled={snapshot.category==="Flags Enum"&&member.name==="None"} icon={<MoreHorizontal size={16}/>} /></Dropdown>}]} />}
       </>}
-      <Modal open={operation!==null} title="Type change" onCancel={cancel} footer={null} width={780} destroyOnHidden>
+      <Modal className="migration-dialog" open={operation!==null} title="Type change" onCancel={cancel} footer={null} width={780} destroyOnHidden>
       {error && <Alert role="alert" type="error" title={error} />}
       {operation && <Form layout="vertical" disabled={busy} className="migration-form">
         <h3>{operation} {snapshot.name}{operation !== "add" && operation !== "conversions" ? `.${selected}` : ""}</h3>
         {operation === "conversions" ? <Space><Checkbox id="type-from" checked={from} onChange={event => change(() => setFrom(event.target.checked))}>fromUnderlyingImplicit</Checkbox><Checkbox checked={to} onChange={event => change(() => setTo(event.target.checked))}>toUnderlyingImplicit</Checkbox></Space>
-          : operation !== "drop" && <Form.Item label={custom ? "Field name" : "Member name"} htmlFor="type-name"><Input id="type-name" value={name} onChange={event => change(() => setName(event.target.value))} /></Form.Item>}
+          : operation !== "drop" && <Form.Item label={custom ? "Field name" : "Member name"} htmlFor="type-name"><Input id="type-name" value={name} onChange={event => change(() => setName(event.target.value))} onPressEnter={event => { event.preventDefault(); void getPlan(); }} /></Form.Item>}
         {operation === "add" && (custom ? <>
           <Form.Item label="MessagePack key"><InputNumber aria-label="MessagePack key" value={key} onChange={value => change(() => setKey(value))} /></Form.Item>
           <Form.Item label="Field type"><Select aria-label="Field type" value={type} options={snapshot.fieldTypes.map(value => ({ value, label: value }))} onChange={value => change(() => { setType(value); setHasInitializer(false); setInitializer(resetInitializer()); })} /></Form.Item>
@@ -129,7 +130,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
             onEnabledChange={enabled => change(() => { setHasInitializer(enabled); if (!enabled) setInitializer(resetInitializer()); })}
             onChange={value => change(() => setInitializer(value))}
           />
-        </> : <Form.Item label="Numeric value" htmlFor="type-number"><Input id="type-number" value={value} onChange={event => change(() => setValue(event.target.value))} /></Form.Item>)}
+        </> : <Form.Item label="Numeric value" htmlFor="type-number"><Input id="type-number" value={value} onChange={event => change(() => setValue(event.target.value))} onPressEnter={event => { event.preventDefault(); void getPlan(); }} /></Form.Item>)}
         {operation === "drop" && <Alert type="warning" title={`Destructive: drop ${snapshot.name}.${selected}${custom ? " and its values" : ""}.`} />}
         <Space><Button id="type-plan" onClick={() => void getPlan()} loading={busy} disabled={!canWrite}>Plan / Re-plan</Button><Button onClick={cancel}>Cancel</Button></Space>
       </Form>}

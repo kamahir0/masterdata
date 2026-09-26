@@ -23,6 +23,18 @@ test('input changes invalidate the reviewed plan and Diff uses its captured sour
   expect(screen.queryByRole('button',{name:'Apply reviewed Plan'})).toBeNull();
   expect(invoke.mock.calls.some(([command])=>command==='apply_table_migration')).toBe(false);
 });
+test('record header rename opens the target and Enter prepares a Plan',async()=>{
+  const consumed=vi.fn();
+  render(<TableEditor projectPath="/project" path="schema.yaml" canWrite dirtyPaths={[]} beginApply={beginApply} onResult={onResult} endApply={endApply}
+    schemaAction={{path:'schema.yaml',operation:'rename',field:'note',serial:1}} onSchemaActionConsumed={consumed}/>);
+  const input=await screen.findByRole('textbox',{name:'Field name'});
+  expect((input as HTMLInputElement).value).toBe('note');
+  fireEvent.change(input,{target:{value:'description'}});
+  fireEvent.keyDown(input,{key:'Enter'});
+  await screen.findByRole('region',{name:'Migration Plan'});
+  expect(consumed).toHaveBeenCalledOnce();
+  expect(invoke.mock.calls.find(([command])=>command==='plan_table_migration')?.[1].input).toEqual({operation:'rename',table:'item',field:'note',newName:'description'});
+});
 test('affected dirty file disables Apply',async()=>{
   await open(['data.yaml']);await rename();
   expect((screen.getByRole('button',{name:'Apply reviewed Plan'}) as HTMLButtonElement).disabled).toBe(true);
@@ -35,7 +47,7 @@ test('unrelated dirty file allows Apply',async()=>{
 });
 test('Drop requires explicit confirmation and passes destructive authorization separately',async()=>{
   plan.destructive=true;plan.operation='DropField';await open();
-  fireEvent.click(screen.getByRole('button',{name:'Actions for field note'}));fireEvent.click(screen.getByRole('menuitem',{name:'Drop Field'}));fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
+  fireEvent.click(screen.getByRole('button',{name:'Actions for field note'}));fireEvent.click(screen.getByRole('menuitem',{name:'Drop Field'}));
   const apply=await screen.findByRole('button',{name:'Apply reviewed Plan'});
   expect((apply as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('checkbox',{name:/I confirm dropping/}));fireEvent.click(apply);

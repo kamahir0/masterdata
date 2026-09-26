@@ -7,12 +7,12 @@ type Field = { key: number | null; name: string; type: string; nullable: boolean
 type Member = { name: string; value: string };
 type Secondary = { fields: string[]; nonUnique: boolean };
 export type Category = "folder" | "table" | "data" | "value_object" | "enum" | "flags" | "custom_type";
-type Context = { roots: { index: number; label: string; folders: string[] }[]; choices: { fieldTypes: string[]; tables: string[]; valueObjectUnderlyings: string[]; enumUnderlyings: string[] } };
-type CreationRequest = { sourceRoot: string; destination: string; artifact: Record<string, unknown> };
+export type Context = { roots: { index: number; label: string; folders: string[] }[]; choices: { fieldTypes: string[]; tables: string[]; valueObjectUnderlyings: string[]; enumUnderlyings: string[] } };
+export type CreationRequest = { sourceRoot: string; destination: string; artifact: Record<string, unknown> };
 export type CreationReport = { status: "success" | "conflict" | "failure" | "outcome_unknown"; path: string; folder: boolean; diagnostic: { code: string; message: string; schema_path?: string; schemaPath?: string } | null };
 // Keep uncertain commits across dialog Cancel/reopen within this workspace session.
 // Otherwise closing a dialog would bypass GUI-CREATE-INT-011 before recheck.
-const uncertainCreations = new Map<string, CreationRequest>();
+export const uncertainCreations = new Map<string, CreationRequest>();
 const categories: { value: Category; label: string }[] = [
   { value: "folder", label: "Folder" }, { value: "table", label: "Table" }, { value: "data", label: "Data" },
   { value: "value_object", label: "Value Object" }, { value: "enum", label: "Enum" }, { value: "flags", label: "Flags Enum" }, { value: "custom_type", label: "Custom Type" },
@@ -64,21 +64,21 @@ export function buildCreationRequest({
   if (category === "custom_type") artifact = { category, name, fields };
   return { sourceRoot: root, destination: folder ? `${folder}/${filename}` : filename, artifact };
 }
-function diagnosticOf(error: unknown) {
+export function diagnosticOf(error: unknown) {
   if (error && typeof error === "object" && "diagnostic" in error) return (error as { diagnostic: NonNullable<CreationReport["diagnostic"]> }).diagnostic;
   return { code: "E-CREATION-REQUEST", message: String(error) };
 }
 
-export default function SourceCreation({ projectPath, initialRootIndex, initialFolder, initialCategory = "table", initialTable = "", canWrite, onCancel, onCreated }: {
-  projectPath: string; initialRootIndex: number; initialFolder: string; initialCategory?: Category; initialTable?: string; canWrite: boolean;
+export default function SourceCreation({ projectPath, initialRootIndex, initialFolder, initialCategory = "table", initialTable = "", initialFilename, initialName = "", canWrite, onCancel, onCreated }: {
+  projectPath: string; initialRootIndex: number; initialFolder: string; initialCategory?: Category; initialTable?: string; initialFilename?: string; initialName?: string; canWrite: boolean;
   onCancel: () => void; onCreated: (report: CreationReport) => Promise<void>;
 }) {
   const [context, setContext] = useState<Context | null>(null);
   const [category, setCategory] = useState<Category>(initialCategory);
   const [root, setRoot] = useState("");
   const [folder, setFolder] = useState(initialFolder);
-  const [filename, setFilename] = useState(initialCategory === "folder" ? "new-folder" : "new.yaml");
-  const [name, setName] = useState("");
+  const [filename, setFilename] = useState(initialFilename ?? (initialCategory === "folder" ? "new-folder" : "new.yaml"));
+  const [name, setName] = useState(initialName);
   const [table, setTable] = useState(initialTable);
   const [csharpName, setCsharpName] = useState("");
   const [underlying, setUnderlying] = useState("int");

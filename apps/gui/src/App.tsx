@@ -3,7 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Alert, Button, ConfigProvider, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag, theme as antdTheme } from "antd";
 import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Settings, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
-import SourceCreation, { type CreationReport } from "./SourceCreation";
+import SourceCreation, { type Category, type CreationReport } from "./SourceCreation";
+import InlineSourceCreation from "./InlineSourceCreation";
 import { ApplicationSettingsModal } from "./ApplicationSettings";
 import {
   type EffectiveTheme,
@@ -557,6 +558,8 @@ function App({
   const [recoveries, setRecoveries] = useState<Record<string, MigrationResult>>({});
   const recoveryRef = useRef<Record<string, MigrationResult>>({});
   const [tableEpoch, setTableEpoch] = useState(0);
+  const [schemaAction, setSchemaAction] = useState<{ path: string; operation: "add" | "rename"; field: string; serial: number } | null>(null);
+  const schemaActionSerial = useRef(0);
   const [migrationBusyRoot, setMigrationBusyRoot] = useState<string | null>(null);
   const migrationBusyRef = useRef<string | null>(null);
   const sourceMutationBlocked = useCallback((root: string) => !!recoveryRef.current[root] || migrationBusyRef.current === root, []);
@@ -566,8 +569,9 @@ function App({
     recoveryRef.current = next; setRecoveries(next);
   }, []);
   const [creationOpen, setCreationOpen] = useState(false);
+  const [inlineCreation, setInlineCreation] = useState<{ root: string; folder: string; category: Category; table: string } | null>(null);
   const [creationTarget, setCreationTarget] = useState({ root: "", folder: "" });
-  const [creationPreset, setCreationPreset] = useState<{ category: "folder" | "table" | "data" | "value_object"; table: string }>({ category: "table", table: "" });
+  const [creationPreset, setCreationPreset] = useState<{ category: Category; table: string; filename?: string; name?: string }>({ category: "table", table: "" });
   const [revealCreated, setRevealCreated] = useState<{ path: string; root: string } | null>(null);
   const [pathMutationTarget, setPathMutationTarget] = useState<{ sourcePath: string; destinationPath: string; sourceRoot: string } | null>(null);
   const [pathMutationPhase, setPathMutationPhase] = useState<"form" | "dirty" | "result">("form");
@@ -841,6 +845,8 @@ function App({
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
     setCreationOpen(false);
+    setInlineCreation(null);
+    setSchemaAction(null);
     setRevealCreated(null);
     setCreationTarget({ root: "", folder: "" });
     setSelectedProfile("");
@@ -1798,12 +1804,18 @@ function App({
     setCreationPreset({ category, table });
     setCreationOpen(true);
   };
+  const openInlineCreation = (category: Category, table = "") => {
+    if (!workspace || mutationBlocked) return;
+    setInlineCreation({ root: creationTarget.root || workspace.sourceRoots[0] || "", folder: creationTarget.folder, category, table });
+  };
   const openDataCreation = (table: string) => {
     const parent = workspace?.files.find((file) => file.table === table && file.kind === "schema")
       ?? workspace?.files.find((file) => file.table === table && file.kind === "data");
     const relative = parent?.sourceRoot && parent.path.startsWith(`${parent.sourceRoot}/`) ? parent.path.slice(parent.sourceRoot.length + 1) : parent?.path ?? "";
-    setCreationTarget({ root: parent?.sourceRoot ?? workspace?.sourceRoots[0] ?? "", folder: relative.split("/").slice(0, -1).join("/") });
-    openCreation("data", table);
+    const root = parent?.sourceRoot ?? workspace?.sourceRoots[0] ?? "";
+    const folder = relative.split("/").slice(0, -1).join("/");
+    setCreationTarget({ root, folder });
+    setInlineCreation({ root, folder, category: "data", table });
   };
   const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.table)?.table ?? null;
   const recordFileActive = activeFile?.kind === "data" || !!activeFile?.hasInlineRecords;
@@ -1812,7 +1824,7 @@ function App({
     ? activeFile
     : workspace?.files.find(file => file.kind === "schema" && file.table === activeTableName);
   const tableEditor = activeSchema && projectRoot && activeTableName ? <TableEditor key={`${projectRoot}:${activeSchema.path}:${tableEpoch}`}
-    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded={recordFileActive}
+    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded={recordFileActive} schemaAction={schemaAction} onSchemaActionConsumed={() => setSchemaAction(null)}
     onOverview={() => { setSelectedTable(activeTableName); setSurface("overview"); }}
     onCreateData={() => openDataCreation(activeTableName)}
     dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
@@ -1926,13 +1938,18 @@ function App({
         <div className="explorer-toolbar">
           <strong>EXPLORER</strong>
           <Dropdown menu={{ items: [
-            { key: "table", label: "Table", onClick: () => openCreation("table") },
-            { key: "data", label: "Data", onClick: () => openCreation("data") },
-            { key: "type", label: "Type", onClick: () => openCreation("value_object") },
+            { key: "table", label: "Table", onClick: () => openInlineCreation("table") },
+            { key: "data", label: "Data", onClick: () => openInlineCreation("data") },
+            { key: "value_object", label: "Value Object", onClick: () => openInlineCreation("value_object") },
+            { key: "enum", label: "Enum", onClick: () => openInlineCreation("enum") },
+            { key: "flags", label: "Flags Enum", onClick: () => openInlineCreation("flags") },
+            { key: "custom_type", label: "Custom Type", onClick: () => openInlineCreation("custom_type") },
+            { type: "divider" },
+            { key: "advanced", label: "Advanced…", onClick: () => openCreation("table") },
           ] }} trigger={["click"]}>
             <Button type="text" size="small" aria-label="New source artifact" disabled={mutationBlocked} icon={<FilePlus2 size={15} />} />
           </Dropdown>
-          <Button type="text" size="small" aria-label="New folder" disabled={mutationBlocked} icon={<FolderPlus size={15} />} onClick={() => openCreation("folder")} />
+          <Button type="text" size="small" aria-label="New folder" disabled={mutationBlocked} icon={<FolderPlus size={15} />} onClick={() => openInlineCreation("folder")} />
           <Button type="text" size="small" aria-label="Refresh Explorer" icon={<RefreshCw size={15} />} onClick={() => void refreshExplorer()} />
           <Button type="text" size="small" aria-label="Collapse folders" icon={<ChevronsUp size={15} />} onClick={() => setCollapseTreeSignal((value) => value + 1)} />
           <Dropdown menu={{ items: [
@@ -1952,6 +1969,13 @@ function App({
           onRename={(file) => openPathMutation(file)}
           collapseSignal={collapseTreeSignal}
           revealCreated={revealCreated}
+          inlineCreation={inlineCreation ? { ...inlineCreation, node: projectRoot && <InlineSourceCreation
+            key={`${projectRoot}:${inlineCreation.root}:${inlineCreation.folder}:${inlineCreation.category}`}
+            projectPath={projectRoot} sourceRoot={inlineCreation.root} sourceRootIndex={workspace.sourceRoots.indexOf(inlineCreation.root)} folder={inlineCreation.folder}
+            category={inlineCreation.category} contextTable={inlineCreation.table} canWrite={!mutationBlocked}
+            onCancel={() => { setInlineCreation(null); window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape([inlineCreation.root, inlineCreation.folder].filter(Boolean).join("/"))}"]`)?.focus()); }}
+            onAdvanced={(filename, identity) => { setCreationTarget({ root: inlineCreation.root, folder: inlineCreation.folder }); setCreationPreset({ category: inlineCreation.category, table: inlineCreation.table, filename, name: identity ?? "" }); setInlineCreation(null); setCreationOpen(true); }}
+            onCreated={async report => { await refreshAfterCreation(report); setInlineCreation(null); }} /> } : null}
         />
       </aside>}
       <section className="surface-layout" hidden={surface !== "overview"}>
@@ -2031,7 +2055,7 @@ function App({
             <span className="dialog-kicker">NEW PROJECT</span>
             <h2>Start with a Table</h2>
             <p>Create a Table with records in one file, or keep records in separate data files.</p>
-            <div><Button type="primary" disabled={mutationBlocked} onClick={() => openCreation("table")}>Create Table</Button><Button disabled={mutationBlocked} onClick={() => openCreation("value_object")}>Create Type</Button><Button disabled={mutationBlocked} onClick={() => openCreation("folder")}>Create Folder</Button></div>
+            <div><Button type="primary" disabled={mutationBlocked} onClick={() => openInlineCreation("table")}>Create Table</Button><Button disabled={mutationBlocked} onClick={() => openInlineCreation("value_object")}>Create Type</Button><Button disabled={mutationBlocked} onClick={() => openInlineCreation("folder")}>Create Folder</Button></div>
           </div>}
           {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
@@ -2069,6 +2093,7 @@ function App({
               projectRoot={projectRoot!}
               editor={activeEditor}
               schemaEditor={tableEditor}
+              onSchemaAction={tableEditor && activeSchema ? (operation, field) => setSchemaAction({ path: activeSchema.path, operation, field, serial: ++schemaActionSerial.current }) : undefined}
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
               uiCache={dataEditorUi}
@@ -2140,6 +2165,8 @@ function App({
         initialFolder={creationTarget.folder}
         initialCategory={creationPreset.category}
         initialTable={creationPreset.table}
+        initialFilename={creationPreset.filename}
+        initialName={creationPreset.name}
         canWrite={!mutationBlocked}
         onCancel={() => {
           setCreationOpen(false);
@@ -2277,6 +2304,7 @@ function SourceTree({
   onRename,
   collapseSignal,
   revealCreated,
+  inlineCreation,
 }: {
   workspace: AuthoringWorkspace;
   activePath: string | null;
@@ -2288,6 +2316,7 @@ function SourceTree({
   onRename: (file: WorkspaceSourceFile) => void;
   collapseSignal: number;
   revealCreated: { path: string; root: string } | null;
+  inlineCreation: { root: string; folder: string; category: Category; node: React.ReactNode } | null;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const groups = useMemo(() => workspace.sourceRoots.map((root) => {
@@ -2355,6 +2384,12 @@ function SourceTree({
     const frame = window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(revealCreated.path)}"]`)?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [revealCreated, workspace]);
+
+  useEffect(() => {
+    if (!inlineCreation) return;
+    const target = inlineCreation.folder ? `${inlineCreation.root}/${inlineCreation.folder}` : inlineCreation.root;
+    setCollapsed(current => new Set([...current].filter(key => key !== `root:${inlineCreation.root}` && key !== target && !target.startsWith(`${key}/`))));
+  }, [inlineCreation?.root, inlineCreation?.folder]);
 
   const toggleFolder = (key: string) => {
     setCollapsed((current) => {
@@ -2435,7 +2470,10 @@ function SourceTree({
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
             <span>{node.name}</span>
           </Button>
-          {expanded && <div role="group">{node.children.map(renderNode)}</div>}
+          {expanded && <div role="group">
+            {inlineCreation?.root === node.sourceRoot && inlineCreation.folder === (node.sourceRoot ? node.key.slice(node.sourceRoot.length + 1) : node.key) && inlineCreation.node}
+            {node.children.map(renderNode)}
+          </div>}
         </div>
       );
     }
@@ -2514,11 +2552,14 @@ function SourceTree({
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
             {root || "."}
           </Button>
-          {expanded && <div role="group">{children.map(renderNode)}</div>}
+          {expanded && <div role="group">
+            {inlineCreation?.root === root && inlineCreation.folder === "" && inlineCreation.node}
+            {children.map(renderNode)}
+          </div>}
         </div>
       );
     })}
-    {workspace.files.length === 0 && <div className="pane-message">No YAML source documents.</div>}
+    {workspace.files.length === 0 && !inlineCreation && <div className="pane-message">No YAML source documents.</div>}
   </div>;
 }
 
@@ -2560,6 +2601,7 @@ function DataEditor({
   projectRoot,
   editor,
   schemaEditor,
+  onSchemaAction,
   onOverview,
   onCreateData,
   uiCache,
@@ -2587,6 +2629,7 @@ function DataEditor({
   projectRoot: string;
   editor: EditorState;
   schemaEditor?: React.ReactNode;
+  onSchemaAction?: (operation: "add" | "rename", field: string) => void;
   onOverview?: () => void;
   onCreateData?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
@@ -3139,6 +3182,10 @@ function DataEditor({
                       <span>{column.typeName}</span>
                       {column.keyField && <em>KEY</em>}
                       {!column.editable && !column.keyField && <em title={column.readOnlyReason ?? undefined}>READ ONLY</em>}
+                      {onSchemaAction && <Dropdown trigger={["click"]} menu={{ items: [
+                        { key: "rename", label: `Rename ${column.name}`, onClick: () => { setSchemaOpen(true); onSchemaAction("rename", column.name); } },
+                        { key: "add", label: "Add Field", onClick: () => { setSchemaOpen(true); onSchemaAction("add", ""); } },
+                      ] }}><Button type="text" size="small" aria-label={`Field actions for ${column.name}`} disabled={mutationBlocked} icon={<MoreHorizontal size={13} />} /></Dropdown>}
                     </div>
                   </th>
                 ))}

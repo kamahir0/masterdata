@@ -323,7 +323,8 @@ test('Table context opens Data creation with its Table already selected', async 
   await open();
   await dataAction('New data file');
   expect((await screen.findByRole('combobox', { name: 'Existing Table' })).closest('.ant-select')?.textContent).toContain('item');
-  expect(screen.getByRole('combobox', { name: 'Artifact type' }).closest('.ant-select')?.textContent).toContain('Data');
+  expect(screen.getByRole('textbox', { name: 'New source filename' })).toBeTruthy();
+  expect(screen.getByLabelText('New Data')).toBeTruthy();
 });
 
 test('Table Overview follows the selected logical Table rather than the previously active file', async () => {
@@ -353,8 +354,7 @@ test('empty Project offers a contextual Folder action with a folder-safe name', 
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByRole('heading', { name: 'Start with a Table' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Create Folder' }));
-  expect((await screen.findByRole('combobox', { name: 'Artifact type' })).closest('.ant-select')?.textContent).toContain('Folder');
-  expect((screen.getByRole('textbox', { name: 'Folder name' }) as HTMLInputElement).value).toBe('new-folder');
+  expect((await screen.findByRole('textbox', { name: 'New folder name' }) as HTMLInputElement).value).toBe('new-folder');
 });
 
 test('Ant Design unsaved dialog Cancel preserves edits and does not reload', async () => {
@@ -408,22 +408,41 @@ test('creation refresh selects the new source without discarding an existing dir
   let created = false;
   invoke.mockImplementation(async (command, args) => {
     if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: ['item'], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
-    if (command === 'create_source') { created = true; return { status: 'success', path: 'new.yaml', folder: false, diagnostic: null }; }
-    if (command === 'authoring_workspace' && created) return { ...workspace, files: [...workspace.files, { path: 'new.yaml', sourceRoot: '.', kind: 'schema' }] };
+    if (command === 'default_creation_proposal') return { identity: 'weapon', request: { sourceRoot: '.', destination: args.intent.destination, artifact: { category: 'table', table: 'weapon', inlineRecords: true, fields: [{ key: 0, name: 'id', type: 'int' }], primaryKey: { fields: ['id'] } } } };
+    if (command === 'create_source') { created = true; return { status: 'success', path: 'weapon.yaml', folder: false, diagnostic: null }; }
+    if (command === 'authoring_workspace' && created) return { ...workspace, files: [...workspace.files, { path: 'weapon.yaml', sourceRoot: '.', kind: 'schema' }] };
     return normalInvoke(command, args);
   });
   const input = await open(); fireEvent.change(input, { target: { value: '20' } }); commit(input);
   openSourceFiles();
   fireEvent.click(screen.getByRole('button', { name: 'New source artifact' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Table' }));
-  fireEvent.change(await screen.findByLabelText('Table identity'), { target: { value: 'weapon' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create', exact: true }));
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(screen.getByRole('treeitem', { name: 'new.yaml', exact: true }).getAttribute('aria-selected')).toBe('true');
+  const filename = await screen.findByRole('textbox', { name: 'New source filename' });
+  fireEvent.change(filename, { target: { value: 'weapon.yaml' } });
+  fireEvent.keyDown(filename, { key: 'Enter' });
+  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'weapon.yaml', exact: true }).getAttribute('aria-selected')).toBe('true'));
+  expect(invoke.mock.calls.some(([command, args]) => command === 'create_source' && args.request.artifact.table === 'weapon')).toBe(true);
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
   expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
+
+test('Explorer Escape cancels inline creation without a source mutation', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'creation_context') return { roots: [{ index: 0, label: '.', folders: [''] }], choices: { fieldTypes: ['int'], tables: [], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
+    if (command === 'default_creation_proposal') return { identity: 'New', request: { sourceRoot: '.', destination: args.intent.destination, artifact: { category: 'value_object', name: 'New', underlying: 'int', conversions: {} } } };
+    return normalInvoke(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('complementary', { name: 'Explorer' });
+  fireEvent.click(screen.getByRole('button', { name: 'New source artifact' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Value Object' }));
+  const filename = await screen.findByRole('textbox', { name: 'New source filename' });
+  fireEvent.keyDown(filename, { key: 'Escape' });
+  expect(screen.queryByRole('textbox', { name: 'New source filename' })).toBeNull();
+  expect(invoke.mock.calls.some(([command]) => command === 'create_source')).toBe(false);
+});
 
 test('large record grid mounts only nearby rows and navigates after scrolling', async () => {
   openSnapshot = mutationSnapshot(Array.from({ length: 2_000 }, (_, recordIndex) => ({

@@ -16,12 +16,14 @@ const message = (error:unknown):string => {
   const diagnostic = (error as {diagnostic:{code:string;message:string;source?:string;schemaPath?:string;schema_path?:string}}).diagnostic;
   return [diagnostic.source, diagnostic.schemaPath ?? diagnostic.schema_path, `${diagnostic.code}: ${diagnostic.message}`].filter(Boolean).join(" · ");
 };
-export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false}: {
+export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false,schemaAction,onSchemaActionConsumed}: {
   projectPath:string; path:string; canWrite:boolean; dirtyPaths:string[];
   beginApply:(paths:string[])=>boolean; onResult:(result:MigrationResult)=>Promise<void>; endApply:()=>void;
   onOverview?:()=>void;
   onCreateData?:()=>void;
   embedded?:boolean;
+  schemaAction?: { path:string; operation:"add"|"rename"; field:string; serial:number } | null;
+  onSchemaActionConsumed?:()=>void;
 }) {
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [selected,setSelected]=useState("");
@@ -42,6 +44,13 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
   },[projectPath,path]);
   const change=(fn:()=>void)=>{revision.current+=1;fn();setPlan(null);setConfirmed(false);setError(null);setResult(null);};
   const start=(value:"add"|"rename"|"drop", target=selected, origin?:HTMLElement|null)=>{actionOrigin.current=origin??document.activeElement as HTMLElement;change(()=>{setSelected(target);setOperation(value);setReferenceOperation(null);setName(value==="rename"?target:"");setKey(snapshot?.schema.fields.length?Math.max(...snapshot.schema.fields.map(field=>field.key))+1:0);if(value==="add"){setHasInitializer(false);setInitializer(resetInitializer());}});window.requestAnimationFrame(()=>document.getElementById(value==="drop"?"migration-plan":"migration-name")?.focus());};
+  const lastSchemaAction=useRef(0);
+  useEffect(()=>{
+    if(!snapshot||!schemaAction||schemaAction.path!==path||schemaAction.serial===lastSchemaAction.current)return;
+    lastSchemaAction.current=schemaAction.serial;
+    start(schemaAction.operation,schemaAction.field);
+    onSchemaActionConsumed?.();
+  },[snapshot,schemaAction,path]);
   const startReference=(value:"add_reference"|"edit_reference"|"remove_reference", reference?:Reference)=>{actionOrigin.current=document.activeElement as HTMLElement;change(()=>{setOperation(null);setReferenceOperation(value);setSelectedReference(reference?.name??"");setReferenceName(reference?.name??"");setReferenceCsharpName(reference?.csharpName??"");setReferenceSourceFields(reference?.sourceFields.join(", ")??"");setReferenceTargetTable(reference?.targetTable??"");setReferenceTargetFields(reference?.targetFields.join(", ")??"");});window.requestAnimationFrame(()=>document.getElementById(value==="remove_reference"?"migration-plan":"reference-name")?.focus());};
   const cancel=()=>{change(()=>{setOperation(null);setReferenceOperation(null);});window.requestAnimationFrame(()=>actionOrigin.current?.focus());};
   const getPlan=async()=>{
@@ -52,6 +61,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
     catch(error){if(mounted.current&&current===revision.current)setError(message(error));}
     finally{inFlight.current=false;if(mounted.current)setBusy(false);}
   };
+  useEffect(()=>{if(operation==="drop"||referenceOperation==="remove_reference")void getPlan();},[operation,referenceOperation,selected,selectedReference]);
   const apply=async()=>{
     if(inFlight.current||!plan||!canWrite||(plan.destructive&&!confirmed)||result?.state==="success")return;
     if(!beginApply(plan.files.map(file=>file.path))){setError("Affected files have unsaved changes or a Save in progress. Resolve them before Apply.");return;}
@@ -101,7 +111,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
         {(snapshot.references ?? snapshot.schema.references ?? []).length===0&&<p>No References declared.</p>}
         <Button disabled={!canWrite||busy} onClick={()=>startReference("add_reference")}>Add Reference</Button>
       </section>
-      <Modal open={operation!==null||referenceOperation!==null} title="Schema change" onCancel={cancel} footer={null} width={780} destroyOnHidden>
+      <Modal className="migration-dialog" open={operation!==null||referenceOperation!==null} title="Schema change" onCancel={cancel} footer={null} width={780} destroyOnHidden>
       {error&&<Alert role="alert" type="error" title={error}/>}
       {referenceOperation&&<Form layout="vertical" disabled={busy} className="migration-form">
         <h3>{referenceOperation==="add_reference"?"Add Reference":referenceOperation==="edit_reference"?`Edit Reference ${selectedReference}`:`Remove Reference ${selectedReference}`}</h3>
@@ -117,7 +127,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
       </Form>}
       {operation&&<Form layout="vertical" disabled={busy} className="migration-form">
         <h3>{operation==="add"?"Add Field":`${operation==="rename"?"Rename":"Drop"} ${selected}`}</h3>
-        {operation!=="drop"&&<Form.Item label="Field name" htmlFor="migration-name"><Input id="migration-name" value={name} onChange={event=>change(()=>setName(event.target.value))}/></Form.Item>}
+        {operation!=="drop"&&<Form.Item label="Field name" htmlFor="migration-name"><Input id="migration-name" value={name} onChange={event=>change(()=>setName(event.target.value))} onPressEnter={event=>{event.preventDefault();void getPlan();}}/></Form.Item>}
         {operation==="add"&&<>
           <Form.Item label="MessagePack key"><InputNumber aria-label="MessagePack key" value={key} onChange={value=>change(()=>setKey(value))}/></Form.Item>
           <Form.Item label="Field type"><Select aria-label="Field type" value={type} options={snapshot.fieldTypes.map(value=>({value,label:value}))} onChange={value=>change(()=>{setType(value);setHasInitializer(false);setInitializer(resetInitializer());})}/></Form.Item>

@@ -34,7 +34,7 @@ Type category conversion、type rename、underlying変更、member numeric value
 
 ### GUI-TYPE-LAYOUT-004
 
-member / field listは選択radio列と常時並ぶAdd / Rename / Drop clusterを持たず、listまたは対象行からactionを開始できなければならない（MUST）。operation input、Plan / Diff / Applyは必要時だけ開く一時的な面へ置き、閉じるとlistと開始元focusへ戻れるようにしなければならない（MUST）。既存のshared Plan、Diff、stale判定、dirty-file gate、destructive authorizationを維持しなければならない（MUST）。
+member / field listは選択radio列と常時並ぶAdd / Rename / Drop clusterを持たず、listまたは対象行からactionを開始できなければならない（MUST）。operation input、Plan / Diff / Applyは必要時だけ開く一時的な面へ置き、閉じるとlistと開始元focusへ戻れるようにしなければならない（MUST）。 Add / Rename / Dropは対象member / fieldの文脈で開始し、入力確定時にPlanを自動生成して一時面のApplyへ進めなければならない（MUST）。既存のshared Plan、Diff、stale判定、dirty-file gate、destructive authorizationを維持しなければならない（MUST）。
 
 ## 状態（States）
 

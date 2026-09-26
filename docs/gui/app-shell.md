@@ -16,7 +16,7 @@ validation diagnosticsはData Editorが定義する下部`Problems` panelへ表�
 
 ### GUI-SHELL-LAYOUT-002
 
-Save、Validate、Build、Project Reload等の主要commandは、現在のselectionやcapabilityに応じて到達可能なcommand surfaceから実行できなければならない（MUST）。exact button placement、icon、spacing、themeはnormative contractとして固定しない。
+Save、Validate、Build、Project Reload等の主要commandは、現在のselectionやcapabilityに応じて到達可能なcommand surfaceから実行できなければならない（MUST）。exact button placement、icon、spacing、themeはnormative contractとして固定しない。 正常なSaved / Valid等を各editorで常時同じ視覚的強度のcommandとして表示せず、編集対象を主要な視覚領域にしなければならない（MUST）。failure / Conflict / Recovery Requiredは対象とrecovery actionを識別可能にする。
 
 ### GUI-SHELL-NAV-001
 

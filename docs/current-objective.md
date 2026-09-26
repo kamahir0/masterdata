@@ -6,28 +6,25 @@
 
 ## Objective
 
-**Desktop GUIのApplication User Settings / UI State（Theme preferenceおよびRecent Projects）について、WebView localStorageからOS標準のper-user application data / config領域をauthorityとするnative persistenceへ移行し、安全なmigrationを提供する。**
+**Desktop GUIの日常的なMasterData編集を、source fileを選ぶExplorerと対象を直接操作する編集面へ再設計する。通常操作は短く、検証・影響確認・復旧は必要な場面だけに示し、shared Rustの安全契約を維持する。**
 
 ## Completion slices
 
-- Tauri native storage backend（OS標準のper-user application data/config directory配下のJSON永続化）とTauri command boundaryの実装。
-- Frontend（Theme preference および Recent Projects）のnative storage読み書きへの切り替え。
-- legacy localStorageからの安全・idempotentなone-time migrationの実装。
-- 起動時（初回描画前）のTheme解決・適用を非同期native storageと整合させ、theme flashを防止。
-- 既存ThemeおよびRecent Projectsの挙動・UX・境界（Project dirty state影響なし、Project外・.masterdata外、Core/App影響なし等）の維持。
-- focused regression tests（Rust unit tests, GUI component/integration tests）およびrepository checksの完了。
+- Data Editorをデータ中心の画面へ整理し、大量recordでも選択・編集・keyboard操作・Problems移動が成立するgridへする。
+- Explorerのfile文脈から短い手順で有効なsourceを作り、作成後に編集を開始できるようにする。
+- Table schemaとrecordの編集を同じ画面の対象から開始でき、Migrationの安全なPlan / Applyと影響確認へ接続する。
+- Complex Value / Type編集の繰り返し操作と常設情報を減らし、keyboardと異常時の導線を保持する。
+- related specification changes、focused regression evidence、repository checks、Desktop実操作での確認を完了する。
 
 ## Canonical requirements
 
-- [Project layout](specs/project-layout.md) — `PROJECT-CONFIG-007`
-- [Color Theme](gui/color-theme/spec.md) — `GUI-THEME-001`, `GUI-THEME-002`, `GUI-THEME-003`, `GUI-THEME-004`, `GUI-THEME-005`, `GUI-THEME-006`, `GUI-THEME-007`
-- [Project Workflow](gui/project-workflow.md) — `GUI-PROJECT-002`
+- [GUI app shell](gui/app-shell.md)、[Explorer](gui/explorer/spec.md)、[Source Creation](gui/source-creation/spec.md)
+- [Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)、[Table Editor](gui/table-editor/spec.md)、[Type Editor](gui/type-editor/spec.md)
+- [Source Creation](specs/source-creation.md)、[Schema Migration](specs/schema-migration.md)、[Authoring Batch](specs/authoring-batch.md)
 
 ## Explicit non-scope
 
-- ProjectごとのTheme override、custom theme、user-defined color palette。
-- syntax highlighting themeの独立選択、OS high contrast theme、CLI color scheme、Project共有theme。
-- `masterdata.toml`へのTheme追加、`.masterdata/**`へのApplication-wide preference保存。
-- unrelatedなProject Local State persistence。
-- generic settings frameworkの先行構築、`masterdata-core` / `masterdata-app`へのGUI preference semantics追加。
-
+- YAML source format / domain identity / MasterMemory binary formatの変更。
+- source-preserving rewrite、lost-update protection、rollback / recoveryの弱体化。
+- Project全体の新しいdomain tree、source root外のfile探索、GUI独自のYAML/domain処理。
+- Publish / Buildのdomain contract変更、Programmable View、Web版GUI。

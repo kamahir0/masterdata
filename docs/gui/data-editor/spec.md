@@ -32,12 +32,17 @@ source diffはmain gridとは別のfile単位`Diff` view / editorとして表示
 
 ### GUI-DATA-LAYOUT-006
 
-定常的なData編集画面はprimary editing commandと現在のstatusを表示し、query詳細とbatch操作は別々に開閉できる補助領域に置かなければならない（MUST）。閉じても入力・selection・dirty bufferを失ってはならない（MUST NOT）。Problemsは0件時に閉じた状態から開始してよい（MAY）が、件数とvalidation stateへ到達でき、diagnosticとoperation failureは見失わない（MUST）。
-fileまたはProject areaを移動して同じData fileへ戻る際はquery / batch入力を復元し、別fileの入力を混入させてはならない（MUST）。表示中のquery resultとcontrolsのfile identityが食い違ってはならない（MUST NOT）。
+定常的なData編集画面はgridを最大の視覚領域とし、primary editing commandと現在のfile statusへ到達できなければならない（MUST）。正常なvalidation / Saved / selection countを同強度の常設button列として表示しなくてよい。dirty、validation pending / error、Conflict、Recovery Requiredは対象fileと関係づけて識別でき、assistive technologyにも伝えなければならない（MUST）。
+
+Searchは直接到達可能とし、query詳細とbatch操作は別々に開閉できる補助領域に置く。閉じても入力・selection・dirty bufferを失ってはならない（MUST NOT）。Problemsは0件時に閉じた状態から開始してよい（MAY）が、件数とvalidation stateへ到達でき、diagnosticとoperation failureは見失わない（MUST）。fileまたはProject areaを移動して同じData fileへ戻る際はquery / batch入力を復元し、別fileの入力を混入させてはならない（MUST）。表示中のquery resultとcontrolsのfile identityが食い違ってはならない（MUST NOT）。
 
 ### GUI-DATA-LAYOUT-007
 
 record gridの定常行高を複合値の内部要素数に依存させてはならない（MUST NOT）。column headerにはfield nameとread-onlyのtype / key情報を表示しなければならない（MUST）。array / struct等は定常時に値を要約し、選択時に対象cellが明確な一時的editorで編集できなければならない（MUST）。一時的editorを閉じても他cellのselectionとdirty bufferを失ってはならない（MUST NOT）。
+
+### GUI-DATA-VIRTUAL-001
+
+大量recordでもgridは表示window内のrowに比例するboundedなDOMを描画し、全record rowを同時にDOMへ生成してはならない（MUST NOT）。active selection、range anchor、editing value、dirty bufferはDOM nodeのmount状態から独立させ、scrollでrowが外れても失ってはならない（MUST）。Problemsから画面外のcellへ移動でき、accessible row / column countとvirtual row位置をassistive technologyへ伝えなければならない（MUST）。具体的なvirtualizer libraryとwindow sizeはimplementation detailとする。
 
 ## 状態（States）
 
@@ -98,6 +103,8 @@ active editを確定した時点でlocal bufferへ反映し、domain validation�
 Complex value editorはshared resolved value authoring stateから構成しなければならない（MUST）。Nullableのnull/non-null transition、Array element add/remove/order、Enum single-member selection、Flags member set、Custom Type nested field editをschema-aware controlとして扱い、general-purpose raw YAML / JSON fragment editorを通常編集経路として使用してはならない（MUST NOT）。
 
 frontendはeditorを構成するためにYAML parse、type lookup、Enum / Flags resolution、Custom Type shape reconstructionをdomain authorityとして再実装してはならない（MUST NOT）。exact inline / popover / drawer component、spacing、routine focus stylingはdata safety / accessibilityを変えない範囲でimplementation detailとする。
+
+Array element等の各itemに共通のmove / remove action群を値より強い定常表示として繰り返してはならない（MUST NOT）。secondary actionは対象itemのfocus / menuからpointerとkeyboardの両方で到達可能にしなければならない（MUST）。
 
 ### GUI-DATA-SAVE-001
 

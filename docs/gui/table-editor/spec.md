@@ -32,7 +32,7 @@ fields、target table、target key fields、resolved single/multi、resolved req
 
 ### GUI-TABLE-LAYOUT-005
 
-field listは選択radio列と常時並ぶAdd / Rename / Drop clusterを持たず、listまたは対象field行からactionを開始できなければならない（MUST）。operation input、Plan / Diff / Applyは必要時だけ開く一時的な面へ置き、閉じるとlistと開始元focusへ戻れるようにしなければならない（MUST）。既存のshared Plan、Diff、stale判定、dirty-file gate、destructive authorizationを維持しなければならない（MUST）。
+field listは選択radio列と常時並ぶAdd / Rename / Drop clusterを持たず、listまたは対象field行からactionを開始できなければならない（MUST）。operation input、Plan / Diff / Applyは必要時だけ開く一時的な面へ置き、閉じるとlistと開始元focusへ戻れるようにしなければならない（MUST）。field名変更とAdd Fieldはrecord gridのheader文脈からもpointer / keyboardで開始できなければならない（MUST）。入力確定時にPlanを自動生成し、対象付近の一時面に概要とApplyを提示する（MUST）。既存のshared Plan、Diff、stale判定、dirty-file gate、destructive authorizationを維持しなければならない（MUST）。
 
 ## 状態（States）
 

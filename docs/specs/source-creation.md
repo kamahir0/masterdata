@@ -28,6 +28,8 @@ source creation operationは、exactly 1つのconfigured source rootをtargetと
 
 folder path、file path、filename、directory nameはworkspace organizationであり、Table、type、recordその他のdomain identityを決めてはならない（MUST NOT）。domain identityは各source documentのcanonical contentから決定しなければならない（MUST）。
 
+作成UIは新規sourceを生成する一度限りの入力候補としてfilenameからdomain identityを提案してよい（MAY）。生成したidentityは作成するcanonical contentへ明示し、作成前に利用者が確認できなければならない（MUST）。既存sourceの解釈、作成後のrename / move、folder配置にはこの提案規則を適用してはならない（MUST NOT）。
+
 ### SOURCE-CREATE-002
 
 creation targetは選択されたconfigured source rootからのlogical relative pathとして解決しなければならず（MUST）、absolute path、`..`等のpath traversal、symlink / junction / reparse point等を利用してselected source root外へ到達してはならない（MUST NOT）。
@@ -41,6 +43,8 @@ path safetyのplatform-specific mechanismはhost implementation detailであり�
 新規source fileはProjectのsource discovery対象となる`.yaml`または`.yml` extensionを持たなければならない（MUST）。GUI等のhuman-facing surfaceは`.yaml`をdefaultとして提案すべきである（SHOULD）が、`.yml`をinvalidとして扱ってはならない（MUST NOT）。
 
 extensionやdestination directoryからdocument kindまたはdomain identityを推測してはならない（MUST NOT）。
+
+この禁止は既存sourceのdiscovery / interpretationに適用する。`SOURCE-CREATE-001`の作成時の一度限りの候補提案を妨げない。
 
 ### SOURCE-CREATE-004
 

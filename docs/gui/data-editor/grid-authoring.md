@@ -13,13 +13,14 @@ pasteはactive cellを左上とし、clipboard shapeだけを使う。選択rang
 
 ### GUI-GRID-002
 
-paste / fill / range Set Nullは、対象file、変更cell数、target row/column、before/after、diagnosticsを確認するpreviewと明示Apply / Cancelを提供しなければならない（MUST）。single-cell pasteも同経路を使う。
-previewはbase、buffer revision、schema/type revision、query/selection revisionにbindし、どれか変わればApply不可にする（MUST）。Apply前にもshared layerで一致を確認する。Cancel/failureは元bufferとselectionを保つ。全cell no-opは履歴を増やさない。
+Grid navigation modeのCmd/Ctrl+Vはclipboardをshared codecでdecodeし、shared Applicationのbatch preflightでbase / buffer / schema/type / query/selection revisionを照合した後、全targetを一つのUndo単位でlocal bufferへ直接反映しなければならない（MUST）。single-cell pasteも同じ経路とする。失敗、read-only混入、stale、shape不一致ではbufferを変更せず、対象と理由を示さなければならない（MUST）。domain-invalid valueだけを理由にbuffer適用を拒否してはならない（MUST NOT）。pasteはSave / Build / Migrationを暗黙実行してはならない（MUST NOT）。
+
+利用者が変更前に範囲を確認できる明示的なPaste preview導線を残し、file、変更cell数、target row/column、before/after、diagnosticsを確認できなければならない（MUST）。Fillとrange Set Nullは従来通りpreviewと明示Apply / Cancelを要求する（MUST）。previewはbase、buffer revision、schema/type revision、query/selection revisionにbindし、どれか変わればApply不可とする（MUST）。Cancel/failureは元bufferとselectionを保つ。全cell no-opは履歴を増やさない。
 
 ### GUI-GRID-003
 
 query変更はcell edit確定後に反映しなければならない（MUST）。入力が表現不能ならactive editを保持してquery変更を停止する。domain-invalidだけでは確定を拒否しない。
-編集確定でrowがfilter対象外になった場合は同じ表示位置の次row、なければ前rowへselectionを移し、0件ならgridのempty stateへfocusを置く。sortで移動したsurviving occurrenceのselectionは追従する（MUST）。query変更はrangeをactive cell一つへ縮める。
+編集確定でrowがfilter対象外になった場合は同じ表示位置の次row、なければ前rowへselectionを移し、0件ならgridのempty stateへfocusを置く。sortで移動したsurviving occurrenceのselectionは追従する（MUST）。query変更はrangeをactive cell一つへ縮める。selection / edit targetはview ordinalだけで保持せず、source record occurrenceまたはAdded draft identityへ結び付ける（MUST）。
 Pending deleteは通常query結果と別のUndo可能な一覧として発見でき、range対象にしない。Add Row直後はfilter/sortをclearして新rowへfocusし、clearしたことを通知する（MUST）。これはsource順を変えない。
 
 ### GUI-GRID-004

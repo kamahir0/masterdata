@@ -74,6 +74,10 @@ function navigation() { return within(screen.getByRole('complementary', { name: 
 function openProjectCommands() {
   fireEvent.click(within(document.querySelector('.titlebar')!).getByRole('button', { name: 'Project menu' }));
 }
+async function dataAction(name: string) {
+  fireEvent.click(await screen.findByRole('button', { name: 'More data actions' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name, exact: true }));
+}
 function openSourceFiles() { /* Explorer is the persistent source tree. */ }
 function reloadProject() {
   fireEvent.click(within(document.querySelector('.titlebar')!).getByRole('button', { name: 'Project menu' }));
@@ -317,7 +321,7 @@ test('Table context opens Data creation with its Table already selected', async 
     return normalInvoke(command, args);
   });
   await open();
-  fireEvent.click(screen.getByRole('button', { name: 'New data file' }));
+  await dataAction('New data file');
   expect((await screen.findByRole('combobox', { name: 'Existing Table' })).closest('.ant-select')?.textContent).toContain('item');
   expect(screen.getByRole('combobox', { name: 'Artifact type' }).closest('.ant-select')?.textContent).toContain('Data');
 });
@@ -335,7 +339,7 @@ test('Table Overview follows the selected logical Table rather than the previous
   });
   await open();
   fireEvent.click(navigation().getByRole('treeitem', { name: 'enemy-data.yaml', exact: true }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Table Overview' }));
+  await dataAction('Table Overview');
   await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'table_overview' && args.request.table === 'enemy')).toBe(true));
 });
 
@@ -421,6 +425,27 @@ test('creation refresh selects the new source without discarding an existing dir
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
+test('large record grid mounts only nearby rows and navigates after scrolling', async () => {
+  openSnapshot = mutationSnapshot(Array.from({ length: 2_000 }, (_, recordIndex) => ({
+    recordIndex,
+    cells: [
+      { field: 'id', text: String(recordIndex + 1), editable: true },
+      { field: 'weight', text: String(recordIndex + 1), editable: true },
+      { field: 'note', text: `record ${recordIndex + 1}`, editable: true },
+    ],
+  }))) as ReturnType<typeof snapshot>;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
+  const scroll = document.querySelector<HTMLElement>('.grid-scroll')!;
+  expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
+  scroll.scrollTop = 1_500 * 32;
+  fireEvent.scroll(scroll);
+  const farCell = await screen.findByRole('gridcell', { name: /^record 1501 weight:/ });
+  expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
+  fireEvent.keyDown(farCell, { key: 'ArrowDown' });
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toMatch(/^record 1502 weight:/));
+});
+
 test('Existing primary key direct edit uses the ordinary cell mutation lifecycle', async () => {
   openSnapshot = mutationSnapshot();
   let previewArgs: any;
@@ -472,7 +497,7 @@ test('Explorer move refreshes selection and the open data editor at the new path
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
-  const add = await screen.findByRole('button', { name: 'Add Row', exact: true });
+  const add = await screen.findByRole('button', { name: /Add Row/ });
   expect((add as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Actions for record 1' }));
@@ -492,7 +517,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   });
 
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Add Row', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: /Add Row/ }));
   const draftId = await edit('new record id') as HTMLInputElement;
   fireEvent.change(draftId, { target: { value: '1' } });
   commit(draftId);
@@ -538,7 +563,7 @@ test('inline Table file opens record grid and its schema editor in one surface',
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:/Table structure/}));
+  await dataAction('Table structure');
   expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
   expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
@@ -551,7 +576,7 @@ test('split Data file exposes its Table schema without leaving the record grid',
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:/Table structure/}));
+  await dataAction('Table structure');
   expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
   expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
@@ -654,6 +679,29 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 });
 
+
+test('grid paste applies one shared batch to the local buffer and Undo restores it', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_clipboard_shape') return { rows: 1, columns: 1 };
+    if (command === 'preview_data_file_batch') return {
+      source: { candidateSource: 'weight: 20', candidateContentIdentity: 'batch', changed: true, validation },
+      targetCount: 1,
+      changedCellCount: 1,
+      changes: [{ recordIndex: 0, addedRecordIndex: null, field: 'weight', before: { kind: 'number', value: '10' }, after: { kind: 'number', value: '20' } }],
+    };
+    return normalInvoke(command, args);
+  });
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText: vi.fn(async () => '20'), writeText: vi.fn(async () => {}) } });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
+  fireEvent.mouseDown(cell, { button: 0 });
+  fireEvent.keyDown(cell, { key: 'v', ctrlKey: true });
+  expect(await screen.findByRole('gridcell', { name: /^record 1 weight: 20/ })).toBeTruthy();
+  expect(screen.queryByRole('dialog', { name: 'Scalar range preview' })).toBeNull();
+  await dataAction('Undo');
+  expect(await screen.findByRole('gridcell', { name: /^record 1 weight: 10/ })).toBeTruthy();
+});
 
 test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of flattening the selection', async () => {
   openSnapshot = mutationSnapshot([

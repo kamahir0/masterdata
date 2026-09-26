@@ -524,6 +524,11 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 
 /* Record height does not depend on nested value shape. */
 .record-grid tbody tr { height: 32px; }
+.record-grid tbody tr.virtual-spacer { height: auto !important; }
+.record-grid tbody tr.virtual-spacer td { height: auto !important; max-height: none; min-width: 0; padding: 0; border: 0; }
+.add-record-inline.ant-btn { display: block; width: 100%; height: 32px; border: 0; border-radius: 0; color: var(--muted); background: transparent; text-align: left; }
+.add-record-inline.ant-btn:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .record-grid tbody td, .record-grid tbody .row-number { height: 32px; min-height: 32px; max-height: 32px; vertical-align: middle; }
 .record-grid tbody .row-number { display: flex; flex-wrap: nowrap; justify-content: space-between; padding: 0 2px 0 6px; }
 .record-grid tbody .row-number .ant-btn { opacity: 0; width: 20px; height: 20px; min-height: 20px; padding: 0; }
@@ -649,4 +654,3 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 [data-theme="light"] .value-editor legend { color: var(--text); }
 [data-theme="light"] .read-only-value output, [data-theme="light"] .unmaterialized-value > output { color: var(--text); }
 [data-theme="light"] .complex-cell-popover .ant-popover-inner, [data-theme="light"] .tags-cell-popover .ant-popover-inner { background: #ffffff; }
-

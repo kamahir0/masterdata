@@ -1142,10 +1142,10 @@ function App({
     });
   }, [projectRoot, schedulePreview]);
 
-  const applyBatchPreview = useCallback((path: string, batch: AuthoringBatchPreview) => {
+  const applyBatchPreview = useCallback((path: string, batch: AuthoringBatchPreview, expectedRevision: number) => {
     setEditors((current) => {
       const editor = current[path];
-      if (!editor || editor.saving) return current;
+      if (!editor || editor.saving || editor.revision !== expectedRevision) return current;
       if (batch.changedCellCount === 0) return current;
       const edits = { ...editor.edits };
       const addedRecords = editor.addedRecords.map((draft) => ({ ...draft, values: { ...draft.values } }));
@@ -2077,7 +2077,7 @@ function App({
               onCellFocus={(key) => { historyEditKey.current = key; }}
               onTagsChange={(recordIndex, tags) => updateExistingTags(activeFile.path, recordIndex, tags)}
               onDraftTagsChange={(draftId, tags) => updateDraftTags(activeFile.path, draftId, tags)}
-              onBatchApplied={(batch) => applyBatchPreview(activeFile.path, batch)}
+              onBatchApplied={(batch, expectedRevision) => applyBatchPreview(activeFile.path, batch, expectedRevision)}
               onQueryResult={(result) => updateQueryResult(activeFile.path, result)}
               onUndo={() => undoBuffer(activeFile.path)}
               onRedo={() => redoBuffer(activeFile.path)}
@@ -2099,7 +2099,7 @@ function App({
               <span className="problem-snapshot">
                 {activeEditor?.previewState === "pending" && "Buffer validation pending"}
                 {activeEditor?.previewState === "unavailable" && "Buffer validation unavailable"}
-                {activeEditor?.previewState === "current" && (activeEditor.preview.validation.valid ? "Buffer valid" : "Buffer has diagnostics")}
+                {activeEditor?.previewState === "current" && !activeEditor.preview.validation.valid && "Buffer has diagnostics"}
                 {manualValidation.kind === "done" && ` · Disk ${manualValidation.value.valid ? "valid" : "invalid"}`}
               </span>
             </Button>
@@ -2131,7 +2131,7 @@ function App({
       {workspace && <footer className="statusbar">
         <span>{surface === "settings" ? "Project Settings" : surface === "delivery" ? "Build & Publish" : surface === "overview" ? `Table ${selectedTable ?? ""}` : activePath ?? "No source selected"}</span>
         <span>{surface === "editor" && activeEditor ? `${activeEditor.snapshot.rows.length + activeEditor.addedRecords.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
-        <span>{totalDirtyCount > 0 ? `${totalDirtyCount} dirty` : "Saved"}</span>
+        <span>{totalDirtyCount > 0 ? `${totalDirtyCount} dirty` : ""}</span>
       </footer>}
 
       {creationOpen && workspace && projectRoot && <SourceCreation key={projectRoot}
@@ -2537,6 +2537,11 @@ type GridRange = {
   endColumn: number;
 };
 
+// Fixed-height rows keep the scroll window independent of complex value shape.
+// EVIDENCE: GUI-DATA-LAYOUT-007, GUI-DATA-VIRTUAL-001.
+const GRID_ROW_HEIGHT = 32;
+const GRID_OVERSCAN = 12;
+
 type DataEditorUiState = {
   batchText: string;
   querySearch: string;
@@ -2590,7 +2595,7 @@ function DataEditor({
   onCellFocus: (key: string) => void;
   onTagsChange: (recordIndex: number, tags: string[]) => void;
   onDraftTagsChange: (draftId: string, tags: string[]) => void;
-  onBatchApplied: (batch: AuthoringBatchPreview) => void;
+  onBatchApplied: (batch: AuthoringBatchPreview, expectedRevision: number) => void;
   onQueryResult: (result: DataFileQueryResult | null) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -2632,6 +2637,9 @@ function DataEditor({
   const [queryAdvancedOpen, setQueryAdvancedOpen] = useState(rememberedUi?.queryAdvancedOpen ?? false);
   const [batchToolsOpen, setBatchToolsOpen] = useState(rememberedUi?.batchToolsOpen ?? false);
   const [schemaOpen, setSchemaOpen] = useState(false);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const [gridScrollTop, setGridScrollTop] = useState(0);
+  const [gridViewportHeight, setGridViewportHeight] = useState(640);
   useEffect(() => {
     // Query and batch drafts are file-local UI state; switching sources must not
     // leave an applied query showing controls that belong to another file.
@@ -2641,13 +2649,15 @@ function DataEditor({
   const previousAddedCount = useRef(editor.addedRecords.length);
   const [batchContext, setBatchContext] = useState<{ revision: number; selectionKey: string } | null>(null);
   const capability = addCapability(editor.snapshot);
-  const rowsByRecordIndex = new Map(editor.snapshot.rows.map((row) => [row.recordIndex, row]));
-  const draftsByQueryIndex = new Map(editor.addedRecords.map((draft, index) => [editor.snapshot.rows.length + index, draft]));
+  const rowsByRecordIndex = useMemo(() => new Map(editor.snapshot.rows.map((row) => [row.recordIndex, row])), [editor.snapshot.rows]);
+  const draftsByQueryIndex = useMemo(() => new Map(editor.addedRecords.map((draft, index) => [editor.snapshot.rows.length + index, draft])), [editor.addedRecords, editor.snapshot.rows.length]);
   const queryOrder = editor.queryResult?.orderedRecordIndices;
-  const gridRows: GridRow[] = queryOrder
+  const gridRows: GridRow[] = useMemo(() => {
+    const pending = new Set(editor.pendingDeletes);
+    return queryOrder
     ? queryOrder.flatMap<GridRow>((recordIndex) => {
         const row = rowsByRecordIndex.get(recordIndex);
-        if (row) return [{ kind: "existing" as const, recordIndex: row.recordIndex, pendingDelete: editor.pendingDeletes.includes(row.recordIndex) }];
+        if (row) return [{ kind: "existing" as const, recordIndex: row.recordIndex, pendingDelete: pending.has(row.recordIndex) }];
         const draft = draftsByQueryIndex.get(recordIndex);
         return draft ? [{ kind: "added" as const, draft }] : [];
       })
@@ -2655,18 +2665,46 @@ function DataEditor({
         ...editor.snapshot.rows.map((row) => ({
           kind: "existing" as const,
           recordIndex: row.recordIndex,
-          pendingDelete: editor.pendingDeletes.includes(row.recordIndex),
+          pendingDelete: pending.has(row.recordIndex),
         })),
         ...editor.addedRecords.map((draft) => ({ kind: "added" as const, draft })),
       ];
-  const gridCellKeys = gridRows.map((row) => editor.snapshot.columns.map((column) =>
-    row.kind === "existing"
-      ? cellKey(row.recordIndex, column.name)
-      : draftCellKey(row.draft.draftId, column.name)));
+  }, [queryOrder, rowsByRecordIndex, draftsByQueryIndex, editor.snapshot.rows, editor.pendingDeletes, editor.addedRecords]);
+  const gridCellKeyAt = (rowIndex: number, columnIndex: number) => {
+    const row = gridRows[rowIndex];
+    const column = editor.snapshot.columns[columnIndex];
+    if (!row || !column) return null;
+    return row.kind === "existing" ? cellKey(row.recordIndex, column.name) : draftCellKey(row.draft.draftId, column.name);
+  };
+  const firstGridRow = Math.min(Math.max(0, gridRows.length - 1), Math.max(0, Math.floor(gridScrollTop / GRID_ROW_HEIGHT) - GRID_OVERSCAN));
+  const lastGridRow = Math.min(gridRows.length, Math.ceil((gridScrollTop + gridViewportHeight) / GRID_ROW_HEIGHT) + GRID_OVERSCAN);
+  const visibleGridRows = gridRows.slice(firstGridRow, lastGridRow).map((row, offset) => ({ row, rowIndex: firstGridRow + offset }));
+  useLayoutEffect(() => {
+    const element = gridScrollRef.current;
+    if (!element) return;
+    const measure = () => setGridViewportHeight(element.clientHeight || 640);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [editor.view]);
+  const revealGridRow = (rowIndex: number) => {
+    const element = gridScrollRef.current;
+    if (!element) return;
+    const top = rowIndex * GRID_ROW_HEIGHT;
+    const bottom = top + GRID_ROW_HEIGHT;
+    const height = element.clientHeight || gridViewportHeight;
+    if (top < element.scrollTop) element.scrollTop = top;
+    else if (bottom > element.scrollTop + height) element.scrollTop = bottom - height;
+    else return;
+    setGridScrollTop(element.scrollTop);
+  };
   const focusGridCell = (rowIndex: number, columnIndex: number) => {
-    const key = gridCellKeys[rowIndex]?.[columnIndex];
+    const key = gridCellKeyAt(rowIndex, columnIndex);
     if (!key) return;
     pendingGridFocus.current = key;
+    revealGridRow(rowIndex);
     setSelectedRange({ startRow: rowIndex, startColumn: columnIndex, endRow: rowIndex, endColumn: columnIndex });
   };
   const finishCellEdit = (commit: boolean, nextRow?: number, nextColumn?: number, restoreFocus = true) => {
@@ -2680,6 +2718,14 @@ function DataEditor({
     if (nextRow !== undefined && nextColumn !== undefined) focusGridCell(nextRow, nextColumn);
     else if (restoreFocus) pendingGridFocus.current = key;
   };
+  const handleGridScroll = (top: number) => {
+    if (editingCell) {
+      const first = Math.max(0, Math.floor(top / GRID_ROW_HEIGHT) - GRID_OVERSCAN);
+      const last = Math.min(gridRows.length, Math.ceil((top + gridViewportHeight) / GRID_ROW_HEIGHT) + GRID_OVERSCAN);
+      if (editingCell.rowIndex < first || editingCell.rowIndex >= last) finishCellEdit(true, undefined, undefined, false);
+    }
+    setGridScrollTop(top);
+  };
   const beginCellEdit = (key: string, value: AuthoringValue, rowIndex: number, columnIndex: number, selectAll = false) => {
     const row = gridRows[rowIndex];
     const column = editor.snapshot.columns[columnIndex];
@@ -2692,12 +2738,21 @@ function DataEditor({
   useEffect(() => {
     const focusRequestedValue = (event: Event) => {
       const { cell, valuePath } = (event as CustomEvent<{ cell: string; valuePath: string }>).detail;
-      const rowIndex = gridCellKeys.findIndex((row) => row.includes(cell));
-      const columnIndex = rowIndex < 0 ? -1 : gridCellKeys[rowIndex].indexOf(cell);
+      const columnIndex = editor.snapshot.columns.findIndex((column) => {
+        const index = gridRows.findIndex((row) => row.kind === "existing"
+          ? cellKey(row.recordIndex, column.name) === cell
+          : draftCellKey(row.draft.draftId, column.name) === cell);
+        return index >= 0;
+      });
+      const rowIndex = columnIndex < 0 ? -1 : gridRows.findIndex((row) => {
+        const field = editor.snapshot.columns[columnIndex].name;
+        return row.kind === "existing" ? cellKey(row.recordIndex, field) === cell : draftCellKey(row.draft.draftId, field) === cell;
+      });
       const row = gridRows[rowIndex];
       const column = editor.snapshot.columns[columnIndex];
       if (!row || !column || !column.shape) return;
       const value = row.kind === "existing" ? currentCellValue(editor, row.recordIndex, column.name) : row.draft.values[column.name] ?? nullAuthoringValue();
+      revealGridRow(rowIndex);
       beginCellEdit(cell, value, rowIndex, columnIndex);
       window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
         focusElement(document.querySelector<HTMLElement>(`[data-value-path="${CSS.escape(valuePath)}"]`));
@@ -2705,7 +2760,7 @@ function DataEditor({
     };
     document.addEventListener("masterdata:focus-value", focusRequestedValue);
     return () => document.removeEventListener("masterdata:focus-value", focusRequestedValue);
-  }, [editor, gridCellKeys, gridRows]);
+  }, [editor, gridRows]);
   const commitAndSave = () => {
     if (editingCell) {
       finishCellEdit(true, undefined, undefined, false);
@@ -2729,9 +2784,9 @@ function DataEditor({
   useLayoutEffect(() => {
     const key = pendingGridFocus.current;
     if (!key) return;
-    document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();
-    pendingGridFocus.current = null;
-  }, [editingCell, selectedRange]);
+    const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`);
+    if (target) { target.focus(); pendingGridFocus.current = null; }
+  }, [editingCell, selectedRange, firstGridRow, lastGridRow]);
 
   useEffect(() => {
     lastFocusedCell.current = null;
@@ -2775,9 +2830,14 @@ function DataEditor({
     query: editor.queryResult.query,
     orderedRecordIndices: editor.queryResult.orderedRecordIndices,
   } : null)}:${JSON.stringify(selectedRange)}`;
+  const latestPasteContext = useRef({ revision: editor.revision, selectionContextKey });
+  latestPasteContext.current = { revision: editor.revision, selectionContextKey };
   const batchIsStale = batchPreview !== null
     && batchContext !== null
     && (batchContext.revision !== editor.revision || batchContext.selectionKey !== selectionContextKey);
+  const selectedCellCount = selectedRange
+    ? (Math.abs(selectedRange.endRow - selectedRange.startRow) + 1) * (Math.abs(selectedRange.endColumn - selectedRange.startColumn) + 1)
+    : 1;
 
   const targetAt = (rowIndex: number, columnIndex: number): BatchTarget | null => {
     const row = gridRows[rowIndex];
@@ -2812,20 +2872,24 @@ function DataEditor({
     return targets;
   };
 
+  const prepareBatch = async (fill: boolean, clipboardText: string) => {
+    const targets = fill ? selectedTargets() : await pasteTargets(clipboardText);
+    if (targets.length === 0) return null;
+    return invoke<AuthoringBatchPreview>("preview_data_file_batch", {
+      projectPath: projectRoot,
+      relativePath: file.path,
+      baseSource: editor.snapshot.baseSource,
+      currentMutation: mutationForEditor(editor),
+      request: { targets, clipboardText, fill },
+    });
+  };
   const previewBatch = async (fill: boolean, clipboardText = batchText) => {
     const requestSelectionKey = selectionContextKey;
     setBatchBusy(true);
     setQueryError(null);
     try {
-      const targets = fill ? selectedTargets() : await pasteTargets(clipboardText);
-      if (targets.length === 0) return;
-      const result = await invoke<AuthoringBatchPreview>("preview_data_file_batch", {
-        projectPath: projectRoot,
-        relativePath: file.path,
-        baseSource: editor.snapshot.baseSource,
-        currentMutation: mutationForEditor(editor),
-        request: { targets, clipboardText, fill },
-      });
+      const result = await prepareBatch(fill, clipboardText);
+      if (!result) return;
       setBatchPreview(result);
       setBatchContext({ revision: editor.revision, selectionKey: requestSelectionKey });
     } catch (error) {
@@ -2862,6 +2926,28 @@ function DataEditor({
       await previewBatch(false, clipboardText);
     } catch (error) {
       setQueryError(asApiError(error).diagnostic);
+    }
+  };
+  const pasteClipboard = async () => {
+    if (batchBusy || mutationBlocked || editor.saving) return;
+    const requestRevision = editor.revision;
+    const requestSelectionKey = selectionContextKey;
+    setBatchBusy(true);
+    setQueryError(null);
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      const result = await prepareBatch(false, clipboardText);
+      if (!result) return;
+      if (latestPasteContext.current.revision !== requestRevision
+        || latestPasteContext.current.selectionContextKey !== requestSelectionKey) {
+        setQueryNotice("Paste was not applied because the buffer or selection changed. Paste again at the current cell.");
+        return;
+      }
+      onBatchApplied(result, requestRevision);
+    } catch (error) {
+      setQueryError(asApiError(error).diagnostic);
+    } finally {
+      setBatchBusy(false);
     }
   };
 
@@ -2960,21 +3046,19 @@ function DataEditor({
           items={[{ key: "grid", label: "Data" }, { key: "diff", label: "Diff" },
             ...(editor.conflict ? [{ key: "compare", label: "Conflict" }] : [])]} />
         <div className="editor-actions">
-          <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
-          {onOverview && <Button htmlType="button" onClick={onOverview}>Table Overview</Button>}
-          {schemaEditor && <Button htmlType="button" aria-expanded={schemaOpen} aria-controls="data-table-structure" onClick={() => setSchemaOpen(open => !open)}>Table structure <ChevronDown size={13} aria-hidden="true" /></Button>}
-          {onCreateData && <Button htmlType="button" onClick={onCreateData}>New data file</Button>}
-          <Button
-            htmlType="button"
-            aria-label="Add Row"
-            onClick={onAddRow}
-            disabled={mutationBlocked || !capability.supported || editor.saving}
-          >
-            Add Row
-          </Button>
-          <Button htmlType="button" aria-label="Undo" onClick={onUndo} disabled={mutationBlocked || editor.saving || editor.historyPast.length === 0}>Undo</Button>
-          <Button htmlType="button" aria-label="Redo" onClick={onRedo} disabled={mutationBlocked || editor.saving || editor.historyFuture.length === 0}>Redo</Button>
+          {(editor.previewState !== "current" || !editor.preview.validation.valid) && <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>}
           <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !editingCell) || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
+          <Dropdown trigger={["click"]} menu={{ items: [
+            { key: "add", label: "Add Row", disabled: mutationBlocked || !capability.supported || editor.saving, onClick: onAddRow },
+            { key: "undo", label: "Undo", disabled: mutationBlocked || editor.saving || editor.historyPast.length === 0, onClick: onUndo },
+            { key: "redo", label: "Redo", disabled: mutationBlocked || editor.saving || editor.historyFuture.length === 0, onClick: onRedo },
+            ...(schemaEditor ? [{ key: "schema", label: "Table structure", onClick: () => setSchemaOpen(open => !open) }] : []),
+            ...(onOverview ? [{ key: "overview", label: "Table Overview", onClick: onOverview }] : []),
+            ...(onCreateData ? [{ key: "data", label: "New data file", onClick: onCreateData }] : []),
+            { key: "batch", label: "Batch tools", onClick: () => setBatchToolsOpen(open => !open) },
+          ] }}>
+            <Button htmlType="button" aria-label="More data actions" icon={<MoreHorizontal size={16} />} />
+          </Dropdown>
         </div>
       </header>
 
@@ -2984,7 +3068,6 @@ function DataEditor({
         <Input aria-label="Data search" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onPressEnter={() => void runQuery()} />
         <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Search</Button>
         <Button htmlType="button" aria-expanded={queryAdvancedOpen} aria-controls="data-query-options" onClick={() => setQueryAdvancedOpen((open) => !open)}>Filter &amp; sort{queryField || querySortField ? " · set" : ""} <ChevronDown size={13} aria-hidden="true" /></Button>
-        <Button htmlType="button" aria-expanded={batchToolsOpen} aria-controls="data-batch-tools" onClick={() => setBatchToolsOpen((open) => !open)}>Batch tools <ChevronDown size={13} aria-hidden="true" /></Button>
         {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
       </div>
       <div className="authoring-toolbar authoring-options" id="data-query-options" hidden={!queryAdvancedOpen} aria-label="Filter and sort options">
@@ -3002,8 +3085,8 @@ function DataEditor({
         <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
         <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
       </div>
-      <div className="selection-status" role="status" aria-live="polite">
-        {selectedRange ? `${selectedTargets().length} cells selected` : "One cell active"}
+      <div className={`selection-status ${!batchIsStale && selectedCellCount <= 1 ? "visually-hidden" : ""}`} role="status" aria-live="polite">
+        {selectedRange ? `${selectedCellCount} cells selected` : "One cell active"}
         {batchIsStale && " · batch preview expired; review again"}
       </div>
       {queryNotice && <Alert type="info" showIcon closable onClose={() => setQueryNotice(null)} title={queryNotice} />}
@@ -3044,8 +3127,8 @@ function DataEditor({
       )}
 
       {editor.view === "grid" && (
-        <div className="grid-scroll">
-          <table className="record-grid">
+        <div className="grid-scroll" ref={gridScrollRef} onScroll={(event) => handleGridScroll(event.currentTarget.scrollTop)}>
+          <table className="record-grid" role="grid" aria-rowcount={gridRows.length + 1} aria-colcount={editor.snapshot.columns.length + 2}>
             <thead>
               <tr>
                 <th className="row-number">#</th>
@@ -3063,9 +3146,11 @@ function DataEditor({
               </tr>
             </thead>
             <tbody>
-              {gridRows.map((gridRow, gridRowIndex) => (
+              {firstGridRow > 0 && <tr className="virtual-spacer" role="presentation" aria-hidden="true"><td colSpan={editor.snapshot.columns.length + 2} style={{ height: firstGridRow * GRID_ROW_HEIGHT }} /></tr>}
+              {visibleGridRows.map(({ row: gridRow, rowIndex: gridRowIndex }) => (
                 <tr
                   key={gridRow.kind === "existing" ? `record-${gridRow.recordIndex}` : gridRow.draft.draftId}
+                  aria-rowindex={gridRowIndex + 2}
                   className={gridRow.kind === "existing" && gridRow.pendingDelete ? "pending-delete" : ""}
                 >
                   <th className="row-number">
@@ -3075,13 +3160,13 @@ function DataEditor({
                     </Dropdown>
                   </th>
                   {editor.snapshot.columns.map((column, columnIndex) => {
-                    const key = gridCellKeys[gridRowIndex][columnIndex];
+                    const key = gridCellKeyAt(gridRowIndex, columnIndex)!;
                     const snapshotCell = gridRow.kind === "existing"
-                      ? editor.snapshot.rows.find((row) => row.recordIndex === gridRow.recordIndex)
+                      ? rowsByRecordIndex.get(gridRow.recordIndex)
                         ?.cells.find((cell) => cell.field === column.name)
                       : undefined;
                     const value = gridRow.kind === "existing"
-                      ? currentCellValue(editor, gridRow.recordIndex, column.name)
+                      ? editor.edits[key]?.value ?? snapshotCell?.value ?? nullAuthoringValue()
                       : gridRow.draft.values[column.name] ?? nullAuthoringValue();
                     const cellDiagnostics = diagnostics.filter((diagnostic) =>
                       diagnostic.source != null &&
@@ -3118,7 +3203,9 @@ function DataEditor({
                           className="cell-wrap"
                           data-cell={key}
                           data-edit-cell={isEditing && !complex ? key : undefined}
-                          tabIndex={0}
+                          tabIndex={selectedRange
+                            ? (selectedRange.endRow === gridRowIndex && selectedRange.endColumn === columnIndex ? 0 : -1)
+                            : (gridRowIndex === 0 && columnIndex === 0 ? 0 : -1)}
                           role="gridcell"
                           aria-label={`${label}: ${authoringValueSummary(value)}${readOnlyReason ? `, ${readOnlyReason}` : ""}`}
                           onMouseDown={(event) => {
@@ -3156,14 +3243,14 @@ function DataEditor({
                             const textSelectionActive = input?.selectionStart != null
                               && input.selectionEnd != null
                               && input.selectionStart !== input.selectionEnd;
-                            if ((event.metaKey || event.ctrlKey)
+                            if (!isEditing && (event.metaKey || event.ctrlKey)
                               && !event.altKey
                               && !textSelectionActive
                               && (event.key.toLowerCase() === "v"
                                 || (event.key.toLowerCase() === "c" && selectedTargets().length > 1))) {
                               event.preventDefault();
                               if (event.key.toLowerCase() === "c") void copySelection();
-                              else void readClipboardAndPreview();
+                              else void pasteClipboard();
                               return;
                             }
                             if (isEditing) {
@@ -3210,9 +3297,7 @@ function DataEditor({
                   })}
                   <td className="tag-cell">
                     {(() => {
-                      const snapshotRow = gridRow.kind === "existing"
-                        ? editor.snapshot.rows.find((row) => row.recordIndex === gridRow.recordIndex)
-                        : undefined;
+                      const snapshotRow = gridRow.kind === "existing" ? rowsByRecordIndex.get(gridRow.recordIndex) : undefined;
                       const tags = gridRow.kind === "existing"
                         ? editor.tagEdits[String(gridRow.recordIndex)] ?? snapshotRow?.tags ?? []
                         : gridRow.draft.tags;
@@ -3234,8 +3319,10 @@ function DataEditor({
                   </td>
                 </tr>
               ))}
+              {lastGridRow < gridRows.length && <tr className="virtual-spacer" role="presentation" aria-hidden="true"><td colSpan={editor.snapshot.columns.length + 2} style={{ height: (gridRows.length - lastGridRow) * GRID_ROW_HEIGHT }} /></tr>}
             </tbody>
           </table>
+          <Button className="add-record-inline" htmlType="button" onClick={onAddRow} disabled={mutationBlocked || !capability.supported || editor.saving}>＋ Add Row</Button>
           {gridRows.length === 0 && <div className="empty-grid">This data file has no records.</div>}
         </div>
       )}
@@ -3266,7 +3353,7 @@ function DataEditor({
         title="Scalar range preview"
         onCancel={() => { setBatchPreview(null); setBatchContext(null); }}
         onOk={() => {
-          if (batchPreview && !batchIsStale) onBatchApplied(batchPreview);
+          if (batchPreview && batchContext && !batchIsStale) onBatchApplied(batchPreview, batchContext.revision);
           setBatchPreview(null);
           setBatchContext(null);
         }}

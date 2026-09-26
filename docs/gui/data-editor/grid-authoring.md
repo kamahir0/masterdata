@@ -27,7 +27,7 @@ Pending deleteは通常query結果と別のUndo可能な一覧として発見で
 
 ### GUI-GRID-004
 
-fileごとの未保存履歴は、scalar edit確定、complex control一操作、Add Row、Delete、Undo Delete、batch Apply、およびTag確定を単位にUndo/Redoできなければならない（MUST）。typingの一文字ごとではなくedit確定を単位とする。new editはそのfileのRedoをclearする。
+fileごとの未保存履歴は、scalar edit確定、complex control一操作、Add Row、Delete、Undo Delete、batch mutation確定、およびTag確定を単位にUndo/Redoできなければならない（MUST）。typingの一文字ごとではなくedit確定を単位とする。new editはそのfileのRedoをclearする。
 履歴は値だけでなくAdded draft、Pending delete、source provenance、nested sequence identity等を戻し、同じlocal stateから同じcandidateを再生成できなければならない（MUST）。Undo Deleteは削除前のeditsを戻す新操作として履歴へ入り、general Undoで再びPending deleteへ戻せる。Added draft削除をUndoすればそのdraftの入力が戻る。
 
 ### GUI-GRID-005
@@ -40,7 +40,7 @@ Save / explicit Overwrite successは対象fileの履歴をclearする（MUST）�
 
 grid navigation modeではCmd/Ctrl+C / Vをcopy/paste、Cmd/Ctrl+ZをUndo、Cmd+Shift+ZまたはCtrl+Y / Ctrl+Shift+ZをRedo、Shift+Arrowをrange拡張へ割り当てる（MUST）。cell/nested text control編集中はclipboardとUndoをcontrol内text編集へ委ね、range操作やfile Undoを同時実行しない（MUST NOT）。Escapeはactive edit cancelを優先し、navigation modeではrangeをactive cellへ縮める。
 Enter/F2によるedit開始、Enter/Tabによる確定移動とfile Save shortcutは既存契約を保つ。IME composition中にEnterを確定移動へ誤解釈しない（MUST NOT）。Deleteキーをbulk row deleteへ割り当てない。batch operation終了後はsurviving active cell、なければgridへfocusを戻す。
-selection範囲、対象件数、read-only理由、preview失効、履歴有無をassistive technologyへ伝えなければならない（MUST）。
+selection範囲、対象件数、read-only理由、batch request失効、履歴有無をassistive technologyへ伝えなければならない（MUST）。
 
 ## 既存Data Editor contractへの適用
 

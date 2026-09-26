@@ -1,14 +1,14 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: b0cfa05b5ff7e6233d6cd6b51345bce01dc94bb5
 Work base: aa2dfa081f78bc50d1d5b4111e51bae9a0d26570
 
 ## Active work
 
-- Explorer inline source creation + shared starter creation: Remaining
-- Spreadsheet-first Table/Data authoring + ChangeFieldType: Remaining
-- Virtualized grid + direct batch editing + legacy heavy-flow retirement: Remaining
+- Explorer inline source creation + shared starter creation: Completed
+- Spreadsheet-first Table/Data authoring + ChangeFieldType: Completed
+- Virtualized grid + direct batch editing + legacy heavy-flow retirement: Completed
 
 ## Blocking findings
 

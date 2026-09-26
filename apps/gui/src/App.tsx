@@ -541,6 +541,12 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
     if (focusElement(nested)) return true;
   }
   const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`);
+  if (!target) {
+    const detail: { cell: string; valuePath?: string; handled: boolean } = { cell, handled: false };
+    if (valuePath !== null) detail.valuePath = valuePath;
+    document.dispatchEvent(new CustomEvent(valuePath === null ? "masterdata:focus-cell" : "masterdata:focus-value", { detail }));
+    return detail.handled;
+  }
   if (!focusElement(target)) return false;
   if (valuePath !== null) document.dispatchEvent(new CustomEvent("masterdata:focus-value", { detail: { cell, valuePath } }));
   return true;
@@ -2725,7 +2731,12 @@ function DataEditor({
     Math.floor(gridScrollTop / GRID_ROW_HEIGHT) - GRID_OVERSCAN,
   ));
   const visibleEnd = Math.min(gridRows.length, visibleStart + visibleRowCount);
-  const focusGridCell = (rowIndex: number, columnIndex: number) => {
+  const focusGridCell = (
+    rowIndex: number,
+    columnIndex: number,
+    extendSelection = false,
+    selectionAnchor?: { row: number; column: number },
+  ) => {
     const key = gridCellKeys[rowIndex]?.[columnIndex];
     if (!key) return;
     pendingGridFocus.current = key;
@@ -2734,7 +2745,15 @@ function DataEditor({
       if (viewport) viewport.scrollTop = Math.max(0, rowIndex * GRID_ROW_HEIGHT - GRID_OVERSCAN * GRID_ROW_HEIGHT);
       setGridScrollTop(Math.max(0, rowIndex * GRID_ROW_HEIGHT - GRID_OVERSCAN * GRID_ROW_HEIGHT));
     }
-    setSelectedRange({ startRow: rowIndex, startColumn: columnIndex, endRow: rowIndex, endColumn: columnIndex });
+    setSelectedRange((current) => {
+      if (!extendSelection) return { startRow: rowIndex, startColumn: columnIndex, endRow: rowIndex, endColumn: columnIndex };
+      return {
+        startRow: current?.startRow ?? selectionAnchor?.row ?? rowIndex,
+        startColumn: current?.startColumn ?? selectionAnchor?.column ?? columnIndex,
+        endRow: rowIndex,
+        endColumn: columnIndex,
+      };
+    });
   };
   const finishCellEdit = (commit: boolean, nextRow?: number, nextColumn?: number, restoreFocus = true) => {
     if (!editingCell) return;
@@ -2757,13 +2776,24 @@ function DataEditor({
     setEditingCell({ key, value, rowIndex, columnIndex, selectAll, baseIdentity: editor.snapshot.baseContentIdentity, target });
   };
   useEffect(() => {
+    const focusRequestedCell = (event: Event) => {
+      const detail = (event as CustomEvent<{ cell: string; handled: boolean }>).detail;
+      const { cell } = detail;
+      const rowIndex = gridCellKeys.findIndex((row) => row.includes(cell));
+      const columnIndex = rowIndex < 0 ? -1 : gridCellKeys[rowIndex].indexOf(cell);
+      if (rowIndex < 0 || columnIndex < 0) return;
+      detail.handled = true;
+      focusGridCell(rowIndex, columnIndex);
+    };
     const focusRequestedValue = (event: Event) => {
-      const { cell, valuePath } = (event as CustomEvent<{ cell: string; valuePath: string }>).detail;
+      const detail = (event as CustomEvent<{ cell: string; valuePath: string; handled: boolean }>).detail;
+      const { cell, valuePath } = detail;
       const rowIndex = gridCellKeys.findIndex((row) => row.includes(cell));
       const columnIndex = rowIndex < 0 ? -1 : gridCellKeys[rowIndex].indexOf(cell);
       const row = gridRows[rowIndex];
       const column = editor.snapshot.columns[columnIndex];
       if (!row || !column || !column.shape) return;
+      detail.handled = true;
       const value = row.kind === "existing" ? currentCellValue(editor, row.recordIndex, column.name) : row.draft.values[column.name] ?? nullAuthoringValue();
       focusGridCell(rowIndex, columnIndex);
       beginCellEdit(cell, value, rowIndex, columnIndex);
@@ -2771,8 +2801,12 @@ function DataEditor({
         focusElement(document.querySelector<HTMLElement>(`[data-value-path="${CSS.escape(valuePath)}"]`));
       }));
     };
+    document.addEventListener("masterdata:focus-cell", focusRequestedCell);
     document.addEventListener("masterdata:focus-value", focusRequestedValue);
-    return () => document.removeEventListener("masterdata:focus-value", focusRequestedValue);
+    return () => {
+      document.removeEventListener("masterdata:focus-cell", focusRequestedCell);
+      document.removeEventListener("masterdata:focus-value", focusRequestedValue);
+    };
   }, [editor, gridCellKeys, gridRows]);
   const commitAndSave = () => {
     if (editingCell) {
@@ -3273,14 +3307,16 @@ function DataEditor({
                             }
                             if ((event.key === "Enter" || event.key === "F2") && editable) { event.preventDefault(); beginCellEdit(key, value, gridRowIndex, columnIndex, event.key === "Enter"); return; }
                             if (event.key === "Escape" && selectedRange) { event.preventDefault(); setSelectedRange({ startRow: gridRowIndex, startColumn: columnIndex, endRow: gridRowIndex, endColumn: columnIndex }); return; }
-                            const nextRow = gridRowIndex + (event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0);
-                            const nextColumn = columnIndex + (event.key === "ArrowRight" || event.key === "Tab" && !event.shiftKey ? 1 : event.key === "ArrowLeft" || event.key === "Tab" && event.shiftKey ? -1 : 0);
+                            const extendsSelection = event.shiftKey && event.key.startsWith("Arrow");
+                            const focusRow = extendsSelection ? (selectedRange?.endRow ?? gridRowIndex) : gridRowIndex;
+                            const focusColumn = extendsSelection ? (selectedRange?.endColumn ?? columnIndex) : columnIndex;
+                            const nextRow = focusRow + (event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0);
+                            const nextColumn = focusColumn + (event.key === "ArrowRight" || event.key === "Tab" && !event.shiftKey ? 1 : event.key === "ArrowLeft" || event.key === "Tab" && event.shiftKey ? -1 : 0);
                             if (nextRow !== gridRowIndex || nextColumn !== columnIndex) {
                               event.preventDefault();
                               const row = Math.max(0, Math.min(gridRows.length - 1, nextRow));
                               const col = Math.max(0, Math.min(editor.snapshot.columns.length - 1, nextColumn));
-                              if (event.shiftKey && event.key.startsWith("Arrow")) setSelectedRange((current) => ({ startRow: current?.startRow ?? gridRowIndex, startColumn: current?.startColumn ?? columnIndex, endRow: row, endColumn: col }));
-                              else focusGridCell(row, col);
+                              focusGridCell(row, col, extendsSelection, { row: gridRowIndex, column: columnIndex });
                             }
                           }}
                         >

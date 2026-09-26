@@ -12,4 +12,4 @@ Work base: aa2dfa081f78bc50d1d5b4111e51bae9a0d26570
 
 ## Blocking findings
 
-Blocking: GUI-GRID-001 / GUI-GRID-006 — Shift+Arrow currently changes the range endpoint without moving focus or materializing/scrolling the endpoint, so repeated and offscreen keyboard range navigation cannot work correctly.
+Blocking: GUI-GRID-001 / GUI-GRID-006 — Shift+Arrow currently changes the range endpoint without moving focus or materializing/scrolling the endpoint, so repeated and offscreen keyboard range navigation cannot work correctly; Problems navigation likewise cannot materialize an offscreen diagnostic cell.

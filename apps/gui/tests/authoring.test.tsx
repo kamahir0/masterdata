@@ -710,6 +710,52 @@ test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of f
   expect(batchArgs.request.fill).toBe(false);
 });
 
+test('Shift+Arrow moves and materializes the focused range endpoint through virtualized rows', async () => {
+  openSnapshot = mutationSnapshot(Array.from({ length: 48 }, (_, recordIndex) => ({
+    recordIndex,
+    cells: [
+      { field: 'id', text: String(recordIndex + 1), editable: true },
+      { field: 'weight', text: String((recordIndex + 1) * 10), editable: true },
+      { field: 'note', text: `row-${recordIndex + 1}`, editable: true },
+    ],
+  })));
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const first = await screen.findByRole('gridcell', { name: /^record 1 id:/ });
+  first.focus();
+
+  for (let recordIndex = 1; recordIndex < 40; recordIndex += 1) {
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown', shiftKey: true });
+    await waitFor(() => expect(document.activeElement?.getAttribute('data-cell')).toBe(`${recordIndex}:id`));
+  }
+
+  expect(screen.getByText('40 cells selected')).toBeTruthy();
+});
+
+test('Problems navigation materializes an offscreen diagnostic cell', async () => {
+  openSnapshot = mutationSnapshot(Array.from({ length: 48 }, (_, recordIndex) => ({
+    recordIndex,
+    cells: [
+      { field: 'id', text: String(recordIndex + 1), editable: true },
+      { field: 'weight', text: String((recordIndex + 1) * 10), editable: true },
+      { field: 'note', text: `row-${recordIndex + 1}`, editable: true },
+    ],
+  }))) as any;
+  openSnapshot.validation = {
+    valid: false,
+    diagnostics: [{
+      code: 'E-TABLE-INVALID-RECORD-VALUE',
+      source: '/project/data.yaml',
+      record_identity: 'record[39]',
+      message: 'field `id` is invalid',
+    }],
+  } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const problem = await screen.findByRole('button', { name: /field `id` is invalid/ });
+  fireEvent.click(problem);
+
+  await waitFor(() => expect(document.activeElement?.getAttribute('data-cell')).toBe('39:id'));
+});
+
 function requestDesktopClose() {
   const event = { preventDefault: vi.fn() };
   act(() => desktopWindow.onCloseRequested.mock.calls.at(-1)![0](event));

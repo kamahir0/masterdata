@@ -164,7 +164,16 @@ async function enterCellEdit(xpath, timeoutMs = 20_000) {
   await sleep(200);
   await request("POST", `/session/${sessionId}/element/${element}/click`, {});
   await sleep(120);
-  await request("POST", `/session/${sessionId}/element/${element}/click`, {});
+  await request("POST", `/session/${sessionId}/actions`, {
+    actions: [{
+      type: "key",
+      id: "keyboard",
+      actions: [
+        { type: "keyDown", value: "\uE007" },
+        { type: "keyUp", value: "\uE007" },
+      ],
+    }],
+  });
   await sleep(300);
 }
 

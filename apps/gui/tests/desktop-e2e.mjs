@@ -330,7 +330,14 @@ try {
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
-  await click("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
+  const enteredCellEdit = await execute(
+    `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
+     if (!cell) return false;
+     cell.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
+     return true;`,
+  );
+  if (!enteredCellEdit.ok || enteredCellEdit.value !== true) throw new Error("could not enter new record cell editing");
+  await sleep(200);
   await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(dataFile, "1001", 30_000);

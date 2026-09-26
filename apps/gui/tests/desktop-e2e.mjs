@@ -322,7 +322,7 @@ try {
   await focusSourceRoot();
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Data']");
-  await selectNative("Existing Table", "item");
+  await selectNative("Existing Table", "item-schema");
   await fill("//*[@aria-label='Filename (.yaml / .yml)']", "items.yaml");
   await click("//*[@aria-label='Create']");
   await waitElement("//*[@aria-label='Add Row']", 30_000);

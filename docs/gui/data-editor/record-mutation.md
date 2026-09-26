@@ -12,9 +12,9 @@ record structure mutationのcanonical source contractは[Source Record Mutation]
 
 ### GUI-DATA-ROW-001
 
-selected Data documentのTable schemaの全fieldがshared applicationによってv1 supported resolved value shapeへ安全にresolveできる場合、Data Editorはkeyboardでも到達可能な`Add Row` actionを提供しなければならない（MUST）。Add Rowはselected source data fileのlocal bufferへ1つのAdded record draftをappendしなければならず（MUST）、別Data fileまたはlogical Table全体へrecordを追加してはならない（MUST NOT）。
+selected Data documentのTable schemaの全fieldがshared applicationによってv1 supported resolved value shapeへ安全にresolveできる場合、Data Editorはgrid最下部にkeyboardでも到達可能な`+ Add Row` actionを提供しなければならない（MUST）。virtualized gridでもこのactionは全recordをDOMへmaterializeせず到達できなければならない（MUST）。
 
-Add Row実行だけでworkspace sourceを即時保存してはならない（MUST NOT）。
+Add Rowはselected source data fileのlocal bufferへ1つのAdded record draftをappendしなければならず（MUST）、別Data fileまたはlogical Table全体へrecordを追加してはならない（MUST NOT）。Add Row実行だけでworkspace sourceを即時保存してはならない（MUST NOT）。
 
 ### GUI-DATA-ROW-002
 
@@ -86,11 +86,11 @@ Nullableのnull/non-null transition、Array materializationとelement add/remove
 
 ## Interaction details
 
-- `Add Row`はData Editor toolbarまたはgrid近傍の明確なactionとして配置してよい（MAY）。exact placement、icon、tooltipはimplementation detailとする。
+- `Add Row`のprimary placementはgrid最下部とする。補助toolbar shortcutを追加してよい（MAY）が、bottom actionを失ってはならない（MUST NOT）。exact icon / tooltipはimplementation detailとする。
 - Deleteはrow actionから実行してよい（MAY）。Pending deleteがSave前にUndo可能であるため、Delete開始時の追加modal confirmationを必須としない。
 - Pending delete rowを完全に非表示にせず、少なくともUndo可能な状態が現在file内で発見可能であることを優先する。
 - Added record draftの未入力typed valueはlocal editor上でempty-looking controlとして表示してよい（MAY）が、Save candidate representationは`SOURCE-RECORD-004`のYAML `null` placeholderと一致しなければならない（MUST）。first Enum member、numeric zero、empty string、empty Array等をUI convenienceから暗黙defaultとして選択してはならない（MUST NOT）。
-- General-purpose history Undo/Redo stackは導入しない。`Undo Delete`はPending delete専用の局所recoveryである。
+- General-purpose history Undo/Redoは[Grid Authoring](grid-authoring.md)の`GUI-GRID-004`に従う。`Undo Delete`はPending deleteを明示的に発見できる局所actionとして併存してよい（MAY）。
 
 ## 検証
 
@@ -125,7 +125,7 @@ None identified. Exact complex editor layout、DTO field name、internal draft d
 
 - `$tags` authoring。
 - record duplicate、move / reorder、bulk add / bulk delete。
-- range selection、一括paste、fill handle、general Undo/Redo。
+- fill handle、bulk row add / bulk row delete。
 - schema / type editor、source file / folder mutation。
 - existing recordのPrimary / Secondary Key編集。
 - Table-wide aggregate editor。

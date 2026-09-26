@@ -201,6 +201,7 @@ async function focusSourceRoot() {
      if (!root) return false;
      root.focus();
      root.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+     root.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
      if (root.getAttribute("aria-expanded") !== "true") root.click();
      return document.activeElement === root;`,
   );

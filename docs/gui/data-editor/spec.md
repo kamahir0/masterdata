@@ -37,7 +37,15 @@ fileまたはProject areaを移動して同じData fileへ戻る際はquery / ba
 
 ### GUI-DATA-LAYOUT-007
 
-record gridの定常行高を複合値の内部要素数に依存させてはならない（MUST NOT）。column headerにはfield nameとread-onlyのtype / key情報を表示しなければならない（MUST）。array / struct等は定常時に値を要約し、選択時に対象cellが明確な一時的editorで編集できなければならない（MUST）。一時的editorを閉じても他cellのselectionとdirty bufferを失ってはならない（MUST NOT）。
+record gridの定常行高を複合値の内部要素数に依存させてはならない（MUST NOT）。column headerにはfield nameとtypeを主情報として表示し、schema mutation capabilityが利用可能なTableでは[Table Editor](../table-editor/spec.md)のdirect header editingを同じgrid contextから利用できなければならない（MUST）。key / modifier等の補助情報も確認可能でなければならない（MUST）。
+
+array / struct等は定常時に値を要約し、選択時に対象cellが明確な一時的editorで編集できなければならない（MUST）。一時的editorを閉じても他cellのselectionとdirty bufferを失ってはならない（MUST NOT）。
+
+### GUI-DATA-LAYOUT-008
+
+大規模MasterDataで総record数に比例して全row DOMを常時materializeしてはならない（MUST NOT）。record gridはrow virtualization / windowingまたは同等のbounded renderingを使用し、visible viewportとoverscanを中心にrenderしなければならない（MUST）。
+
+virtualizationの有無によってsource row identity、selection、keyboard navigation、range selection、Added draft / Pending delete、Problems navigation、focus restorationのobservable semanticsを変えてはならない（MUST NOT）。scrollでunmountされたrowへ移動する操作は必要なrowをviewportへmaterializeしてからfocus / editできなければならない（MUST）。
 
 ## 状態（States）
 
@@ -210,7 +218,6 @@ None.
 - recordの追加・削除（別のApproved Record Mutation仕様が所有する）。
 - Value Object、Enum等の編集・作成。Table schema編集への到達は[Table Editor](../table-editor/spec.md)が所有する。
 - logical Table全体を複数file横断で一括編集するview。
-- range operation、一括paste、fill handle、multi-cell editing、履歴付きUndo/Redo。
 - Git stage / commit / push。
 
 これらはExplorer + typed editorsという全体構造の将来拡張を妨げない。

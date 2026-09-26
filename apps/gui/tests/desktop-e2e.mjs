@@ -294,9 +294,10 @@ try {
   await fill("//*[@aria-label='New project ID']", "desktop.evidence");
   await fill("//*[@aria-label='New project name']", "Desktop Evidence");
   await click("//section[@aria-label='Create Project']//button[normalize-space(.)='Create Project']");
-  await waitElement("//aside[@aria-label='Workspace Explorer']", 30_000);
+  await waitElement("//aside[@aria-label='Explorer']", 30_000);
   record("project-created-through-gui");
 
+  await click("//*[@data-tree-path='sources']");
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Table']");
   await fill("//*[@aria-label='Filename (.yaml / .yml)']", "item-schema.yaml");
@@ -306,7 +307,7 @@ try {
 
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Data']");
-  await selectNative("Existing Table", "item");
+  await selectNative("Existing Table", "item-schema");
   await fill("//*[@aria-label='Filename (.yaml / .yml)']", "items.yaml");
   await click("//*[@aria-label='Create']");
   await waitElement("//*[@aria-label='Add Row']", 30_000);
@@ -314,7 +315,8 @@ try {
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
-  await fill("//*[@aria-label='new record id']", "1001");
+  await click("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
+  await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));

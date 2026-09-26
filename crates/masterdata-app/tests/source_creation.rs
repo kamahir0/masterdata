@@ -67,6 +67,30 @@ fn creates_inline_table_and_opens_its_empty_record_grid() {
             .any(|file| file.path == "sources/item.yaml" && file.has_inline_records)
     );
 }
+
+#[test]
+fn accepts_project_relative_source_root_from_gui_workspace() {
+    let dir = project();
+    let app = NativeApplicationService::new();
+    let request = CreationRequest {
+        source_root: "sources".into(),
+        destination: "item.yaml".into(),
+        artifact: serde_json::from_value(json!({
+            "category":"table",
+            "table":"item",
+            "fields":[{"key":0,"name":"id","type":"int"}],
+            "primaryKey":{"fields":["id"]}
+        }))
+        .unwrap(),
+    };
+    assert_eq!(
+        app.create_source(Some(dir.path()), dir.path(), &request)
+            .unwrap()
+            .status,
+        CreationStatus::Success
+    );
+    assert!(dir.path().join("sources/item.yaml").is_file());
+}
 #[test]
 fn creates_one_artifact_and_folder_without_touching_existing_sources() {
     let dir = project();

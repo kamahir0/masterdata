@@ -57,7 +57,7 @@ Schema mutationはData Editorのsource dirty bufferと同一conceptとして扱�
 
 ### GUI-TABLE-STATE-003
 
-Migration Planがaffected source fileとして示すfileにData Editorのdirty bufferが存在する場合、Table EditorはApplyを開始してはならない（MUST NOT）。該当dirty fileを利用者が識別できなければならない（MUST）。Planに含まれないunrelated dirty bufferだけを理由にPlanまたはApplyを全面禁止してはならず（MUST NOT）、Migration操作によってそのbufferを保存・破棄・reloadしてはならない（MUST NOT）。
+Migration Planがaffected source fileとして示すfileにData Editorのdirty bufferが存在する場合、Table Editorはautomatic / explicitいずれのApplyも開始してはならない（MUST NOT）。該当dirty fileを利用者が識別できなければならない（MUST）。Planに含まれないunrelated dirty bufferだけを理由にPlanまたはApplyを全面禁止してはならず（MUST NOT）、Migration操作によってそのbufferを保存・破棄・reloadしてはならない（MUST NOT）。
 
 ### GUI-TABLE-STATE-004
 
@@ -95,7 +95,7 @@ Diffはcurrent Planのbase sourceとtransformed candidateを比較し、別のcu
 
 ### GUI-TABLE-INT-006
 
-Applyはcurrent UIが示しているsemantic commandとbase snapshotに対応するcurrent Planだけを対象にしなければならない（MUST）。Plan作成後にoperation inputを変更した場合、old PlanをcurrentとしてApplyしてはならない（MUST NOT）。commit preflightがsource/config/membershipのstale stateを検出した場合はsource mutationを開始せず、stale planとして表示し、re-plan actionを提供しなければならない（MUST）。silent retry / silent overwriteを行ってはならない（MUST NOT）。
+automatic / explicitいずれのApplyも、確定したuser intentとbase snapshotに対応するcurrent Planだけを対象にしなければならない（MUST）。Plan作成後にoperation inputが変わった場合、old Planを適用してはならない（MUST NOT）。commit preflightがsource/config/membershipのstale stateを検出した場合はsource mutationを開始せず、stale operationとして表示し、retry / re-plan相当のactionを提供しなければならない（MUST）。silent retry / silent overwriteを行ってはならない（MUST NOT）。
 
 ### GUI-TABLE-INT-007
 

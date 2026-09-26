@@ -43,13 +43,21 @@ rename / move実行中、Explorerはtarget source fileのpath mutationが進行�
 
 Success後はworkspaceをshared application authorityから更新し、selected / open target sourceをnew pathへ追従させなければならない（MUST）。old pathのclean editor snapshotをcurrent editable sourceとして残してはならず（MUST NOT）、unrelated dirty bufferは保持しなければならない（MUST）。
 
+### GUI-EXPLORER-STATE-005
+
+New artifact / New folderのdirect creation中、Explorerはtarget folder内にprovisional itemを表示してよい（MAY）。provisional itemはworkspace sourceとして扱ってはならず（MUST NOT）、dirty / validation / file watch対象へ混入させてはならない（MUST NOT）。
+
+provisional itemのinline nameをEnterでcommitすると[Source Creation](../source-creation/spec.md)へ委譲し、Escapeではfilesystem / workspace mutationなしに破棄しなければならない（MUST）。
+
 ## 操作（Interactions）
 
 ### GUI-EXPLORER-INT-001
 
 file selectionは対応するtyped editorを開かなければならない（MUST）。record / Tableのdomain selectionをfilesystem pathのsemantic identityとして扱ってはならない（MUST NOT）。
 
-Explorer文脈からNew artifact / New folder、Refresh、Collapse、source Rename / Moveへ到達できなければならない（MUST）。生成とpath mutation、folder inventoryはshared application authorityへ委譲する。treeのArrow Up / Down / Left / Right、Home / End、Enter、Rename / Move shortcutはkeyboardで操作でき、選択fileから編集領域へfocusを移せなければならない（MUST）。
+Explorer文脈からNew artifact / New folder、Refresh、Collapse、source Rename / Moveへ到達できなければならない（MUST）。New artifact / New folderは[Source Creation](../source-creation/spec.md)のprovisional item + inline naming lifecycleをprimary interactionとし、通常作成のために別modalを必須にしてはならない（MUST NOT）。
+
+生成とpath mutation、folder inventoryはshared application authorityへ委譲する。treeのArrow Up / Down / Left / Right、Home / End、Enter、Rename / Move shortcutはkeyboardで操作でき、選択fileから編集領域へfocusを移せなければならない（MUST）。
 
 ### GUI-EXPLORER-INT-002
 
@@ -85,7 +93,9 @@ destination ConflictではOverwrite actionを提示してはならず（MUST NOT
 
 ### GUI-EXPLORER-KEY-001
 
-Explorer treeはkeyboardだけでitem間移動、folder expand / collapse、file openを行えなければならない（MUST）。Arrow key / Enter等のplatform-standard tree interactionを基本とし、exact implementationが異なる場合も同等のkeyboard-only操作を失ってはならない（MUST NOT）。
+Explorer treeはkeyboardだけでitem間移動、folder expand / collapse、file openを行えなければならない（MUST）。Arrow key / Enter等のplatform-standard tree interactionを基本とする。
+
+provisional creation itemではEnterでcreation commit、Escapeでcancelしなければならない（MUST）。existing itemのrenameはF2等のplatform-standard shortcutから到達できてよい（MAY）。IME composition中のEnterをcreation commitやrename確定へ誤解釈してはならない（MUST NOT）。
 
 Save shortcutは現在activeなeditor/fileへ委譲し、Explorer focus中であることだけを理由に別fileを保存してはならない（MUST NOT）。
 
@@ -125,11 +135,11 @@ Treeとしてのrole、selection、expanded / collapsed、dirty、Conflict等の
 
 None.
 
-## 将来のcreation model
+## Source Creationとの統合
 
-長期的なauthoring modelでは、ExplorerからfolderおよびTable、record data、Value Object、Enum等のsource artifactを作成できる入口を持つ。source fileのrename / moveは[Source Path Mutation](../../specs/source-path-mutation.md)が所有する。delete / duplicate、folder rename / move等の追加mutationは、それぞれのcanonical domain仕様が整った時点で別途仕様化する。
+Explorerは[Source Creation](../source-creation/spec.md)のprimary interaction surfaceである。folderおよびTable、record Data、Value Object、Enum / Flags、Custom Typeの作成はtree contextから開始し、provisional itemをworkspace sourceと混同しない。
 
-現在のGUI record editing Objectiveでは、新規folder / Table / Value Object / Enum等の作成機能そのものはimplementation scopeに含めない。
+source fileのrename / moveは[Source Path Mutation](../../specs/source-path-mutation.md)が所有する。delete / duplicate、folder rename / move等の追加mutationは、それぞれのcanonical domain仕様が整った時点で別途仕様化する。
 
 ## 未解決事項（Open Questions）
 

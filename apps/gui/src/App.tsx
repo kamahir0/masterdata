@@ -3278,6 +3278,7 @@ function DataEditor({
                           onDoubleClick={() => { if (editable) beginCellEdit(key, value, gridRowIndex, columnIndex); }}
                           onFocusCapture={() => {
                             onCellFocus(key);
+                            if (gridRow.kind === "added" && editable && !isEditing) beginCellEdit(key, value, gridRowIndex, columnIndex);
                             lastFocusedCell.current = key;
                           }}
                           onBlurCapture={(event) => {

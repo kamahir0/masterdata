@@ -166,7 +166,7 @@ async function enterCellEdit(xpath, timeoutMs = 20_000) {
   const activated = await execute(
     `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
      if (!cell) return false;
-     cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+     cell.focus();
      return true;`,
   );
   if (!activated.ok || activated.value !== true) throw new Error("could not activate the new-row record-id cell");

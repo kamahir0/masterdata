@@ -4,9 +4,9 @@ Status: Approved
 
 ## 目的
 
-Workspace Explorerから新しいfolder、Table schema、Data document、Value Object、Enum / Flags Enum、Custom Typeをguided formで作成し、利用者がYAML textを手書きせずにProject authoringを開始できるようにする。
+Workspace Explorerから新しいfolder、Table schema、Data document、Value Object、Enum / Flags Enum、Custom Typeを、日常操作ではmodal formを経由せず直接作成できるようにする。primary flowはartifact kindを選択し、Explorer上のprovisional itemへfilenameをinline入力し、Enterでcommit、Escapeでcancelするdirect manipulationとする。
 
-このsurfaceは[Source Artifact Creation](../../specs/source-creation.md)のshared operationを利用する。Table / Type semantics、YAML rendering、path safety、exclusive createをfrontend独自に実装しない。
+artifact固有の詳細設定は作成後に通常のtyped editor上で編集する。作成時に利用者へbackend/domainの完全なdeclaration inputを要求しない。shared application layerはartifact kindとdestinationからcanonicalにvalidなstarter sourceを構成し、[Source Artifact Creation](../../specs/source-creation.md)のpath safety、validation、exclusive createを利用する。frontendがYAML text、domain default validation、filesystem writeを独自実装してはならない。
 
 ## レイアウト（Layout）
 
@@ -26,23 +26,27 @@ exact icon、menu placement、toolbar/context menu併用は固定しない。fil
 
 ### GUI-CREATE-LAYOUT-002
 
-file-based artifactのcreation UIは、少なくともdestinationとartifact-specific declaration inputを同じguided flow内で確認できなければならない（MUST）。利用者へraw YAML textの入力を初期creationのprimary workflowとして要求してはならない（MUST NOT）。
+file-based artifactのprimary creation flowは、artifact kind選択後にtarget Explorer folder内へprovisional itemを表示し、その行でfilenameをinline編集できなければならない（MUST）。provisional itemはまだworkspace sourceではなく、dirty file countへ含めてはならない（MUST NOT）。
 
-exact componentはmodal、drawer、dedicated editor等から選択してよい（MAY）が、Create実行前にdestination source root / folder / filenameとdomain identityを区別して確認できなければならない（MUST）。
+Enterまたは同等のexplicit commitでsingle-artifact creationを開始し、Escapeまたは同等のcancelでworkspace mutationなしにprovisional itemを破棄しなければならない（MUST）。Table / Value Object / Enum / Flags / Custom Type等の日常的な作成に、domain declaration一式を入力するmodal / drawer / wizardを必須にしてはならない（MUST NOT）。
+
+Dataのtarget Tableなど、valid starterを作るためにfilename以外のdomain selectionが不可避なartifactは、kind selectionのsub-menuまたはcompact transient selectorで不足情報を選択させてよい（MAY）。その場合もraw YAMLや完全declaration formをprimary creation pathにしてはならない（MUST NOT）。
 
 ### GUI-CREATE-LAYOUT-003
 
-複数source rootがconfiguredされている場合、creation UIはtarget source rootを明示的に識別できなければならない（MUST）。folder/file pathからTable/type identityを表示上も暗黙推論してはならない（MUST NOT）。
+複数source rootがconfiguredされている場合、creation targetはExplorer上のselected root / folder contextによって明示的に識別できなければならない（MUST）。target contextが曖昧な状態で別rootへ暗黙作成してはならない（MUST NOT）。
 
-filenameはdomain nameからconventional defaultを提案してよい（MAY）が、利用者が変更可能でなければならず（MUST）、filename変更がdomain identityを変更してはならない（MUST NOT）。human-facing default extensionは`.yaml`とする。
+initial starter creationに限り、shared application layerはfilename stemからTable/type identityの初期値をdeterministically提案してよい（MAY）。これはcreation-time defaultであり、physical pathとdomain identityを同一conceptにしてはならない（MUST NOT）。作成後のfile rename / moveがdomain identityを暗黙変更してはならず、domain identityはtyped editorから独立して変更可能でなければならない（MUST）。
+
+human-facing default extensionは`.yaml`とし、利用者が拡張子を省略した場合にGUI/application layerが補完してよい（MAY）。
 
 ## 状態（States）
 
 ### GUI-CREATE-STATE-001
 
-creation formへ入力中のstateは、まだworkspace source fileではない一時的なform stateとして扱わなければならない（MUST）。既存Data Editorのdirty file countへ含めてはならず（MUST NOT）、Cancelではworkspace mutationを行わずformを閉じなければならない（MUST）。
+provisional creation itemとそのinline filenameは、一時的なGUI stateとして扱わなければならない（MUST）。既存Data Editorのdirty file countへ含めてはならず（MUST NOT）、Escape / Cancelではworkspace mutationを行ってはならない（MUST NOT）。
 
-Createを実行した時点で[Source Artifact Creation](../../specs/source-creation.md)のsingle-artifact commit operationを開始する。creation formを既存fileのunsaved bufferとして偽装してはならない（MUST NOT）。
+Enter等でcommitした時点で[Source Artifact Creation](../../specs/source-creation.md)のsingle-artifact operationを開始する。commit開始前のprovisional itemを既存fileのunsaved bufferとして扱ってはならない（MUST NOT）。
 
 ### GUI-CREATE-STATE-002
 
@@ -60,40 +64,35 @@ Folder creationではselected source root / folder配下のnew folder nameを入
 
 ### GUI-CREATE-INT-002
 
-Table creation formは少なくとも次を編集可能にしなければならない（MUST）。
+Table creationは、利用者がartifact kindとしてTableを選びfilenameをcommitした時点で、shared application layerが直ちに編集可能なvalid starter Tableを構成しなければならない（MUST）。starterは少なくとも通常のTable Editorからfield / key / record authoringを開始できる状態でなければならない（MUST）。
 
-- `table`
-- optional `csharpName`
-- ordered field list
-- 各fieldのMessagePack `key`、name、base type、Required / Nullable / Array modifier
-- ordered Primary Key field list
-- 0個以上のSecondary Keyと`nonUnique`
+simple starterのdefaultとして`id: int` Required fieldをPrimary Keyにしたschemaを使用してよい（SHOULD）。MessagePack key、initializer、その他canonical declaration値の構成とvalidationはshared application/domain layerが所有し、frontendへdomain ruleとして複製してはならない（MUST NOT）。
 
-field type choiceはcurrent Projectでshared application/domain layerが認識するPrimitive / Value Object / Custom Type / Enum / Flags Enumを利用できなければならない（MUST）。Primary/Secondary Keyに利用できないshapeを、frontend独自のtype ruleをauthorityとして決定してはならない（MUST NOT）。shared diagnostics / capability metadataを利用する。
-
-simple caseを短くするため、new Table formは`key: 0`、`name: id`、`type: int`、Requiredの1 fieldをPrimary Keyとして初期提案してよい（SHOULD）。このdefaultは利用者がCreate前に変更できなければならない（MUST）。
+`csharpName`、Secondary Key、Record storage、追加field等をCreate前に入力することをprimary flowの必須条件にしてはならない（MUST NOT）。これらは作成成功後のTable Editor / Advanced settingsから編集する。
 
 ### GUI-CREATE-INT-003
 
-Data creation formはcurrent Projectのexisting Tableを明示的に選択できなければならない（MUST）。destination filename/folderはTable identityから独立して編集できなければならない（MUST）。
+Data creationはcurrent Projectのexisting Tableをshared application authorityから選択し、そのTableに対するempty `records` documentを作成しなければならない（MUST）。target TableがExplorer contextから一意に決まらない場合は、kind selectionに続くcompact selectorで明示選択させる（MUST）。
 
-Create成功時のinitial Data documentはempty `records`から開始し、record追加UIをcreation dialogへ暗黙に含めてはならない（MUST NOT）。
+destination filename/folderはTable identityから独立していなければならない（MUST）。Create成功時のinitial Data documentはempty `records`から開始し、作成後は通常のData Editorでrecordを追加する。
 
 ### GUI-CREATE-INT-004
 
-Value Object creation formはtype name、underlying primitive、`fromUnderlyingImplicit`、`toUnderlyingImplicit`を指定できなければならない（MUST）。underlying候補とvalidationは[Value Objects](../../specs/type-system/value-objects.md)のshared semanticsを使用し、frontendだけに許可type一覧をhard-codeしてcanonical authorityとしてはならない（MUST NOT）。
+Value Object creationはfilename commitからshared application layerがcanonicalにvalidなstarter Type documentを構成し、成功後にType Editorへ開かなければならない（MUST）。type name / underlying / conversionのcanonical validityはshared semanticsへ委譲し、frontendが独自validatorやYAML renderingを持ってはならない（MUST NOT）。
+
+underlyingやconversionの変更をCreate前modalの必須入力にしてはならず（MUST NOT）、作成後のType Editorで編集できなければならない（MUST）。
 
 ### GUI-CREATE-INT-005
 
-Normal Enum / Flags Enum creation formはtype name、integer underlying、ordered member name/value listを指定できなければならない（MUST）。member valueは`long` / `ulong` rangeを含めlosslessなtext representationで保持しなければならず（MUST）、JavaScript `number`へ強制変換してはならない（MUST NOT）。
+Normal Enum / Flags Enum creationはfilename commitからshared application layerがcanonicalにvalidなstarter Type documentを構成し、成功後にType Editorへ開かなければならない（MUST）。Flagsの`None = 0`等のcanonical requirementはshared semanticsが所有する。
 
-Normal Enumでは少なくとも1 memberを入力できるflowを提供しなければならない（MUST）。Flags Enumではcanonical `None = 0` requirementを利用者が明確に確認できる形で初期提案してよく（SHOULD）、削除/変更を許す場合もshared validationがcanonical authorityでなければならない（MUST）。implicit numberingをUI convenienceとして導入してはならない（MUST NOT）。
+underlyingやmember listをCreate前modalの必須入力にしてはならない（MUST NOT）。member valueは作成後のeditorでも`long` / `ulong` rangeを含めlosslessなtext representationとして扱い、JavaScript `number`へ強制変換してはならない（MUST NOT）。
 
 ### GUI-CREATE-INT-006
 
-Custom Type creation formはtype nameと1個以上のordered field listを指定できなければならない（MUST）。各fieldではMessagePack `key`、name、base type、Required / Nullable / Array modifierを編集できなければならない（MUST）。
+Custom Type creationはfilename commitからshared application layerがcanonicalにvalidなstarter Type documentを構成し、成功後にType Editorへ開かなければならない（MUST）。starter fieldの具体的なname/typeはshared applicationのdeterministic starter policyに従う。
 
-Table formとCustom Type formは同じcanonical field semanticsを共有し、frontendごとに別のtype/modifier validation ruleを実装してはならない（MUST NOT）。
+ordered field list、MessagePack key、type、modifierをCreate前modalの必須入力にしてはならない（MUST NOT）。作成後のType Editorがcanonical field semanticsをshared application/domain layer経由で編集する。
 
 ### GUI-CREATE-INT-007
 
@@ -113,7 +112,7 @@ creation dialogを開く、Cancelする、または別folderへtargetを変更�
 
 ### GUI-CREATE-INT-010
 
-Creation conflictでは既存destinationを上書きしてはならず（MUST NOT）、creation formの入力を保持し、少なくともdestination変更またはCancelを行えるようにしなければならない（MUST）。initial sliceではcreation conflictに対する`Overwrite` actionを提供してはならない（MUST NOT）。
+Creation conflictでは既存destinationを上書きしてはならず（MUST NOT）、creation input stateを保持し、少なくともdestination変更またはCancelを行えるようにしなければならない（MUST）。initial sliceではcreation conflictに対する`Overwrite` actionを提供してはならない（MUST NOT）。
 
 ### GUI-CREATE-INT-011
 
@@ -123,23 +122,23 @@ Creation conflictでは既存destinationを上書きしてはならず（MUST NO
 
 ### GUI-CREATE-KEY-001
 
-Explorerの`New` command、artifact type選択、form controls、field/member row追加・削除・reorder、Create / Cancelはkeyboardだけで操作可能でなければならない（MUST）。exact shortcutは固定しない。
+Explorerの`New` command、artifact type選択、provisional filename editing、commit / cancelはkeyboardだけで操作可能でなければならない（MUST）。inline filename中のEnterはcreation commit、Escapeはcreation cancelとして動作しなければならない（MUST）。IME composition中のEnterをcommitとして誤解釈してはならない（MUST NOT）。
 
-Enterによるform submitを提供する場合、multiline/list editing中の意図しないCreateを発生させてはならない（MUST NOT）。DestructiveではないCancelはEscape等のplatform-standard dialog interactionから到達可能にしてよい（MAY）。
+追加のdomain selectorが必要なartifactでもkeyboard-only操作を失ってはならない（MUST NOT）。
 
 ## フォーカス（Focus）
 
 ### GUI-CREATE-FOCUS-001
 
-creation UIを開いた場合、focusはartifact typeまたは最初の必要inputへ移動しなければならない（MUST）。validation errorでは最初のmappable error controlへ移動できなければならない（MUST）。
+artifact kind選択後は作成先Explorer行のinline filename inputへfocusを移さなければならない（MUST）。Escape / failure後は可能な範囲でcreation開始元またはprovisional itemへfocusを戻し、Success後は作成itemをExplorer selection / focus対象にしてtyped editorへ移動できる状態にしなければならない（MUST）。
 
-Cancel後は可能な範囲でcreation開始元のExplorer itemへfocusを戻し、Success後は作成itemをExplorer selection / focus対象にしなければならない（MUST）。
+structured diagnosticがfilenameまたは追加domain selectorへ一意に対応づけられる場合は、そのinputへfocus / inline errorを提供してよい（SHOULD）。
 
 ## 検証（Validation）
 
 ### GUI-CREATE-VAL-001
 
-creation formはshared application/domain layerから返されたstructured diagnosticを使用しなければならない（MUST）。field/member/path等へ一意に対応づけられるdiagnosticは該当controlへinline表示してよい（SHOULD）。一意にmapできないdiagnosticを失ってはならず（MUST NOT）、dialog内のsummary/error surfaceから確認できなければならない（MUST）。
+creation input surfaceはshared application/domain layerから返されたstructured diagnosticを使用しなければならない（MUST）。field/member/path等へ一意に対応づけられるdiagnosticは該当controlへinline表示してよい（SHOULD）。一意にmapできないdiagnosticを失ってはならず（MUST NOT）、creation contextのsummary/error surfaceから確認できなければならない（MUST）。
 
 frontend独自validatorをcanonical authorityとして使用してはならない（MUST NOT）。
 

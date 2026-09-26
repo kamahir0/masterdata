@@ -161,7 +161,7 @@ async function doubleClick(xpath, timeoutMs = 20_000) {
       id: "mouse",
       parameters: { pointerType: "mouse" },
       actions: [
-        { type: "pointerMove", origin: { element }, x: 0, y: 0 },
+        { type: "pointerMove", origin: { [ELEMENT_KEY]: element }, x: 0, y: 0 },
         { type: "pointerDown", button: 0 },
         { type: "pointerUp", button: 0 },
         { type: "pointerDown", button: 0 },

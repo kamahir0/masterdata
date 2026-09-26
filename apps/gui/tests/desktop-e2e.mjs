@@ -330,14 +330,9 @@ try {
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
-  const enteredCellEdit = await execute(
-    `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
-     if (!cell) return false;
-     cell.focus();
-     cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
-     return true;`,
-  );
-  if (!enteredCellEdit.ok || enteredCellEdit.value !== true) throw new Error("could not enter new record cell editing");
+  const cell = await waitElement("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
+  await request("POST", `/session/${sessionId}/element/${cell}/click`, {});
+  await request("POST", `/session/${sessionId}/element/${cell}/value`, { text: "\uE007", value: ["\uE007"] });
   await sleep(200);
   await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);

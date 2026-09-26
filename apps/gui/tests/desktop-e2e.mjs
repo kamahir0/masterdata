@@ -343,6 +343,7 @@ try {
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
+  await click("//button[contains(@class, 'problems-header')]");
   await enterCellEdit("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
   await sleep(200);
   await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");

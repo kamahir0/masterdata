@@ -26,7 +26,7 @@ Operationである。Project全体がerror-freeであることを前提にせず
 
 Migration CommandはMigration Operationを表すsemantic入力である。今回、具体的なRust
 struct、serialized JSON、CLI subcommand grammarをpublic contractとして固定しない。ただし
-semantic modelは、`AddField`、`RenameField`、`DropField`を識別でき、logical Table identity、
+semantic modelは、`AddField`、`RenameField`、`ChangeFieldType`、`DropField`を識別でき、logical Table identity、
 fieldのsemantic selectorまたはdeclaration、operationの引数を表現できなければならない
 （MUST）。physical YAML pathをTable identityとして扱ってはならない（MUST NOT）。
 
@@ -55,10 +55,9 @@ authorityとして使用してはならない（MUST NOT）。file pathはproven
 
 ### MIGRATION-002
 
-v1で識別可能なMigration Operationは、`AddField`、`RenameField`、`DropField`に限定する。
-`ChangeFieldType`、`SELECT`、`INSERT`、`UPDATE`、`DELETE`、SQL-like text language、binary
-query、binary mutationはv1 scope外であり、Migration v1の成功operationとして扱っては
-ならない（MUST NOT）。
+v1で識別可能なMigration Operationは、`AddField`、`RenameField`、`ChangeFieldType`、`DropField`とする。`ChangeFieldType`は既存record valueをcoerce / rewriteせず、current canonical valuesがtarget typeですでにlosslessにvalidな場合だけschema declarationのtypeを変更するoperationである。
+
+`SELECT`、`INSERT`、`UPDATE`、`DELETE`、SQL-like text language、任意のvalue conversion expression、binary query、binary mutationはv1 scope外であり、Migration v1の成功operationとして扱ってはならない（MUST NOT）。
 
 ### MIGRATION-003
 
@@ -360,6 +359,16 @@ modifier constraints、MessagePack key constraints、およびoperationに影響
 dependencyがclosureへ含まれ得る。closureのexact algorithmは固定しないが、必要なdependency
 を無視してMigrationを成功させてはならない。
 
+### MIGRATION-018
+
+`ChangeFieldType`はlogical Table identityと対象snapshot上のcurrent field nameでtargetをresolveし、新しいbase typeをexplicit operation argumentとして受け取らなければならない（MUST）。field name、MessagePack key、declaration order、Nullable / Array modifierを暗黙変更してはならない（MUST NOT）。
+
+Migration resolution closureに含まれる対象Tableのexisting recordについて、対象fieldのcurrent canonical source valueがtarget typeのApproved representationとしてlosslessにvalidであることをshared Type Systemで確認しなければならない（MUST）。1件でもtarget typeとして安全に解釈できないvalueがある場合、value conversionやdefault replacementを推測せず、source mutationを開始してはならない（MUST NOT）。
+
+Primary / Secondary Key、Reference、その他resolved schema dependencyについてもtarget type適用後のcanonical constraintを満たさなければならない（MUST）。依存を成立させるために別fieldのtype、Reference、key definitionを暗黙変更してはならない（MUST NOT）。
+
+successful transformationではschema field declarationのtype locationだけをsource-preservingに変更し、record value source bytesをChangeFieldTypeの副作用でrewriteしてはならない（MUST NOT）。patched sourceを再parse / resolveし、全対象valueとdependencyがtarget typeで期待どおり成立することをpostconditionとして確認しなければならない（MUST）。
+
 ## Operation別の境界
 
 ### AddField
@@ -380,6 +389,10 @@ semanticに更新する。field nameの出現箇所を全ファイルで機械�
 意味を混同しない。patch後のoperation-specific postconditionは、対象schema fieldが新name
 へ変更され、MessagePack keyが維持され、対象Tableの全該当record memberと必要なApproved
 field referencesが更新され、旧nameがMigration対象位置に残っていないことである。
+
+### ChangeFieldType
+
+`ChangeFieldType`はcurrent record valuesを変換するoperationではない。例えばinteger representationがそのままより広いinteger typeでvalidな場合は成功し得るが、numeric scalarをstringへ変換する等のcoercionを行わない。target typeでvalidでないrecord、key capability、Reference compatibility等があればfail closedする。schema declaration以外のsource bytesを通常成功pathで変更しない。
 
 ### DropField
 
@@ -423,7 +436,7 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
 - existing recordsが1件以上の`AddField`にはexplicit constant initializerを要求する。
 - existing recordsが0件の場合、`AddField` initializerは省略できる。initializerを指定した
   場合はcanonical type/value semanticsで検証する。
-- `RenameField` / `DropField`のtargetはlogical Table identityとcurrent field nameで解決
+- `RenameField` / `ChangeFieldType` / `DropField`のtargetはlogical Table identityとcurrent field nameで解決
   し、MessagePack `key`や新しいField IDをidentityにしない。
 - YAML rewriteはsource-preservingかつdeterministicで、不要なpresentation informationを
   変更せず、affected filesだけを必要なsource spansで更新する。
@@ -454,6 +467,7 @@ current code / tests / Gitから確認する。
 | MIGRATION-005, MIGRATION-013 | closureとoperation-specific postconditionをresolveし、unrelated diagnosticsだけでrejectせず、blocking condition・authorization・stale planなしにmutationしない。 |
 | MIGRATION-006 | AddFieldでcanonical constant valueを検証し、schema/dataの末尾append、既存key維持、record存在時のexplicit initializerを守る。 |
 | MIGRATION-007 | RenameFieldをlogical Table identityとcurrent field nameで解決し、MessagePack keyを維持し、Approvedなfield referenceをsemanticに更新する。 |
+| MIGRATION-018 | ChangeFieldTypeをlogical Table/current fieldで解決し、record valueをcoerceせずtarget typeでlosslessにvalidな場合だけschema typeをsource-preservingに変更し、key/Reference等の依存も再検証する。 |
 | MIGRATION-008 | DropFieldにexplicit destructive authorizationを要求し、authorization不足や依存更新不能時にmutationせずfail closedする。 |
 | MIGRATION-009 | mutation前にdeterministic planを構成し、dry-runでsourceを変更せず、affected files / recordsとdiagnosticsを表現する。 |
 | MIGRATION-010 | multi-file commitでcomplete NEW、rollback後のcomplete OLD、rollback failure時のRecovery Requiredを区別し、silent continuationしない。 |

@@ -195,6 +195,18 @@ async function selectNative(label, option, timeoutMs = 20_000) {
   throw new Error(`timed out selecting native option ${option} for ${label}`);
 }
 
+async function focusSourceRoot() {
+  const focused = await execute(
+    `const root = document.querySelector("button.tree-root-label");
+     if (!root) return false;
+     root.focus();
+     root.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+     return document.activeElement === root;`,
+  );
+  if (!focused.ok || focused.value !== true) throw new Error("could not focus the configured source root");
+  await sleep(200);
+}
+
 async function waitText(text, timeoutMs = 20_000) {
   return waitElement(`//*[contains(normalize-space(.), ${xpathLiteral(text)})]`, timeoutMs);
 }
@@ -297,8 +309,7 @@ try {
   await waitElement("//aside[@aria-label='Explorer']", 30_000);
   record("project-created-through-gui");
 
-  await execute("document.querySelector(\"[data-tree-path='sources']\")?.focus();");
-  await sleep(200);
+  await focusSourceRoot();
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Table']");
   await fill("//*[@aria-label='Filename (.yaml / .yml)']", "item-schema.yaml");
@@ -306,8 +317,7 @@ try {
   await waitText("item-schema.yaml", 30_000);
   record("table-created-through-gui");
 
-  await execute("document.querySelector(\"[data-tree-path='sources']\")?.focus();");
-  await sleep(200);
+  await focusSourceRoot();
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Data']");
   await selectNative("Existing Table", "item");

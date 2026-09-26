@@ -80,13 +80,13 @@ destination filename/folderはTable identityから独立していなければな
 
 Value Object creationはfilename commitからshared application layerがcanonicalにvalidなstarter Type documentを構成し、成功後にType Editorへ開かなければならない（MUST）。type name / underlying / conversionのcanonical validityはshared semanticsへ委譲し、frontendが独自validatorやYAML renderingを持ってはならない（MUST NOT）。
 
-underlyingやconversionの変更をCreate前modalの必須入力にしてはならず（MUST NOT）、作成後のType Editorで編集できなければならない（MUST）。
+underlyingやconversionの変更をCreate前modalの必須入力にしてはならない（MUST NOT）。作成後はcurrent Type Editorが対応するconversion editing等へ進み、underlying変更自体はType Editorのcanonical scopeに従う。
 
 ### GUI-CREATE-INT-005
 
 Normal Enum / Flags Enum creationはfilename commitからshared application layerがcanonicalにvalidなstarter Type documentを構成し、成功後にType Editorへ開かなければならない（MUST）。Flagsの`None = 0`等のcanonical requirementはshared semanticsが所有する。
 
-underlyingやmember listをCreate前modalの必須入力にしてはならない（MUST NOT）。member valueは作成後のeditorでも`long` / `ulong` rangeを含めlosslessなtext representationとして扱い、JavaScript `number`へ強制変換してはならない（MUST NOT）。
+underlyingやmember listをCreate前modalの必須入力にしてはならない（MUST NOT）。starterはcurrent Type Editorのmember Add / Rename / Dropからauthoringを継続できなければならない（MUST）。member valueは`long` / `ulong` rangeを含めlosslessなtext representationとして扱い、JavaScript `number`へ強制変換してはならない（MUST NOT）。
 
 ### GUI-CREATE-INT-006
 

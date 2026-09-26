@@ -2,7 +2,7 @@
 
 Status: Approved
 
-この仕様はData Editorのrange selection、batch preview、query composition、未保存履歴、keyboard precedenceを定義する。[Data Editor](spec.md)のsingle-cell / dirty / Save contractと[Authoring Batch](../../specs/authoring-batch.md)、[Authoring Query](../../specs/authoring-query.md)を前提とする。適用記録は[仕様変更0016](../../spec-changes/0016-desktop-daily-editing.md)を参照する。
+この仕様はData Editorのrange selection、batch mutation、query composition、未保存履歴、keyboard precedenceを定義する。[Data Editor](spec.md)のsingle-cell / dirty / Save contractと[Authoring Batch](../../specs/authoring-batch.md)、[Authoring Query](../../specs/authoring-query.md)を前提とする。適用記録は[仕様変更0016](../../spec-changes/0016-desktop-daily-editing.md)を参照する。
 
 ## 規範要件
 
@@ -13,8 +13,11 @@ pasteはactive cellを左上とし、clipboard shapeだけを使う。選択rang
 
 ### GUI-GRID-002
 
-paste / fill / range Set Nullは、対象file、変更cell数、target row/column、before/after、diagnosticsを確認するpreviewと明示Apply / Cancelを提供しなければならない（MUST）。single-cell pasteも同経路を使う。
-previewはbase、buffer revision、schema/type revision、query/selection revisionにbindし、どれか変わればApply不可にする（MUST）。Apply前にもshared layerで一致を確認する。Cancel/failureは元bufferとselectionを保つ。全cell no-opは履歴を増やさない。
+paste / fill / range Set Nullは、current base、buffer revision、schema/type revision、query/selection revisionをshared applicationへ渡し、全targetのcandidateを安全に構成できた場合だけlocal bufferへ1つのUndo単位として適用しなければならない（MUST）。通常のspreadsheet操作としてmandatoryなpreview modalや追加Apply clickを要求してはならない（MUST NOT）。
+
+source定位不能、read-only混入、clipboard shape failure、stale revision等でshared operationが成立しない場合はbufferを変更せず（MUST NOT）、対象rangeの文脈でreasonを確認できなければならない（MUST）。domain-invalid valueは既存Authoring Batch contractどおりlocal bufferへ反映し、diagnosticとして扱う。
+
+大規模batch等について任意のDetails / Previewを提供してよい（MAY）が、それを通常pasteの必須stepにしてはならない（MUST NOT）。batch operationはSave / Build / Migrationを暗黙実行してはならない（MUST NOT）。
 
 ### GUI-GRID-003
 
@@ -36,7 +39,7 @@ Save / explicit Overwrite successは対象fileの履歴をclearする（MUST）�
 ### GUI-GRID-006
 
 grid navigation modeではCmd/Ctrl+C / Vをcopy/paste、Cmd/Ctrl+ZをUndo、Cmd+Shift+ZまたはCtrl+Y / Ctrl+Shift+ZをRedo、Shift+Arrowをrange拡張へ割り当てる（MUST）。cell/nested text control編集中はclipboardとUndoをcontrol内text編集へ委ね、range操作やfile Undoを同時実行しない（MUST NOT）。Escapeはactive edit cancelを優先し、navigation modeではrangeをactive cellへ縮める。
-Enter/F2によるedit開始、Enter/Tabによる確定移動とfile Save shortcutは既存契約を保つ。IME composition中にEnterを確定移動へ誤解釈しない（MUST NOT）。Deleteキーをbulk row deleteへ割り当てない。preview終了後はsurviving active cell、なければgridへfocusを戻す。
+Enter/F2によるedit開始、Enter/Tabによる確定移動とfile Save shortcutは既存契約を保つ。IME composition中にEnterを確定移動へ誤解釈しない（MUST NOT）。Deleteキーをbulk row deleteへ割り当てない。batch operation終了後はsurviving active cell、なければgridへfocusを戻す。
 selection範囲、対象件数、read-only理由、preview失効、履歴有無をassistive technologyへ伝えなければならない（MUST）。
 
 ## 既存Data Editor contractへの適用
@@ -49,4 +52,4 @@ selection範囲、対象件数、read-only理由、preview失効、履歴有無�
 
 ## 受け入れ証拠
 
-filter中paste/fill、境界超過、preview後query変更、編集でrowが消える場合、Addでquery clear、Pending deleteのUndo導線、Add→edit→delete→Undo、Undo DeleteのUndo、Save All部分失敗、clean external reload、ConflictとUndo、IME / text-control precedenceを検証する。
+filter中paste/fill、境界超過、batch request中query変更、編集でrowが消える場合、Addでquery clear、Pending deleteのUndo導線、Add→edit→delete→Undo、Undo DeleteのUndo、Save All部分失敗、clean external reload、ConflictとUndo、IME / text-control precedenceを検証する。

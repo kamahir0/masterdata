@@ -330,7 +330,8 @@ try {
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
-  await fill("//*[starts-with(@aria-label, 'new record id') ]", "1001");
+  await click("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
+  await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));

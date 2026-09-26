@@ -297,6 +297,7 @@ try {
   await waitElement("//aside[@aria-label='Explorer']", 30_000);
   record("project-created-through-gui");
 
+  await click("//*[@data-tree-path='sources']");
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Table']");
   await fill("//*[@aria-label='Filename (.yaml / .yml)']", "item-schema.yaml");
@@ -304,6 +305,7 @@ try {
   await waitText("item-schema.yaml", 30_000);
   record("table-created-through-gui");
 
+  await click("//*[@data-tree-path='sources']");
   await click("//*[@aria-label='New source artifact']");
   await click("//*[@role='menuitem' and normalize-space(.)='Data']");
   await selectNative("Existing Table", "item");

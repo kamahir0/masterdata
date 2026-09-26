@@ -154,7 +154,7 @@ async function click(xpath, timeoutMs = 20_000) {
 }
 
 async function enterCellEdit(xpath, timeoutMs = 20_000) {
-  const element = await waitElement(xpath, timeoutMs);
+  await waitElement(xpath, timeoutMs);
   await execute(
     `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
      if (!cell) return false;
@@ -162,7 +162,13 @@ async function enterCellEdit(xpath, timeoutMs = 20_000) {
      return true;`,
   );
   await sleep(200);
-  await request("POST", `/session/${sessionId}/element/${element}/click`, {});
+  const activated = await execute(
+    `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
+     if (!cell) return false;
+     cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+     return true;`,
+  );
+  if (!activated.ok || activated.value !== true) throw new Error("could not activate the new-row record-id cell");
   await sleep(300);
 }
 

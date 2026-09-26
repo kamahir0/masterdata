@@ -153,21 +153,22 @@ async function click(xpath, timeoutMs = 20_000) {
   throw new Error(`timed out clicking xpath: ${xpath}; last WebDriver error: ${lastError}`);
 }
 
-async function doubleClick(xpath, timeoutMs = 20_000) {
+async function enterCellEdit(xpath, timeoutMs = 20_000) {
   const element = await waitElement(xpath, timeoutMs);
   await request("POST", `/session/${sessionId}/actions`, {
-    actions: [{
-      type: "pointer",
-      id: "mouse",
-      parameters: { pointerType: "mouse" },
-      actions: [
-        { type: "pointerMove", origin: { "element-6066-11e4-a52e-4f735466cecf": element }, x: 0, y: 0 },
-        { type: "pointerDown", button: 0 },
-        { type: "pointerUp", button: 0 },
-        { type: "pointerDown", button: 0 },
-        { type: "pointerUp", button: 0 },
-      ],
-    }],
+    actions: [
+      {
+        type: "pointer",
+        id: "mouse",
+        parameters: { pointerType: "mouse" },
+        actions: [
+          { type: "pointerMove", origin: { "element-6066-11e4-a52e-4f735466cecf": element }, x: 0, y: 0 },
+          { type: "pointerDown", button: 0 },
+          { type: "pointerUp", button: 0 },
+        ],
+      },
+      { type: "key", id: "keyboard", actions: [{ type: "keyDown", value: "\uE007" }, { type: "keyUp", value: "\uE007" }] },
+    ],
   });
 }
 
@@ -348,7 +349,7 @@ try {
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click("//*[@aria-label='Add Row']");
-  await doubleClick("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
+  await enterCellEdit("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
   await sleep(200);
   await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);

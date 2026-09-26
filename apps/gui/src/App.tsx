@@ -2465,6 +2465,10 @@ function SourceTree({
               const root = node.sourceRoot;
               onFolderSelect(root, root ? node.key.slice(root.length + 1) : node.key);
             }}
+            onMouseDown={() => {
+              const root = node.sourceRoot;
+              onFolderSelect(root, root ? node.key.slice(root.length + 1) : node.key);
+            }}
             onClick={() => toggleFolder(node.key)}
             onKeyDown={(event) => handleTreeKey(event, node.key, expanded)}
           >
@@ -2552,6 +2556,7 @@ function SourceTree({
             data-tree-path={root}
             aria-expanded={expanded}
             className="tree-root-label"
+            onMouseDown={() => onFolderSelect(root, "")}
             onFocus={() => onFolderSelect(root, "")}
             onClick={() => toggleFolder(key)}
             onKeyDown={(event) => handleTreeKey(event, key, expanded)}

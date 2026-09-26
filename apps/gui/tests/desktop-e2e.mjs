@@ -187,6 +187,26 @@ async function fill(xpath, value, timeoutMs) {
   return id;
 }
 
+async function setInputValue(xpath, value, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const updated = await execute(
+      `const input = document.evaluate(arguments[0], document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+       if (!(input instanceof HTMLInputElement)) return false;
+       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+       if (!setter) return false;
+       setter.call(input, arguments[1]);
+       input.dispatchEvent(new Event("input", { bubbles: true }));
+       input.dispatchEvent(new Event("change", { bubbles: true }));
+       return true;`,
+      [xpath, value],
+    );
+    if (updated.ok && updated.value === true) return;
+    await sleep(200);
+  }
+  throw new Error(`timed out setting input: ${xpath}`);
+}
+
 async function execute(script, args = []) {
   const result = await request(
     "POST",
@@ -357,7 +377,7 @@ try {
   await click("//button[contains(@class, 'problems-header')]");
   await enterCellEdit("//*[@role='gridcell' and starts-with(@aria-label, 'new record id')]");
   await sleep(200);
-  await fill("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
+  await setInputValue("//*[@role='textbox' and starts-with(@aria-label, 'new record id')]", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));

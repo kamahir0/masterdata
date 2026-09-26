@@ -3257,6 +3257,7 @@ function DataEditor({
                           aria-label={`${label}: ${authoringValueSummary(value)}${readOnlyReason ? `, ${readOnlyReason}` : ""}`}
                           onMouseDown={(event) => {
                             if (event.button !== 0) return;
+                            if (gridRow.kind === "added" && editable) beginCellEdit(key, value, gridRowIndex, columnIndex);
                             if (editingCell && editingCell.key !== key) {
                               const previousShape = editor.snapshot.columns[editingCell.columnIndex]?.shape;
                               const previousComplex = previousShape?.modifier === "array" || previousShape?.shape.kind === "custom" || previousShape?.shape.kind === "flags";

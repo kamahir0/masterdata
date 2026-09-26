@@ -166,7 +166,11 @@ async function enterCellEdit(xpath, timeoutMs = 20_000) {
   const activated = await execute(
     `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
      if (!cell) return false;
-     cell.focus();
+     const key = cell.getAttribute("data-cell");
+     if (!key) return false;
+     document.dispatchEvent(new CustomEvent("masterdata:focus-value", {
+       detail: { cell: key, valuePath: "", handled: false },
+     }));
      return true;`,
   );
   if (!activated.ok || activated.value !== true) throw new Error("could not activate the new-row record-id cell");

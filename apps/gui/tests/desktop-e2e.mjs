@@ -155,21 +155,9 @@ async function click(xpath, timeoutMs = 20_000) {
 
 async function enterCellEdit(xpath, timeoutMs = 20_000) {
   const element = await waitElement(xpath, timeoutMs);
-  await request("POST", `/session/${sessionId}/actions`, {
-    actions: [{
-      type: "pointer",
-      id: "mouse",
-      parameters: { pointerType: "mouse" },
-      actions: [
-        { type: "pointerMove", origin: { "element-6066-11e4-a52e-4f735466cecf": element }, x: 0, y: 0 },
-        { type: "pointerDown", button: 0 },
-        { type: "pointerUp", button: 0 },
-        { type: "pause", duration: 120 },
-        { type: "pointerDown", button: 0 },
-        { type: "pointerUp", button: 0 },
-      ],
-    }],
-  });
+  await request("POST", `/session/${sessionId}/element/${element}/click`, {});
+  await sleep(120);
+  await request("POST", `/session/${sessionId}/element/${element}/click`, {});
   await sleep(300);
 }
 

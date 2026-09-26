@@ -212,7 +212,10 @@ fn destination(
     let root = info
         .source_roots
         .iter()
-        .find(|root| root.to_string_lossy() == request.source_root)
+        .find(|root| {
+            root.to_string_lossy() == request.source_root
+                || project_relative_string(project.root(), root) == request.source_root
+        })
         .ok_or_else(|| {
             create_error(
                 "E-SOURCE-CREATE-PATH",

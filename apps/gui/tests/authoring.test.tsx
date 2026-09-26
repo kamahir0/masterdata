@@ -318,8 +318,8 @@ test('Table context opens Data creation with its Table already selected', async 
   });
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'New data file' }));
-  expect((await screen.findByRole('combobox', { name: 'Existing Table' })).closest('.ant-select')?.textContent).toContain('item');
-  expect(screen.getByRole('combobox', { name: 'Artifact type' }).closest('.ant-select')?.textContent).toContain('Data');
+  expect((await screen.findByRole('combobox', { name: 'Existing Table' }) as HTMLSelectElement).value).toBe('item');
+  expect(screen.getByLabelText('Filename (.yaml / .yml)')).toBeTruthy();
 });
 
 test('Table Overview follows the selected logical Table rather than the previously active file', async () => {
@@ -349,7 +349,7 @@ test('empty Project offers a contextual Folder action with a folder-safe name', 
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByRole('heading', { name: 'Start with a Table' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Create Folder' }));
-  expect((await screen.findByRole('combobox', { name: 'Artifact type' })).closest('.ant-select')?.textContent).toContain('Folder');
+  expect(await screen.findByRole('treeitem', { name: 'New Folder' })).toBeTruthy();
   expect((screen.getByRole('textbox', { name: 'Folder name' }) as HTMLInputElement).value).toBe('new-folder');
 });
 
@@ -555,14 +555,15 @@ test('split Data file exposes its Table schema without leaving the record grid',
   expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
   expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
-async function planFromTable(type = false) {
+async function applyRenameFromTable() {
   openSourceFiles();
   fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
   fireEvent.click(await screen.findByRole('button',{name:'Actions for field id'}));
   fireEvent.click(screen.getByRole('menuitem',{name:'Rename Field'}));
-  fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});
-  fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
-  await screen.findByRole('region',{name:type?'Type Migration Plan':'Migration Plan'});
+  const input = screen.getByLabelText('Field name id');
+  fireEvent.change(input,{target:{value:'itemId'}});
+  fireEvent.blur(input);
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'apply_table_migration')).toBe(true));
 }
 test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;
@@ -574,7 +575,7 @@ test('Migration recovery result blocks Create and Build',async()=>{
     return normal(command,args);
   });
   const input=await open();fireEvent.change(input,{target:{value:'20'}});commit(input);
-  await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
+  await applyRenameFromTable();
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   openProjectCommands();
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);

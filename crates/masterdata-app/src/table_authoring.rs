@@ -15,11 +15,26 @@ pub enum TableOperationInput {
         field: FieldDefinition,
         initializer: Option<String>,
     },
+    #[serde(rename = "add_direct")]
+    AddDirect {
+        table: String,
+        #[serde(rename = "typeName")]
+        type_name: String,
+        #[serde(default)]
+        name: Option<String>,
+    },
     Rename {
         table: String,
         field: String,
         #[serde(rename = "newName")]
         new_name: String,
+    },
+    #[serde(rename = "change_type", alias = "change_field_type")]
+    ChangeType {
+        table: String,
+        field: String,
+        #[serde(rename = "newType")]
+        new_type: String,
     },
     Drop {
         table: String,
@@ -40,7 +55,7 @@ pub enum TableOperationInput {
     },
 }
 impl TableOperationInput {
-    fn command(self) -> Result<MigrationCommand> {
+    fn command(self, documents: &ProjectDocuments) -> Result<MigrationCommand> {
         Ok(match self {
             Self::Add {
                 table,
@@ -53,6 +68,47 @@ impl TableOperationInput {
                     .map(|text| crate::type_authoring::parse_constant(&text))
                     .transpose()?,
             }),
+            Self::AddDirect {
+                table,
+                type_name,
+                name,
+            } => {
+                let schema = documents
+                    .schemas()
+                    .find(|(_, schema)| schema.table == table)
+                    .map(|(_, schema)| schema)
+                    .ok_or_else(|| {
+                        error("E-MIGRATION-TABLE-NOT-FOUND", "target Table does not exist")
+                    })?;
+                let name = name
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| next_direct_field_name(schema));
+                if schema.fields.iter().any(|field| field.name == name) {
+                    return Err(error(
+                        "E-MIGRATION-FIELD-NAME-CONFLICT",
+                        "direct Add Field name already exists",
+                    ));
+                }
+                let key = schema
+                    .fields
+                    .iter()
+                    .map(|field| field.key)
+                    .max()
+                    .map_or(0, |key| key.saturating_add(1));
+                let field = FieldDefinition {
+                    key,
+                    name,
+                    type_name,
+                    nullable: false,
+                    array: false,
+                };
+                let initializer = default_field_value_for_table(documents, &table, &field)?;
+                MigrationCommand::AddField(AddFieldCommand {
+                    table,
+                    field,
+                    initializer: Some(initializer),
+                })
+            }
             Self::Rename {
                 table,
                 field,
@@ -61,6 +117,15 @@ impl TableOperationInput {
                 table,
                 field,
                 new_name,
+            }),
+            Self::ChangeType {
+                table,
+                field,
+                new_type,
+            } => MigrationCommand::ChangeFieldType(ChangeFieldTypeCommand {
+                table,
+                field,
+                new_type,
             }),
             Self::Drop { table, field } => {
                 MigrationCommand::DropField(DropFieldCommand { table, field })
@@ -123,6 +188,23 @@ pub(crate) struct Prepared {
     pub(crate) before: ProjectDocuments,
     pub(crate) dry_run: SourceCommitCandidate,
 }
+
+fn next_direct_field_name(schema: &SchemaDocument) -> String {
+    let names = schema
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut index = 1;
+    loop {
+        let candidate = format!("field{index}");
+        if !names.contains(candidate.as_str()) {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
 #[derive(Default)]
 pub struct TableAuthoringSession {
     pub(crate) sequence: u64,
@@ -142,7 +224,7 @@ impl TableAuthoringSession {
         self.ensure_mutation_allowed(root)?;
         let project = Project::discover(Some(root), root)?;
         let before = project.load_documents()?;
-        let command = input.command()?;
+        let command = input.command(&before)?;
         let dry_run = dry_run_migration(&before, &command)?;
         self.sequence += 1;
         let token = self.sequence.to_string();
@@ -176,6 +258,7 @@ impl TableAuthoringSession {
             operation: match dry_run.plan.operation {
                 MigrationOperation::AddField => "AddField",
                 MigrationOperation::RenameField => "RenameField",
+                MigrationOperation::ChangeFieldType => "ChangeFieldType",
                 MigrationOperation::DropField => "DropField",
                 MigrationOperation::AddReference => "AddReference",
                 MigrationOperation::EditReference => "EditReference",

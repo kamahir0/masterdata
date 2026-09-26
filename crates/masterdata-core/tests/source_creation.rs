@@ -98,3 +98,63 @@ fn table_creation_preserves_modifiers_and_composite_key_order() {
     assert!(schema.fields[3].array);
     assert_eq!(schema.csharp_name.as_deref(), Some("InventoryItem"));
 }
+
+#[test]
+fn starter_creation_expands_each_explorer_kind_through_shared_validation() {
+    let cases = [
+        ("table", json!({"category":"starter","kind":"table"})),
+        (
+            "value_object",
+            json!({"category":"starter","kind":"value_object"}),
+        ),
+        ("enum", json!({"category":"starter","kind":"enum"})),
+        ("flags", json!({"category":"starter","kind":"flags"})),
+        (
+            "custom_type",
+            json!({"category":"starter","kind":"custom_type"}),
+        ),
+    ];
+    for (kind, value) in cases {
+        let plan = prepare(&ProjectDocuments::default(), &request(value))
+            .unwrap_or_else(|error| panic!("starter {kind} should be valid: {error:?}"));
+        let reparsed = parse_yaml_document(PathBuf::from("new.yaml"), &plan.source).unwrap();
+        assert_eq!(reparsed.document, plan.document.document);
+        match (kind, plan.document.document) {
+            ("table", SourceDocument::Schema(schema)) => {
+                assert_eq!(schema.table, "new");
+                assert_eq!(schema.fields[0].name, "id");
+                assert_eq!(schema.primary_key.unwrap().fields, ["id"]);
+            }
+            ("value_object", SourceDocument::Type(ty)) => assert!(ty.value_object.is_some()),
+            ("enum", SourceDocument::Type(ty)) => assert!(ty.enum_definition.is_some()),
+            ("flags", SourceDocument::Type(ty)) => assert!(ty.flags.is_some()),
+            ("custom_type", SourceDocument::Type(ty)) => assert!(ty.custom.is_some()),
+            _ => panic!("starter {kind} produced an unexpected document"),
+        }
+    }
+}
+
+#[test]
+fn starter_data_requires_and_uses_an_explicit_existing_table() {
+    let mut documents = ProjectDocuments::default();
+    documents
+        .files
+        .push(prepare(&documents, &table("item")).unwrap().document);
+    let plan = prepare(
+        &documents,
+        &request(json!({"category":"starter","kind":"data","table":"item"})),
+    )
+    .unwrap();
+    let SourceDocument::Data(data) = plan.document.document else {
+        panic!("starter data should create a Data document");
+    };
+    assert_eq!(data.table, "item");
+    assert!(data.records.is_empty());
+    assert!(
+        prepare(
+            &documents,
+            &request(json!({"category":"starter","kind":"data"})),
+        )
+        .is_err()
+    );
+}

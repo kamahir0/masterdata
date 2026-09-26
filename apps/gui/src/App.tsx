@@ -3,7 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Alert, Button, ConfigProvider, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag, theme as antdTheme } from "antd";
 import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Settings, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
-import SourceCreation, { type CreationReport } from "./SourceCreation";
+import { type CreationReport } from "./SourceCreation";
+import { InlineCreationRow, type InlineCreationState } from "./InlineCreation";
 import { ApplicationSettingsModal } from "./ApplicationSettings";
 import {
   type EffectiveTheme,
@@ -565,9 +566,8 @@ function App({
     if (result?.state === "recovery_required") next[root] = result; else delete next[root];
     recoveryRef.current = next; setRecoveries(next);
   }, []);
-  const [creationOpen, setCreationOpen] = useState(false);
+  const [inlineCreation, setInlineCreation] = useState<InlineCreationState | null>(null);
   const [creationTarget, setCreationTarget] = useState({ root: "", folder: "" });
-  const [creationPreset, setCreationPreset] = useState<{ category: "folder" | "table" | "data" | "value_object"; table: string }>({ category: "table", table: "" });
   const [revealCreated, setRevealCreated] = useState<{ path: string; root: string } | null>(null);
   const [pathMutationTarget, setPathMutationTarget] = useState<{ sourcePath: string; destinationPath: string; sourceRoot: string } | null>(null);
   const [pathMutationPhase, setPathMutationPhase] = useState<"form" | "dirty" | "result">("form");
@@ -840,7 +840,7 @@ function App({
   const loadWorkspace = useCallback(async (requestedProject: string | null, initialDiscovery = false) => {
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
-    setCreationOpen(false);
+    setInlineCreation(null);
     setRevealCreated(null);
     setCreationTarget({ root: "", folder: "" });
     setSelectedProfile("");
@@ -1729,6 +1729,7 @@ function App({
 
   const refreshAfterCreation = useCallback(async (report: CreationReport) => {
     if (!projectRoot) return;
+    setInlineCreation(null);
     const generation = workspaceGeneration.current;
     const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: projectRoot });
     if (workspaceGeneration.current !== generation) return;
@@ -1740,7 +1741,6 @@ function App({
     const root = report.folder ? next.folders?.find(folder => folder.path === report.path)?.sourceRoot
       : next.files.find(file => file.path === report.path)?.sourceRoot;
     setRevealCreated({ path: report.path, root: root ?? "" });
-    setCreationOpen(false);
     const file = next.files.find(file => file.path === report.path);
     if (file && (file.kind === "data" || file.hasInlineRecords)) await openDataFile(projectRoot, file.path);
     showNotice(`${sourceName(report.path)} created`);
@@ -1794,16 +1794,30 @@ function App({
   useEffect(() => {
     if (problems.length > 0) setProblemsOpen(true);
   }, [problems.length]);
-  const openCreation = (category: "folder" | "table" | "data" | "value_object", table = "") => {
-    setCreationPreset({ category, table });
-    setCreationOpen(true);
+  const beginInlineCreation = (
+    category: InlineCreationState["category"],
+    table = "",
+    target = creationTarget,
+  ) => {
+    const root = target.root || (workspace?.sourceRoots.length === 1 ? workspace.sourceRoots[0] : "");
+    if (!root) {
+      showNotice("Select a source root or folder before creating an artifact.");
+      return;
+    }
+    setInlineCreation({
+      root,
+      folder: target.root === root ? target.folder : "",
+      category,
+      initialTable: table || undefined,
+    });
   };
   const openDataCreation = (table: string) => {
     const parent = workspace?.files.find((file) => file.table === table && file.kind === "schema")
       ?? workspace?.files.find((file) => file.table === table && file.kind === "data");
     const relative = parent?.sourceRoot && parent.path.startsWith(`${parent.sourceRoot}/`) ? parent.path.slice(parent.sourceRoot.length + 1) : parent?.path ?? "";
-    setCreationTarget({ root: parent?.sourceRoot ?? workspace?.sourceRoots[0] ?? "", folder: relative.split("/").slice(0, -1).join("/") });
-    openCreation("data", table);
+    const target = { root: parent?.sourceRoot ?? "", folder: relative.split("/").slice(0, -1).join("/") };
+    setCreationTarget(target);
+    beginInlineCreation("data", table, target);
   };
   const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.table)?.table ?? null;
   const recordFileActive = activeFile?.kind === "data" || !!activeFile?.hasInlineRecords;
@@ -1812,7 +1826,7 @@ function App({
     ? activeFile
     : workspace?.files.find(file => file.kind === "schema" && file.table === activeTableName);
   const tableEditor = activeSchema && projectRoot && activeTableName ? <TableEditor key={`${projectRoot}:${activeSchema.path}:${tableEpoch}`}
-    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded={recordFileActive}
+    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded={recordFileActive} direct
     onOverview={() => { setSelectedTable(activeTableName); setSurface("overview"); }}
     onCreateData={() => openDataCreation(activeTableName)}
     dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
@@ -1926,13 +1940,16 @@ function App({
         <div className="explorer-toolbar">
           <strong>EXPLORER</strong>
           <Dropdown menu={{ items: [
-            { key: "table", label: "Table", onClick: () => openCreation("table") },
-            { key: "data", label: "Data", onClick: () => openCreation("data") },
-            { key: "type", label: "Type", onClick: () => openCreation("value_object") },
+            { key: "table", label: "Table", onClick: () => beginInlineCreation("table") },
+            { key: "data", label: "Data", onClick: () => beginInlineCreation("data") },
+            { key: "value_object", label: "Value Object", onClick: () => beginInlineCreation("value_object") },
+            { key: "enum", label: "Enum", onClick: () => beginInlineCreation("enum") },
+            { key: "flags", label: "Flags Enum", onClick: () => beginInlineCreation("flags") },
+            { key: "custom_type", label: "Custom Type", onClick: () => beginInlineCreation("custom_type") },
           ] }} trigger={["click"]}>
             <Button type="text" size="small" aria-label="New source artifact" disabled={mutationBlocked} icon={<FilePlus2 size={15} />} />
           </Dropdown>
-          <Button type="text" size="small" aria-label="New folder" disabled={mutationBlocked} icon={<FolderPlus size={15} />} onClick={() => openCreation("folder")} />
+          <Button type="text" size="small" aria-label="New folder" disabled={mutationBlocked} icon={<FolderPlus size={15} />} onClick={() => beginInlineCreation("folder")} />
           <Button type="text" size="small" aria-label="Refresh Explorer" icon={<RefreshCw size={15} />} onClick={() => void refreshExplorer()} />
           <Button type="text" size="small" aria-label="Collapse folders" icon={<ChevronsUp size={15} />} onClick={() => setCollapseTreeSignal((value) => value + 1)} />
           <Dropdown menu={{ items: [
@@ -1950,6 +1967,11 @@ function App({
           onSelect={selectFile}
           onFolderSelect={(root, folder) => setCreationTarget({ root, folder })}
           onRename={(file) => openPathMutation(file)}
+          provisional={inlineCreation}
+          projectPath={projectRoot!}
+          canWrite={!mutationBlocked}
+          onProvisionalCommit={refreshAfterCreation}
+          onProvisionalCancel={() => setInlineCreation(null)}
           collapseSignal={collapseTreeSignal}
           revealCreated={revealCreated}
         />
@@ -2031,7 +2053,7 @@ function App({
             <span className="dialog-kicker">NEW PROJECT</span>
             <h2>Start with a Table</h2>
             <p>Create a Table with records in one file, or keep records in separate data files.</p>
-            <div><Button type="primary" disabled={mutationBlocked} onClick={() => openCreation("table")}>Create Table</Button><Button disabled={mutationBlocked} onClick={() => openCreation("value_object")}>Create Type</Button><Button disabled={mutationBlocked} onClick={() => openCreation("folder")}>Create Folder</Button></div>
+            <div><Button type="primary" disabled={mutationBlocked} onClick={() => beginInlineCreation("table")}>Create Table</Button><Button disabled={mutationBlocked} onClick={() => beginInlineCreation("value_object")}>Create Type</Button><Button disabled={mutationBlocked} onClick={() => beginInlineCreation("folder")}>Create Folder</Button></div>
           </div>}
           {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
@@ -2069,6 +2091,7 @@ function App({
               projectRoot={projectRoot!}
               editor={activeEditor}
               schemaEditor={tableEditor}
+              schemaEditorAlwaysVisible
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
               uiCache={dataEditorUi}
@@ -2133,24 +2156,6 @@ function App({
         <span>{surface === "editor" && activeEditor ? `${activeEditor.snapshot.rows.length + activeEditor.addedRecords.length} records · ${activeEditor.snapshot.columns.length} fields` : ""}</span>
         <span>{totalDirtyCount > 0 ? `${totalDirtyCount} dirty` : "Saved"}</span>
       </footer>}
-
-      {creationOpen && workspace && projectRoot && <SourceCreation key={projectRoot}
-        projectPath={projectRoot}
-        initialRootIndex={Math.max(0, workspace.sourceRoots.indexOf(creationTarget.root))}
-        initialFolder={creationTarget.folder}
-        initialCategory={creationPreset.category}
-        initialTable={creationPreset.table}
-        canWrite={!mutationBlocked}
-        onCancel={() => {
-          setCreationOpen(false);
-          window.requestAnimationFrame(() => {
-            const origin = [creationTarget.root, creationTarget.folder].filter(Boolean).join("/");
-            const target = document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(origin)}"]`)
-              ?? document.querySelector<HTMLElement>('[aria-label="New source artifact"]');
-            target?.focus();
-          });
-        }}
-        onCreated={refreshAfterCreation} />}
 
       <Modal
         open={pathMutationTarget !== null}
@@ -2275,6 +2280,11 @@ function SourceTree({
   onSelect,
   onFolderSelect,
   onRename,
+  provisional,
+  projectPath,
+  canWrite,
+  onProvisionalCommit,
+  onProvisionalCancel,
   collapseSignal,
   revealCreated,
 }: {
@@ -2286,6 +2296,11 @@ function SourceTree({
   onSelect: (file: WorkspaceSourceFile) => void;
   onFolderSelect: (root: string, folder: string) => void;
   onRename: (file: WorkspaceSourceFile) => void;
+  provisional: InlineCreationState | null;
+  projectPath: string;
+  canWrite: boolean;
+  onProvisionalCommit: (report: CreationReport) => Promise<void>;
+  onProvisionalCancel: () => void;
   collapseSignal: number;
   revealCreated: { path: string; root: string } | null;
 }) {
@@ -2356,6 +2371,17 @@ function SourceTree({
     return () => window.cancelAnimationFrame(frame);
   }, [revealCreated, workspace]);
 
+  useEffect(() => {
+    if (!provisional) return;
+    const expanded = new Set<string>([`root:${provisional.root}`]);
+    let prefix = provisional.root;
+    for (const segment of provisional.folder.split("/").filter(Boolean)) {
+      prefix = prefix ? `${prefix}/${segment}` : segment;
+      expanded.add(prefix);
+    }
+    setCollapsed((current) => new Set([...current].filter((key) => !expanded.has(key))));
+  }, [provisional]);
+
   const toggleFolder = (key: string) => {
     setCollapsed((current) => {
       const next = new Set(current);
@@ -2414,6 +2440,10 @@ function SourceTree({
   const renderNode = (node: SourceTreeNode): React.ReactNode => {
     if (node.kind === "folder") {
       const expanded = !collapsed.has(node.key);
+      const relativeFolder = node.sourceRoot && node.key.startsWith(`${node.sourceRoot}/`)
+        ? node.key.slice(node.sourceRoot.length + 1)
+        : node.key;
+      const isCreationTarget = provisional?.root === node.sourceRoot && provisional.folder === relativeFolder;
       return (
         <div key={node.key}>
           <Button
@@ -2435,7 +2465,16 @@ function SourceTree({
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
             <span>{node.name}</span>
           </Button>
-          {expanded && <div role="group">{node.children.map(renderNode)}</div>}
+          {expanded && <div role="group">
+            {isCreationTarget && <InlineCreationRow
+              projectPath={projectPath}
+              state={provisional!}
+              canWrite={canWrite}
+              onCommit={onProvisionalCommit}
+              onCancel={onProvisionalCancel}
+            />}
+            {node.children.map(renderNode)}
+          </div>}
         </div>
       );
     }
@@ -2514,7 +2553,16 @@ function SourceTree({
             <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
             {root || "."}
           </Button>
-          {expanded && <div role="group">{children.map(renderNode)}</div>}
+          {expanded && <div role="group">
+            {provisional?.root === root && provisional.folder === "" && <InlineCreationRow
+              projectPath={projectPath}
+              state={provisional!}
+              canWrite={canWrite}
+              onCommit={onProvisionalCommit}
+              onCancel={onProvisionalCancel}
+            />}
+            {children.map(renderNode)}
+          </div>}
         </div>
       );
     })}
@@ -2549,12 +2597,17 @@ type DataEditorUiState = {
   batchToolsOpen: boolean;
 };
 
+const GRID_ROW_HEIGHT = 32;
+const GRID_VIEWPORT_HEIGHT = 560;
+const GRID_OVERSCAN = 8;
+
 function DataEditor({
   mutationBlocked,
   file,
   projectRoot,
   editor,
   schemaEditor,
+  schemaEditorAlwaysVisible = false,
   onOverview,
   onCreateData,
   uiCache,
@@ -2582,6 +2635,7 @@ function DataEditor({
   projectRoot: string;
   editor: EditorState;
   schemaEditor?: React.ReactNode;
+  schemaEditorAlwaysVisible?: boolean;
   onOverview?: () => void;
   onCreateData?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
@@ -2615,6 +2669,8 @@ function DataEditor({
     target: { kind: "existing"; recordIndex: number; field: string } | { kind: "added"; draftId: string; field: string };
   } | null>(null);
   const pendingGridFocus = useRef<string | null>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const [gridScrollTop, setGridScrollTop] = useState(0);
   const draggingSelection = useRef(false);
   const [batchText, setBatchText] = useState(rememberedUi?.batchText ?? "");
   const [batchPreview, setBatchPreview] = useState<AuthoringBatchPreview | null>(null);
@@ -2663,10 +2719,21 @@ function DataEditor({
     row.kind === "existing"
       ? cellKey(row.recordIndex, column.name)
       : draftCellKey(row.draft.draftId, column.name)));
+  const visibleRowCount = Math.ceil(GRID_VIEWPORT_HEIGHT / GRID_ROW_HEIGHT) + GRID_OVERSCAN * 2;
+  const visibleStart = Math.max(0, Math.min(
+    Math.max(0, gridRows.length - visibleRowCount),
+    Math.floor(gridScrollTop / GRID_ROW_HEIGHT) - GRID_OVERSCAN,
+  ));
+  const visibleEnd = Math.min(gridRows.length, visibleStart + visibleRowCount);
   const focusGridCell = (rowIndex: number, columnIndex: number) => {
     const key = gridCellKeys[rowIndex]?.[columnIndex];
     if (!key) return;
     pendingGridFocus.current = key;
+    if (rowIndex < visibleStart || rowIndex >= visibleEnd) {
+      const viewport = gridScrollRef.current;
+      if (viewport) viewport.scrollTop = Math.max(0, rowIndex * GRID_ROW_HEIGHT - GRID_OVERSCAN * GRID_ROW_HEIGHT);
+      setGridScrollTop(Math.max(0, rowIndex * GRID_ROW_HEIGHT - GRID_OVERSCAN * GRID_ROW_HEIGHT));
+    }
     setSelectedRange({ startRow: rowIndex, startColumn: columnIndex, endRow: rowIndex, endColumn: columnIndex });
   };
   const finishCellEdit = (commit: boolean, nextRow?: number, nextColumn?: number, restoreFocus = true) => {
@@ -2698,6 +2765,7 @@ function DataEditor({
       const column = editor.snapshot.columns[columnIndex];
       if (!row || !column || !column.shape) return;
       const value = row.kind === "existing" ? currentCellValue(editor, row.recordIndex, column.name) : row.draft.values[column.name] ?? nullAuthoringValue();
+      focusGridCell(rowIndex, columnIndex);
       beginCellEdit(cell, value, rowIndex, columnIndex);
       window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
         focusElement(document.querySelector<HTMLElement>(`[data-value-path="${CSS.escape(valuePath)}"]`));
@@ -2731,7 +2799,7 @@ function DataEditor({
     if (!key) return;
     document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`)?.focus();
     pendingGridFocus.current = null;
-  }, [editingCell, selectedRange]);
+  }, [editingCell, selectedRange, visibleStart, visibleEnd]);
 
   useEffect(() => {
     lastFocusedCell.current = null;
@@ -2835,6 +2903,33 @@ function DataEditor({
     }
   };
 
+  const applyBatchDirect = async (fill: boolean, clipboardText = batchText) => {
+    if (mutationBlocked || editor.saving) return;
+    setBatchBusy(true);
+    setQueryError(null);
+    try {
+      const targets = fill ? selectedTargets() : await pasteTargets(clipboardText);
+      if (targets.length === 0) return;
+      const result = await invoke<AuthoringBatchPreview>("preview_data_file_batch", {
+        projectPath: projectRoot,
+        relativePath: file.path,
+        baseSource: editor.snapshot.baseSource,
+        currentMutation: mutationForEditor(editor),
+        request: { targets, clipboardText, fill },
+      });
+      if (result.changedCellCount > 0) {
+        onBatchApplied(result);
+        setQueryNotice(`${result.changedCellCount} cells applied to the local buffer.`);
+      }
+      setBatchPreview(null);
+      setBatchContext(null);
+    } catch (error) {
+      setQueryError(asApiError(error).diagnostic);
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   const copySelection = async () => {
     const targets = selectedTargets();
     if (targets.length === 0) return;
@@ -2859,7 +2954,7 @@ function DataEditor({
     try {
       const clipboardText = await navigator.clipboard.readText();
       setBatchText(clipboardText);
-      await previewBatch(false, clipboardText);
+      await applyBatchDirect(false, clipboardText);
     } catch (error) {
       setQueryError(asApiError(error).diagnostic);
     }
@@ -2962,23 +3057,15 @@ function DataEditor({
         <div className="editor-actions">
           <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>
           {onOverview && <Button htmlType="button" onClick={onOverview}>Table Overview</Button>}
-          {schemaEditor && <Button htmlType="button" aria-expanded={schemaOpen} aria-controls="data-table-structure" onClick={() => setSchemaOpen(open => !open)}>Table structure <ChevronDown size={13} aria-hidden="true" /></Button>}
+          {schemaEditor && <Button htmlType="button" aria-expanded={schemaEditorAlwaysVisible || schemaOpen} aria-controls="data-table-structure" onClick={() => { if (!schemaEditorAlwaysVisible) setSchemaOpen(open => !open); }}>Table structure <ChevronDown size={13} aria-hidden="true" /></Button>}
           {onCreateData && <Button htmlType="button" onClick={onCreateData}>New data file</Button>}
-          <Button
-            htmlType="button"
-            aria-label="Add Row"
-            onClick={onAddRow}
-            disabled={mutationBlocked || !capability.supported || editor.saving}
-          >
-            Add Row
-          </Button>
           <Button htmlType="button" aria-label="Undo" onClick={onUndo} disabled={mutationBlocked || editor.saving || editor.historyPast.length === 0}>Undo</Button>
           <Button htmlType="button" aria-label="Redo" onClick={onRedo} disabled={mutationBlocked || editor.saving || editor.historyFuture.length === 0}>Redo</Button>
           <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !editingCell) || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
         </div>
       </header>
 
-      {schemaEditor && schemaOpen && <section id="data-table-structure" className="data-table-structure" aria-label="Table structure">{schemaEditor}</section>}
+      {schemaEditor && (schemaEditorAlwaysVisible || schemaOpen) && <section id="data-table-structure" className="data-table-structure" aria-label="Table structure">{schemaEditor}</section>}
 
       <div className="authoring-toolbar" aria-label="Data authoring tools">
         <Input aria-label="Data search" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onPressEnter={() => void runQuery()} />
@@ -2997,10 +3084,11 @@ function DataEditor({
       </div>
       <div className="authoring-toolbar authoring-options" id="data-batch-tools" hidden={!batchToolsOpen} aria-label="Batch tools">
         <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
-        <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
-        <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>
+        <Button htmlType="button" onClick={() => void applyBatchDirect(false)} disabled={batchBusy}>Paste to selection</Button>
+        <Button htmlType="button" onClick={() => void applyBatchDirect(true)} disabled={batchBusy}>Fill selection</Button>
+        <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Review paste</Button>
         <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
-        <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
+        <Button htmlType="button" onClick={() => void readClipboardAndPreview()} disabled={batchBusy}>Read clipboard & apply</Button>
       </div>
       <div className="selection-status" role="status" aria-live="polite">
         {selectedRange ? `${selectedTargets().length} cells selected` : "One cell active"}
@@ -3044,7 +3132,11 @@ function DataEditor({
       )}
 
       {editor.view === "grid" && (
-        <div className="grid-scroll">
+        <div
+          ref={gridScrollRef}
+          className="grid-scroll"
+          onScroll={(event) => setGridScrollTop(event.currentTarget.scrollTop)}
+        >
           <table className="record-grid">
             <thead>
               <tr>
@@ -3063,7 +3155,10 @@ function DataEditor({
               </tr>
             </thead>
             <tbody>
-              {gridRows.map((gridRow, gridRowIndex) => (
+              {visibleStart > 0 && <tr className="grid-spacer" aria-hidden="true"><td colSpan={editor.snapshot.columns.length + 2} style={{ height: visibleStart * GRID_ROW_HEIGHT }} /></tr>}
+              {gridRows.slice(visibleStart, visibleEnd).map((gridRow, visibleRowIndex) => {
+                const gridRowIndex = visibleStart + visibleRowIndex;
+                return (
                 <tr
                   key={gridRow.kind === "existing" ? `record-${gridRow.recordIndex}` : gridRow.draft.draftId}
                   className={gridRow.kind === "existing" && gridRow.pendingDelete ? "pending-delete" : ""}
@@ -3233,9 +3328,21 @@ function DataEditor({
                     })()}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
+              {visibleEnd < gridRows.length && <tr className="grid-spacer" aria-hidden="true"><td colSpan={editor.snapshot.columns.length + 2} style={{ height: (gridRows.length - visibleEnd) * GRID_ROW_HEIGHT }} /></tr>}
             </tbody>
           </table>
+          <div className="grid-footer">
+            <Button
+              htmlType="button"
+              aria-label="Add Row"
+              onClick={onAddRow}
+              disabled={mutationBlocked || !capability.supported || editor.saving}
+            >
+              ＋ Add Row
+            </Button>
+          </div>
           {gridRows.length === 0 && <div className="empty-grid">This data file has no records.</div>}
         </div>
       )}

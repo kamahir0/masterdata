@@ -123,6 +123,62 @@ fn initializer_preserves_ulong_and_rejects_unsupported_yaml_syntax() {
 }
 
 #[test]
+fn direct_add_field_uses_shared_default_and_allocates_a_safe_name() {
+    let dir = project();
+    let mut session = TableAuthoringSession::default();
+    let plan = session
+        .plan(
+            dir.path(),
+            input(json!({"operation":"add_direct","table":"item","typeName":"int"})),
+        )
+        .unwrap();
+    assert_eq!(plan.operation, "AddField");
+    assert!(
+        plan.files
+            .iter()
+            .any(|file| file.after.contains("name: field1"))
+    );
+    assert!(
+        plan.files
+            .iter()
+            .any(|file| file.after.contains("field1: 0"))
+    );
+    assert_eq!(
+        session.apply(dir.path(), &plan.token, false).unwrap().state,
+        "success"
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/schema.yaml"))
+            .unwrap()
+            .contains("name: field1")
+    );
+}
+
+#[test]
+fn change_type_is_exposed_through_the_shared_table_authoring_session() {
+    let dir = project();
+    let mut session = TableAuthoringSession::default();
+    let plan = session
+        .plan(
+            dir.path(),
+            input(json!({"operation":"change_type","table":"item","field":"id","newType":"long"})),
+        )
+        .unwrap();
+    assert_eq!(plan.operation, "ChangeFieldType");
+    assert_eq!(plan.files.len(), 1);
+    assert!(plan.files[0].after.contains("name: id\n    type: long"));
+    assert_eq!(
+        session.apply(dir.path(), &plan.token, false).unwrap().state,
+        "success"
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/data.yaml"))
+            .unwrap()
+            .contains("id: 1")
+    );
+}
+
+#[test]
 fn rolled_back_rename_keeps_old_bytes_and_new_plan_invalidates_previous_token() {
     let dir = project();
     let mut session = TableAuthoringSession::default();

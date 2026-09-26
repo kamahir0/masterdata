@@ -34,6 +34,13 @@ pub struct RenameFieldCommand {
     pub field: String,
     pub new_name: String,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChangeFieldTypeCommand {
+    pub table: String,
+    pub field: String,
+    pub new_type: String,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct DropFieldCommand {
     pub table: String,
@@ -63,6 +70,7 @@ pub struct RemoveReferenceCommand {
 pub enum MigrationCommand {
     AddField(AddFieldCommand),
     RenameField(RenameFieldCommand),
+    ChangeFieldType(ChangeFieldTypeCommand),
     DropField(DropFieldCommand),
     AddReference(AddReferenceCommand),
     EditReference(EditReferenceCommand),
@@ -73,6 +81,7 @@ pub enum MigrationCommand {
 pub enum MigrationOperation {
     AddField,
     RenameField,
+    ChangeFieldType,
     DropField,
     AddReference,
     EditReference,
@@ -160,6 +169,7 @@ fn prepare_migration(
             &command.field,
             Some(&command.new_name),
         ),
+        MigrationCommand::ChangeFieldType(command) => prepare_change_field_type(documents, command),
         MigrationCommand::DropField(command) => {
             field_mutation::prepare(documents, &command.table, &command.field, None)
         }
@@ -322,10 +332,238 @@ fn prepare_add_field(
     })
 }
 
+fn prepare_change_field_type(
+    documents: &ProjectDocuments,
+    command: &ChangeFieldTypeCommand,
+) -> Result<MigrationDryRun> {
+    let original = find_target_schema(documents, &command.table)
+        .and_then(|schema| {
+            schema
+                .document
+                .fields
+                .iter()
+                .find(|field| field.name == command.field)
+        })
+        .cloned()
+        .ok_or_else(|| {
+            migration_error(
+                "E-MIGRATION-FIELD-NOT-FOUND",
+                format!(
+                    "ChangeFieldType target `{}`.{} does not exist",
+                    command.table, command.field
+                ),
+                schema_path(documents, &command.table),
+                "MIGRATION-018",
+            )
+        })?;
+
+    let target_field = FieldDefinition {
+        key: original.key,
+        name: original.name.clone(),
+        type_name: command.new_type.clone(),
+        nullable: original.nullable,
+        array: original.array,
+    };
+    let (closure, type_system) =
+        resolve_change_type_snapshot(documents, &command.table, &target_field).map_err(
+            |error| {
+                migration_error_from_diagnostic(error.diagnostic().clone(), None, "MIGRATION-018")
+            },
+        )?;
+    let target_resolved = resolved_migration_field(&type_system, &target_field)?;
+    validate_change_field_values(&closure, &type_system, &command.table, &target_resolved)?;
+
+    // Validate key and Reference capabilities against the candidate schema,
+    // without changing any dependent declaration.  resolve_tables is the
+    // shared owner for those constraints; a local capability table here would
+    // drift from normal Table validation.
+    let mut expected = documents.clone();
+    let schema_loaded = expected
+        .files
+        .iter_mut()
+        .find(|loaded| {
+            matches!(&loaded.document, SourceDocument::Schema(schema) if schema.table == command.table)
+        })
+        .expect("target schema was resolved before ChangeFieldType");
+    let SourceDocument::Schema(schema) = &mut schema_loaded.document else {
+        unreachable!("target schema lookup returned a non-schema document")
+    };
+    let field_index = schema
+        .fields
+        .iter()
+        .position(|field| field.name == command.field)
+        .expect("resolved target field");
+    schema.fields[field_index] = target_field.clone();
+
+    let (candidate_closure, candidate_types) =
+        resolve_change_type_snapshot(&expected, &command.table, &target_field).map_err(
+            |error| {
+                migration_error_from_diagnostic(error.diagnostic().clone(), None, "MIGRATION-018")
+            },
+        )?;
+    let candidate_resolved = resolved_migration_field(&candidate_types, &target_field)?;
+    validate_change_field_values(
+        &candidate_closure,
+        &candidate_types,
+        &command.table,
+        &candidate_resolved,
+    )?;
+
+    let original_schema = find_target_schema(documents, &command.table)
+        .expect("target schema was resolved before ChangeFieldType");
+    let patches = plan_field_type_patch(
+        &documents
+            .files
+            .iter()
+            .find(|loaded| loaded.path == original_schema.path)
+            .expect("target schema source")
+            .source,
+        original_schema.document,
+        &command.field,
+        &command.new_type,
+    )?;
+    let file_plans = vec![MigrationFilePlan {
+        path: original_schema.path.to_path_buf(),
+        patches,
+    }];
+    let transformed_documents = apply_file_plans(documents, &file_plans)?;
+    let (post_closure, post_types) =
+        resolve_change_type_snapshot(&transformed_documents, &command.table, &target_field)
+            .map_err(|error| {
+                migration_error_from_diagnostic(error.diagnostic().clone(), None, "MIGRATION-015")
+            })?;
+    let post_resolved = resolved_migration_field(&post_types, &target_field)?;
+    validate_change_field_values(&post_closure, &post_types, &command.table, &post_resolved)?;
+    if semantic_documents(&transformed_documents) != semantic_documents(&expected) {
+        return Err(migration_error(
+            "E-MIGRATION-CHANGE-TYPE-POSTCONDITION",
+            "patched source does not match the expected ChangeFieldType semantic result",
+            schema_path(&transformed_documents, &command.table),
+            "MIGRATION-015",
+        ));
+    }
+
+    Ok(MigrationDryRun {
+        plan: MigrationPlan {
+            operation: MigrationOperation::ChangeFieldType,
+            target_table: command.table.clone(),
+            field: target_field,
+            reference: None,
+            initializer: None,
+            source_inputs: closure
+                .files
+                .iter()
+                .map(|file| file.path.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+            destructive: false,
+            affected_files: file_plans,
+            affected_record_count: target_record_count(documents, &command.table),
+            validation: MigrationValidation {
+                valid: true,
+                diagnostics: Vec::new(),
+            },
+        },
+        transformed_documents,
+    })
+}
+
+fn resolved_migration_field(
+    type_system: &TypeSystem,
+    field: &FieldDefinition,
+) -> Result<ResolvedField> {
+    let base_type = type_system
+        .resolve_reference(&field.type_name)
+        .ok_or_else(|| {
+            migration_error(
+                "E-MIGRATION-UNKNOWN-FIELD-TYPE",
+                format!("unknown target type `{}`", field.type_name),
+                None,
+                "MIGRATION-018",
+            )
+        })?;
+    Ok(ResolvedField {
+        key: field.key,
+        name: field.name.clone(),
+        base_type,
+        modifier: field_modifier(field),
+    })
+}
+
+/// Resolve the shared default initializer for a newly authored field using the
+/// same target-table/type closure that AddField migration validation uses.
+/// Keeping this lookup here prevents the application adapter from turning an
+/// unrelated malformed type declaration into a direct-add blocker.
+pub fn default_field_value_for_table(
+    documents: &ProjectDocuments,
+    table: &str,
+    field: &FieldDefinition,
+) -> Result<Value> {
+    let (_closure, type_system) = resolve_target_snapshot(documents, table, field)?;
+    let resolved = resolved_migration_field(&type_system, field)?;
+    type_system.default_field_value(&resolved).map_err(|error| {
+        migration_error_from_diagnostic(error.diagnostic().clone(), None, "MIGRATION-006")
+    })
+}
+
+fn validate_change_field_values(
+    documents: &ProjectDocuments,
+    type_system: &TypeSystem,
+    table: &str,
+    field: &ResolvedField,
+) -> Result<()> {
+    for (path, record_table, records) in documents.record_sources() {
+        if record_table != table {
+            continue;
+        }
+        for (record_index, record) in records.iter().enumerate() {
+            let value = record.get(&field.name).ok_or_else(|| {
+                migration_error(
+                    "E-MIGRATION-TYPE-VALUE-MISSING",
+                    format!(
+                        "record[{record_index}] is missing field `{}` for ChangeFieldType",
+                        field.name
+                    ),
+                    Some(path.clone()),
+                    "MIGRATION-018",
+                )
+            })?;
+            type_system
+                .validate_field_value(field, value)
+                .map_err(|error| {
+                    migration_error_from_diagnostic(
+                        error.diagnostic().clone(),
+                        Some(path.clone()),
+                        "MIGRATION-018",
+                    )
+                })?;
+        }
+    }
+    Ok(())
+}
+
 fn resolve_target_snapshot(
     documents: &ProjectDocuments,
     table_name: &str,
     new_field: &FieldDefinition,
+) -> Result<(ProjectDocuments, TypeSystem)> {
+    resolve_target_snapshot_with_inbound(documents, table_name, new_field, false)
+}
+
+fn resolve_change_type_snapshot(
+    documents: &ProjectDocuments,
+    table_name: &str,
+    new_field: &FieldDefinition,
+) -> Result<(ProjectDocuments, TypeSystem)> {
+    resolve_target_snapshot_with_inbound(documents, table_name, new_field, true)
+}
+
+fn resolve_target_snapshot_with_inbound(
+    documents: &ProjectDocuments,
+    table_name: &str,
+    new_field: &FieldDefinition,
+    include_inbound_references: bool,
 ) -> Result<(ProjectDocuments, TypeSystem)> {
     let schema = find_target_schema(documents, table_name).ok_or_else(|| {
         migration_error(
@@ -352,7 +590,8 @@ fn resolve_target_snapshot(
         ));
     }
 
-    let closure_documents = build_resolution_closure(documents, table_name, new_field);
+    let closure_documents =
+        build_resolution_closure(documents, table_name, new_field, include_inbound_references);
     let type_build = build_type_system(&closure_documents);
     let Some(type_system) = type_build.model else {
         return Err(first_diagnostic_error(
@@ -510,6 +749,7 @@ fn build_resolution_closure(
     documents: &ProjectDocuments,
     table_name: &str,
     new_field: &FieldDefinition,
+    include_inbound_references: bool,
 ) -> ProjectDocuments {
     // WHY: Migration Resolvable is scoped to the target Table and its semantic
     // dependencies. Reference target Tables are part of that schema closure:
@@ -529,6 +769,14 @@ fn build_resolution_closure(
                 for reference in &schema.references {
                     tables.insert(reference.target.table.clone());
                 }
+            }
+            if include_inbound_references
+                && schema
+                    .references
+                    .iter()
+                    .any(|reference| tables.contains(&reference.target.table))
+            {
+                tables.insert(schema.table.clone());
             }
         }
         if tables.len() == before {
@@ -774,6 +1022,122 @@ fn plan_schema_patch(
         start: position,
         end: position,
         replacement,
+    }])
+}
+
+fn plan_field_type_patch(
+    source: &str,
+    schema: &SchemaDocument,
+    field_name: &str,
+    new_type: &str,
+) -> Result<Vec<MigrationPatch>> {
+    let lines = source_lines(source);
+    let Some(fields_line) = find_top_level_key(&lines, "fields") else {
+        return Err(migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            "schema `fields` source shape could not be located safely",
+            None,
+            "MIGRATION-014",
+        ));
+    };
+    let region_end = block_region_end(&lines, fields_line);
+    let entry = mapping_entry(lines[fields_line].text).expect("top-level fields key");
+    if is_empty_flow_sequence(entry.raw_value) {
+        return Err(migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            "schema `fields` source has no field declaration to patch",
+            None,
+            "MIGRATION-014",
+        ));
+    }
+    let sequence = find_block_sequence(&lines, fields_line, region_end).ok_or_else(|| {
+        migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            "schema `fields` source shape could not be located safely",
+            None,
+            "MIGRATION-014",
+        )
+    })?;
+    if sequence.items.len() != schema.fields.len() {
+        return Err(migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            format!(
+                "schema `fields` source has {} sequence item(s), but semantic parsing found {}",
+                sequence.items.len(),
+                schema.fields.len()
+            ),
+            None,
+            "MIGRATION-015",
+        ));
+    }
+    let field_index = schema
+        .fields
+        .iter()
+        .position(|field| field.name == field_name)
+        .ok_or_else(|| {
+            migration_error(
+                "E-MIGRATION-FIELD-NOT-FOUND",
+                format!("field `{field_name}` does not exist"),
+                None,
+                "MIGRATION-018",
+            )
+        })?;
+    let item_start = sequence.items[field_index];
+    let item_end = sequence
+        .items
+        .get(field_index + 1)
+        .copied()
+        .unwrap_or(region_end);
+    let type_line = (item_start..item_end).find(|index| {
+        !is_ignorable_line(lines[*index].text)
+            && mapping_entry(lines[*index].text).is_some_and(|entry| entry.key == "type")
+    });
+    let type_line = type_line.ok_or_else(|| {
+        migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            "target field type source span could not be located safely",
+            None,
+            "MIGRATION-014",
+        )
+    })?;
+    let line = lines[type_line];
+    let code_end = comment_start(line.text).unwrap_or(line.text.len());
+    let code = &line.text[..code_end];
+    let colon = mapping_colon(code).ok_or_else(|| {
+        migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            "target field type mapping is malformed",
+            None,
+            "MIGRATION-014",
+        )
+    })?;
+    let value_start = colon + 1 + code[colon + 1..].len() - code[colon + 1..].trim_start().len();
+    let value_end = code.trim_end().len();
+    if value_start > value_end || code[value_start..value_end].trim().is_empty() {
+        return Err(migration_error(
+            "E-MIGRATION-SOURCE-UNCLASSIFIABLE",
+            "target field type mapping has no source value",
+            None,
+            "MIGRATION-014",
+        ));
+    }
+    let replacement = format!(
+        "{}{}{}",
+        &line.text[..value_start],
+        new_type,
+        &line.text[value_end..]
+    );
+    Ok(vec![MigrationPatch {
+        start: line.start,
+        end: line.next_start,
+        replacement: if line.next_start > line.content_end {
+            format!(
+                "{replacement}{}",
+                &source[line.content_end..line.next_start]
+            )
+        } else {
+            replacement
+        },
     }])
 }
 

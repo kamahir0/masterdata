@@ -10,19 +10,27 @@ type Field = { key:number; name:string; type:string; nullable:boolean; array:boo
 type Reference = { name:string; csharpName?:string|null; effectiveCsharpName?:string; sourceFields:string[]; targetTable:string; targetFields:string[]; targetKeyKind?:"primary"|"secondary"; cardinality?:"single"|"many"; optionality?:"required"|"nullable" };
 type Snapshot = { path:string; schema:{ table:string; fields:Field[]; primaryKey:{fields:string[]}; secondaryKeys:{fields:string[];nonUnique:boolean}[]; references?:Reference[] }; fieldTypes:string[]; initializerShapes:Record<string,ResolvedAuthoringType>; references?:Reference[]; referenceDiagnostics?:{code:string;message:string;source?:string;schemaPath?:string;valuePath?:string;recordIdentity?:string}[] };
 type Plan = { token:string; table:string; operation:string; field:string; destructive:boolean; affectedRecordCount:number; files:{path:string;before:string;after:string}[]; diagnostics:{code:string;message:string}[] };
+type ReferenceDraft = { operation:"add_reference"|"edit_reference"|"remove_reference"; selectedName:string; name:string; csharpName:string; sourceFields:string; targetTable:string; targetFields:string };
 export type MigrationResult = { state:string; files:string[]; fileStates?:{path:string;state:string}[]; diagnostic?:{code:string;message:string}|null; recoveryWorkspace?:string|null };
 const message = (error:unknown):string => {
   if (!error || typeof error !== "object" || !("diagnostic" in error)) return String(error);
   const diagnostic = (error as {diagnostic:{code:string;message:string;source?:string;schemaPath?:string;schema_path?:string}}).diagnostic;
   return [diagnostic.source, diagnostic.schemaPath ?? diagnostic.schema_path, `${diagnostic.code}: ${diagnostic.message}`].filter(Boolean).join(" · ");
 };
-export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false}: {
-  projectPath:string; path:string; canWrite:boolean; dirtyPaths:string[];
+export type TableEditorProps = { projectPath:string; path:string; canWrite:boolean; dirtyPaths:string[];
   beginApply:(paths:string[])=>boolean; onResult:(result:MigrationResult)=>Promise<void>; endApply:()=>void;
   onOverview?:()=>void;
   onCreateData?:()=>void;
   embedded?:boolean;
-}) {
+  direct?: boolean;
+};
+
+export default function TableEditor(props: TableEditorProps) {
+  if (props.direct) return <SpreadsheetTableEditor {...props} />;
+  return <LegacyTableEditor {...props} />;
+}
+
+function LegacyTableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false}: TableEditorProps) {
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [selected,setSelected]=useState("");
   const [operation,setOperation]=useState<"add"|"rename"|"drop"|null>(null);
@@ -90,6 +98,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
         {(snapshot.references ?? snapshot.schema.references ?? []).map(reference=><div key={reference.name} className="table-reference">
           <strong>{reference.name}</strong>
           <span> · {reference.sourceFields.join(" → ")} → {reference.targetTable}.{reference.targetFields.join(" → ")}</span>
+          <Tag>{reference.csharpName ? `exact: ${reference.csharpName}` : "implicit helper"}</Tag>
           <Tag>{reference.targetKeyKind ?? "unresolved target"}</Tag>
           <Tag>{reference.cardinality ?? "unresolved cardinality"}</Tag>
           <Tag>{reference.optionality ?? "unresolved optionality"}</Tag>
@@ -148,5 +157,281 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
       </Modal>
       {result&&!operation&&!referenceOperation&&<Alert role="status" type={result.state==="success"?"success":"warning"} title={result.state==="not_started"&&result.diagnostic?.message.includes("stale")?"Stale Plan — re-plan required":result.state} description={result.diagnostic?.message}/>}
     </>}
+  </section>;
+}
+
+function SpreadsheetTableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false}: TableEditorProps) {
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [draftNames, setDraftNames] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<MigrationResult | null>(null);
+  const [lastPlan, setLastPlan] = useState<Plan | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [referenceDraft, setReferenceDraft] = useState<ReferenceDraft | null>(null);
+  const mounted = useRef(true);
+  const lastNameCommit = useRef<string | null>(null);
+  const skipNameBlur = useRef<string | null>(null);
+  const lastInput = useRef<Record<string, unknown> | null>(null);
+
+  const load = async () => {
+    const next = await invoke<Snapshot>("open_table", { projectPath, relativePath: path });
+    if (!mounted.current) return;
+    setSnapshot(next);
+    setDraftNames(Object.fromEntries(next.schema.fields.map((field) => [field.name, field.name])));
+  };
+
+  useEffect(() => {
+    mounted.current = true;
+    void load().catch((next) => { if (mounted.current) setError(message(next)); });
+    return () => { mounted.current = false; };
+  }, [projectPath, path]);
+
+  const execute = async (input: Record<string, unknown>, destructive = false) => {
+    if (!snapshot || busy || !canWrite) return false;
+    lastInput.current = input;
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    setLastPlan(null);
+    let applyStarted = false;
+    try {
+      const plan = await invoke<Plan>("plan_table_migration", { projectPath, input });
+      if (mounted.current) setLastPlan(plan);
+      const affected = plan.files.map((file) => file.path);
+      const blocked = migrationBlockedFiles(plan.files, dirtyPaths);
+      if (blocked.length > 0) {
+        setError(`Affected files have unsaved changes: ${blocked.map((file) => file.path).join(", ")}`);
+        return false;
+      }
+      if (!beginApply(affected)) {
+        setError("Affected files have unsaved changes or a Save in progress. Resolve them before editing the schema.");
+        return false;
+      }
+      applyStarted = true;
+      let outcome: MigrationResult;
+      try {
+        outcome = await invoke<MigrationResult>("apply_table_migration", {
+          projectPath,
+          token: plan.token,
+          allowDestructive: migrationDestructiveAuthorization(destructive || plan.destructive, destructive || plan.destructive),
+        });
+      } catch (next) {
+        if (next && typeof next === "object" && "diagnostic" in next) throw next;
+        outcome = {
+          state: "recovery_required",
+          files: affected,
+          diagnostic: { code: "E-MIGRATION-TRANSPORT", message: message(next) },
+        };
+      }
+      if (mounted.current) setResult(outcome);
+      await onResult(outcome);
+      if (outcome.state === "success") {
+        await load();
+        if (mounted.current) {
+          setDropTarget(null);
+          setLastPlan(null);
+          lastInput.current = null;
+        }
+      }
+      return outcome.state === "success";
+    } catch (next) {
+      if (mounted.current) setError(message(next));
+      return false;
+    } finally {
+      if (applyStarted) endApply();
+      if (mounted.current) setBusy(false);
+    }
+  };
+
+  const retry = () => {
+    if (lastInput.current) void execute(lastInput.current);
+  };
+
+  const commitRename = (field: Field, value: string) => {
+    const newName = value.trim();
+    if (!newName || newName === field.name) return;
+    const marker = `${field.name}\u0000${newName}`;
+    if (lastNameCommit.current === marker) return;
+    lastNameCommit.current = marker;
+    void execute({ operation: "rename", table: snapshot?.schema.table, field: field.name, newName }).then((success) => {
+      if (!success) lastNameCommit.current = null;
+    });
+  };
+
+  const changeType = (field: Field, newType: string) => {
+    if (newType === field.type) return;
+    void execute({ operation: "change_type", table: snapshot?.schema.table, field: field.name, newType });
+  };
+
+  const addField = () => {
+    const typeName = snapshot?.fieldTypes.find((candidate) => candidate === "int") ?? snapshot?.fieldTypes[0];
+    if (!typeName) return;
+    void execute({ operation: "add_direct", table: snapshot?.schema.table, typeName });
+  };
+
+  const confirmDrop = () => {
+    if (!dropTarget) return;
+    const field = dropTarget;
+    setDropTarget(null);
+    void execute({ operation: "drop", table: snapshot?.schema.table, field }, true);
+  };
+
+  const startReference = (operation: ReferenceDraft["operation"], reference?: Reference) => {
+    setResult(null);
+    setError(null);
+    setReferenceDraft({
+      operation,
+      selectedName: reference?.name ?? "",
+      name: reference?.name ?? "",
+      csharpName: reference?.csharpName ?? "",
+      sourceFields: reference?.sourceFields.join(", ") ?? "",
+      targetTable: reference?.targetTable ?? "",
+      targetFields: reference?.targetFields.join(", ") ?? "",
+    });
+  };
+
+  const submitReference = async () => {
+    if (!snapshot || !referenceDraft) return;
+    const fields = referenceDraft.sourceFields.split(",").map((value) => value.trim()).filter(Boolean);
+    const targetFields = referenceDraft.targetFields.split(",").map((value) => value.trim()).filter(Boolean);
+    const input = referenceDraft.operation === "remove_reference"
+      ? { operation: "remove_reference", table: snapshot.schema.table, name: referenceDraft.selectedName }
+      : {
+        operation: referenceDraft.operation,
+        table: snapshot.schema.table,
+        ...(referenceDraft.operation === "edit_reference" ? { name: referenceDraft.selectedName } : {}),
+        reference: {
+          name: referenceDraft.name,
+          csharpName: referenceDraft.csharpName || null,
+          fields,
+          target: { table: referenceDraft.targetTable, fields: targetFields },
+        },
+      };
+    const success = await execute(input, referenceDraft.operation === "remove_reference");
+    if (success && mounted.current) setReferenceDraft(null);
+  };
+
+  return <section className="table-editor table-editor-direct" aria-label="Table Editor">
+    {error && <Alert role="alert" type="error" title={error} action={lastInput.current ? <Button size="small" onClick={retry} disabled={!canWrite || busy}>Retry</Button> : undefined} />}
+    {result && result.state !== "success" && <Alert role="status" type="warning" title={result.state} description={result.diagnostic?.message} />}
+    {!snapshot && !error && <Spin tip="Loading Table"><div style={{ minHeight: 72 }} /></Spin>}
+    {snapshot && <>
+      <div className="table-context-line"><strong>{snapshot.schema.table}</strong><span>{snapshot.path}</span></div>
+      <div className="direct-schema-toolbar">
+        <h3>Fields <span>{snapshot.schema.fields.length}</span></h3>
+        <Space>
+          {!embedded && onOverview && <Button onClick={onOverview}>Table Overview</Button>}
+          {!embedded && onCreateData && <Button onClick={onCreateData}>New data file</Button>}
+          {lastPlan && <Button onClick={() => setDetailsOpen(true)} disabled={busy}>Details</Button>}
+          <Button aria-label="Add Field" disabled={!canWrite || busy} onClick={addField}>＋ Add Field</Button>
+        </Space>
+      </div>
+      <div className="direct-schema-scroll">
+        <table className="direct-schema-grid">
+          <thead><tr><th>Key</th><th>Field name</th><th>Type</th><th>Modifier</th><th aria-label="Field actions" /><th><Button type="text" size="small" aria-label="Add Field at end of columns" disabled={!canWrite || busy} onClick={addField}>＋</Button></th></tr></thead>
+          <tbody>
+            {snapshot.schema.fields.map((field) => <tr key={field.name}>
+              <td>
+                <span>{field.key}</span>
+                {snapshot.schema.primaryKey?.fields.includes(field.name) && <Tag>Primary</Tag>}
+                {snapshot.schema.secondaryKeys?.map((key, index) => key.fields.includes(field.name) ? <Tag key={index}>Secondary {index + 1}{key.nonUnique ? " · non-unique" : ""}</Tag> : null)}
+              </td>
+              <td>
+                <input
+                  aria-label={`Field name ${field.name}`}
+                  value={draftNames[field.name] ?? field.name}
+                  disabled={!canWrite || busy}
+                  onChange={(event) => setDraftNames((current) => ({ ...current, [field.name]: event.target.value }))}
+                  onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                      if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitRename(field, event.currentTarget.value);
+                      event.currentTarget.blur();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      skipNameBlur.current = field.name;
+                      setDraftNames((current) => ({ ...current, [field.name]: field.name }));
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (skipNameBlur.current === field.name) {
+                      skipNameBlur.current = null;
+                      return;
+                    }
+                    commitRename(field, event.currentTarget.value);
+                  }}
+                />
+              </td>
+              <td>
+                <select aria-label={`Field type ${field.name}`} value={field.type} disabled={!canWrite || busy} onChange={(event) => changeType(field, event.target.value)}>
+                  {snapshot.fieldTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </td>
+              <td>{field.array ? "Array" : field.nullable ? "Nullable" : "Required"}</td>
+              <td>
+                <Dropdown menu={{ items: [
+                  { key: "rename", label: "Rename Field", onClick: () => document.querySelector<HTMLInputElement>(`[aria-label="Field name ${CSS.escape(field.name)}"]`)?.focus() },
+                  { key: "drop", label: "Drop Field", danger: true, onClick: () => setDropTarget(field.name) },
+                ] }} trigger={["click"]}>
+                  <Button type="text" size="small" aria-label={`Actions for field ${field.name}`} icon={<MoreHorizontal size={16} />} />
+                </Dropdown>
+                <Button type="text" danger aria-label={`Drop Field ${field.name}`} disabled={!canWrite || busy} onClick={() => setDropTarget(field.name)}>Drop</Button>
+              </td>
+              <td />
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+      <p className="direct-schema-hint">Name and type changes are applied through the shared migration safety checks. Keys and modifiers remain unchanged.</p>
+      <section aria-label="References" className="table-references direct-schema-references">
+        <h3>References</h3>
+        {(snapshot.references ?? snapshot.schema.references ?? []).map((reference) => <div key={reference.name} className="table-reference">
+          <strong>{reference.name}</strong>
+          <span> · {reference.sourceFields.join(" → ")} → {reference.targetTable}.{reference.targetFields.join(" → ")}</span>
+          <Tag>{reference.csharpName ? `exact: ${reference.csharpName}` : "implicit helper"}</Tag>
+          <Tag>{reference.targetKeyKind ?? "unresolved target"}</Tag>
+          <Tag>{reference.cardinality ?? "unresolved cardinality"}</Tag>
+          <Tag>{reference.optionality ?? "unresolved optionality"}</Tag>
+          <Tag>{reference.effectiveCsharpName ?? "unresolved helper name"}</Tag>
+        </div>)}
+        {(snapshot.referenceDiagnostics ?? []).map((diagnostic, index) => <Alert key={`${diagnostic.code}-${index}`} type="error" title={`${diagnostic.code}: ${diagnostic.message}`} />)}
+        {(snapshot.references ?? snapshot.schema.references ?? []).length === 0 && <p>No References declared.</p>}
+        {(snapshot.references ?? snapshot.schema.references ?? []).map((reference) => <div key={`actions-${reference.name}`} className="table-reference-actions">
+          <Button size="small" disabled={!canWrite || busy} onClick={() => startReference("edit_reference", reference)}>Edit Reference</Button>
+          <Button size="small" danger disabled={!canWrite || busy} onClick={() => startReference("remove_reference", reference)}>Remove Reference</Button>
+        </div>)}
+        <Button size="small" disabled={!canWrite || busy} onClick={() => startReference("add_reference")}>Add Reference</Button>
+      </section>
+    </>}
+    {dropTarget && <div className="direct-schema-confirm" role="alertdialog" aria-label="Confirm Drop Field">
+      <strong>Drop {snapshot?.schema.table}.{dropTarget}?</strong>
+      <span>This removes the field from the schema and record values after review by the backend migration planner.</span>
+      <Space><Button danger onClick={confirmDrop} disabled={busy}>Drop Field</Button><Button onClick={() => setDropTarget(null)} disabled={busy}>Cancel</Button></Space>
+    </div>}
+    {result && result.state !== "success" && <Alert role="status" type="warning" title={result.state} description={result.diagnostic?.message} action={<Button size="small" onClick={retry} disabled={!canWrite || busy || !lastInput.current}>Re-plan</Button>} />}
+    <Modal open={detailsOpen} title="Migration Details" onCancel={() => setDetailsOpen(false)} footer={<Button onClick={() => setDetailsOpen(false)}>Close</Button>}>
+      {lastPlan && <section aria-label="Migration Plan">
+        <h3>{lastPlan.operation}: {lastPlan.table}.{lastPlan.field}</h3>
+        <p>{lastPlan.files.length} affected files · {lastPlan.affectedRecordCount} affected records · {lastPlan.destructive ? "Destructive" : "Non-destructive"}</p>
+        {lastPlan.files.map((file) => <div className="migration-diff" key={file.path}><strong>{file.path}</strong><section><h4>Before</h4><pre>{file.before}</pre></section><section><h4>After</h4><pre>{file.after}</pre></section></div>)}
+      </section>}
+    </Modal>
+    <Modal open={referenceDraft !== null} title={referenceDraft?.operation === "add_reference" ? "Add Reference" : referenceDraft?.operation === "edit_reference" ? "Edit Reference" : "Remove Reference"} onCancel={() => setReferenceDraft(null)} footer={null} destroyOnHidden>
+      {referenceDraft?.operation === "remove_reference" ? <Alert type="warning" title={`Remove Reference ${referenceDraft.selectedName}?`} description="The shared migration planner will remove the declaration without rewriting unrelated source." /> : referenceDraft && <Space direction="vertical" style={{ width: "100%" }}>
+        <label>Reference name<Input aria-label="Reference name" value={referenceDraft.name} onChange={(event) => setReferenceDraft({ ...referenceDraft, name: event.target.value })} /></label>
+        <label>C# helper name (optional)<Input aria-label="C# helper name" value={referenceDraft.csharpName} onChange={(event) => setReferenceDraft({ ...referenceDraft, csharpName: event.target.value })} /></label>
+        <label>Source fields<Input aria-label="Reference source fields" value={referenceDraft.sourceFields} onChange={(event) => setReferenceDraft({ ...referenceDraft, sourceFields: event.target.value })} /></label>
+        <label>Target table<Input aria-label="Reference target table" value={referenceDraft.targetTable} onChange={(event) => setReferenceDraft({ ...referenceDraft, targetTable: event.target.value })} /></label>
+        <label>Target fields<Input aria-label="Reference target fields" value={referenceDraft.targetFields} onChange={(event) => setReferenceDraft({ ...referenceDraft, targetFields: event.target.value })} /></label>
+      </Space>}
+      <Space style={{ marginTop: 16 }}>
+        <Button danger={referenceDraft?.operation === "remove_reference"} onClick={() => void submitReference()} disabled={!canWrite || busy}>{referenceDraft?.operation === "remove_reference" ? "Remove Reference" : "Apply Reference"}</Button>
+        <Button onClick={() => setReferenceDraft(null)} disabled={busy}>Cancel</Button>
+      </Space>
+    </Modal>
   </section>;
 }

@@ -60,10 +60,10 @@ pub use document::{
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use migration::{
-    AddFieldCommand, AddReferenceCommand, DropFieldCommand, EditReferenceCommand, MigrationCommand,
-    MigrationDryRun, MigrationFilePlan, MigrationOperation, MigrationPatch, MigrationPlan,
-    MigrationValidation, RemoveReferenceCommand, RenameFieldCommand, dry_run_migration,
-    migration_table_schema, plan_migration,
+    AddFieldCommand, AddReferenceCommand, ChangeFieldTypeCommand, DropFieldCommand,
+    EditReferenceCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan, MigrationOperation,
+    MigrationPatch, MigrationPlan, MigrationValidation, RemoveReferenceCommand, RenameFieldCommand,
+    default_field_value_for_table, dry_run_migration, migration_table_schema, plan_migration,
 };
 pub use migration_commit::{
     MigrationCommitFailure, MigrationCommitFailureInjection, MigrationCommitFailurePoint,
@@ -83,8 +83,8 @@ pub use schema_authoring::{
     TableSnapshot, TypeMemberView, TypeSnapshot, table_snapshot, type_snapshot,
 };
 pub use source_creation::{
-    CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, creation_choices,
-    prepare_source_creation,
+    CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, StarterKind,
+    creation_choices, prepare_source_creation,
 };
 pub use source_edit::{
     AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceEditDryRun,

@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use masterdata_core::{
-    AddFieldCommand, FieldDefinition, MigrationCommand, ProjectDocuments, SourceDocument,
-    dry_run_migration, parse_yaml_document,
+    AddFieldCommand, ChangeFieldTypeCommand, FieldDefinition, MigrationCommand, ProjectDocuments,
+    SourceDocument, dry_run_migration, parse_yaml_document,
 };
 use serde_yaml::{Mapping, Value};
 
@@ -39,6 +39,107 @@ fn add_field(
 
 fn string(value: &str) -> Value {
     Value::String(value.to_owned())
+}
+
+#[test]
+fn change_field_type_patches_only_the_schema_type_and_preserves_record_bytes() {
+    let schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int # keep this comment\n  - key: 1\n    name: label\n    type: string\nprimaryKey:\n  fields: [id]\n";
+    let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    label: \"001\"\n";
+    let snapshot = documents(&[("schema.yaml", schema), ("data.yaml", data)]);
+    let result = dry_run_migration(
+        &snapshot,
+        &MigrationCommand::ChangeFieldType(ChangeFieldTypeCommand {
+            table: "item".into(),
+            field: "id".into(),
+            new_type: "long".into(),
+        }),
+    )
+    .expect("lossless ChangeFieldType");
+
+    assert_eq!(
+        result.plan.operation,
+        masterdata_core::MigrationOperation::ChangeFieldType
+    );
+    assert_eq!(result.plan.affected_files.len(), 1);
+    assert_eq!(
+        result.transformed_documents.files[0].source,
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: long # keep this comment\n  - key: 1\n    name: label\n    type: string\nprimaryKey:\n  fields: [id]\n"
+    );
+    assert_eq!(result.transformed_documents.files[1].source, data);
+}
+
+#[test]
+fn change_field_type_rejects_non_lossless_values_without_mutation() {
+    let snapshot = documents(&[
+        (
+            "schema.yaml",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: long\nprimaryKey:\n  fields: [id]\n",
+        ),
+        (
+            "data.yaml",
+            "kind: data\ntable: item\nrecords:\n  - id: 2147483648\n",
+        ),
+    ]);
+    let error = dry_run_migration(
+        &snapshot,
+        &MigrationCommand::ChangeFieldType(ChangeFieldTypeCommand {
+            table: "item".into(),
+            field: "id".into(),
+            new_type: "int".into(),
+        }),
+    )
+    .expect_err("out-of-range values must fail closed");
+    assert!(
+        error
+            .diagnostic
+            .related_requirements
+            .contains(&"MIGRATION-018".into())
+    );
+    assert_eq!(
+        snapshot.files[0].source,
+        "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: long\nprimaryKey:\n  fields: [id]\n"
+    );
+}
+
+#[test]
+fn change_field_type_revalidates_reference_key_compatibility() {
+    let snapshot = documents(&[
+        (
+            "category.yaml",
+            "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n",
+        ),
+        (
+            "category-data.yaml",
+            "kind: data\ntable: category\nrecords:\n  - id: \"1\"\n",
+        ),
+        (
+            "item.yaml",
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: categoryId\n    type: int\nprimaryKey:\n  fields: [id]\nreferences:\n  - name: category\n    fields: [categoryId]\n    target:\n      table: category\n      fields: [id]\n",
+        ),
+        (
+            "item-data.yaml",
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    categoryId: 1\n",
+        ),
+    ]);
+    let error = dry_run_migration(
+        &snapshot,
+        &MigrationCommand::ChangeFieldType(ChangeFieldTypeCommand {
+            table: "category".into(),
+            field: "id".into(),
+            new_type: "string".into(),
+        }),
+    )
+    .expect_err("reference key type incompatibility must fail closed");
+    assert!(
+        error
+            .diagnostic
+            .related_requirements
+            .contains(&"MIGRATION-018".to_owned())
+    );
+    assert_eq!(
+        snapshot.files[0].source,
+        "kind: schema\ntable: category\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n"
+    );
 }
 
 #[test]

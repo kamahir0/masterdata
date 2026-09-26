@@ -312,6 +312,60 @@ impl TypeSystem {
             })
     }
 
+    /// Construct the smallest canonical value that can initialize a field
+    /// through a shared authoring operation.  This is intentionally a Type
+    /// System operation: callers must not grow their own primitive, Enum,
+    /// Flags, or Custom Type default tables.
+    pub fn default_field_value(&self, field: &ResolvedField) -> Result<Value> {
+        match field.modifier {
+            FieldModifier::Nullable => Ok(Value::Null),
+            FieldModifier::Array => Ok(Value::Sequence(Vec::new())),
+            FieldModifier::Required => self.default_reference_value(&field.base_type),
+        }
+    }
+
+    fn default_reference_value(&self, reference: &TypeReference) -> Result<Value> {
+        match reference {
+            TypeReference::Primitive(primitive) => Ok(match primitive {
+                PrimitiveType::Bool => Value::Bool(false),
+                PrimitiveType::Int
+                | PrimitiveType::UInt
+                | PrimitiveType::Long
+                | PrimitiveType::ULong => Value::Number(serde_yaml::Number::from(0)),
+                PrimitiveType::Float | PrimitiveType::Double => {
+                    serde_yaml::from_str("0.0").expect("canonical zero float")
+                }
+                PrimitiveType::String => Value::String(String::new()),
+            }),
+            TypeReference::Named(name) => match self.types.get(name) {
+                Some(ResolvedType::ValueObject { underlying, .. }) => {
+                    self.default_reference_value(&TypeReference::Primitive(*underlying))
+                }
+                Some(ResolvedType::Enum { members, .. }) => members
+                    .first()
+                    .map(|member| Value::String(member.name.clone()))
+                    .ok_or_else(|| type_error("E-TYPE-DEFAULT-VALUE", "Enum has no members")),
+                Some(ResolvedType::Flags { .. }) => {
+                    Ok(Value::Sequence(vec![Value::String("None".to_owned())]))
+                }
+                Some(ResolvedType::Custom { fields, .. }) => {
+                    let mut mapping = serde_yaml::Mapping::new();
+                    for field in fields {
+                        mapping.insert(
+                            Value::String(field.name.clone()),
+                            self.default_field_value(field)?,
+                        );
+                    }
+                    Ok(Value::Mapping(mapping))
+                }
+                None => Err(type_error(
+                    "E-TYPE-UNKNOWN-REFERENCE",
+                    format!("unknown type `{name}`"),
+                )),
+            },
+        }
+    }
+
     pub fn authoring_field_shape(
         &self,
         name: &str,

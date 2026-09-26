@@ -8,6 +8,15 @@ use std::path::{Path, PathBuf};
 #[serde(tag = "category", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SourceCreation {
     Folder,
+    /// High-level intent used by the desktop Explorer.  The concrete
+    /// declaration is deliberately expanded here, rather than in a GUI
+    /// adapter, so starter defaults and identity validation remain shared
+    /// domain semantics.
+    Starter {
+        kind: StarterKind,
+        #[serde(default)]
+        table: Option<String>,
+    },
     Table {
         table: String,
         #[serde(rename = "inlineRecords", default)]
@@ -42,6 +51,17 @@ pub enum SourceCreation {
         name: String,
         fields: Vec<TypeFieldDefinition>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StarterKind {
+    Table,
+    Data,
+    ValueObject,
+    Enum,
+    Flags,
+    CustomType,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -124,6 +144,21 @@ pub fn prepare_source_creation(
                 "folder has no source document",
                 path,
             ));
+        }
+        SourceCreation::Starter { kind, table } => {
+            let stem = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    creation_error(
+                        "E-SOURCE-CREATE-IDENTITY",
+                        "starter filename must have a valid identity stem",
+                        path,
+                    )
+                })?;
+            let expanded = starter_request(kind, stem, table.as_deref(), path)?;
+            return prepare_source_creation(documents, path, &expanded);
         }
         SourceCreation::Table {
             table,
@@ -284,6 +319,120 @@ pub fn prepare_source_creation(
         document: loaded,
         resolution,
     })
+}
+
+fn starter_request(
+    kind: &StarterKind,
+    stem: &str,
+    table: Option<&str>,
+    path: &Path,
+) -> Result<SourceCreation> {
+    Ok(match kind {
+        StarterKind::Table => SourceCreation::Table {
+            table: starter_table_name(stem, path)?,
+            inline_records: true,
+            csharp_name: None,
+            fields: vec![FieldDefinition {
+                key: 0,
+                name: "id".to_owned(),
+                type_name: "int".to_owned(),
+                nullable: false,
+                array: false,
+            }],
+            primary_key: PrimaryKeyDefinition {
+                fields: vec!["id".to_owned()],
+            },
+            secondary_keys: Vec::new(),
+        },
+        StarterKind::Data => SourceCreation::Data {
+            table: table
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    creation_error(
+                        "E-SOURCE-CREATE-TABLE",
+                        "Data creation requires an explicit existing Table selection",
+                        path,
+                    )
+                })?
+                .to_owned(),
+        },
+        StarterKind::ValueObject => SourceCreation::ValueObject {
+            name: starter_type_name(stem, path)?,
+            underlying: "int".to_owned(),
+            conversions: ConversionDefinition::default(),
+        },
+        StarterKind::Enum => SourceCreation::Enum {
+            name: starter_type_name(stem, path)?,
+            underlying: "int".to_owned(),
+            members: vec![CreationMember {
+                name: "Default".to_owned(),
+                value: "0".to_owned(),
+            }],
+        },
+        StarterKind::Flags => SourceCreation::Flags {
+            name: starter_type_name(stem, path)?,
+            underlying: "int".to_owned(),
+            members: vec![CreationMember {
+                name: "None".to_owned(),
+                value: "0".to_owned(),
+            }],
+        },
+        StarterKind::CustomType => SourceCreation::CustomType {
+            name: starter_type_name(stem, path)?,
+            fields: vec![TypeFieldDefinition {
+                key: 0,
+                name: "value".to_owned(),
+                type_name: "int".to_owned(),
+                nullable: false,
+                array: false,
+            }],
+        },
+    })
+}
+
+fn starter_segments(stem: &str) -> Vec<String> {
+    stem.split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| segment.to_ascii_lowercase())
+        .collect()
+}
+
+fn starter_table_name(stem: &str, path: &Path) -> Result<String> {
+    let mut segments = starter_segments(stem);
+    if segments.is_empty() {
+        return Err(creation_error(
+            "E-SOURCE-CREATE-IDENTITY",
+            "starter filename must contain an ASCII identity segment",
+            path,
+        ));
+    }
+    if segments[0].as_bytes()[0].is_ascii_digit() {
+        segments[0].insert_str(0, "table");
+    }
+    Ok(segments.join("-"))
+}
+
+fn starter_type_name(stem: &str, path: &Path) -> Result<String> {
+    let segments = starter_segments(stem);
+    if segments.is_empty() {
+        return Err(creation_error(
+            "E-SOURCE-CREATE-IDENTITY",
+            "starter filename must contain an ASCII identity segment",
+            path,
+        ));
+    }
+    let mut result = String::new();
+    for (index, segment) in segments.iter().enumerate() {
+        if index == 0 && segment.as_bytes()[0].is_ascii_digit() {
+            result.push_str("Type");
+        }
+        let mut characters = segment.chars();
+        if let Some(first) = characters.next() {
+            result.push(first.to_ascii_uppercase());
+            result.extend(characters);
+        }
+    }
+    Ok(result)
 }
 
 fn creation_resolution(

@@ -174,26 +174,25 @@ async function execute(script, args = []) {
   return { ok: true, value: result.payload?.value };
 }
 
-async function selectAnt(label, option, timeoutMs = 20_000) {
-  await click(`//*[@aria-label=${xpathLiteral(label)}]`, timeoutMs);
+async function selectNative(label, option, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const selected = await execute(
-      `const wanted = arguments[0];
-       const item = [...document.querySelectorAll(".ant-select-item-option-content")]
-         .find((node) => node.textContent?.trim() === wanted);
-       if (!item) return false;
-       const target = item.closest(".ant-select-item-option") ?? item;
-       target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-       target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
-       target.click();
+      `const label = arguments[0];
+       const wanted = arguments[1];
+       const select = [...document.querySelectorAll("select")]
+         .find((node) => node.getAttribute("aria-label") === label);
+       if (!select || ![...select.options].some((candidate) => candidate.value === wanted)) return false;
+       select.value = wanted;
+       select.dispatchEvent(new Event("input", { bubbles: true }));
+       select.dispatchEvent(new Event("change", { bubbles: true }));
        return true;`,
-      [option],
+      [label, option],
     );
     if (selected.ok && selected.value === true) return;
     await sleep(200);
   }
-  throw new Error(`timed out selecting Ant option ${option} for ${label}`);
+  throw new Error(`timed out selecting native option ${option} for ${label}`);
 }
 
 async function waitText(text, timeoutMs = 20_000) {
@@ -299,22 +298,17 @@ try {
   record("project-created-through-gui");
 
   await click("//*[@aria-label='New source artifact']");
-  await waitElement("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]");
-  await fill("//*[@id='creation-filename']", "item-schema.yaml");
-  await fill("//*[@id='creation-name']", "item");
-  await fill("//*[@aria-label='C# name']", "ItemMaster");
-  await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
-  await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
+  await click("//*[@role='menuitem' and normalize-space(.)='Table']");
+  await fill("//*[@aria-label='Filename (.yaml / .yml)']", "item-schema.yaml");
+  await click("//*[@aria-label='Create']");
   await waitText("item-schema.yaml", 30_000);
   record("table-created-through-gui");
 
   await click("//*[@aria-label='New source artifact']");
-  await waitElement("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]");
-  await selectAnt("Artifact type", "Data");
-  await selectAnt("Existing Table", "item");
-  await fill("//*[@id='creation-filename']", "items.yaml");
-  await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
-  await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
+  await click("//*[@role='menuitem' and normalize-space(.)='Data']");
+  await selectNative("Existing Table", "item");
+  await fill("//*[@aria-label='Filename (.yaml / .yml)']", "items.yaml");
+  await click("//*[@aria-label='Create']");
   await waitElement("//*[@aria-label='Add Row']", 30_000);
   const dataFile = await waitUniqueYamlDocument(projectRoot, ["kind: data", "table: item"], 30_000);
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));

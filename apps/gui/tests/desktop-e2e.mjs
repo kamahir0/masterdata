@@ -155,6 +155,13 @@ async function click(xpath, timeoutMs = 20_000) {
 
 async function enterCellEdit(xpath, timeoutMs = 20_000) {
   const element = await waitElement(xpath, timeoutMs);
+  await execute(
+    `const cell = document.querySelector('[role="gridcell"][aria-label^="new record id"]');
+     if (!cell) return false;
+     cell.scrollIntoView({ block: "center", inline: "nearest" });
+     return true;`,
+  );
+  await sleep(200);
   await request("POST", `/session/${sessionId}/element/${element}/click`, {});
   await sleep(120);
   await request("POST", `/session/${sessionId}/element/${element}/click`, {});

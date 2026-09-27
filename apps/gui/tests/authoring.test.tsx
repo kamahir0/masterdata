@@ -229,6 +229,7 @@ test('project-wide diagnostics mark only the source file that owns the cell', as
   openSnapshot.validation = { valid: false, diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', source: '/project/other/data.yaml', record_identity: 'record[0]', message: 'field `weight` is invalid' }] } as any;
   const input = await open();
   expect(input.closest('td')?.classList.contains('invalid')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: /PROBLEMS 1/ }));
   expect(screen.getByText('field `weight` is invalid')).toBeTruthy();
 });
 
@@ -238,14 +239,35 @@ test('diagnostic belonging to the selected source marks its cell', async () => {
   expect(input.closest('td')?.classList.contains('invalid')).toBe(true);
 });
 
-test('Explorer exposes only source roots and F2 opens source move', async () => {
+test('Explorer keeps source-root children visible and F2 opens source move', async () => {
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   const tree = await screen.findByRole('tree', { name: 'Project source files' });
-  expect(within(tree).getByRole('treeitem', { name: '.', exact: true })).toBeTruthy();
+  const root = within(tree).getByRole('treeitem', { name: '. source root' });
+  expect(root.hasAttribute('aria-expanded')).toBe(false);
+  fireEvent.click(navigation().getByRole('button', { name: 'Collapse folders' }));
+  expect(within(tree).getByRole('treeitem', { name: 'data.yaml', exact: true })).toBeTruthy();
   expect(navigation().queryByRole('button', { name: 'Tables' })).toBeNull();
   fireEvent.keyDown(within(tree).getByRole('treeitem', { name: 'data.yaml', exact: true }), { key: 'F2' });
   expect(await screen.findByRole('dialog')).toBeTruthy();
   expect(screen.getByText('Rename or move source')).toBeTruthy();
+});
+
+test('new diagnostics update the Problems count without moving the editor', async () => {
+  preview = async () => ({ candidateSource: 'weight: invalid', changed: true,
+    validation: { valid: false, diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', source: '/project/data.yaml', record_identity: 'record[0]', message: 'field `weight` is invalid' }] } });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /record 1 weight:/ });
+  const panel = document.querySelector('.problems-panel')!;
+  expect(panel.classList.contains('collapsed')).toBe(true);
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  const input = await screen.findByRole('textbox', { name: 'record 1 weight' });
+  fireEvent.change(input, { target: { value: 'invalid' } });
+  commit(input);
+  await waitFor(() => expect(within(panel as HTMLElement).getByRole('button', { name: /PROBLEMS 1/ })).toBeTruthy());
+  expect(within(panel as HTMLElement).queryByText('field `weight` is invalid')).toBeNull();
+  fireEvent.click(within(panel as HTMLElement).getByRole('button', { name: /PROBLEMS 1/ }));
+  expect(panel.classList.contains('open')).toBe(true);
+  expect(within(panel as HTMLElement).getByText('field `weight` is invalid')).toBeTruthy();
 });
 
 test('Explorer Enter opens a source and moves keyboard focus into the editor', async () => {

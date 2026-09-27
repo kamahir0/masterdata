@@ -1725,7 +1725,6 @@ function App({
       const report = await invoke<ValidationReport>("validate", { projectPath: projectRoot });
       if (workspaceGeneration.current !== generation) return;
       setManualValidation({ kind: "done", value: report });
-      setProblemsOpen(true);
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
       setManualValidation({ kind: "error", diagnostic: asApiError(error).diagnostic });
@@ -1752,7 +1751,6 @@ function App({
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
       setBuildState({ kind: "error", diagnostic: asApiError(error).diagnostic });
-      setProblemsOpen(true);
     } finally {
       setDeliveryBusy(false);
     }
@@ -2135,9 +2133,6 @@ function App({
     ...manualDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Saved source" })),
     ...operationDiagnostics.map((diagnostic) => ({ diagnostic, origin: "Operation" })),
   ];
-  useEffect(() => {
-    if (problems.length > 0) setProblemsOpen(true);
-  }, [problems.length]);
   const openCreation = (category: "folder" | "table" | "data" | "value_object", table = "") => {
     setCreationPreset({ category, table });
     setCreationOpen(true);
@@ -2735,13 +2730,13 @@ function SourceTree({
     const visit = (nodes: SourceTreeNode[]) => {
       for (const node of nodes) if (node.kind === "folder") { keys.add(node.key); visit(node.children); }
     };
-    for (const group of groups) { keys.add(`root:${group.root}`); visit(group.children); }
+    for (const group of groups) visit(group.children);
     setCollapsed(keys);
   }, [collapseSignal]);
 
   useEffect(() => {
     if (!revealCreated) return;
-    setCollapsed(current => new Set([...current].filter(key => key !== `root:${revealCreated.root}` && key !== revealCreated.path && !revealCreated.path.startsWith(`${key}/`))));
+    setCollapsed(current => new Set([...current].filter(key => key !== revealCreated.path && !revealCreated.path.startsWith(`${key}/`))));
     const frame = window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(revealCreated.path)}"]`)?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [revealCreated, workspace]);
@@ -2749,7 +2744,7 @@ function SourceTree({
   useEffect(() => {
     if (!inlineCreation) return;
     const target = inlineCreation.folder ? `${inlineCreation.root}/${inlineCreation.folder}` : inlineCreation.root;
-    setCollapsed(current => new Set([...current].filter(key => key !== `root:${inlineCreation.root}` && key !== target && !target.startsWith(`${key}/`))));
+    setCollapsed(current => new Set([...current].filter(key => key !== target && !target.startsWith(`${key}/`))));
   }, [inlineCreation?.root, inlineCreation?.folder]);
 
   const toggleFolder = (key: string) => {
@@ -2895,28 +2890,16 @@ function SourceTree({
 
   return <div className="source-tree" role="tree" aria-label="Project source files">
     {groups.map(({ root, children }) => {
-      const key = `root:${root}`;
-      const expanded = !collapsed.has(key);
       return (
         <div className="source-root" key={root}>
-          <Button
-            htmlType="button"
-            role="treeitem"
-            data-depth="0"
-            data-tree-path={root}
-            aria-expanded={expanded}
-            className="tree-root-label"
-            onFocus={() => onFolderSelect(root, "")}
-            onClick={() => toggleFolder(key)}
-            onKeyDown={(event) => handleTreeKey(event, key, expanded)}
-          >
-            <span className="folder-chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
-            {root || "."}
-          </Button>
-          {expanded && <div role="group">
+          <Button htmlType="button" role="treeitem" data-depth="0" className="tree-root-label"
+            onFocus={() => onFolderSelect(root, "")} onClick={() => onFolderSelect(root, "")}
+            onKeyDown={(event) => handleTreeKey(event)}
+            aria-label={`${root || "."} source root`}>{root || "."}</Button>
+          <div role="group" aria-label={`${root || "."} source files`}>
             {inlineCreation?.root === root && inlineCreation.folder === "" && inlineCreation.node}
             {children.map(renderNode)}
-          </div>}
+          </div>
         </div>
       );
     })}
@@ -3581,8 +3564,10 @@ function DataEditor({
         {selectedRange ? `${selectedCellCount} cells selected` : "One cell active"}
         {batchIsStale && " · batch preview expired; review again"}
       </div>
-      {queryNotice && <Alert type="info" showIcon closable onClose={() => setQueryNotice(null)} title={queryNotice} />}
-      {queryError && <Alert type="error" showIcon title={queryError.code} description={queryError.message} />}
+      {(queryNotice || queryError) && <div className="editor-feedback">
+        {queryNotice && <Alert type="info" showIcon closable onClose={() => setQueryNotice(null)} title={queryNotice} />}
+        {queryError && <Alert type="error" showIcon title={queryError.code} description={queryError.message} />}
+      </div>}
 
       {!capability.supported && (
         <div className="add-row-reason" role="status">

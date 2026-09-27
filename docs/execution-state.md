@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 549c6b3003bd044321475a90382a4cac6a97a16f
-Work base: cc8db70f69ae4ce1d2f6cd46cdff47814f2e0cae
+Stage: implementation-ready
+Candidate: none
+Work base: 3fb6016f84e1b84777d8d300ec12887b489d1542
 
 ## Active work
 
-None.
+In progress: Desktop編集画面の診断表示とExplorer root表示。
 
 ## Blocking findings
 

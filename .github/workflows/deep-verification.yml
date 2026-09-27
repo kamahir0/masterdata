@@ -1,0 +1,121 @@
+name: Deep Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character Candidate commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deep-verification-${{ inputs.candidate_sha }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: Verify Candidate identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require exact Candidate SHA
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -eu
+          case "$CANDIDATE_SHA" in
+            (*[!0-9a-fA-F]*|'') echo "candidate_sha must be hexadecimal" >&2; exit 1 ;;
+          esac
+          test "${#CANDIDATE_SHA}" -eq 40
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+      - name: Confirm checkout matches Candidate
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+  ubuntu:
+    name: Ubuntu deep quality gate
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+      - run: npm ci
+      - run: cargo xtask check-all
+
+  windows:
+    name: Windows platform quality gate
+    needs: candidate
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+      - run: cargo xtask check-platform
+
+  macos:
+    name: macOS platform quality gate
+    needs: candidate
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Restore Rust and Cargo cache
+        uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+      - run: cargo xtask check-platform
+
+  desktop-evidence:
+    name: Desktop and performance evidence
+    needs: [ubuntu, windows, macos]
+    uses: ./.github/workflows/desktop-evidence.yml
+    with:
+      candidate_sha: ${{ inputs.candidate_sha }}

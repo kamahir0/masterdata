@@ -25,6 +25,12 @@ jobs:
       - name: Restore Rust and Cargo cache
         uses: Swatinem/rust-cache@v2
         continue-on-error: true
+      - name: Development state integrity
+        run: cargo test -p xtask --test execution_state
+      - name: Specification integrity
+        run: cargo xtask check-specs
+      - name: Rationale integrity
+        run: cargo xtask check-rationale
       - uses: actions/setup-node@v4
         with:
           node-version: 22

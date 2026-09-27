@@ -136,7 +136,6 @@ name: ""
 
 ## Open Questions（未解決事項）
 
-- timestamp-looking scalarを `string` またはnumeric primitiveとして宣言した場合、どのように扱うか。
 - `bool`、`float`、`double`、および将来追加されるPrimitive Typeにcomparison capabilityとordering semanticsを与えるか。
 - 将来、Primitive Type nameのcompatibility aliasを許可するか。
 - 各scalar validation failureにどのdiagnostic codeとsource spanを割り当てるか。

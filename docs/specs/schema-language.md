@@ -127,6 +127,6 @@ Masterdataが受理するYAMLの構造・collection・scalar semanticsは、[Mas
 意味を導出してはならない（MUST NOT）。parser/libraryの選択は[`docs/rfcs/0002-yaml-parser-library.md`](../rfcs/0002-yaml-parser-library.md)で
 別途追跡する。
 
-timestamp-looking plain scalarの扱い、GUI saveでのcomment・formatting・quote保持、およびparser/libraryの選択・migration・maintenanceの未決定事項は、YAML subset仕様の
+record内のtimestamp-looking plain scalarは`YAML-SUBSET-018`に従う。GUI saveでのcomment・formatting・quote保持、およびparser/libraryの選択・migration・maintenanceの未決定事項は、YAML subset仕様の
 `Open Questions`に残る。Custom Type data mapping内のschema未定義memberは、このgeneric routingの対象外であり、`SCHEMA-CUSTOM-007`が
 所有するvalidation ruleに従ってvalidation errorとする。

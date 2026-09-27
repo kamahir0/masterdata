@@ -167,6 +167,35 @@ fn open_table(
         .map_err(ApiError::from)
 }
 #[tauri::command(rename_all = "camelCase")]
+fn open_table_context(
+    project_path: Option<String>,
+    relative_path: String,
+) -> std::result::Result<masterdata_app::TableContext, ApiError> {
+    table_session()?
+        .open_context(&table_root(project_path)?, &relative_path)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn apply_table_intent(
+    project_path: Option<String>,
+    input: serde_json::Value,
+    expected_sources: Vec<masterdata_app::TableSourceIdentity>,
+    dirty_paths: Vec<String>,
+) -> std::result::Result<masterdata_app::TableApplyView, ApiError> {
+    let input = serde_json::from_value(input).map_err(|error| {
+        ApiError::from(MasterdataError::new(
+            "E-MIGRATION-INPUT",
+            ErrorKind::Validation,
+            format!("invalid Table intent: {error}"),
+        ))
+    })?;
+    let root = table_root(project_path)?;
+    let _operation = operation_guard(&root)?;
+    table_session()?
+        .apply_intent(&root, input, &expected_sources, &dirty_paths)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
 fn plan_table_migration(
     project_path: Option<String>,
     input: serde_json::Value,
@@ -726,6 +755,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_table,
+            open_table_context,
+            apply_table_intent,
             open_type,
             plan_type_migration,
             plan_table_migration,

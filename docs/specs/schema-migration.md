@@ -60,6 +60,8 @@ v1で識別可能なMigration Operationは、`AddField`、`RenameField`、`DropF
 query、binary mutationはv1 scope外であり、Migration v1の成功operationとして扱っては
 ならない（MUST NOT）。
 
+後続の[Field Declaration Mutation](field-declaration-mutation.md)は独立した追加operationであり、このv1のoperation setや既存command semanticsを変更しない。source-preserving Plan / Applyの安全境界は共有する。
+
 ### MIGRATION-003
 
 Migration Command semantic modelは、text edit命令ではなく、logical Table identity、field

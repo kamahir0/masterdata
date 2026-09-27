@@ -1,168 +1,51 @@
-# GUI仕様: Table Editor
+# GUI仕様: Unified Table Editor
 
 Status: Approved
 
-## 目的
+この文書は、Table schemaと選択record setを同じ編集面で扱うGUI interactionのownerである。field/value/type/key semantics、source-preserving mutation、lost-updateとrollbackは[Field Declaration Mutation](../../specs/field-declaration-mutation.md)、[Schema Migration v1](../../specs/schema-migration.md)、[Source Record Edit](../../specs/source-edit.md)へ委譲する。[仕様変更0041](../../spec-changes/0041-unified-table-editor.md)で旧schema-first Table Editor contractを置換した。
 
-既存Table schema documentをWorkspace Explorerから選択し、Schema Migration v1の`AddField` / `RenameField` / `DropField`とReference declaration authoringをdeterministic Planとsource Diffを確認しながら安全に実行できるschema-aware editorを提供する。
+### GUI-UNIFIED-001
 
-Table / field / key / type semantics、Migration dependency resolution、source-preserving rewrite、lost-update preflight、multi-file commit / rollbackは[Schema Migration v1](../../specs/schema-migration.md)と既存domain specificationsが所有する。本仕様はそれらを再定義せず、Table Editorのlayout、state、interaction、dirty-buffer composition、surface-local error/recovery、adapter boundaryを所有する。`Recovery Required`中のcross-surface command gateは[GUI app shell](../app-shell.md)の`GUI-SHELL-STATE-001` / `GUI-SHELL-CAPABILITY-001`が所有する。
+#### Table context
 
-## レイアウト（Layout）
+Workspace ExplorerでTable schemaまたはData sourceを選ぶと、main areaはlogical Tableの同じ編集面を表示しなければならない（MUST）。schema fieldsをcolumn header、選択sourceのrecord occurrenceをrowとして扱う。file path / filename / folderをTable identityとして扱ってはならない（MUST NOT）。schema選択時はinline recordsがあればそれを、なければ最初のData sourceを初期record setに選ぶ。record-bearing sourceがない場合もTable headerと空gridを表示し、Data source作成へ到達できなければならない（MUST）。
 
-### GUI-TABLE-LAYOUT-001
+### GUI-UNIFIED-002
 
-Workspace Explorerでshared source semantics上のTable schema documentを選択した場合、main areaはTable Editorを表示しなければならない（MUST）。folder名やphysical pathをTable identityとして扱ってはならない（MUST NOT）。Table Editorは少なくともlogical Table identity、schema source provenance、field declaration orderを確認できなければならない（MUST）。
-Data record編集画面からも対応Tableのfield / key / Referenceを確認・編集するsectionへ到達できなければならない（MUST）。schema fileがinline recordsを持つ場合、同じ編集画面でschemaとそのfileのrecord gridの両方へ到達できなければならない（MUST）。schema編集は既存のPlan / Diff / Applyとaffected dirty file gateを維持する。
+#### Record sets
 
-### GUI-TABLE-LAYOUT-002
+同じTableに複数のrecord-bearing sourceがある場合、Table面のrecord-set selectorで切替えられなければならない（MUST）。選択元fileは初期record setを指定するだけであり、headerのTable contextは共通である。切替えで他fileのdirty buffer、history、selection、query入力を破棄、保存、混同してはならない（MUST NOT）。fileごとのSaveとConflict lifecycleは[Data Editor](../data-editor/spec.md)に従う。
 
-Table Editorは各fieldについて少なくともMessagePack key、field name、type、Nullable / Array modifierを表示しなければならない（MUST）。Primary Key / Secondary Key membershipも利用者が識別できなければならない（MUST）。表示値はshared application/domain snapshotから取得し、frontendがYAMLを独自parseして再構成してはならない（MUST NOT）。
+### GUI-UNIFIED-003
 
-### GUI-TABLE-LAYOUT-003
+#### Direct columns
 
-初期mutation actionは`Add Field`、既存fieldに対する`Rename Field`、`Drop Field`だけを表示しなければならない（MUST）。field type変更、modifier変更、field reorder、MessagePack key変更、Primary / Secondary Key編集、Table renameを同じdirect-edit UIとして提供してはならない（MUST NOT）。
+field名はheaderそのものからpointerとkeyboardでinline renameでき、typeはheaderから選択でき、Nullable / Arrayは同じcolumn文脈で切替えられなければならない（MUST）。column末尾からAddできなければならない（MUST）。通常成功時にPlan / Diff / Applyの必須操作、rename/type変更modal、別のSchema Editorへの遷移を要求してはならない（MUST NOT）。field名の未確定入力は失敗時に保持し、対象headerに理由を示す。headerの値はshared Table snapshotに由来し、frontendでYAML parseやType Systemの推論を行ってはならない（MUST NOT）。
 
-### GUI-TABLE-LAYOUT-004
+右端 `+` のdefaultはNullable string fieldとし、未使用MessagePack key候補はshared Applicationが選ぶ。existing recordsには明示的な`null` initializerをMigration commandへ渡す。候補keyとfield declarationはshared Planで最終検証しなければならない（MUST）。defaultを変更したい利用者は作成後にheaderから変更できる。
 
-Table EditorはReferenceごとに、current domain name、optional exact `csharpName`、shared snapshotが返すeffective C# helper name、ordered source
-fields、target table、target key fields、resolved single/multi、resolved required/optional、およびshared validation diagnosticを確認できなければ
-ならない（MUST）。target key matching、type compatibility、nullable validity、integrity、query method derivation、helper name derivationはfrontendが
-再実装してはならない（MUST NOT）。
+### GUI-UNIFIED-004
 
-### GUI-TABLE-LAYOUT-005
+#### Safe automatic schema commit
 
-field listは選択radio列と常時並ぶAdd / Rename / Drop clusterを持たず、listまたは対象field行からactionを開始できなければならない（MUST）。operation input、Plan / Diff / Applyは必要時だけ開く一時的な面へ置き、閉じるとlistと開始元focusへ戻れるようにしなければならない（MUST）。field名変更とAdd Fieldはrecord gridのheader文脈からもpointer / keyboardで開始できなければならない（MUST）。入力確定時にPlanを自動生成し、対象付近の一時面に概要とApplyを提示する（MUST）。既存のshared Plan、Diff、stale判定、dirty-file gate、destructive authorizationを維持しなければならない（MUST）。
+非destructive header操作を確定すると、shared Applicationは内部でPlan、validation、affected-source resolution、lost-update preflight、commitを行う。intentは表示時のschema sourceと選択record sourceのexact content identityへbindし、外部変更後のstale画面から新しいsnapshotへ黙ってplanし直してはならない（MUST NOT）。frontendはPlan resultを自動承認する権限を持たず、dirty affected source、stale、invalid value、unresolved dependencyではmutationを開始しない（MUST）。成功後はaffected clean sourceを再取得し、field / cell selectionとfocusを可能な範囲で復元する。unrelated dirty bufferを破棄してはならない（MUST NOT）。
 
-## 状態（States）
+失敗時は対象、理由、可能な修正またはDetailsを対象付近に表示し、commit failure、Recovery Required、Outcome UnknownをSuccessと混同してはならない（MUST NOT）。Recovery Required中のcross-surface gateは[App shell](../app-shell.md)に従う。affected dirty sourceはfile名を示し、そのfileのSaveまたはbuffer整理へ進める。stale Planをsilent re-planしてcommitしてはならない（MUST NOT）。
 
-### GUI-TABLE-STATE-001
+Drop FieldとReference Remove等のdestructive operationは明示confirmationとbackend authorizationを維持する。Reference add/edit/removeはshared source-preserving mutationを通し、normal column headerには常設しない。advanced Table detailから名前、source/target fields、resolved cardinality/optionality、C# helper name、diagnosticsを確認・編集できるようにする。frontendでReference semantic resolutionを再実装してはならない（MUST NOT）。
 
-Table Editorは少なくともschema loading、ready、operation input editing、Plan loading、Plan ready、Apply in progress、stale plan / re-plan required、commit failure with rollback / no mutation、Recovery Requiredを観測上区別できなければならない（MUST）。以前のschemaやPlanを、新しく選択したTableのcurrent editable / applicable stateとして表示してはならない（MUST NOT）。
+### GUI-UNIFIED-005
 
-### GUI-TABLE-STATE-002
+#### Grid composition
 
-Migration operation inputやPlanはData Editorのsource dirty bufferと同一conceptとして扱ってはならない（MUST NOT）。Table Editorの`Apply`だけがMigration source mutationを開始し、Cmd+S / Ctrl+SをMigration Applyのshortcutへ暗黙に割り当ててはならない（MUST NOT）。operation inputはPlan / Apply failureで不必要に失ってはならない（MUST NOT）。exact navigation-time retention policyはimplementation detailとしてよい。
+同じTable面のgridは[Data Editor](../data-editor/spec.md)と[Grid Authoring](../data-editor/grid-authoring.md)のcell / complex value / row / TSV / Undo/Redo / Save / Problems / virtualization contractを維持する。schema操作は確定時のdisk operation、record編集はfile-local dirty bufferである。record Undo/Redoを確定済みschema変更のdisk rollbackに見せかけてはならない（MUST NOT）。schema変更がaffected dirty fileと競合する場合、まずdirtyを解消する。Build / Publish / Gitをauthoringに暗黙結合しない（MUST NOT）。
 
-### GUI-TABLE-STATE-003
-
-Migration Planがaffected source fileとして示すfileにData Editorのdirty bufferが存在する場合、Table EditorはApplyを開始してはならない（MUST NOT）。該当dirty fileを利用者が識別できなければならない（MUST）。Planに含まれないunrelated dirty bufferだけを理由にPlanまたはApplyを全面禁止してはならず（MUST NOT）、Migration操作によってそのbufferを保存・破棄・reloadしてはならない（MUST NOT）。
-
-### GUI-TABLE-STATE-004
-
-Migration成功後、affected sourceのcurrent workspace authorityを再取得し、Table Editorをcurrent schemaへ更新しなければならない（MUST）。affected fileについて既存clean editor snapshotをstale contentのままeditableとして残してはならない（MUST NOT）。unrelated dirty bufferは保持しなければならない（MUST）。
-
-## 操作（Interactions）
-
-### GUI-TABLE-INT-001
-
-`Add Field`はSchema Migration v1の`AddField` semantic commandを構成するguided inputを提供しなければならない（MUST）。少なくともMessagePack key、name、type、Nullable / Array modifier、およびMigration semantics上必要なexplicit initializerを入力できなければならない（MUST）。
-
-frontendはinitializerやtype validityを独自の簡易Type System / YAML validatorで確定してはならない（MUST NOT）。initializer transportは64-bit integer、sequence、mapping、`null`等のApproved canonical valueをlosslessにshared application boundaryへ渡せる形でなければならない（MUST）。exact wire shape / widgetは固定しない。
-
-UIはMessagePack keyの候補値を提案してよい（MAY）が、それをsemantic auto-allocation ruleとして扱ってはならず（MUST NOT）、最終keyはPlan inputとして明示的でなければならない（MUST）。
-
-### GUI-TABLE-INT-002
-
-`Rename Field`はcurrent logical Table identityとcurrent field nameをtarget selectorとしてshared Migration boundaryへ渡さなければならない（MUST）。frontendがschema / data / key / Referenceを文字列置換してはならない（MUST NOT）。shared MigrationがMIGRATION-007に従ってReference source/target componentを追随する場合、そのReference schemaを含むaffected fileとDiffをcurrent Planから表示しなければならない（MUST）。Rename UIからMessagePack key変更、Reference name変更、target変更を暗黙に行ってはならない（MUST NOT）。
-
-### GUI-TABLE-INT-003
-
-`Drop Field`はdestructive actionとして明示的に識別できなければならない（MUST）。Apply前に対象Table / fieldとdestructive natureを確認する明示的confirmationを要求しなければならない（MUST）。GUI confirmationだけをbackend authorizationの代替にしてはならず（MUST NOT）、shared application boundaryへmachine-actionable destructive execution authorizationを渡さなければならない（MUST）。
-
-### GUI-TABLE-INT-004
-
-source mutation前に必ずMigration Planを取得しなければならない（MUST）。Plan surfaceは少なくともoperation / target、destructive state、affected source files、affected record count、Migration validation / diagnosticsを表示しなければならない（MUST）。Plan作成・表示はsourceを変更してはならない（MUST NOT）。Plan failureをApply successとして扱ってはならない（MUST NOT）。
-
-### GUI-TABLE-INT-005
-
-Planからaffected fileごとのbefore / after Diffへ移動できなければならない（MUST）。Diffはcurrent Planのbase sourceとtransformed candidateを比較し、別のcurrent workspace readやgenerated artifactを代用してはならない（MUST NOT）。Diff表示はnonmodalでもmodalでもよいが、operation input、Plan identity、選択fieldを不必要に失ってはならない（MUST NOT）。
-
-### GUI-TABLE-INT-006
-
-Applyはcurrent UIが示しているsemantic commandとbase snapshotに対応するcurrent Planだけを対象にしなければならない（MUST）。Plan作成後にoperation inputを変更した場合、old PlanをcurrentとしてApplyしてはならない（MUST NOT）。commit preflightがsource/config/membershipのstale stateを検出した場合はsource mutationを開始せず、stale planとして表示し、re-plan actionを提供しなければならない（MUST）。silent retry / silent overwriteを行ってはならない（MUST NOT）。
-
-### GUI-TABLE-INT-007
-
-Migration成功をBuild / Publish / Git / generated artifact更新と同一操作へ結合してはならない（MUST NOT）。成功後にBuildを別actionとして実行できてよい（MAY）。
-
-### GUI-TABLE-INT-009
-
-Reference add/edit/removeはraw YAMLをfrontendで編集せず、shared source-preserving mutation boundaryを通らなければならない（MUST）。
-Plan / Apply、exact-source lost-update protection、stale rejection、recovery、no implicit Build / Publish / Git side effectはfield
-migrationと同じcontractを維持しなければならない（MUST）。`csharpName`の追加・編集・削除もshared source-preserving mutationを通り、
-frontendは`REF-008..009`の命名・return semanticsを再実装してはならない（MUST NOT）。
-
-## キーボード（Keyboard）
-
-### GUI-TABLE-KEY-001
-
-Table Editorはkeyboardだけでfield selection、Add / Rename / Drop action開始、operation form入力、Plan確認、Diffへの移動、ApplyまたはCancelへ到達できなければならない（MUST）。destructive confirmationをkeyboard userだけが操作不能なsurfaceにしてはならない（MUST NOT）。
-
-## フォーカス（Focus）
-
-### GUI-TABLE-FOCUS-001
-
-ExplorerからTable schemaを開いた場合、main Table Editorへ移動できる明確なkeyboard pathを持たなければならない（MUST）。operation dialog / panelを閉じた場合は、可能な範囲で開始元fieldまたはactionへfocusを復元しなければならない（MUST）。Plan / DiffからTable overviewへ戻る場合も、可能な範囲でtarget field selectionを復元しなければならない（MUST）。
-
-## 検証（Validation）
-
-### GUI-TABLE-VAL-001
-
-Table Editorのschema/type/dependency/initializer validationはshared Migration / Type System semanticsを使用しなければならない（MUST）。frontend独自のYAML parser、field collision rule、key dependency rule、type compatibility ruleをdomain authorityとして実装してはならない（MUST NOT）。Migration Planのblocking diagnosticとproject-wideのunrelated diagnosticを同一のApply gateとして誤解釈してはならない（MUST NOT）。Migration Resolvableの判定はSchema Migration v1へ委譲する。
-
-### GUI-TABLE-VAL-002
-
-Plan / diagnosticがsource locationまたはaffected fileへmap可能な場合、利用者が該当source / fieldを識別できる形で表示しなければならない（MUST）。unmappable project-level diagnosticも失ってはならない（MUST NOT）。
-
-## エラー（Errors）
-
-### GUI-TABLE-ERR-001
-
-Migration commitがmutation開始前に失敗した場合、またはcommit failure後にcomplete old source setへrollbackできた場合、Successとして表示してはならない（MUST NOT）。operation inputとPlan情報を可能な範囲で保持し、原因確認とre-plan / retryへのpathを提供しなければならない（MUST）。
-
-### GUI-TABLE-ERR-002
-
-Migration commitが`Recovery Required`となった場合、Table Editorはその状態を明示し、affected file stateと利用可能なrecovery informationを表示できなければならない（MUST）。cross-surfaceなsource mutation停止は[GUI app shell](../app-shell.md)の`GUI-SHELL-STATE-001` / `GUI-SHELL-CAPABILITY-001`へ委譲し、Table Editor独自の別gateを実装してはならない（MUST NOT）。exact recovery command / journal UIは本sliceで固定しない。
-
-### GUI-TABLE-ERR-003
-
-Table schemaをshared semanticsで安全にresolveできない場合、別document kindとして誤って編集可能にしてはならない（MUST NOT）。structured error stateを表示し、既存のunrelated dirty bufferやExplorer selectionを不必要に破壊してはならない（MUST NOT）。
-
-## アクセシビリティ（Accessibility）
-
-### GUI-TABLE-A11Y-001
-
-field list / table、operation controls、Plan summary、Diff navigation、destructive confirmation、error / Recovery Required stateはassistive technologyからpurposeとstateを識別できなければならない（MUST）。stateやdestructive severityを色・iconだけで伝えてはならない（MUST NOT）。
+Key、Reference、MessagePack key、低頻度metadataは補助面へprogressively discloseする。通常時はTable名とcolumn / row dataを最も強く表示し、正常状態の説明を繰り返し常設しない。gridのkeyboard selection、field headerのtab順、operation失敗後のfocus復元はpointerなしでも成立しなければならない（MUST）。状態は色だけに依存せずassistive technologyへ伝える。
 
 ## Adapter boundary
 
-### GUI-TABLE-ADAPTER-001
+Tauri frontendはschema Plan derivation、YAML patch、dependency resolution、lost-update preflight、rollbackを実装してはならない（MUST NOT）。shared Native Application ServiceをTauri command経由で呼び、frontendはTable contextとserialized intent / resultを扱う。complex value、record mutationも既存shared Application boundaryに従う。
 
-Tauri frontendはMigration Plan derivation、YAML source patch、dependency resolution、lost-update preflight、rollback transactionを実装してはならない（MUST NOT）。shared Native Application ServiceをTauri commandから呼び出し、frontendはserializable view model / command inputを扱う薄いadapterでなければならない（MUST）。
+## 検証
 
-current core実装に不足する`RenameField` / `DropField`はGUI内で代替実装せず（MUST NOT）、Approved Schema Migration v1へshared core/application implementationを追随させなければならない（MUST）。
-
-## 参照artifact（Reference Artifacts）
-
-None.
-
-## 検証evidence
-
-少なくとも次をfocused core/application / adapter / React workflow evidenceで検証する。
-
-- schema selectionでTable Editorが開き、Data / Type documentをTableとして誤解釈しない。
-- AddField inputからshared Planを生成し、initializer-required / invalid type / key collision等をshared diagnosticとして表示する。
-- RenameFieldがschema declaration、対象Table records、Primary / Secondary Key等のApproved dependencyをshared engineで整合して更新し、MessagePack keyを保持する。
-- DropFieldがexplicit destructive authorizationなしではmutationせず、key/index dependencyを黙って削除しない。
-- Plan / Diffはmutation前で、affected files / record count / diagnosticsをcurrent Planから表示する。
-- plan後のexternal source/config/membership changeをApplyがstaleとして拒否し、sourceを上書きしない。
-- affected dirty Data Editor bufferがApplyをblockし、unrelated dirty bufferは保持される。
-- Migration success後にaffected clean editor snapshotがreloadされ、unrelated dirty bufferを破棄しない。
-- commit failure + rollback successとRecovery RequiredをSuccessと混同しない。
-- source-preserving regressionでunrelated comments、blank lines、quote / indentation、unaffected file bytesを保持する。
-- Tauri / frontendにfilesystemやYAML patch semanticsを複製しない。
-
-## 未解決事項（Open Questions）
-
-None identified for the initial Table Editor v1. Exact Ant Design component、Plan panelのmodal / inline配置、field-row action placement、key suggestion algorithmのpresentation、Diff layout、initializer widget / serialized wire shapeは、上記observable contractを満たす限りimplementation detailとする。
+inline sourceと分離Data sourceの同等操作、複数source切替え、空Table、header直接操作、keyboard、dirty gate、stale、失敗・復旧、source-preserving、2千件以上のbounded row DOM、Problems移動をfocused testとDesktop実操作で確認する。

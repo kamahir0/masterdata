@@ -4,7 +4,7 @@ Status: Approved
 
 ## 目的
 
-record-bearing source documentをsource textへ直接触れずtable形式で編集できるmain editor surfaceとして提供する。選択中source fileに含まれるrecordsをspreadsheet形式で表示・編集し、file単位でdirty / Saveを管理する。
+Unified Table Editor内の選択record setをsource textへ直接触れずtable形式で編集する。選択中source fileに含まれるrecordsをspreadsheet形式で表示・編集し、file単位でdirty / Saveを管理する。schema headerとのcompositionは[Unified Table Editor](../table-editor/spec.md)が所有する。
 
 source保存のcanonical contractは[Source Record Edit](../../specs/source-edit.md)が所有し、Data EditorはそのGUI interactionを定義する。
 
@@ -38,7 +38,7 @@ Searchは直接到達可能とし、query詳細とbatch操作は別々に開閉�
 
 ### GUI-DATA-LAYOUT-007
 
-record gridの定常行高を複合値の内部要素数に依存させてはならない（MUST NOT）。column headerにはfield nameとread-onlyのtype / key情報を表示しなければならない（MUST）。array / struct等は定常時に値を要約し、選択時に対象cellが明確な一時的editorで編集できなければならない（MUST）。一時的editorを閉じても他cellのselectionとdirty bufferを失ってはならない（MUST NOT）。
+record gridの定常行高を複合値の内部要素数に依存させてはならない（MUST NOT）。column headerにはfield nameとtype / modifierを表示し、直接操作は[Unified Table Editor](../table-editor/spec.md)に従う。key情報は必要時に到達できなければならない（MUST）。array / struct等は定常時に値を要約し、選択時に対象cellが明確な一時的editorで編集できなければならない（MUST）。一時的editorを閉じても他cellのselectionとdirty bufferを失ってはならない（MUST NOT）。
 
 ### GUI-DATA-VIRTUAL-001
 
@@ -215,8 +215,8 @@ None.
 ## 初期sliceの非目標
 
 - recordの追加・削除（別のApproved Record Mutation仕様が所有する）。
-- Value Object、Enum等の編集・作成。Table schema編集への到達は[Table Editor](../table-editor/spec.md)が所有する。
-- logical Table全体を複数file横断で一括編集するview。
+- Value Object、Enum等の編集・作成。Table column編集は[Unified Table Editor](../table-editor/spec.md)が所有する。
+- 複数record sourceを同時に混在させて一括編集するview。record set切替えは[Unified Table Editor](../table-editor/spec.md)が所有する。
 - range operation、一括paste、fill handle、multi-cell editing、履歴付きUndo/Redo。
 - Git stage / commit / push。
 

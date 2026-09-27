@@ -55,6 +55,7 @@ beforeEach(() => {
     if (command === 'set_recent_projects') return {};
     if (command === 'migration_recovery_status') return null;
     if (command === 'authoring_workspace') return workspace;
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [{ key: 0, name: 'weight', type: 'ulong', nullable: false, array: false }], primaryKey: { fields: ['weight'] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
     if (command === 'open_data_file') return structuredClone(openSnapshot);
     if (command === 'preview_data_file') return preview(args);
     if (command === 'save_data_file') return { status: 'success', snapshot: snapshot() };
@@ -577,13 +578,14 @@ test('inline Table file opens record grid and its schema editor in one surface',
   invoke.mockImplementation(async (command,args) => {
     if (command === 'authoring_workspace') return inlineWorkspace;
     if (command === 'open_table') return tableSnapshot;
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'schema.yaml', inline: true }], selectedRecordSource: 'schema.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
     if (command === 'open_data_file') return {...snapshot(), path:'schema.yaml', baseSource:'kind: schema\ntable: item\nrecords:\n  - weight: 10\n'};
     return normal(command,args);
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
-  await dataAction('Table structure');
-  expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
+  expect(await screen.findByRole('textbox',{name:'Field name weight'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Add column'})).toBeTruthy();
   expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('split Data file exposes its Table schema without leaving the record grid', async () => {
@@ -591,34 +593,78 @@ test('split Data file exposes its Table schema without leaving the record grid',
   invoke.mockImplementation(async (command,args) => {
     if (command === 'authoring_workspace') return tableWorkspace;
     if (command === 'open_table') return tableSnapshot;
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'data.yaml', inline: false }, { path: 'other.yaml', inline: false }], selectedRecordSource: args?.relativePath === 'other.yaml' ? 'other.yaml' : 'data.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
     return normal(command,args);
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   expect(await screen.findByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
-  await dataAction('Table structure');
-  expect(await screen.findByRole('button',{name:'Actions for field id'})).toBeTruthy();
+  expect(await screen.findByRole('textbox',{name:'Field name weight'})).toBeTruthy();
+  expect(screen.getByRole('combobox',{name:'Record set'})).toBeTruthy();
   expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
-async function planFromTable(type = false) {
-  openSourceFiles();
-  fireEvent.click(screen.getByRole('treeitem',{name:'schema.yaml',exact:true}));
-  fireEvent.click(await screen.findByRole('button',{name:'Actions for field id'}));
-  fireEvent.click(screen.getByRole('menuitem',{name:'Rename Field'}));
-  fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});
-  fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));
-  await screen.findByRole('region',{name:type?'Type Migration Plan':'Migration Plan'});
-}
+test('switching record files restores each file selection without mixing grid state', async () => {
+  const normal = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return tableWorkspace;
+    if (command === 'open_data_file') return { ...mutationSnapshot(), path: args.relativePath };
+    if (command === 'open_table_context') return {
+      table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base',
+      recordSources: [{ path: 'data.yaml', inline: false }, { path: 'other.yaml', inline: false }],
+      selectedRecordSource: args.relativePath,
+      schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong'] },
+    };
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
+  fireEvent.mouseDown(cell, { button: 0 });
+  expect(screen.getByText('1 cells selected')).toBeTruthy();
+  fireEvent.click(screen.getByRole('treeitem', { name: 'other.yaml', exact: true }));
+  await waitFor(() => expect(screen.getByRole('treeitem', { name: 'other.yaml', exact: true }).getAttribute('aria-selected')).toBe('true'));
+  expect(screen.getByText('One cell active')).toBeTruthy();
+  fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml', exact: true }));
+  await waitFor(() => expect(screen.getByText('1 cells selected')).toBeTruthy());
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('column header commits rename and modifier through one safe intent without Plan UI', async () => {
+  const normal = invoke.getMockImplementation()!;
+  let field = { key: 0, name: 'weight', type: 'ulong', nullable: false, array: false };
+  const intents: any[] = [];
+  invoke.mockImplementation(async (command,args) => {
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [field], primaryKey: { fields: [] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
+    if (command === 'apply_table_intent') {
+      intents.push(args.input);
+      field = { ...field, ...(args.input.operation === 'rename' ? { name: args.input.newName } : { nullable: args.input.nullable, array: args.input.array }) };
+      return { state: 'success', files: ['schema.yaml'] };
+    }
+    if (command === 'open_data_file' && field.name === 'mass') {
+      const next = snapshot(); next.columns[0].name = 'mass'; next.rows[0].cells[0].field = 'mass'; return next;
+    }
+    return normal(command,args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const name = await screen.findByRole('textbox', { name: 'Field name weight' });
+  fireEvent.change(name, { target: { value: 'mass' } }); fireEvent.blur(name);
+  await waitFor(() => expect(intents[0]).toMatchObject({ operation: 'rename', table: 'item', field: 'weight', newName: 'mass' }));
+  expect(invoke.mock.calls.find(([command]) => command === 'apply_table_intent')?.[1].expectedSources).toEqual([
+    { path: 'schema.yaml', contentIdentity: 'schema-base' },
+    { path: 'data.yaml', contentIdentity: 'base' },
+  ]);
+  const nullable = await screen.findByRole('button', { name: 'Nullable mass' });
+  fireEvent.click(nullable);
+  await waitFor(() => expect(intents[1]).toMatchObject({ operation: 'change_declaration', field: 'mass', nullable: true, array: false }));
+  expect(screen.queryByRole('region', { name: 'Migration Plan' })).toBeNull();
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;
   invoke.mockImplementation(async(command,args)=>{
     if(command==='authoring_workspace')return tableWorkspace;
     if(command==='open_table')return tableSnapshot;
-    if(command==='plan_table_migration')return {...tablePlan,files:tablePlan.files.slice(0,1)};
-    if(command==='apply_table_migration')return recoveryRequired;
+    if(command==='apply_table_intent')return recoveryRequired;
     return normal(command,args);
   });
-  const input=await open();fireEvent.change(input,{target:{value:'20'}});commit(input);
-  await planFromTable();fireEvent.click(screen.getByRole('button',{name:'Apply reviewed Plan'}));
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const input=await screen.findByRole('textbox',{name:'Field name weight'});
+  fireEvent.change(input,{target:{value:'mass'}});fireEvent.blur(input);
   await screen.findByText('Recovery Required — source changes and Build are blocked');
   openProjectCommands();
   expect((screen.getByRole('button',{name:'New source artifact'}) as HTMLButtonElement).disabled).toBe(true);

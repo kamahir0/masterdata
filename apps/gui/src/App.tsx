@@ -108,6 +108,20 @@ type WorkspaceSourceFile = {
   diagnostic: Diagnostic | null;
 };
 
+type TableField = { key: number; name: string; type: string; nullable: boolean; array: boolean };
+type TableContext = {
+  table: string;
+  schemaPath: string;
+  schemaContentIdentity: string;
+  recordSources: { path: string; inline: boolean }[];
+  selectedRecordSource: string | null;
+  schema: { schema: { table: string; fields: TableField[]; primaryKey?: { fields: string[] }; secondaryKeys?: { fields: string[] }[] }; fieldTypes: string[] };
+};
+type ColumnIntent =
+  | { operation: "add_default"; table: string }
+  | { operation: "rename"; table: string; field: string; newName: string }
+  | { operation: "change_declaration"; table: string; field: string; type: string; nullable: boolean; array: boolean };
+
 type AuthoringWorkspace = {
   project: ProjectInfo;
   sourceRoots: string[];
@@ -591,6 +605,10 @@ function App({
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => initialState?.recentProjects ?? []);
   const [projectPickerBusy, setProjectPickerBusy] = useState(false);
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [explorerPath, setExplorerPath] = useState<string | null>(null);
+  const [tableContextState, setTableContextState] = useState<{ root: string; path: string; epoch: number; context: TableContext } | null>(null);
+  const [tableContextError, setTableContextError] = useState<ApiDiagnostic | null>(null);
+  const pendingColumnFocus = useRef<{ table: string; field: string | "last" } | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const dataEditorUi = useRef(new Map<string, DataEditorUiState>());
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
@@ -745,11 +763,22 @@ function App({
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
   const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
+  const tableContext = tableContextState?.root === projectRoot && tableContextState.path === activePath && tableContextState.epoch === tableEpoch ? tableContextState.context : null;
   const activeEditor = activePath ? editors[activePath] ?? null : null;
   const activeLoading = activePath ? loadingPaths.has(activePath) : false;
   const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
     ? null
     : activeEditor?.loadError ?? (activePath ? fileOpenErrors[activePath] ?? null : null);
+  useEffect(() => {
+    const pending = pendingColumnFocus.current;
+    if (!pending || !tableContext || pending.table !== tableContext.table) return;
+    const field = pending.field === "last"
+      ? tableContext.schema.schema.fields.at(-1)?.name
+      : pending.field;
+    if (!field) return;
+    const target = document.querySelector<HTMLInputElement>(`[data-column-field="${CSS.escape(field)}"]`);
+    if (target) { target.focus(); pendingColumnFocus.current = null; }
+  }, [tableContext, activeEditor]);
   const dirtyCount = Object.values(editors).filter(editorIsDirty).length;
   const totalDirtyCount = dirtyCount + (settingsDirty ? 1 : 0);
 
@@ -873,6 +902,7 @@ function App({
       setEditors({});
       const first = next.files.find((file) => file.kind === "data" || file.hasInlineRecords) ?? next.files[0] ?? null;
       setActivePath(first?.path ?? null);
+      setExplorerPath(first?.path ?? null);
       setSelectedTable(first?.table ?? null);
       if (first && (first.kind === "data" || first.hasInlineRecords)) {
         await openDataFile(next.project.project_root, first.path, true);
@@ -891,6 +921,27 @@ function App({
       });
     }
   }, [recordRecovery, openDataFile, rememberProject]);
+
+  useEffect(() => {
+    if (!projectRoot || !activeFile || (activeFile.kind !== "schema" && activeFile.kind !== "data")) {
+      setTableContextState(null);
+      setTableContextError(null);
+      return;
+    }
+    let disposed = false;
+    setTableContextError(null);
+    void invoke<TableContext>("open_table_context", { projectPath: projectRoot, relativePath: activeFile.path })
+      .then((context) => {
+        if (disposed) return;
+        setTableContextState({ root: projectRoot, path: activeFile.path, epoch: tableEpoch, context });
+        if (activeFile.kind === "schema" && !activeFile.hasInlineRecords && context.selectedRecordSource && context.selectedRecordSource !== activeFile.path) {
+          setActivePath(context.selectedRecordSource);
+          void openDataFile(projectRoot, context.selectedRecordSource);
+        }
+      }).catch(error => { if (!disposed) { setTableContextState(null); setTableContextError(asApiError(error).diagnostic); } });
+    return () => { disposed = true; };
+  }, [projectRoot, activeFile?.path, activeFile?.kind, activeFile?.hasInlineRecords, tableEpoch, openDataFile]);
+
 
   useEffect(() => {
     void loadWorkspace(null, true);
@@ -1466,6 +1517,7 @@ function App({
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
     setActivePath(file.path);
+    setExplorerPath(file.path);
     if (file.table) setSelectedTable(file.table);
     setSurface("editor");
     const relative = file.sourceRoot && file.path.startsWith(`${file.sourceRoot}/`) ? file.path.slice(file.sourceRoot.length + 1) : file.path;
@@ -1543,6 +1595,7 @@ function App({
         setPathMutationResult({ kind: "report", report });
         setPathMutationPhase("result");
         setActivePath(destinationPath);
+        setExplorerPath(destinationPath);
         setRevealCreated({ path: destinationPath, root: sourceRoot });
         try {
           const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
@@ -1742,6 +1795,7 @@ function App({
     // EVIDENCE: GUI-CREATE-INT-008, GUI-CREATE-INT-009.
     setWorkspaceState({ kind: "ready", workspace: next });
     setActivePath(report.path);
+    setExplorerPath(report.path);
     setSelectedTable(next.files.find((file) => file.path === report.path)?.table ?? null);
     const root = report.folder ? next.folders?.find(folder => folder.path === report.path)?.sourceRoot
       : next.files.find(file => file.path === report.path)?.sourceRoot;
@@ -1757,23 +1811,55 @@ function App({
     if (state.kind !== "ready" || state.workspace.project.project_root !== root) return;
     const generation = workspaceGeneration.current;
     // Evict affected clean snapshots before awaiting reload, so they cannot be
-    // edited against an obsolete schema (GUI-TABLE-STATE-004).
+    // edited against an obsolete schema (GUI-UNIFIED-004).
     const { reloadPaths: reload, retainedEditors: retained } = migrationRefreshPlan(
       editorsRef.current,
       paths,
       editorIsDirty,
     );
     editorsRef.current = retained; setEditors(retained);
+    setTableEpoch(epoch => epoch + 1);
     const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
     if (workspaceGeneration.current !== generation) return;
     setWorkspaceState({ kind: "ready", workspace: next });
-    setTableEpoch(epoch => epoch + 1);
     await Promise.all(reload.filter(path => next.files.some(file => file.path === path && (file.kind === "data" || file.hasInlineRecords))).map(path => openDataFile(root, path, true)));
   }, [openDataFile]);
   const migrationResult = useCallback(async (root: string, result: MigrationResult) => {
     if (result.state === "recovery_required") recordRecovery(root, result);
     if (result.state === "success") await refreshMigrationFiles(root, result.files);
   }, [recordRecovery, refreshMigrationFiles]);
+  const applyColumnIntent = async (input: ColumnIntent) => {
+    if (!projectRoot || sourceMutationBlocked(projectRoot)) throw new Error("Source changes are currently unavailable.");
+    if (!tableContext || tableContext.table !== input.table) throw new Error("Reload the Table before changing columns.");
+    migrationBusyRef.current = projectRoot;
+    setMigrationBusyRoot(projectRoot);
+    try {
+      const dirtyPaths = Object.entries(editorsRef.current)
+        .filter(([, editor]) => editorIsDirty(editor) || editor.saving)
+        .map(([path]) => path);
+      const expectedSources = [{ path: tableContext.schemaPath, contentIdentity: tableContext.schemaContentIdentity }];
+      if (activePath && activeEditor) expectedSources.push({ path: activePath, contentIdentity: activeEditor.snapshot.baseContentIdentity });
+      let result: MigrationResult;
+      try {
+        result = await invoke<MigrationResult>("apply_table_intent", { projectPath: projectRoot, input, expectedSources, dirtyPaths });
+      } catch (error) {
+        if (error && typeof error === "object" && "diagnostic" in error) throw error;
+        const unknown: MigrationResult = { state: "recovery_required", files: [tableContext?.schemaPath ?? ""], diagnostic: { code: "E-MIGRATION-TRANSPORT", message: String(error) } };
+        recordRecovery(projectRoot, unknown);
+        throw error;
+      }
+      if (result.state === "recovery_required") recordRecovery(projectRoot, result);
+      if (result.state !== "success") throw new Error(result.diagnostic?.message ?? result.state);
+      pendingColumnFocus.current = { table: input.table, field: input.operation === "add_default" ? "last" : input.operation === "rename" ? input.newName : input.field };
+      const paths = [...new Set([...result.files, ...(tableContext?.recordSources.map(source => source.path) ?? [])])];
+      await refreshMigrationFiles(projectRoot, paths);
+    } finally {
+      if (migrationBusyRef.current === projectRoot) {
+        migrationBusyRef.current = null;
+        setMigrationBusyRoot(null);
+      }
+    }
+  };
   const recheckMigration = async () => {
     if (!projectRoot || !recovery) return;
     try {
@@ -1824,7 +1910,7 @@ function App({
     ? activeFile
     : workspace?.files.find(file => file.kind === "schema" && file.table === activeTableName);
   const tableEditor = activeSchema && projectRoot && activeTableName ? <TableEditor key={`${projectRoot}:${activeSchema.path}:${tableEpoch}`}
-    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded={recordFileActive} schemaAction={schemaAction} onSchemaActionConsumed={() => setSchemaAction(null)}
+    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded schemaAction={schemaAction} onSchemaActionConsumed={() => setSchemaAction(null)}
     onOverview={() => { setSelectedTable(activeTableName); setSurface("overview"); }}
     onCreateData={() => openDataCreation(activeTableName)}
     dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
@@ -1960,7 +2046,7 @@ function App({
         </div>
         <SourceTree
           workspace={workspace}
-          activePath={activePath}
+          activePath={explorerPath ?? activePath}
           editors={editors}
           loadingPaths={loadingPaths}
           fileOpenErrors={fileOpenErrors}
@@ -2060,7 +2146,16 @@ function App({
           {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
-          {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableEditor}
+          {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && !tableContext && !tableContextError && (
+            <EmptyEditor title={`Opening ${activeFile.table ?? "Table"}…`} copy="Loading Table context." />
+          )}
+          {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableContextError && (
+            <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(tableContextError)} />
+          )}
+          {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableContext && !tableContext.selectedRecordSource && (
+            <EmptyTableSurface context={tableContext} disabled={mutationBlocked} onIntent={applyColumnIntent}
+              onCreateData={() => openDataCreation(tableContext.table)} details={tableEditor} />
+          )}
           {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
             projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
             dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
@@ -2093,7 +2188,9 @@ function App({
               projectRoot={projectRoot!}
               editor={activeEditor}
               schemaEditor={tableEditor}
-              onSchemaAction={tableEditor && activeSchema ? (operation, field) => setSchemaAction({ path: activeSchema.path, operation, field, serial: ++schemaActionSerial.current }) : undefined}
+              tableContext={tableContext}
+              onRecordSourceSelect={path => { setActivePath(path); setExplorerPath(path); if (projectRoot) void openDataFile(projectRoot, path); }}
+              onColumnIntent={applyColumnIntent}
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
               uiCache={dataEditorUi}
@@ -2584,6 +2681,7 @@ const GRID_ROW_HEIGHT = 32;
 const GRID_OVERSCAN = 12;
 
 type DataEditorUiState = {
+  selectedRange: GridRange | null;
   batchText: string;
   querySearch: string;
   queryField: string;
@@ -2595,13 +2693,83 @@ type DataEditorUiState = {
   batchToolsOpen: boolean;
 };
 
+function ColumnHeader({ field, table, fieldTypes, disabled, onIntent }: {
+  field: TableField;
+  table: string;
+  fieldTypes: string[];
+  disabled: boolean;
+  onIntent: (intent: ColumnIntent) => Promise<void>;
+}) {
+  const [name, setName] = useState(field.name);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const cancelBlur = useRef(false);
+  useEffect(() => { setName(field.name); setError(null); }, [field.name]);
+  const run = async (intent: ColumnIntent) => {
+    if (busy || disabled) return;
+    setBusy(true); setError(null);
+    try { await onIntent(intent); }
+    catch (cause) { setError(asApiError(cause).diagnostic.message); }
+    finally { setBusy(false); }
+  };
+  const rename = () => {
+    if (cancelBlur.current) { cancelBlur.current = false; return; }
+    const next = name.trim();
+    if (next && next !== field.name) void run({ operation: "rename", table, field: field.name, newName: next });
+    else setName(field.name);
+  };
+  return <div className="unified-column-header">
+    <input className="unified-column-name" data-column-field={field.name} aria-label={`Field name ${field.name}`} value={name} disabled={disabled || busy}
+      onChange={event => setName(event.target.value)} onBlur={rename}
+      onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } else if (event.key === "Escape") { cancelBlur.current = true; setName(field.name); event.currentTarget.blur(); } }} />
+    <div className="unified-column-type-row">
+      <Select size="small" aria-label={`Type of ${field.name}`} value={field.type} disabled={disabled || busy}
+        options={fieldTypes.map(value => ({ value, label: value }))}
+        onChange={type => void run({ operation: "change_declaration", table, field: field.name, type, nullable: field.nullable, array: field.array })} />
+      <Button type="text" size="small" aria-label={`Nullable ${field.name}`} aria-pressed={field.nullable} disabled={disabled || busy}
+        onClick={() => void run({ operation: "change_declaration", table, field: field.name, type: field.type, nullable: !field.nullable, array: false })}>?</Button>
+      <Button type="text" size="small" aria-label={`Array ${field.name}`} aria-pressed={field.array} disabled={disabled || busy}
+        onClick={() => void run({ operation: "change_declaration", table, field: field.name, type: field.type, nullable: false, array: !field.array })}>[]</Button>
+    </div>
+    {error && <span className="unified-column-error" role="alert" title={error}>{error}</span>}
+  </div>;
+}
+
+function EmptyTableSurface({ context, disabled, onIntent, onCreateData, details }: {
+  context: TableContext;
+  disabled: boolean;
+  onIntent: (intent: ColumnIntent) => Promise<void>;
+  onCreateData: () => void;
+  details: React.ReactNode;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  return <section className="data-editor unified-empty-table">
+    <header className="editor-tabs"><div className="document-tab"><strong>{context.table}</strong></div>
+      <Button type="text" size="small" onClick={() => setDetailsOpen(open => !open)}>Table details</Button></header>
+    {error && <Alert type="error" title={error} closable onClose={() => setError(null)} />}
+    {detailsOpen && details}
+    <div className="grid-scroll"><table className="record-grid" role="grid" aria-rowcount={1} aria-colcount={context.schema.schema.fields.length + 2}>
+      <thead><tr><th className="row-number">#</th>
+        {context.schema.schema.fields.map(field => <th key={field.name}><ColumnHeader field={field} table={context.table}
+          fieldTypes={context.schema.fieldTypes} disabled={disabled} onIntent={onIntent} /></th>)}
+        <th className="tag-column"><Button type="text" size="small" aria-label="Add column" disabled={disabled}
+          onClick={() => void onIntent({ operation: "add_default", table: context.table }).catch(cause => setError(asApiError(cause).diagnostic.message))}>＋</Button></th>
+      </tr></thead><tbody /></table>
+      <div className="empty-grid"><p>No record source yet.</p><Button onClick={onCreateData} disabled={disabled}>Create record source</Button></div>
+    </div>
+  </section>;
+}
+
 function DataEditor({
   mutationBlocked,
   file,
   projectRoot,
   editor,
   schemaEditor,
-  onSchemaAction,
+  tableContext,
+  onRecordSourceSelect,
+  onColumnIntent,
   onOverview,
   onCreateData,
   uiCache,
@@ -2629,7 +2797,9 @@ function DataEditor({
   projectRoot: string;
   editor: EditorState;
   schemaEditor?: React.ReactNode;
-  onSchemaAction?: (operation: "add" | "rename", field: string) => void;
+  tableContext: TableContext | null;
+  onRecordSourceSelect: (path: string) => void;
+  onColumnIntent: (intent: ColumnIntent) => Promise<void>;
   onOverview?: () => void;
   onCreateData?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
@@ -2657,7 +2827,7 @@ function DataEditor({
   const uiKey = `${projectRoot}:${file.path}`;
   const rememberedUi = uiCache.current.get(uiKey);
   const lastFocusedCell = useRef<string | null>(null);
-  const [selectedRange, setSelectedRange] = useState<GridRange | null>(null);
+  const [selectedRange, setSelectedRange] = useState<GridRange | null>(rememberedUi?.selectedRange ?? null);
   const [editingCell, setEditingCell] = useState<{
     key: string; value: AuthoringValue; rowIndex: number; columnIndex: number; selectAll: boolean; baseIdentity: string;
     target: { kind: "existing"; recordIndex: number; field: string } | { kind: "added"; draftId: string; field: string };
@@ -2686,8 +2856,8 @@ function DataEditor({
   useEffect(() => {
     // Query and batch drafts are file-local UI state; switching sources must not
     // leave an applied query showing controls that belong to another file.
-    uiCache.current.set(uiKey, { batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen });
-  }, [uiCache, uiKey, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen]);
+    uiCache.current.set(uiKey, { selectedRange, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen });
+  }, [uiCache, uiKey, selectedRange, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen]);
   const queryRequestSequence = useRef(0);
   const previousAddedCount = useRef(editor.addedRecords.length);
   const [batchContext, setBatchContext] = useState<{ revision: number; selectionKey: string } | null>(null);
@@ -3081,7 +3251,11 @@ function DataEditor({
       <header className="editor-tabs">
         <div className="document-tab">
           <span className="file-kind data">▦</span>
-          <strong>{sourceName(file.path)}</strong>
+          <strong>{tableContext?.table ?? editor.snapshot.table}</strong>
+          {tableContext && tableContext.recordSources.length > 1 && <Select size="small" aria-label="Record set" value={file.path}
+            options={tableContext.recordSources.map(source => ({ value: source.path, label: sourceName(source.path) }))}
+            onChange={onRecordSourceSelect} />}
+          {tableContext && tableContext.recordSources.length === 1 && <small className="record-source-label">{sourceName(file.path)}</small>}
           {dirty && <span className="tab-dirty">●</span>}
         </div>
         <Tabs className="view-tabs" size="small" activeKey={editor.view}
@@ -3095,7 +3269,7 @@ function DataEditor({
             { key: "add", label: "Add Row", disabled: mutationBlocked || !capability.supported || editor.saving, onClick: onAddRow },
             { key: "undo", label: "Undo", disabled: mutationBlocked || editor.saving || editor.historyPast.length === 0, onClick: onUndo },
             { key: "redo", label: "Redo", disabled: mutationBlocked || editor.saving || editor.historyFuture.length === 0, onClick: onRedo },
-            ...(schemaEditor ? [{ key: "schema", label: "Table structure", onClick: () => setSchemaOpen(open => !open) }] : []),
+            ...(schemaEditor ? [{ key: "schema", label: "Table details", onClick: () => setSchemaOpen(open => !open) }] : []),
             ...(onOverview ? [{ key: "overview", label: "Table Overview", onClick: onOverview }] : []),
             ...(onCreateData ? [{ key: "data", label: "New data file", onClick: onCreateData }] : []),
             { key: "batch", label: "Batch tools", onClick: () => setBatchToolsOpen(open => !open) },
@@ -3177,19 +3351,15 @@ function DataEditor({
                 <th className="row-number">#</th>
                 {editor.snapshot.columns.map((column) => (
                   <th key={column.name}>
-                    <div className="column-heading">
-                      <strong>{column.name}</strong>
-                      <span>{column.typeName}</span>
-                      {column.keyField && <em>KEY</em>}
-                      {!column.editable && !column.keyField && <em title={column.readOnlyReason ?? undefined}>READ ONLY</em>}
-                      {onSchemaAction && <Dropdown trigger={["click"]} menu={{ items: [
-                        { key: "rename", label: `Rename ${column.name}`, onClick: () => { setSchemaOpen(true); onSchemaAction("rename", column.name); } },
-                        { key: "add", label: "Add Field", onClick: () => { setSchemaOpen(true); onSchemaAction("add", ""); } },
-                      ] }}><Button type="text" size="small" aria-label={`Field actions for ${column.name}`} disabled={mutationBlocked} icon={<MoreHorizontal size={13} />} /></Dropdown>}
-                    </div>
+                    {tableContext?.schema.schema.fields.find(field => field.name === column.name)
+                      ? <ColumnHeader field={tableContext.schema.schema.fields.find(field => field.name === column.name)!}
+                          table={tableContext.table} fieldTypes={tableContext.schema.fieldTypes}
+                          disabled={mutationBlocked} onIntent={onColumnIntent} />
+                      : <div className="column-heading"><strong>{column.name}</strong><span>{column.typeName}</span></div>}
                   </th>
                 ))}
-                <th className="tag-column">$tags</th>
+                <th className="tag-column"><span>$tags</span>{tableContext && <Button type="text" size="small" aria-label="Add column" disabled={mutationBlocked}
+                  onClick={() => void onColumnIntent({ operation: "add_default", table: tableContext.table }).catch(error => setQueryError(asApiError(error).diagnostic))}>＋</Button>}</th>
               </tr>
             </thead>
             <tbody>

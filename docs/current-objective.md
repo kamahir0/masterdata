@@ -6,25 +6,23 @@
 
 ## Objective
 
-**Desktop GUIの日常的なMasterData編集を、source fileを選ぶExplorerと対象を直接操作する編集面へ再設計する。通常操作は短く、検証・影響確認・復旧は必要な場面だけに示し、shared Rustの安全契約を維持する。**
+**Desktop GUIの日常的なTable authoringを、保存fileの分割方法に左右されない単一の表面へ再設計する。ColumnとRowを直接操作できるようにし、通常成功時のschema変更手順を短くしながらshared Rustの安全契約を維持する。**
 
 ## Completion slices
 
-- Data Editorをデータ中心の画面へ整理し、大量recordでも選択・編集・keyboard操作・Problems移動が成立するgridへする。
-- Explorerのfile文脈から短い手順で有効なsourceを作り、作成後に編集を開始できるようにする。
-- Table schemaとrecordの編集を同じ画面の対象から開始でき、Migrationの安全なPlan / Applyと影響確認へ接続する。
-- Complex Value / Type編集の繰り返し操作と常設情報を減らし、keyboardと異常時の導線を保持する。
-- related specification changes、focused regression evidence、repository checks、Desktop実操作での確認を完了する。
+- 現在のGUI、shared Rust、Legacy版の操作モデルを調べ、Table単位のtarget interactionと必要なApplication/Core APIを決める。
+- inline recordsと分離Data sourceの両方を、同じTable編集面で扱う。複数record sourceは明示的に切り替える。
+- column追加、inline rename、type / Nullable / Array変更、row追加、cell / complex value編集、TSV paste、Undo/Redo、Saveを一連の操作として成立させる。
+- 通常成功時のschema変更をPlan / Diff / Applyの必須手順から外し、衝突・破壊・失敗・復旧時の安全な判断導線を維持する。
+- 大量recordのbounded rendering、keyboard / focus / selection / Problems移動を保ち、focused test、repository check、Desktop実操作で検証する。
 
 ## Canonical requirements
 
-- [GUI app shell](gui/app-shell.md)、[Explorer](gui/explorer/spec.md)、[Source Creation](gui/source-creation/spec.md)
-- [Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)、[Table Editor](gui/table-editor/spec.md)、[Type Editor](gui/type-editor/spec.md)
-- [Source Creation](specs/source-creation.md)、[Schema Migration](specs/schema-migration.md)、[Authoring Batch](specs/authoring-batch.md)
+- [GUI app shell](gui/app-shell.md)、[Explorer](gui/explorer/spec.md)、[Table Editor](gui/table-editor/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)
+- [Schema Migration](specs/schema-migration.md)、[Field Declaration Mutation](specs/field-declaration-mutation.md)、[Source Record Edit](specs/source-edit.md)、[Authoring Batch](specs/authoring-batch.md)、[Source Creation](specs/source-creation.md)
 
 ## Explicit non-scope
 
-- YAML source format / domain identity / MasterMemory binary formatの変更。
-- source-preserving rewrite、lost-update protection、rollback / recoveryの弱体化。
-- Project全体の新しいdomain tree、source root外のfile探索、GUI独自のYAML/domain処理。
-- Publish / Buildのdomain contract変更、Programmable View、Web版GUI。
+- YAML保存形式、Table identity、MasterMemory binary formatの変更。
+- source-preserving rewrite、lost-update protection、dirty protection、rollback / recoveryの弱体化。
+- Explorerをdomain treeにする変更、frontend独自のYAML / domain mutation、Build / Publish / Gitの暗黙実行。

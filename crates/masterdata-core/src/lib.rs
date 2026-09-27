@@ -60,10 +60,10 @@ pub use document::{
 };
 pub use error::{Diagnostic, ErrorKind, MasterdataError, Result};
 pub use migration::{
-    AddFieldCommand, AddReferenceCommand, DropFieldCommand, EditReferenceCommand, MigrationCommand,
-    MigrationDryRun, MigrationFilePlan, MigrationOperation, MigrationPatch, MigrationPlan,
-    MigrationValidation, RemoveReferenceCommand, RenameFieldCommand, dry_run_migration,
-    migration_table_schema, plan_migration,
+    AddFieldCommand, AddReferenceCommand, ChangeFieldDeclarationCommand, DropFieldCommand,
+    EditReferenceCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan, MigrationOperation,
+    MigrationPatch, MigrationPlan, MigrationValidation, RemoveReferenceCommand, RenameFieldCommand,
+    dry_run_migration, migration_table_schema, plan_migration,
 };
 pub use migration_commit::{
     MigrationCommitFailure, MigrationCommitFailureInjection, MigrationCommitFailurePoint,

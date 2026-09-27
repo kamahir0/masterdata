@@ -1,3 +1,4 @@
+mod field_declaration;
 mod field_mutation;
 mod reference_mutation;
 pub mod type_mutation;
@@ -41,6 +42,13 @@ pub struct DropFieldCommand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ChangeFieldDeclarationCommand {
+    pub table: String,
+    pub field: String,
+    pub declaration: FieldDefinition,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AddReferenceCommand {
     pub table: String,
     pub reference: crate::ReferenceDefinition,
@@ -64,6 +72,7 @@ pub enum MigrationCommand {
     AddField(AddFieldCommand),
     RenameField(RenameFieldCommand),
     DropField(DropFieldCommand),
+    ChangeFieldDeclaration(ChangeFieldDeclarationCommand),
     AddReference(AddReferenceCommand),
     EditReference(EditReferenceCommand),
     RemoveReference(RemoveReferenceCommand),
@@ -74,6 +83,7 @@ pub enum MigrationOperation {
     AddField,
     RenameField,
     DropField,
+    ChangeFieldDeclaration,
     AddReference,
     EditReference,
     RemoveReference,
@@ -162,6 +172,9 @@ fn prepare_migration(
         ),
         MigrationCommand::DropField(command) => {
             field_mutation::prepare(documents, &command.table, &command.field, None)
+        }
+        MigrationCommand::ChangeFieldDeclaration(command) => {
+            field_declaration::prepare(documents, command)
         }
         MigrationCommand::AddReference(command) => {
             reference_mutation::prepare_add(documents, command)

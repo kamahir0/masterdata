@@ -18,6 +18,7 @@ Desktop authoring画面は左側にWorkspace Explorerを持たなければなら
 ### GUI-EXPLORER-002
 
 fileを選択した場合、中央main areaはそのsource documentに対応するtyped editorまたはunsupported/read-only stateを表示しなければならない（MUST）。editor種別の判定はfolder名・folder位置ではなく、既存のsource semanticsとdocument kindに従わなければならない（MUST）。
+Table schema sourceとそのTableのData sourceは[Unified Table Editor](../table-editor/spec.md)の同一Table面へrouteする。file選択は初期record setを指定するが、Explorerのtreeと選択表示はsource fileに徹する。
 
 ### GUI-EXPLORER-003
 

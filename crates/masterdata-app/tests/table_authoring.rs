@@ -1,7 +1,7 @@
 use masterdata_app::*;
 use masterdata_core::*;
 use serde_json::json;
-use std::fs;
+use std::{fs, path::Path};
 fn project() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     initialize_project(
@@ -26,6 +26,23 @@ fn input(value: serde_json::Value) -> TableOperationInput {
 }
 fn rename() -> TableOperationInput {
     input(json!({"operation":"rename","table":"item","field":"note","newName":"description"}))
+}
+fn apply_current(
+    session: &mut TableAuthoringSession,
+    root: &Path,
+    intent: TableOperationInput,
+    dirty_paths: &[String],
+) -> masterdata_core::Result<TableApplyView> {
+    let context = session.open_context(root, "sources/schema.yaml")?;
+    session.apply_intent(
+        root,
+        intent,
+        &[TableSourceIdentity {
+            path: context.schema_path,
+            content_identity: context.schema_content_identity,
+        }],
+        dirty_paths,
+    )
 }
 #[test]
 fn plan_is_read_only_and_apply_checks_exact_reviewed_snapshot() {
@@ -264,4 +281,226 @@ fn reference_aware_target_rename_surfaces_inbound_schema_in_reviewed_plan() {
         .find(|file| file.path == "sources/schema.yaml")
         .expect("inbound Reference schema");
     assert!(inbound.after.contains("fields: [categoryKey]"));
+}
+
+#[test]
+fn table_context_and_direct_intent_cover_separate_record_source() {
+    let dir = project();
+    let mut session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    assert_eq!(context.table, "item");
+    assert_eq!(
+        context.selected_record_source.as_deref(),
+        Some("sources/data.yaml")
+    );
+    assert_eq!(context.record_sources.len(), 1);
+    let add = || input(json!({"operation":"add_default","table":"item"}));
+    assert_eq!(
+        apply_current(
+            &mut session,
+            dir.path(),
+            add(),
+            &["sources/data.yaml".into()]
+        )
+        .unwrap_err()
+        .diagnostic()
+        .code,
+        "E-TABLE-AFFECTED-DIRTY"
+    );
+    assert_eq!(
+        apply_current(&mut session, dir.path(), add(), &[])
+            .unwrap()
+            .state,
+        "success"
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/schema.yaml"))
+            .unwrap()
+            .contains("name: field3")
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/data.yaml"))
+            .unwrap()
+            .contains("field3: null")
+    );
+    assert_eq!(
+        apply_current(
+            &mut session,
+            dir.path(),
+            input(json!({"operation":"rename","table":"item","field":"field3","newName":"label"})),
+            &[],
+        )
+        .unwrap()
+        .state,
+        "success"
+    );
+    assert_eq!(apply_current(&mut session, dir.path(), input(json!({"operation":"change_declaration","table":"item","field":"label","type":"int","nullable":true,"array":false})), &[]).unwrap().state, "success");
+    assert!(
+        fs::read_to_string(dir.path().join("sources/schema.yaml"))
+            .unwrap()
+            .contains("type: int")
+    );
+}
+
+#[test]
+fn table_context_prefers_inline_records_and_type_change_checks_dirty_data() {
+    let dir = project();
+    fs::write(dir.path().join("sources/schema.yaml"), "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 2\n    note: inline\n").unwrap();
+    let mut session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    assert_eq!(
+        context.selected_record_source.as_deref(),
+        Some("sources/schema.yaml")
+    );
+    assert_eq!(context.record_sources.len(), 2);
+    let change = || {
+        input(
+            json!({"operation":"change_declaration","table":"item","field":"note","type":"string","nullable":true,"array":false}),
+        )
+    };
+    assert_eq!(
+        apply_current(
+            &mut session,
+            dir.path(),
+            change(),
+            &["sources/data.yaml".into()]
+        )
+        .unwrap_err()
+        .diagnostic()
+        .code,
+        "E-TABLE-AFFECTED-DIRTY"
+    );
+    assert_eq!(
+        apply_current(&mut session, dir.path(), change(), &[])
+            .unwrap()
+            .state,
+        "success"
+    );
+    assert_eq!(
+        apply_current(
+            &mut session,
+            dir.path(),
+            input(json!({"operation":"add_default","table":"item"})),
+            &[],
+        )
+        .unwrap()
+        .state,
+        "success"
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/schema.yaml"))
+            .unwrap()
+            .contains("field3: null")
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/data.yaml"))
+            .unwrap()
+            .contains("field3: null")
+    );
+}
+
+#[test]
+fn table_context_rejects_ambiguous_schema_authority() {
+    let dir = project();
+    fs::write(
+        dir.path().join("sources/duplicate.yaml"),
+        fs::read_to_string(dir.path().join("sources/schema.yaml")).unwrap(),
+    )
+    .unwrap();
+    let session = TableAuthoringSession::default();
+    assert_eq!(
+        session
+            .open_context(dir.path(), "sources/data.yaml")
+            .unwrap_err()
+            .diagnostic()
+            .code,
+        "E-TABLE-DUPLICATE-SCHEMA"
+    );
+}
+
+#[test]
+fn default_column_uses_an_available_key_when_the_highest_key_is_occupied() {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    let source = fs::read_to_string(&schema_path).unwrap();
+    fs::write(&schema_path, source.replace("key: 1", "key: 4294967295")).unwrap();
+    let mut session = TableAuthoringSession::default();
+    assert_eq!(
+        apply_current(
+            &mut session,
+            dir.path(),
+            input(json!({"operation":"add_default","table":"item"})),
+            &[],
+        )
+        .unwrap()
+        .state,
+        "success"
+    );
+    assert!(
+        fs::read_to_string(schema_path)
+            .unwrap()
+            .contains("key: 1\n    name: field3")
+    );
+}
+
+#[test]
+fn direct_intent_rejects_a_schema_changed_since_the_visible_context() {
+    let dir = project();
+    let mut session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    let mut source = fs::read_to_string(&schema_path).unwrap();
+    source.push_str("# external edit\n");
+    fs::write(&schema_path, &source).unwrap();
+    let error = session
+        .apply_intent(
+            dir.path(),
+            input(json!({"operation":"add_default","table":"item"})),
+            &[TableSourceIdentity {
+                path: context.schema_path,
+                content_identity: context.schema_content_identity,
+            }],
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!(error.diagnostic().code, "E-TABLE-STALE-SOURCE");
+    assert_eq!(fs::read_to_string(schema_path).unwrap(), source);
+}
+
+#[test]
+fn direct_intent_rejects_a_record_source_changed_since_the_visible_grid() {
+    let dir = project();
+    let mut session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let data_path = dir.path().join("sources/data.yaml");
+    let original = fs::read_to_string(&data_path).unwrap();
+    let changed = original.replace("note: text", "note: external");
+    fs::write(&data_path, &changed).unwrap();
+    let error = session
+        .apply_intent(
+            dir.path(),
+            input(json!({"operation":"add_default","table":"item"})),
+            &[
+                TableSourceIdentity {
+                    path: context.schema_path,
+                    content_identity: context.schema_content_identity,
+                },
+                TableSourceIdentity {
+                    path: "sources/data.yaml".into(),
+                    content_identity: source_content_identity(&original),
+                },
+            ],
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!(error.diagnostic().code, "E-TABLE-STALE-SOURCE");
+    assert_eq!(fs::read_to_string(data_path).unwrap(), changed);
 }

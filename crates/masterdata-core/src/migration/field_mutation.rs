@@ -179,7 +179,7 @@ fn replace_names(names: &mut [String], old: &str, new: &str) {
     }
 }
 
-fn reference_dependencies(
+pub(super) fn reference_dependencies(
     documents: &ProjectDocuments,
     table: &str,
     field: &str,

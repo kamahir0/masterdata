@@ -3,13 +3,16 @@ use crate::authoring::project_relative_string;
 use masterdata_core::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TableOperationInput {
+    AddDefault {
+        table: String,
+    },
     Add {
         table: String,
         field: FieldDefinition,
@@ -24,6 +27,14 @@ pub enum TableOperationInput {
     Drop {
         table: String,
         field: String,
+    },
+    ChangeDeclaration {
+        table: String,
+        field: String,
+        #[serde(rename = "type")]
+        type_name: String,
+        nullable: bool,
+        array: bool,
     },
     AddReference {
         table: String,
@@ -40,8 +51,48 @@ pub enum TableOperationInput {
     },
 }
 impl TableOperationInput {
-    fn command(self) -> Result<MigrationCommand> {
+    fn command(self, documents: &ProjectDocuments) -> Result<MigrationCommand> {
         Ok(match self {
+            Self::AddDefault { table } => {
+                let schema = documents
+                    .schemas()
+                    .find(|(_, schema)| schema.table == table)
+                    .map(|(_, schema)| schema)
+                    .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "Table schema not found"))?;
+                let mut key = 0u32;
+                for used in schema
+                    .fields
+                    .iter()
+                    .map(|field| field.key)
+                    .collect::<BTreeSet<_>>()
+                {
+                    if used != key {
+                        break;
+                    }
+                    key = key.checked_add(1).ok_or_else(|| {
+                        error("E-TABLE-KEY-EXHAUSTED", "No MessagePack key remains")
+                    })?;
+                }
+                let mut serial = schema.fields.len() + 1;
+                let name = loop {
+                    let name = format!("field{serial}");
+                    if !schema.fields.iter().any(|field| field.name == name) {
+                        break name;
+                    }
+                    serial += 1;
+                };
+                MigrationCommand::AddField(AddFieldCommand {
+                    table,
+                    field: FieldDefinition {
+                        key,
+                        name,
+                        type_name: "string".into(),
+                        nullable: true,
+                        array: false,
+                    },
+                    initializer: Some(serde_yaml::Value::Null),
+                })
+            }
             Self::Add {
                 table,
                 field,
@@ -65,6 +116,33 @@ impl TableOperationInput {
             Self::Drop { table, field } => {
                 MigrationCommand::DropField(DropFieldCommand { table, field })
             }
+            Self::ChangeDeclaration {
+                table,
+                field,
+                type_name,
+                nullable,
+                array,
+            } => {
+                let old = documents
+                    .schemas()
+                    .find(|(_, schema)| schema.table == table)
+                    .and_then(|(_, schema)| {
+                        schema
+                            .fields
+                            .iter()
+                            .find(|candidate| candidate.name == field)
+                    })
+                    .ok_or_else(|| error("E-FIELD-DECL-FIELD", "Table field not found"))?;
+                let mut declaration = old.clone();
+                declaration.type_name = type_name;
+                declaration.nullable = nullable;
+                declaration.array = array;
+                MigrationCommand::ChangeFieldDeclaration(ChangeFieldDeclarationCommand {
+                    table,
+                    field,
+                    declaration,
+                })
+            }
             Self::AddReference { table, reference } => {
                 MigrationCommand::AddReference(AddReferenceCommand { table, reference })
             }
@@ -84,6 +162,31 @@ impl TableOperationInput {
     }
 }
 pub use masterdata_core::TableSnapshot;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableContext {
+    pub table: String,
+    pub schema_path: String,
+    pub schema_content_identity: String,
+    pub record_sources: Vec<TableRecordSource>,
+    pub selected_record_source: Option<String>,
+    pub schema: TableSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableRecordSource {
+    pub path: String,
+    pub inline: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableSourceIdentity {
+    pub path: String,
+    pub content_identity: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +236,71 @@ fn error(code: &str, message: &str) -> MasterdataError {
     MasterdataError::new(code, ErrorKind::Validation, message)
 }
 impl TableAuthoringSession {
+    pub fn open_context(&self, root: &Path, selected_path: &str) -> Result<TableContext> {
+        let project = Project::discover(Some(root), root)?;
+        let documents = project.load_documents()?;
+        let selected = documents
+            .files
+            .iter()
+            .find(|file| file.path == project.root().join(selected_path))
+            .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "Selected source not found"))?;
+        let table = selected
+            .document
+            .table_identity()
+            .ok_or_else(|| {
+                error(
+                    "E-TABLE-EDITOR-KIND",
+                    "Selected source is not a Table source",
+                )
+            })?
+            .to_owned();
+        let schemas = documents.files.iter().filter(|file| {
+            matches!(&file.document, SourceDocument::Schema(schema) if schema.table == table)
+        }).collect::<Vec<_>>();
+        if schemas.len() != 1 {
+            return Err(error(
+                "E-TABLE-DUPLICATE-SCHEMA",
+                "Table must have exactly one schema source",
+            ));
+        }
+        let schema_file = schemas[0];
+        let schema_path = project_relative_string(project.root(), &schema_file.path);
+        let schema = table_snapshot(&documents, &schema_file.path, &schema_path)?;
+        let mut record_sources = documents
+            .files
+            .iter()
+            .filter_map(|file| match &file.document {
+                SourceDocument::Schema(schema)
+                    if schema.table == table && schema.records.is_some() =>
+                {
+                    Some(TableRecordSource {
+                        path: project_relative_string(project.root(), &file.path),
+                        inline: true,
+                    })
+                }
+                SourceDocument::Data(data) if data.table == table => Some(TableRecordSource {
+                    path: project_relative_string(project.root(), &file.path),
+                    inline: false,
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        record_sources.sort_by(|a, b| b.inline.cmp(&a.inline).then_with(|| a.path.cmp(&b.path)));
+        let selected_record_source = record_sources
+            .iter()
+            .find(|source| source.path == selected_path)
+            .or_else(|| record_sources.first())
+            .map(|source| source.path.clone());
+        Ok(TableContext {
+            table,
+            schema_path,
+            schema_content_identity: source_content_identity(&schema_file.source),
+            record_sources,
+            selected_record_source,
+            schema,
+        })
+    }
+
     pub fn open_table(&self, root: &Path, path: &str) -> Result<TableSnapshot> {
         let project = Project::discover(Some(root), root)?;
         let documents = project.load_documents()?;
@@ -142,7 +310,7 @@ impl TableAuthoringSession {
         self.ensure_mutation_allowed(root)?;
         let project = Project::discover(Some(root), root)?;
         let before = project.load_documents()?;
-        let command = input.command()?;
+        let command = input.command(&before)?;
         let dry_run = dry_run_migration(&before, &command)?;
         self.sequence += 1;
         let token = self.sequence.to_string();
@@ -177,6 +345,7 @@ impl TableAuthoringSession {
                 MigrationOperation::AddField => "AddField",
                 MigrationOperation::RenameField => "RenameField",
                 MigrationOperation::DropField => "DropField",
+                MigrationOperation::ChangeFieldDeclaration => "ChangeFieldDeclaration",
                 MigrationOperation::AddReference => "AddReference",
                 MigrationOperation::EditReference => "EditReference",
                 MigrationOperation::RemoveReference => "RemoveReference",
@@ -206,6 +375,89 @@ impl TableAuthoringSession {
         allow_destructive: bool,
     ) -> Result<TableApplyView> {
         self.apply_with_failures(root, token, allow_destructive, &[])
+    }
+    pub fn apply_intent(
+        &mut self,
+        root: &Path,
+        input: TableOperationInput,
+        expected_sources: &[TableSourceIdentity],
+        dirty_paths: &[String],
+    ) -> Result<TableApplyView> {
+        let plan = self.plan(root, input)?;
+        if plan.destructive {
+            return Err(error(
+                "E-MIGRATION-AUTHORIZATION",
+                "Destructive schema changes require explicit authorization",
+            ));
+        }
+        let project = Project::discover(Some(root), root)?;
+        let documents = project.load_documents()?;
+        let schema_path = documents
+            .files
+            .iter()
+            .find_map(|file| match &file.document {
+                SourceDocument::Schema(schema) if schema.table == plan.table => {
+                    Some(project_relative_string(project.root(), &file.path))
+                }
+                _ => None,
+            })
+            .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "Table schema not found"))?;
+        if !expected_sources
+            .iter()
+            .any(|source| source.path == schema_path)
+        {
+            return Err(error(
+                "E-TABLE-STALE-SOURCE",
+                "Table schema identity is required to change columns",
+            ));
+        }
+        for expected in expected_sources {
+            let current = documents
+                .files
+                .iter()
+                .find(|file| project_relative_string(project.root(), &file.path) == expected.path);
+            if current.is_none_or(|file| {
+                source_content_identity(&file.source) != expected.content_identity
+            }) {
+                return Err(error(
+                    "E-TABLE-STALE-SOURCE",
+                    format!("Source {} changed since this Table was opened; reload before changing columns", expected.path).as_str(),
+                ));
+            }
+        }
+        let mut affected = plan
+            .files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
+        affected.extend(documents.files.iter().filter_map(|file| {
+            let contains_records = match &file.document {
+                SourceDocument::Schema(schema) => {
+                    schema.table == plan.table && schema.records.is_some()
+                }
+                SourceDocument::Data(data) => data.table == plan.table,
+                _ => false,
+            };
+            contains_records.then(|| project_relative_string(project.root(), &file.path))
+        }));
+        affected.sort();
+        affected.dedup();
+        let blocked = affected
+            .iter()
+            .filter(|path| dirty_paths.contains(path))
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if !blocked.is_empty() {
+            return Err(error(
+                "E-TABLE-AFFECTED-DIRTY",
+                format!(
+                    "Save or resolve unsaved changes in {} before changing columns",
+                    blocked.join(", ")
+                )
+                .as_str(),
+            ));
+        }
+        self.apply(root, &plan.token, false)
     }
     #[doc(hidden)]
     pub fn apply_with_failures(

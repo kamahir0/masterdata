@@ -176,6 +176,46 @@ fn open_table_context(
         .map_err(ApiError::from)
 }
 #[tauri::command(rename_all = "camelCase")]
+fn preview_schema_draft(
+    project_path: Option<String>,
+    schema_path: String,
+    base_source: String,
+    fields: Vec<masterdata_app::SchemaDraftField>,
+    record_drafts: Vec<masterdata_app::SchemaDraftRecordSource>,
+    selected_record_path: Option<String>,
+) -> std::result::Result<masterdata_app::SchemaDraftPreview, ApiError> {
+    table_session()?
+        .preview_schema_draft(
+            &table_root(project_path)?,
+            &schema_path,
+            &base_source,
+            &fields,
+            &record_drafts,
+            selected_record_path.as_deref(),
+        )
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn save_schema_draft(
+    project_path: Option<String>,
+    schema_path: String,
+    base_source: String,
+    base_content_identity: String,
+    fields: Vec<masterdata_app::SchemaDraftField>,
+) -> std::result::Result<masterdata_app::SchemaDraftSaveReport, ApiError> {
+    let root = table_root(project_path)?;
+    let _guard = operation_guard(&root)?;
+    table_session()?
+        .save_schema_draft(
+            &root,
+            &schema_path,
+            &base_source,
+            &base_content_identity,
+            &fields,
+        )
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
 fn apply_table_intent(
     project_path: Option<String>,
     input: serde_json::Value,
@@ -756,6 +796,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_table,
             open_table_context,
+            preview_schema_draft,
+            save_schema_draft,
             apply_table_intent,
             open_type,
             plan_type_migration,

@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
-use crate::type_system::{FieldModifier, ResolvedAuthoringField, ResolvedAuthoringType};
+use crate::type_system::{
+    FieldModifier, PrimitiveType, ResolvedAuthoringField, ResolvedAuthoringType,
+    normalize_primitive_value,
+};
 use crate::{ErrorKind, MasterdataError, Result};
 
 /// A source value passed between the shared application and an authoring
@@ -136,12 +139,22 @@ fn project_typed_source_type(
     value: &Value,
 ) -> Result<AuthoringValue> {
     match shape {
-        ResolvedAuthoringType::Primitive { .. }
-        | ResolvedAuthoringType::ValueObject { .. }
-        | ResolvedAuthoringType::Enum { .. } => {
+        ResolvedAuthoringType::Primitive { primitive }
+        | ResolvedAuthoringType::ValueObject {
+            underlying: primitive,
+            ..
+        } => {
             if value.is_sequence() || value.is_mapping() || matches!(value, Value::Tagged(_)) {
                 return Err(unsupported_authoring_value(
                     "scalar source value has a collection shape",
+                ));
+            }
+            project_primitive_source_value(*primitive, value)
+        }
+        ResolvedAuthoringType::Enum { .. } => {
+            if value.is_sequence() || value.is_mapping() || matches!(value, Value::Tagged(_)) {
+                return Err(unsupported_authoring_value(
+                    "Enum source value is not a scalar",
                 ));
             }
             project_source_value(value)
@@ -194,6 +207,32 @@ fn project_typed_source_type(
             Ok(AuthoringValue::Mapping { entries: projected })
         }
     }
+}
+
+fn project_primitive_source_value(
+    primitive: PrimitiveType,
+    value: &Value,
+) -> Result<AuthoringValue> {
+    let text = match value {
+        Value::String(text) => text.clone(),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        _ => return project_source_value(value),
+    };
+    if primitive == PrimitiveType::String {
+        return Ok(AuthoringValue::String { value: text });
+    }
+    if normalize_primitive_value(primitive, value).is_ok() {
+        if primitive == PrimitiveType::Bool {
+            return Ok(AuthoringValue::Bool {
+                value: text == "true",
+            });
+        }
+        return Ok(AuthoringValue::Number { value: text });
+    }
+    // The decoded source text stays editable even when the current declaration
+    // cannot interpret it. This lets a user repair an invalid scalar in place.
+    Ok(AuthoringValue::String { value: text })
 }
 
 fn unsupported_authoring_value(message: &str) -> MasterdataError {

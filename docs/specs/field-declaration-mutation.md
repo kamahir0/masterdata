@@ -2,7 +2,7 @@
 
 Status: Approved
 
-Table fieldの`type`、`nullable`、`array`宣言を変更する追加operationのsource safety contract。本operationは[Schema Migration v1](schema-migration.md)の`AddField` / `RenameField` / `DropField`の意味を変更しない。Type System、Table/Key、Reference、YAML subsetは各ownerへ委譲する。
+Table fieldの`type`、`nullable`、`array`宣言を変更するsource safety contract。`FIELD-DECL-001..005`は明示的なstrict Plan/Migration operation、`FIELD-DECL-006..010`は通常Table authoringのdraftとfile Saveを所有する。前者を後者の通常header操作へ暗黙適用してはならない。Type System、Table/Key、Reference、YAML subsetは各ownerへ委譲する。
 
 ### FIELD-DECL-001
 
@@ -22,11 +22,31 @@ source-preservingな最小patchをin-memoryで適用し、canonical parserによ
 
 ### FIELD-DECL-005
 
-GUIの高水準intentは正常時に内部Planをcommitしてよい（MAY）。affected sourceのdirty bufferを上書きせず、stale時にsilent retryしない。異常時はtarget field、affected source / record、理由を返す。GUIはsource formatと型規則を再実装してはならない（MUST NOT）。
+明示的なstrict Plan operationを使用するcallerは、affected sourceのdirty bufferを上書きせず、stale時にsilent retryしない。異常時はtarget field、affected source / record、理由を返す。GUIはsource formatと型規則を再実装してはならない（MUST NOT）。通常のtype / Nullable / Array header操作は`FIELD-DECL-006..010`へ進む。
+
+### FIELD-DECL-006
+
+通常のtype / Nullable / Array header変更はschema source fileのauthoring draftとして保持しなければならない（MUST）。操作時にdisk mutationまたは全record validityの証明を要求してはならず（MUST NOT）、record source valueを変換・canonicalizeしてはならない（MUST NOT）。draftのtype/modifierは編集面に直ちに表示し、Undo/Redoで未保存の変更を可逆的に戻せなければならない（MUST）。NullableとArrayの同時trueなどsource schemaとして成立しないshapeは、GUIで単一操作として有効な宣言へ切り替える。
+
+### FIELD-DECL-007
+
+shared Coreはschema draftとすべてのinline / 分離record sourceのcurrent draftをcomposeし、`YAML-SUBSET-018`のSourceValueをnew declarationで解釈しなければならない（MUST）。解釈不能なrecord valueまたはkey/reference dependencyは、操作失敗ではなくsource occurrence / field / nested value pathに対応するdiagnosticにしなければならない（MUST）。schemaを元へ戻せば、sourceを変更せずに再解釈し、原因が消えたdiagnosticを消さなければならない（MUST）。GUIとCLI Validate / Build / Migrationはshared interpreterの意味を分岐させてはならない（MUST NOT）。
+
+### FIELD-DECL-008
+
+schema draftの通常Saveは対象schema source fileだけをsource-preservingな最小patchで更新しなければならない（MUST）。record source fileと他のdirty bufferを暗黙保存・変換してはならない（MUST NOT）。対象schema fileのbase exact content identityをwrite直前に比較し、staleならConflictとしてmutation前に停止しなければならない（MUST）。source locationを安全に再特定できない、candidateがsubset syntax/structural shapeと期待patch postconditionを満たさない、I/O failure、Outcome Unknown、Recovery RequiredではSuccessを返してはならない（MUST NOT）。write safetyと失敗後のbuffer保持は`SOURCE-EDIT-005..012`と同等の境界を維持する。
+
+### FIELD-DECL-009
+
+schema draftのSave可否をrecord/domain validation errorの有無へ依存させてはならない（MUST NOT）。Save successはsemantic validityやBuildabilityを意味しない。Validateはpersisted sourceまたは明示されたin-memory draftに対するdiagnosticを返し、Buildは既存のprofile-independent / selected-dataset validationに必要なresolved modelがinvalidなら失敗しなければならない（MUST）。SaveだけでBuild/Publish/Gitを実行してはならない（MUST NOT）。
+
+### FIELD-DECL-010
+
+schemaと各record sourceはfileごとに独立したbase identity・dirty state・historyを持たなければならない（MUST）。schema Save後はそのschema fileだけをnew baseへ進め、他fileのdraftを保持してdiagnosticを再評価する。別fileのexternal changeはそのfileのdirty bufferを黙って上書き・rebaseしてはならず（MUST NOT）、Conflict/Failure/Outcome Unknownの区別とRecovery Required gateを維持する。Save Allは各fileの明示的な上位workflowであり、途中失敗を全成功と報告してはならない（MUST NOT）。
 
 ## Compatibility
 
-既存YAML shape、logical Table identity、Migration v1のcommand semantics、CLI grammarは維持する。valuesのcoercionやarray wrapping、null埋めは本operationの範囲外。
+logical Table identity、Migration v1の明示Plan operation、CLI grammarは維持する。通常header authoringは即時Migrationからdraft Saveへ移り、既存のinvalid valueで操作が拒否されずdiagnosticになる。record scalarのaccepted setは仕様変更0042に従って変わる。valuesの暗黙変換やarray wrapping、null埋めは行わない。
 
 ## Evidence
 

@@ -504,3 +504,283 @@ fn direct_intent_rejects_a_record_source_changed_since_the_visible_grid() {
     assert_eq!(error.diagnostic().code, "E-TABLE-STALE-SOURCE");
     assert_eq!(fs::read_to_string(data_path).unwrap(), changed);
 }
+
+#[test]
+fn schema_draft_reinterprets_all_record_sources_and_saves_only_schema_bytes() {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    let first_path = dir.path().join("sources/data.yaml");
+    let second_path = dir.path().join("sources/other.yaml");
+    fs::write(
+        &first_path,
+        "kind: data\ntable: item\nrecords:\n  - id: 1\n    note: true # preserve\n",
+    )
+    .unwrap();
+    fs::write(
+        &second_path,
+        "kind: data\ntable: item\nrecords:\n  - id: 2\n    note: false\n",
+    )
+    .unwrap();
+    let first = fs::read(&first_path).unwrap();
+    let second = fs::read(&second_path).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let fields = |type_name: &str| {
+        context
+            .schema
+            .schema
+            .fields
+            .iter()
+            .map(|field| SchemaDraftField {
+                name: field.name.clone(),
+                type_name: if field.name == "note" {
+                    type_name.into()
+                } else {
+                    field.type_name.clone()
+                },
+                nullable: field.nullable,
+                array: field.array,
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let invalid = session
+        .preview_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &fields("int"),
+            &[],
+            Some("sources/data.yaml"),
+        )
+        .unwrap();
+    assert_eq!(
+        invalid
+            .validation
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "E-TABLE-INVALID-RECORD-VALUE")
+            .count(),
+        2
+    );
+    assert!(invalid.selected_snapshot.is_some());
+    assert_eq!(
+        fs::read(&schema_path).unwrap(),
+        context.schema_source.as_bytes()
+    );
+    let with_record_draft = session
+        .preview_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &fields("int"),
+            &[SchemaDraftRecordSource {
+                path: "sources/data.yaml".into(),
+                candidate_source:
+                    "kind: data\ntable: item\nrecords:\n  - id: 1\n    note: 1 # preserve\n".into(),
+            }],
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        with_record_draft
+            .validation
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "E-TABLE-INVALID-RECORD-VALUE")
+            .count(),
+        1
+    );
+    let restored = session
+        .preview_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &fields("string"),
+            &[],
+            None,
+        )
+        .unwrap();
+    assert!(restored.validation.valid);
+    assert_eq!(restored.candidate_source, context.schema_source);
+
+    let saved = session
+        .save_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &context.schema_content_identity,
+            &fields("int"),
+        )
+        .unwrap();
+    assert_eq!(saved.status, SourceSaveStatus::Success);
+    assert_eq!(fs::read(&first_path).unwrap(), first);
+    assert_eq!(fs::read(&second_path).unwrap(), second);
+    assert!(
+        fs::read_to_string(&schema_path)
+            .unwrap()
+            .contains("name: note\n    type: int")
+    );
+    let app = NativeApplicationService::new();
+    let validation = app.validate(Some(dir.path()), dir.path()).unwrap();
+    assert_eq!(
+        validation
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "E-TABLE-INVALID-RECORD-VALUE")
+            .count(),
+        2
+    );
+    assert!(app.prepare_build(Some(dir.path()), dir.path()).is_err());
+    let snapshot = app
+        .open_data_file(Some(dir.path()), dir.path(), "sources/data.yaml")
+        .unwrap();
+    let cell = snapshot.rows[0]
+        .cells
+        .iter()
+        .find(|cell| cell.field == "note")
+        .unwrap();
+    assert!(cell.editable, "semantic-invalid scalar remains repairable");
+    assert_eq!(
+        cell.value,
+        AuthoringValue::String {
+            value: "true".into()
+        }
+    );
+    let repair = app
+        .save_data_file(
+            Some(dir.path()),
+            dir.path(),
+            "sources/data.yaml",
+            &snapshot.base_source,
+            &snapshot.base_content_identity,
+            &[AuthoringEdit {
+                record_index: 0,
+                field: "note".into(),
+                value: AuthoringValue::Number { value: "7".into() },
+            }],
+            None,
+        )
+        .unwrap();
+    assert_eq!(repair.status, SourceSaveStatus::Success);
+    assert!(
+        fs::read_to_string(&first_path)
+            .unwrap()
+            .contains("note: 7 # preserve")
+    );
+    assert_eq!(
+        app.validate(Some(dir.path()), dir.path())
+            .unwrap()
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "E-TABLE-INVALID-RECORD-VALUE")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn schema_draft_save_rejects_stale_identity_without_overwriting() {
+    let dir = project();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let fields = context
+        .schema
+        .schema
+        .fields
+        .iter()
+        .map(|field| SchemaDraftField {
+            name: field.name.clone(),
+            type_name: if field.name == "note" {
+                "int".into()
+            } else {
+                field.type_name.clone()
+            },
+            nullable: field.nullable,
+            array: field.array,
+        })
+        .collect::<Vec<_>>();
+    let path = dir.path().join(&context.schema_path);
+    let external = format!("{}# external\n", context.schema_source);
+    fs::write(&path, &external).unwrap();
+    let report = session
+        .save_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &context.schema_content_identity,
+            &fields,
+        )
+        .unwrap();
+    assert_eq!(report.status, SourceSaveStatus::Conflict);
+    assert_eq!(fs::read_to_string(path).unwrap(), external);
+}
+
+#[test]
+fn inline_record_draft_composes_for_preview_without_being_saved_with_schema() {
+    let dir = project();
+    let path = dir.path().join("sources/schema.yaml");
+    let schema = format!(
+        "{}records:\n  - id: 2\n    note: true # inline\n",
+        fs::read_to_string(&path).unwrap()
+    );
+    fs::write(&path, &schema).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let fields = context
+        .schema
+        .schema
+        .fields
+        .iter()
+        .map(|field| SchemaDraftField {
+            name: field.name.clone(),
+            type_name: if field.name == "note" {
+                "int".into()
+            } else {
+                field.type_name.clone()
+            },
+            nullable: field.nullable,
+            array: field.array,
+        })
+        .collect::<Vec<_>>();
+    let inline_candidate = schema.replace("note: true # inline", "note: 7 # inline");
+    let preview = session
+        .preview_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &fields,
+            &[SchemaDraftRecordSource {
+                path: context.schema_path.clone(),
+                candidate_source: inline_candidate,
+            }],
+            Some(&context.schema_path),
+        )
+        .unwrap();
+    assert!(preview.candidate_source.contains("note: 7 # inline"));
+    assert!(
+        preview
+            .candidate_source
+            .contains("name: note\n    type: int")
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), schema);
+    let result = session
+        .save_schema_draft(
+            dir.path(),
+            &context.schema_path,
+            &context.schema_source,
+            &context.schema_content_identity,
+            &fields,
+        )
+        .unwrap();
+    assert_eq!(result.status, SourceSaveStatus::Success);
+    let saved = fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("name: note\n    type: int"));
+    assert!(saved.contains("note: true # inline"));
+}

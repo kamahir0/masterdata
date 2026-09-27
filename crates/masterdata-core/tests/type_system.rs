@@ -308,7 +308,7 @@ fn field_modifiers_are_structured_and_arrays_are_immutable_shapes() {
 }
 
 #[test]
-fn primitive_scalar_categories_are_strict() {
+fn primitive_scalar_grammar_is_schema_directed() {
     let model = TypeSystem::default();
     let integer: Value = serde_yaml::from_str("1").expect("integer");
     let floating: Value = serde_yaml::from_str("1.0").expect("float");
@@ -320,7 +320,20 @@ fn primitive_scalar_categories_are_strict() {
         .expect("empty string");
     assert!(model.validate_value("float", &integer).is_err());
     assert!(model.validate_value("int", &floating).is_err());
-    assert!(model.validate_value("string", &boolean).is_err());
+    model
+        .validate_value("string", &boolean)
+        .expect("string accepts source scalar text regardless of YAML category");
+    model
+        .validate_value("bool", &Value::String("true".into()))
+        .expect("quoted bool text has the same meaning");
+    model
+        .validate_value("int", &Value::String("123".into()))
+        .expect("quoted integer text has the same meaning");
+    assert!(
+        model
+            .validate_value("int", &Value::String("00123".into()))
+            .is_err()
+    );
 
     let too_large: Value = serde_yaml::from_str("2147483648").expect("integer");
     assert_eq!(

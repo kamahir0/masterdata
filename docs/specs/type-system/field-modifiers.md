@@ -63,6 +63,8 @@ data recordまたはCustom Type data mapping内のfield entryは、Required、Nu
 - Array fieldは、要素が `T` としてvalidなarrayを含まなければならない（MUST）。空array `[]` はvalidでなければならず
   （MUST）、`null` はinvalidでなければならず（MUST）、fieldを省略した場合はinvalidでなければならない（MUST）。
 
+ここで`null`は`YAML-SUBSET-018`のactual Nullだけを指す。quoted `"null"` / `'null'` はScalar textとしてbase typeへ渡し、NullableのNullへ暗黙変換してはならない（MUST NOT）。Array要素やCustom Typeのnested leafにも同じ解釈を再帰適用する。
+
 ### TYPE-FIELD-004
 
 Nullable fieldとArray fieldは、base typeのkey compatibilityにかかわらず、MasterMemoryのPrimary Keyまたは

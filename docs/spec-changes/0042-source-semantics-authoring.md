@@ -1,6 +1,8 @@
 # 仕様変更 0042: record scalarのschema-directed解釈とTable draft
 
-Status: Proposed
+Status: Applied
+
+本artifactはHuman承認時の設計・matrix・reviewを保持する履歴であり、現在のobservable behaviorは下記canonical specificationsが所有する。
 
 ## Affected Specifications
 
@@ -123,7 +125,7 @@ Save candidateはsubset syntax、構造、変更対象の再特定、expected pa
 
 ## 未解決事項（Open Questions）
 
-- **Human decision needed**: このsource-language・CLI validityのbreaking changeを採用するか。採用後の細部は上記Agent Decisionで一意化できる。
+- **解決済み**: source-language・CLI validityのbreaking changeは2026-09-27のHuman decisionで採用された。
 - parser libraryを維持してsource AST adapterを追加するか、別parserへ移るかは実装検証で決める。どちらも同じobservable matrixとsource safetyを満たす必要がある。parser migrationそのものはRFC 0002の独立decision。
 - 不正なYAML syntaxをエディタでraw textとして一時保持する機能、schema以外の全operationのdraft統合、visual polishは今回の承認範囲外。
 
@@ -133,8 +135,8 @@ Save candidateはsubset syntax、構造、変更対象の再特定、expected pa
 
 ## Approval Eligibility
 
-- Autonomous approval eligible: **No**
-- Human gate: `docs/execution-workflow.md#human-gate` の **Breaking compatibility**（persisted/source languageとCLI Validate / Build結果の変更）。
+- Autonomous approval eligible: **No**（Human approvalを取得済み）
+- Human gate: `docs/execution-workflow.md#human-gate` の **Breaking compatibility**（2026-09-27のHuman decisionで充足）。
 - 推奨: 本提案のschema-directed record scalar解釈を採用する。現行valid sourceは保持し、invalid→validの拡張を明示したうえでshared Coreへ実装する。
 
 ## レビュー（Review）
@@ -150,4 +152,4 @@ refinement後のfresh passで、依頼文、現行Approved specs、Core経路、
 
 ## 承認記録（Approval Record）
 
-Human decision待ち。Approved canonical specificationの意味はまだ変更していない。
+Approval mode: Human。2026-09-27、Humanは提案0042全体（Scalar Interpretation Matrix、authoring state、persistence model、Agent Decisionsを含む）を明示的に採用した。semantic reviewはBlockingなし、Approved as Proposed: Yes。canonical applicationは本変更のGit履歴で追跡する。`docs/specs/yaml-subset.md`、`type-system/primitives.md`、`type-system/field-modifiers.md`、`type-system/enums.md`、`field-declaration-mutation.md`、`source-edit.md`、`build-pipeline.md`、`docs/gui/table-editor/spec.md`、`docs/gui/data-editor/spec.md`へ適用し、architecture WHYはADR 0007へ記録した。

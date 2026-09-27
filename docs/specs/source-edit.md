@@ -122,6 +122,8 @@ Data Editor向けのshared application boundaryは、fieldのresolved base type 
 
 current source valueがdomain-invalidでも、shared boundaryがsource valueをlosslessに保持できる場合はそのvalueを黙ってvalid valueへcoerceしてはならない（MUST NOT）。安全にtyped authoring stateへ投影できないsource shapeでは、fieldを近似編集可能として扱わず、original sourceを保持したままread-only reasonとshared diagnosticを提示できなければならない（MUST）。
 
+既存Scalarがcurrent schemaでsemantic-invalidでも、decoded textとsource provenanceを安全に保持・再特定でき、置換valueを最小rangeへpatchできる場合は、typed projection失敗だけを理由に修復編集を禁止してはならない（MUST NOT）。shared boundaryはoriginal scalar text、現在のdiagnostic、target field shapeをfrontendへ提供する。unsafeなcomplex shapeやsource locationでは上記read-only safetyを維持する。
+
 ### SOURCE-EDIT-016
 
 Complex value edit requestはnested scalarを含むvalue treeをlosslessに表現しなければならない（MUST）。特に任意のnested positionにある`long` / `ulong`は全64-bit rangeをroundingなしで往復できなければならず（MUST）、frontendのIEEE-754 `number`へ強制変換してはならない（MUST NOT）。Value ObjectはApproved underlying scalar representation、Enumはsymbolic member、Flagsはsymbolic member sequence、Custom Typeはdeclared field mapping、Nullable / ArrayはApproved Type Systemのshape semanticsを使用しなければならない（MUST）。

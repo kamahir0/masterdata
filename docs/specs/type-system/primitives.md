@@ -43,16 +43,9 @@ Primitive Type、Field、Value Objectというtermは[product terminology（用�
 
 ### TYPE-PRIMITIVE-003
 
-supported Primitive Typeを宣言するfieldのdata scalarは、宣言されたprimitiveのscalar categoryと
-representable valueに一致しなければならない（MUST）。validationはprimitive type間でscalarを
-implicit coerceしてはならない（MUST NOT）。特に、`int` に対する `1.0` は受け入れてはならない
-（MUST NOT）。`uint` に対するnegative valueも受け入れてはならず（MUST NOT）、宣言されたinteger
-range外のvalueも受け入れてはならない（MUST NOT）。
+recordのScalar source valueは[Masterdata YAML subset仕様](../yaml-subset.md)の`YAML-SUBSET-018`に従い、declared field typeによって意味を決めなければならない（MUST）。parserが先行決定したBool / Number / String categoryをtype authorityとして扱ってはならない（MUST NOT）。quote styleはtarget primitiveを制限しない。`true`と`"true"`はboolでtrue、stringで`"true"`となり、`123`と`"123"`はinteger targetで123、stringで`"123"`となる。
 
-source scalar classificationとのboundaryは、Approvedの[Masterdata YAML subset仕様](../yaml-subset.md)の
-`YAML-SUBSET-009` から `YAML-SUBSET-014` に従わなければならない（MUST）。source scalarのsubset classificationはYAML subset仕様が
-所有し、このruleはtarget primitiveのcategory、representable value、およびstrict validationを所有する。type systemはparser
-classificationを黙って再解釈してはならない（MUST NOT）。
+boolはdecoded textが正確に`true`または`false`のときだけvalid、stringはNull以外のScalar textをそのままvalueとする。int/uint/long/ulongは`YAML-SUBSET-011`のinteger grammarと各range、float/doubleは`YAML-SUBSET-012`のfraction/exponent grammarとfinite rangeを要求しなければならない（MUST）。primitive間のimplicit numeric coercionを行ってはならない（MUST NOT）。特に`1`をfloat/double、`1.0`をintegerとして受理してはならず、negative uint/ulong、range外、non-finiteをrejectしなければならない（MUST）。invalid scalarはsource parse failureではなくfield/value path付きsemantic diagnosticにする。ただしYAML syntax errorはsource errorのままである。
 
 ### TYPE-PRIMITIVE-004
 
@@ -82,8 +75,7 @@ valueが空であることだけを理由にrejectしてはならない（MUST N
 `NaN`、positive infinity、negative infinityは、いずれのprimitiveのvalueとしても受け入れてはならない
 （MUST NOT）。これはtype-system ruleであり、parserがnon-finite valueを公開する場合にどのYAML scalar
 syntaxを使うかは選択しない。Approvedの[Masterdata YAML subset仕様](../yaml-subset.md)は、sourceにおける
-`NaN`、`Infinity`、`+Infinity`、`-Infinity`を `YAML-SUBSET-012` に従ってunsupportedとするが、このsource restrictionはfinal valueの
-finite-only ruleに代わるものではない。
+`NaN`、`Infinity`、`+Infinity`、`-Infinity`はfloating targetでは`YAML-SUBSET-012`に従ってunsupportedとする。一方、record string targetではsource textとしてvalidになり得る。この区別はfinal floating valueのfinite-only ruleを弱めない。
 
 ### TYPE-PRIMITIVE-008
 
@@ -104,7 +96,7 @@ comparison capability、key compatibility、およびequality capabilityは別�
 ## 検証ルール
 
 この仕様の観測可能なvalidation outcomeは、`TYPE-PRIMITIVE-001` から `TYPE-PRIMITIVE-008` に
-よって定義する。対象は、unsupported name、scalar-category mismatch、fixed-width integer range
+よって定義する。対象は、unsupported name、schema-directed scalar grammar mismatch、fixed-width integer range
 violation、finite floating-point value、invalid direct key capability、empty-string acceptance、現行VO underlyingの
 comparison capability、numeric order、およびstringのOrdinal behaviorである。Exact diagnostic codeとsource-location
 mappingは、この仕様では割り当てない。
@@ -115,7 +107,7 @@ mappingは、この仕様では割り当てない。
 | --- | --- | --- | --- |
 | `TYPE-PRIMITIVE-001` | 各initial canonical nameが宣言されたdomainへresolveする。 | 初期vocabulary外のnameが、これらのprimitiveの1つとして扱われない。 | Type vocabulary table test。 |
 | `TYPE-PRIMITIVE-002` | future-only nameがinitial profileの外に保たれる。 | 列挙された各excluded nameがinitial primitiveとしてrejectされる。 | Unsupported-name validation test。 |
-| `TYPE-PRIMITIVE-003` | 宣言されたcategoryとrepresentable valueを持つscalarが受け入れられる。 | `int` に対する `1.0`、negative `uint`、またはimplicit type conversionがrejectされる。 | Strict scalar validation tests。 |
+| `TYPE-PRIMITIVE-003` | `true`/`"true"`はboolとstring、`123`/`"123"`はintegerとstringでschema-directedに解釈される。 | `int`への`1.0`、floatへの`1`、negative `uint`、range外、parser categoryへの依存が受理される。 | Scalar matrix / CLI parity tests。 |
 | `TYPE-PRIMITIVE-004` | 各integer domainのboundary valueが受け入れられる。 | 各rangeの直外valueが、narrowing、wrapping、saturation、implicit conversionなしにrejectされる。 | Integer boundary tests。 |
 | `TYPE-PRIMITIVE-005` | listedされた5つのkey-compatible primitiveがcompatibleに分類される。 | `bool`、`float`、`double` がincompatibleに分類される。 | Capability classification test。 |
 | `TYPE-PRIMITIVE-006` | `""` がstring valueとして受け入れられる。 | stringが空であることだけを理由にfailureが報告されない。 | Empty-string validation test。 |

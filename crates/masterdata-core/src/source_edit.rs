@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 
 use crate::document::{
     DataDocument, ProjectDocuments, SchemaDocument, SourceDocument, parse_yaml_document,
+    source_record_values,
 };
 use crate::error::{ErrorKind, MasterdataError, Result};
 use crate::type_system::{
@@ -330,13 +331,21 @@ pub fn dry_run_source_record_mutation(
     let candidate_source = apply_patches(&loaded.source, &patches, path)?;
     let reparsed = parse_yaml_document(path.to_path_buf(), &candidate_source)
         .map_err(|error| with_requirement(error, "SOURCE-EDIT-005"))?;
+    let expected_records = expected
+        .records
+        .iter()
+        .map(source_record_values)
+        .collect::<Vec<_>>();
     let expected_document = match &loaded.document {
         SourceDocument::Schema(schema) => {
             let mut schema = schema.clone();
-            schema.records = Some(expected.records.clone());
+            schema.records = Some(expected_records);
             SourceDocument::Schema(schema)
         }
-        SourceDocument::Data(_) => SourceDocument::Data(expected),
+        SourceDocument::Data(_) => {
+            expected.records = expected_records;
+            SourceDocument::Data(expected)
+        }
         SourceDocument::Type(_) => unreachable!("record source was checked above"),
     };
     if reparsed.document != expected_document {

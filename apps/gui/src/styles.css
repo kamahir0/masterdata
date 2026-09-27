@@ -192,6 +192,9 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .file-state-badge.warning { color: #2b1c09; background: var(--warning); }
 
 .editor-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #0d131a; }
+.schema-draft-strip { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--border); background: #1d2636; color: var(--text); font-size: 11px; }
+.schema-draft-strip > span:first-child { margin-right: auto; font-weight: 600; }
+.schema-draft-strip [role="alert"] { color: var(--danger); }
 .workspace-error-strip {
   display: flex; gap: 10px; align-items: center; padding: 6px 10px;
   border-bottom: 1px solid #693b43; color: #f0b9be; background: #351f25; font-size: 11px;
@@ -611,6 +614,7 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 [data-theme="light"] .file-state-badge { background: #e2e8f0; color: #475569; }
 
 [data-theme="light"] .editor-area { background: #ffffff; }
+[data-theme="light"] .schema-draft-strip { background: #eef2ff; }
 [data-theme="light"] .editor-tabs { background: #f8fafc; border-bottom-color: var(--border); }
 [data-theme="light"] .document-tab { border-right-color: var(--border); color: var(--text); }
 [data-theme="light"] .view-tabs button:not(.ant-btn) { color: var(--muted); }

@@ -52,6 +52,8 @@ base snapshotに存在するexisting recordでは、shared applicationが[Source
 
 unsupported、unresolved、missing source member、またはsource shapeをlosslessにtyped authoring stateへ投影できないfieldは、key membershipにかかわらずread-onlyとして扱い、その理由をData Editorから確認できなければならない（MUST）。unsupported fieldを含むTable全体を非表示にしてはならない（MUST NOT）。Primary / Secondary Key構成fieldはeditableになった後もkey membershipを利用者が識別できなければならない（MUST）。
 
+ただし`SOURCE-EDIT-015`に従い、既存Scalarがcurrent schemaでinvalidでも、shared applicationがsource textとprovenanceを保持して安全に置換できると報告する場合、そのcellを修復編集可能にしなければならない（MUST）。typed valueへ黙って変換せず、元のtextとdiagnosticを表示する。
+
 base snapshotに存在しないAdded record draftは既存Record Mutation contractのediting scopeを維持する。Added draftがSave成功してexisting recordになった後も、上記existing-record ruleに従う。
 
 ### GUI-DATA-STATE-002

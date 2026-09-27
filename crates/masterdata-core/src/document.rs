@@ -295,12 +295,57 @@ impl ProjectDocuments {
     }
 }
 
+pub(crate) fn source_record_values(record: &BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+    record
+        .iter()
+        .map(|(key, value)| {
+            let value = if key == "$tags" {
+                value.clone()
+            } else {
+                source_scalar_values(value)
+            };
+            (key.clone(), value)
+        })
+        .collect()
+}
+
+pub(crate) fn source_record_document(mut document: SourceDocument) -> SourceDocument {
+    let records = match &mut document {
+        SourceDocument::Schema(schema) => schema.records.as_mut(),
+        SourceDocument::Data(data) => Some(&mut data.records),
+        SourceDocument::Type(_) => None,
+    };
+    if let Some(records) = records {
+        for record in records {
+            *record = source_record_values(record);
+        }
+    }
+    document
+}
+
+fn source_scalar_values(value: &Value) -> Value {
+    match value {
+        Value::Bool(value) => Value::String(value.to_string()),
+        Value::Number(value) => Value::String(value.to_string()),
+        Value::Sequence(items) => Value::Sequence(items.iter().map(source_scalar_values).collect()),
+        Value::Mapping(entries) => Value::Mapping(
+            entries
+                .iter()
+                .map(|(key, value)| (key.clone(), source_scalar_values(value)))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
 pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocument> {
     let source = content.to_owned();
-    // serde_yaml normalizes numeric-looking and legacy YAML scalar spellings
-    // before typed deserialization. Keep the subset lexical gate before that
-    // boundary so forbidden spellings cannot become indistinguishable from
-    // canonical values (YAML-SUBSET-011, YAML-SUBSET-012, TYPE-PRIMITIVE-003).
+    // WHY: serde_yaml eagerly resolves plain scalars. Normalize record leaves
+    // to decoded text before deserialization while retaining original bytes
+    // in LoadedDocument for source-preserving edits (YAML-SUBSET-018).
+    // IF REMOVED: `00123` and `1e3` lose their spelling before a string field
+    // can interpret them, and `true` is irreversibly classified as bool.
+    // Regression: record_scalar_interpretation_follows_field_schema.
     let content = validate_masterdata_yaml_lexemes(&path, content)?;
 
     let value: Value = serde_yaml::from_str(&content).map_err(|error| {
@@ -396,6 +441,7 @@ struct ParsedMappingEntry<'a> {
 #[derive(Default)]
 struct FlowLexicalState {
     sequence_depth: usize,
+    mapping_depth: usize,
     quote: Option<u8>,
 }
 
@@ -404,6 +450,9 @@ struct MasterdataLexicalState {
     type_integer: TypeIntegerLexicalState,
     block_scalar_parent_indent: Option<usize>,
     flow: FlowLexicalState,
+    record_indent: Option<usize>,
+    metadata_indent: Option<usize>,
+    flow_record_scalar: bool,
 }
 
 struct LexicalReplacement {
@@ -459,6 +508,33 @@ fn validate_masterdata_yaml_lexemes(path: &Path, content: &str) -> Result<String
         }
 
         let parsed_entry = parse_mapping_entry(code);
+        if state.record_indent.is_some_and(|parent| indent <= parent)
+            && !is_block_sequence_marker(code)
+        {
+            state.record_indent = None;
+            state.metadata_indent = None;
+        }
+        if state.metadata_indent.is_some_and(|parent| {
+            indent < parent || (indent == parent && !is_block_sequence_marker(code))
+        }) {
+            state.metadata_indent = None;
+        }
+        let is_record_root = indent == 0
+            && parsed_entry
+                .as_ref()
+                .is_some_and(|entry| !entry.is_sequence_item && yaml_key_is(entry.key, "records"));
+        if is_record_root {
+            state.record_indent = Some(indent);
+        }
+        let is_metadata_root = state.record_indent.is_some()
+            && parsed_entry
+                .as_ref()
+                .is_some_and(|entry| yaml_key_is(entry.key, "$tags"));
+        if is_metadata_root {
+            state.metadata_indent = Some(indent);
+        }
+        let record_scalar =
+            state.record_indent.is_some() && !is_record_root && state.metadata_indent.is_none();
         let type_integer = type_document
             && update_type_integer_state(&mut state.type_integer, indent, parsed_entry.as_ref());
 
@@ -485,43 +561,62 @@ fn validate_masterdata_yaml_lexemes(path: &Path, content: &str) -> Result<String
             }
 
             let value_start = line.offset + entry.value_start;
-            if entry.raw_value.trim_start().starts_with('[') {
+            if entry.raw_value.trim_start().starts_with(['[', '{']) {
+                state.flow_record_scalar = record_scalar;
                 scan_flow_fragment(
                     path,
                     entry.raw_value,
                     value_start,
                     &mut state.flow,
                     type_integer,
+                    record_scalar,
                     &mut replacements,
                 )?;
             } else {
                 let token = entry.raw_value.trim();
                 let token_start = value_start + entry.raw_value.find(token).unwrap_or(0);
-                validate_plain_scalar(path, token, token_start, type_integer, &mut replacements)?;
+                validate_plain_scalar(
+                    path,
+                    token,
+                    token_start,
+                    type_integer,
+                    record_scalar,
+                    &mut replacements,
+                )?;
             }
-        } else if state.flow.sequence_depth > 0 {
+        } else if state.flow.sequence_depth > 0 || state.flow.mapping_depth > 0 {
             scan_flow_fragment(
                 path,
                 code,
                 line.offset,
                 &mut state.flow,
                 false,
+                state.flow_record_scalar,
                 &mut replacements,
             )?;
         } else if let Some((value_start, value)) = parse_block_sequence_scalar(code) {
             let token = value.trim();
             let token_start = line.offset + value_start + value.find(token).unwrap_or(0);
-            if token.starts_with('[') {
+            if token.starts_with(['[', '{']) {
+                state.flow_record_scalar = record_scalar;
                 scan_flow_fragment(
                     path,
                     token,
                     token_start,
                     &mut state.flow,
                     false,
+                    record_scalar,
                     &mut replacements,
                 )?;
             } else {
-                validate_plain_scalar(path, token, token_start, false, &mut replacements)?;
+                validate_plain_scalar(
+                    path,
+                    token,
+                    token_start,
+                    false,
+                    record_scalar,
+                    &mut replacements,
+                )?;
             }
         }
     }
@@ -730,6 +825,7 @@ fn scan_flow_fragment(
     absolute_start: usize,
     state: &mut FlowLexicalState,
     type_integer: bool,
+    record_scalar: bool,
     replacements: &mut Vec<LexicalReplacement>,
 ) -> Result<()> {
     let mut token_start = None;
@@ -772,6 +868,7 @@ fn scan_flow_fragment(
                     &mut token_start,
                     index,
                     type_integer,
+                    record_scalar,
                     replacements,
                 )?;
                 state.sequence_depth += 1;
@@ -785,12 +882,13 @@ fn scan_flow_fragment(
                     &mut token_start,
                     index,
                     type_integer,
+                    record_scalar,
                     replacements,
                 )?;
                 state.sequence_depth = state.sequence_depth.saturating_sub(1);
                 index += 1;
             }
-            b',' | b'{' | b'}' => {
+            b'{' => {
                 finish_flow_token(
                     path,
                     fragment,
@@ -798,6 +896,35 @@ fn scan_flow_fragment(
                     &mut token_start,
                     index,
                     type_integer,
+                    record_scalar,
+                    replacements,
+                )?;
+                state.mapping_depth += 1;
+                index += 1;
+            }
+            b'}' => {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    record_scalar,
+                    replacements,
+                )?;
+                state.mapping_depth = state.mapping_depth.saturating_sub(1);
+                index += 1;
+            }
+            b',' => {
+                finish_flow_token(
+                    path,
+                    fragment,
+                    absolute_start,
+                    &mut token_start,
+                    index,
+                    type_integer,
+                    record_scalar,
                     replacements,
                 )?;
                 index += 1;
@@ -813,6 +940,7 @@ fn scan_flow_fragment(
                     &mut token_start,
                     index,
                     type_integer,
+                    record_scalar && state.mapping_depth == 0,
                     replacements,
                 )?;
                 index += 1;
@@ -825,6 +953,7 @@ fn scan_flow_fragment(
                     &mut token_start,
                     index,
                     type_integer,
+                    record_scalar,
                     replacements,
                 )?;
                 break;
@@ -844,10 +973,12 @@ fn scan_flow_fragment(
         &mut token_start,
         bytes.len(),
         type_integer,
+        record_scalar,
         replacements,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finish_flow_token(
     path: &Path,
     fragment: &str,
@@ -855,6 +986,7 @@ fn finish_flow_token(
     token_start: &mut Option<usize>,
     end: usize,
     type_integer: bool,
+    record_scalar: bool,
     replacements: &mut Vec<LexicalReplacement>,
 ) -> Result<()> {
     let Some(start) = token_start.take() else {
@@ -866,7 +998,14 @@ fn finish_flow_token(
         return Ok(());
     }
     let token_start = absolute_start + start + raw.find(token).unwrap_or(0);
-    validate_plain_scalar(path, token, token_start, type_integer, replacements)
+    validate_plain_scalar(
+        path,
+        token,
+        token_start,
+        type_integer,
+        record_scalar,
+        replacements,
+    )
 }
 
 fn validate_plain_scalar(
@@ -874,6 +1013,7 @@ fn validate_plain_scalar(
     token: &str,
     token_start: usize,
     type_integer: bool,
+    record_scalar: bool,
     replacements: &mut Vec<LexicalReplacement>,
 ) -> Result<()> {
     if token.is_empty() || is_quoted_scalar(token) {
@@ -901,6 +1041,27 @@ fn validate_plain_scalar(
             "`~` is not supported as a Masterdata null literal",
             "YAML-SUBSET-010",
         ));
+    }
+
+    if record_scalar {
+        if token != "null"
+            && (matches!(token, "true" | "false")
+                || looks_like_numeric_scalar(token)
+                || is_nonfinite_float(token))
+        {
+            replacements.push(LexicalReplacement {
+                start: token_start,
+                end: token_start + token.len(),
+                replacement: format!("'{}'", token.replace('\'', "''")),
+            });
+        } else if let Some(replacement) = noncanonical_plain_string(token) {
+            replacements.push(LexicalReplacement {
+                start: token_start,
+                end: token_start + token.len(),
+                replacement,
+            });
+        }
+        return Ok(());
     }
 
     if let Some(replacement) = noncanonical_plain_string(token) {
@@ -1124,7 +1285,7 @@ fn looks_like_numeric_scalar(value: &str) -> bool {
     }
 }
 
-fn is_masterdata_float_lexeme(value: &str) -> bool {
+pub(crate) fn is_masterdata_float_lexeme(value: &str) -> bool {
     let value = value.strip_prefix('-').unwrap_or(value);
     if value.is_empty() || value.starts_with('+') {
         return false;
@@ -1188,7 +1349,7 @@ fn is_nonfinite_float(value: &str) -> bool {
     )
 }
 
-fn is_masterdata_integer_lexeme(value: &str) -> bool {
+pub(crate) fn is_masterdata_integer_lexeme(value: &str) -> bool {
     if value == "0" || value == "-0" {
         return true;
     }

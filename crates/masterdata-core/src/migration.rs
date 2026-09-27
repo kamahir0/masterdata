@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use serde_yaml::{Mapping, Value};
 
 use crate::document::{
-    DataDocument, FieldDefinition, LoadedDocument, ProjectDocuments, SchemaDocument, SourceDocument,
+    DataDocument, FieldDefinition, LoadedDocument, ProjectDocuments, SchemaDocument,
+    SourceDocument, source_record_document,
 };
 use crate::error::{Diagnostic, ErrorKind, MasterdataError, Result};
 use crate::table::{BuildSelection, resolve_tables};
@@ -46,6 +47,98 @@ pub struct ChangeFieldDeclarationCommand {
     pub table: String,
     pub field: String,
     pub declaration: FieldDefinition,
+}
+
+/// Source-safe Table authoring reinterpretation. Domain invalidity belongs to
+/// the returned documents' validation diagnostics, not to this patch step.
+pub fn dry_run_schema_declaration_draft(
+    documents: &ProjectDocuments,
+    schema_path: &Path,
+    declarations: &[FieldDefinition],
+) -> Result<ProjectDocuments> {
+    let loaded = documents
+        .files
+        .iter()
+        .find(|file| file.path == schema_path)
+        .ok_or_else(|| {
+            migration_error(
+                "E-FIELD-DECL-SOURCE",
+                "schema source is missing",
+                Some(schema_path.to_path_buf()),
+                "FIELD-DECL-008",
+            )
+        })?;
+    let SourceDocument::Schema(schema) = &loaded.document else {
+        return Err(migration_error(
+            "E-FIELD-DECL-SOURCE",
+            "selected source is not a Table schema",
+            Some(schema_path.to_path_buf()),
+            "FIELD-DECL-008",
+        ));
+    };
+    if declarations.len() != schema.fields.len()
+        || schema
+            .fields
+            .iter()
+            .zip(declarations)
+            .any(|(old, next)| old.key != next.key || old.name != next.name)
+    {
+        return Err(migration_error(
+            "E-FIELD-DECL-IDENTITY",
+            "schema draft must retain field identity and order",
+            Some(schema_path.to_path_buf()),
+            "FIELD-DECL-006",
+        ));
+    }
+    let mut patches = Vec::new();
+    for (index, (old, next)) in schema.fields.iter().zip(declarations).enumerate() {
+        if old != next {
+            if next.nullable && next.array {
+                return Err(migration_error(
+                    "E-FIELD-DECL-MODIFIER",
+                    "Nullable and Array cannot both be enabled",
+                    Some(schema_path.to_path_buf()),
+                    "FIELD-DECL-006",
+                ));
+            }
+            patches.extend(field_declaration::declaration_patches(
+                &loaded.source,
+                index,
+                schema.fields.len(),
+                old,
+                next,
+            )?);
+        }
+    }
+    if patches.is_empty() {
+        return Ok(documents.clone());
+    }
+    let transformed = apply_file_plans(
+        documents,
+        &[MigrationFilePlan {
+            path: schema_path.to_path_buf(),
+            patches,
+        }],
+    )?;
+    let mut expected = documents.clone();
+    let expected_schema = expected
+        .files
+        .iter_mut()
+        .find(|file| file.path == schema_path)
+        .expect("source exists");
+    let SourceDocument::Schema(expected_document) = &mut expected_schema.document else {
+        unreachable!()
+    };
+    expected_document.fields = declarations.to_vec();
+    if semantic_documents(&transformed) != semantic_documents(&expected) {
+        return Err(migration_error(
+            "E-FIELD-DECL-POSTCONDITION",
+            "schema patch differs from requested declaration",
+            Some(schema_path.to_path_buf()),
+            "FIELD-DECL-008",
+        ));
+    }
+    Ok(transformed)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -481,7 +574,7 @@ fn expected_add_field_semantics(
             }
             SourceDocument::Schema(_) | SourceDocument::Data(_) | SourceDocument::Type(_) => {}
         }
-        expected.push((loaded.path.clone(), document));
+        expected.push((loaded.path.clone(), source_record_document(document)));
     }
     expected.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(expected)
@@ -513,7 +606,12 @@ fn semantic_documents(documents: &ProjectDocuments) -> Vec<(PathBuf, SourceDocum
     let mut semantics = documents
         .files
         .iter()
-        .map(|loaded| (loaded.path.clone(), loaded.document.clone()))
+        .map(|loaded| {
+            (
+                loaded.path.clone(),
+                source_record_document(loaded.document.clone()),
+            )
+        })
         .collect::<Vec<_>>();
     semantics.sort_by(|left, right| left.0.cmp(&right.0));
     semantics

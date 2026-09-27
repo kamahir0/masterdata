@@ -1327,25 +1327,29 @@ fn validate_record(
             valid = false;
             continue;
         };
-        if let Err(error) = type_system.validate_field_value(field, value) {
-            let mut diagnostic = record_diagnostic(
-                "E-TABLE-INVALID-RECORD-VALUE",
-                format!(
-                    "field `{}` is invalid: {}",
-                    field.name,
-                    error.diagnostic().message
-                ),
-                path,
-                record_index,
-                "SCHEMA-TABLE-006",
-            )
-            .with_related_requirement(requirement_for_field_modifier(field.modifier));
-            diagnostic.value_path = type_system.invalid_field_value_path(field, value);
-            diagnostics.push(diagnostic);
-            valid = false;
-        }
-        if field.name != "$tags" {
-            values.insert(field.name.clone(), value.clone());
+        match type_system.interpret_field_source_value(field, value) {
+            Ok(typed) => {
+                if field.name != "$tags" {
+                    values.insert(field.name.clone(), typed);
+                }
+            }
+            Err(error) => {
+                let mut diagnostic = record_diagnostic(
+                    "E-TABLE-INVALID-RECORD-VALUE",
+                    format!(
+                        "field `{}` is invalid: {}",
+                        field.name,
+                        error.diagnostic().message
+                    ),
+                    path,
+                    record_index,
+                    "SCHEMA-TABLE-006",
+                )
+                .with_related_requirement(requirement_for_field_modifier(field.modifier));
+                diagnostic.value_path = type_system.invalid_field_value_path(field, value);
+                diagnostics.push(diagnostic);
+                valid = false;
+            }
         }
     }
     valid.then_some(values)

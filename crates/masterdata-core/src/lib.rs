@@ -63,7 +63,7 @@ pub use migration::{
     AddFieldCommand, AddReferenceCommand, ChangeFieldDeclarationCommand, DropFieldCommand,
     EditReferenceCommand, MigrationCommand, MigrationDryRun, MigrationFilePlan, MigrationOperation,
     MigrationPatch, MigrationPlan, MigrationValidation, RemoveReferenceCommand, RenameFieldCommand,
-    dry_run_migration, migration_table_schema, plan_migration,
+    dry_run_migration, dry_run_schema_declaration_draft, migration_table_schema, plan_migration,
 };
 pub use migration_commit::{
     MigrationCommitFailure, MigrationCommitFailureInjection, MigrationCommitFailurePoint,

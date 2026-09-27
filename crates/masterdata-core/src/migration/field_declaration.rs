@@ -197,7 +197,7 @@ pub(super) fn prepare(
     })
 }
 
-fn declaration_patches(
+pub(super) fn declaration_patches(
     source: &str,
     index: usize,
     count: usize,

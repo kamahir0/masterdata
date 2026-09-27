@@ -113,10 +113,56 @@ type TableContext = {
   table: string;
   schemaPath: string;
   schemaContentIdentity: string;
+  schemaSource: string;
   recordSources: { path: string; inline: boolean }[];
   selectedRecordSource: string | null;
   schema: { schema: { table: string; fields: TableField[]; primaryKey?: { fields: string[] }; secondaryKeys?: { fields: string[] }[] }; fieldTypes: string[] };
 };
+type SchemaDraftPreview = {
+  candidateSource: string;
+  candidateContentIdentity: string;
+  changed: boolean;
+  validation: ValidationReport;
+  selectedSnapshot: DataFileSnapshot | null;
+};
+type SchemaDraftState = {
+  root: string;
+  path: string;
+  table: string;
+  baseSource: string;
+  baseContentIdentity: string;
+  baseFields: TableField[];
+  fields: TableField[];
+  historyPast: TableField[][];
+  historyFuture: TableField[][];
+  revision: number;
+  preview: SchemaDraftPreview | null;
+  previewState: "pending" | "current" | "error";
+  previewError: Diagnostic | null;
+  saving: boolean;
+  saveStatus: "success" | "conflict" | "failure" | "outcome_unknown" | null;
+  saveDiagnostic: Diagnostic | null;
+};
+type SchemaDraftSaveReport = {
+  status: "success" | "conflict" | "failure" | "outcome_unknown";
+  path: string;
+  candidateContentIdentity: string;
+  current: SourceContentState | null;
+  diagnostic: Diagnostic | null;
+};
+function schemaDraftIsDirty(draft: SchemaDraftState): boolean {
+  return draft.fields.some((field, index) => {
+    const base = draft.baseFields[index];
+    return !base || field.type !== base.type || field.nullable !== base.nullable || field.array !== base.array;
+  });
+}
+function schemaDraftFromContext(root: string, context: TableContext): SchemaDraftState {
+  const fields = context.schema.schema.fields.map(field => ({ ...field }));
+  return { root, path: context.schemaPath, table: context.table, baseSource: context.schemaSource,
+    baseContentIdentity: context.schemaContentIdentity, baseFields: fields, fields,
+    historyPast: [], historyFuture: [], revision: 0, preview: null, previewState: "pending",
+    previewError: null, saving: false, saveStatus: null, saveDiagnostic: null };
+}
 type ColumnIntent =
   | { operation: "add_default"; table: string }
   | { operation: "rename"; table: string; field: string; newName: string }
@@ -607,6 +653,8 @@ function App({
   const [activePath, setActivePath] = useState<string | null>(null);
   const [explorerPath, setExplorerPath] = useState<string | null>(null);
   const [tableContextState, setTableContextState] = useState<{ root: string; path: string; epoch: number; context: TableContext } | null>(null);
+  const [schemaDrafts, setSchemaDrafts] = useState<Record<string, SchemaDraftState>>({});
+  const schemaDraftsRef = useRef(schemaDrafts);
   const [tableContextError, setTableContextError] = useState<ApiDiagnostic | null>(null);
   const pendingColumnFocus = useRef<{ table: string; field: string | "last" } | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -688,6 +736,8 @@ function App({
     editorsRef.current = editors;
   }, [editors]);
 
+  useEffect(() => { schemaDraftsRef.current = schemaDrafts; }, [schemaDrafts]);
+
   useEffect(() => {
     workspaceStateRef.current = workspaceState;
   }, [workspaceState]);
@@ -763,8 +813,19 @@ function App({
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
   const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
-  const tableContext = tableContextState?.root === projectRoot && tableContextState.path === activePath && tableContextState.epoch === tableEpoch ? tableContextState.context : null;
+  const savedTableContext = tableContextState?.root === projectRoot && tableContextState.path === activePath && tableContextState.epoch === tableEpoch ? tableContextState.context : null;
+  const activeSchemaDraft = savedTableContext ? schemaDrafts[savedTableContext.schemaPath] ?? null : null;
+  const tableContext = savedTableContext && activeSchemaDraft
+    ? { ...savedTableContext, schema: { ...savedTableContext.schema, schema: { ...savedTableContext.schema.schema, fields: activeSchemaDraft.fields } } }
+    : savedTableContext;
   const activeEditor = activePath ? editors[activePath] ?? null : null;
+  const activeSchemaPreview = activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && activeSchemaDraft.previewState === "current"
+    ? activeSchemaDraft.preview : null;
+  const displayEditor = activeEditor && activeSchemaPreview?.selectedSnapshot?.path === activePath
+    ? { ...activeEditor,
+        snapshot: { ...activeEditor.snapshot, columns: activeSchemaPreview.selectedSnapshot.columns },
+        preview: { ...activeEditor.preview, validation: activeSchemaPreview.validation } }
+    : activeEditor;
   const activeLoading = activePath ? loadingPaths.has(activePath) : false;
   const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
     ? null
@@ -779,7 +840,7 @@ function App({
     const target = document.querySelector<HTMLInputElement>(`[data-column-field="${CSS.escape(field)}"]`);
     if (target) { target.focus(); pendingColumnFocus.current = null; }
   }, [tableContext, activeEditor]);
-  const dirtyCount = Object.values(editors).filter(editorIsDirty).length;
+  const dirtyCount = Object.values(editors).filter(editorIsDirty).length + Object.values(schemaDrafts).filter(schemaDraftIsDirty).length;
   const totalDirtyCount = dirtyCount + (settingsDirty ? 1 : 0);
 
   const showNotice = useCallback((message: string) => {
@@ -900,6 +961,7 @@ function App({
       setWorkspaceState({ kind: "ready", workspace: next });
       rememberProject(next.project);
       setEditors({});
+      setSchemaDrafts({});
       const first = next.files.find((file) => file.kind === "data" || file.hasInlineRecords) ?? next.files[0] ?? null;
       setActivePath(first?.path ?? null);
       setExplorerPath(first?.path ?? null);
@@ -934,6 +996,11 @@ function App({
       .then((context) => {
         if (disposed) return;
         setTableContextState({ root: projectRoot, path: activeFile.path, epoch: tableEpoch, context });
+        setSchemaDrafts(current => {
+          const existing = current[context.schemaPath];
+          if (existing?.root === projectRoot && (existing.baseContentIdentity === context.schemaContentIdentity || schemaDraftIsDirty(existing))) return current;
+          return { ...current, [context.schemaPath]: schemaDraftFromContext(projectRoot, context) };
+        });
         if (activeFile.kind === "schema" && !activeFile.hasInlineRecords && context.selectedRecordSource && context.selectedRecordSource !== activeFile.path) {
           setActivePath(context.selectedRecordSource);
           void openDataFile(projectRoot, context.selectedRecordSource);
@@ -941,6 +1008,46 @@ function App({
       }).catch(error => { if (!disposed) { setTableContextState(null); setTableContextError(asApiError(error).diagnostic); } });
     return () => { disposed = true; };
   }, [projectRoot, activeFile?.path, activeFile?.kind, activeFile?.hasInlineRecords, tableEpoch, openDataFile]);
+
+  const recordDraftSignature = savedTableContext?.recordSources.map(source => {
+    const editor = editors[source.path];
+    return editor && editorIsDirty(editor)
+      ? `${source.path}:${editor.revision}:${editor.previewState}:${editor.preview.candidateContentIdentity}`
+      : "";
+  }).join("|") ?? "";
+  useEffect(() => {
+    const context = savedTableContext;
+    const draft = context ? schemaDrafts[context.schemaPath] : null;
+    if (!projectRoot || !context || !draft || !schemaDraftIsDirty(draft)) return;
+    const dirtyEditors = context.recordSources.map(source => ({ path: source.path, editor: editors[source.path] }))
+      .filter(({ editor }) => editor && editorIsDirty(editor)) as { path: string; editor: EditorState }[];
+    if (dirtyEditors.some(({ editor }) => editor.previewState !== "current")) return;
+    const recordDrafts = dirtyEditors.map(({ path, editor }) => ({ path, candidateSource: editor.preview.candidateSource }));
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void invoke<SchemaDraftPreview>("preview_schema_draft", {
+        projectPath: projectRoot, schemaPath: context.schemaPath, baseSource: draft.baseSource,
+        fields: draft.fields.map(({ name, type, nullable, array }) => ({ name, type, nullable, array })),
+        recordDrafts, selectedRecordPath: activePath && context.recordSources.some(source => source.path === activePath) ? activePath : null,
+      }).then(preview => {
+        if (cancelled) return;
+        setSchemaDrafts(current => {
+          const latest = current[context.schemaPath];
+          if (!latest || latest.revision !== draft.revision || latest.baseContentIdentity !== draft.baseContentIdentity) return current;
+          return { ...current, [context.schemaPath]: { ...latest, preview, previewState: "current", previewError: null } };
+        });
+      }).catch(cause => {
+        if (cancelled) return;
+        const diagnostic = apiDiagnosticToDiagnostic(asApiError(cause).diagnostic);
+        setSchemaDrafts(current => {
+          const latest = current[context.schemaPath];
+          if (!latest || latest.revision !== draft.revision) return current;
+          return { ...current, [context.schemaPath]: { ...latest, previewState: "error", previewError: diagnostic } };
+        });
+      });
+    }, 100);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [projectRoot, savedTableContext?.schemaPath, savedTableContext?.schemaContentIdentity, activePath, activeSchemaDraft?.revision, recordDraftSignature]);
 
 
   useEffect(() => {
@@ -1318,19 +1425,154 @@ function App({
     }
   }, [sourceMutationBlocked, showNotice]);
 
+  const changeSchemaDraft = useCallback((schemaPath: string, field: string, change: Pick<TableField, "type" | "nullable" | "array">) => {
+    setSchemaDrafts(current => {
+      const draft = current[schemaPath];
+      if (!draft || draft.saving || draft.saveStatus === "outcome_unknown") return current;
+      const fields = draft.fields.map(item => item.name === field ? { ...item, ...change } : item);
+      if (fields.every((item, index) => item.type === draft.fields[index].type && item.nullable === draft.fields[index].nullable && item.array === draft.fields[index].array)) return current;
+      return { ...current, [schemaPath]: { ...draft, fields,
+        historyPast: [...draft.historyPast, draft.fields].slice(-100), historyFuture: [], revision: draft.revision + 1,
+        preview: null, previewState: "pending", previewError: null, saveStatus: null, saveDiagnostic: null } };
+    });
+  }, []);
+
+  const undoSchemaDraft = useCallback((schemaPath: string, redo = false) => {
+    setSchemaDrafts(current => {
+      const draft = current[schemaPath];
+      const history = redo ? draft?.historyFuture : draft?.historyPast;
+      const previous = history?.at(-1);
+      if (!draft || draft.saving || draft.saveStatus === "outcome_unknown" || !previous) return current;
+      return { ...current, [schemaPath]: { ...draft, fields: previous,
+        historyPast: redo ? [...draft.historyPast, draft.fields].slice(-100) : draft.historyPast.slice(0, -1),
+        historyFuture: redo ? draft.historyFuture.slice(0, -1) : [...draft.historyFuture, draft.fields].slice(-100),
+        revision: draft.revision + 1, preview: null, previewState: "pending", previewError: null,
+        saveStatus: null, saveDiagnostic: null } };
+    });
+  }, []);
+
+  const finishSchemaSave = useCallback(async (draft: SchemaDraftState, saved: SourceContentState) => {
+    const schemaPath = draft.path;
+    const dirtyPaths = Object.entries(editorsRef.current)
+      .filter(([, editor]) => editor.snapshot.table === draft.table && editorIsDirty(editor))
+      .map(([path]) => path);
+    const refreshed = await Promise.all(dirtyPaths.map(async path => {
+      try {
+        return { path, snapshot: await invoke<DataFileSnapshot>("open_data_file", { projectPath: draft.root, relativePath: path }), error: null };
+      } catch (cause) {
+        return { path, snapshot: null, error: apiDiagnosticToDiagnostic(asApiError(cause).diagnostic) };
+      }
+    }));
+    const nextDraft: SchemaDraftState = { ...draft, baseSource: saved.source, baseContentIdentity: saved.contentIdentity,
+      baseFields: draft.fields, historyPast: [], historyFuture: [], preview: null, previewState: "pending",
+      saving: false, saveStatus: "success", saveDiagnostic: null };
+    setSchemaDrafts(current => ({ ...current, [schemaPath]: nextDraft }));
+    schemaDraftsRef.current = { ...schemaDraftsRef.current, [schemaPath]: nextDraft };
+    const nextEditors = { ...editorsRef.current };
+    for (const { path, snapshot, error } of refreshed) {
+      const editor = nextEditors[path];
+      if (!editor || !editorIsDirty(editor)) continue;
+      if (error || !snapshot) {
+        nextEditors[path] = { ...editor, saveDiagnostic: error };
+        continue;
+      }
+      const expectedIdentity = path === schemaPath ? saved.contentIdentity : editor.snapshot.baseContentIdentity;
+      if (snapshot.baseContentIdentity !== expectedIdentity) {
+        nextEditors[path] = { ...editor, saveStatus: "conflict", conflict: { path, source: snapshot.baseSource, contentIdentity: snapshot.baseContentIdentity }, view: "compare" };
+        continue;
+      }
+      const updated: EditorState = { ...editor, snapshot, queryResult: null,
+        revision: editor.revision + 1, previewState: "pending", previewError: null };
+      nextEditors[path] = updated;
+      schedulePreview(draft.root, path, updated);
+    }
+    editorsRef.current = nextEditors;
+    setEditors(nextEditors);
+    setTableEpoch(epoch => epoch + 1);
+    await Promise.all(Object.entries(nextEditors)
+      .filter(([, editor]) => editor.snapshot.table === draft.table && !editorIsDirty(editor))
+      .map(([path]) => openDataFile(draft.root, path, true)));
+    showNotice(`${sourceName(schemaPath)} saved`);
+  }, [openDataFile, schedulePreview, showNotice]);
+
+  const saveSchemaDraft = useCallback(async (schemaPath: string): Promise<boolean> => {
+    const draft = schemaDraftsRef.current[schemaPath];
+    if (!draft || !schemaDraftIsDirty(draft)) return true;
+    if (sourceMutationBlocked(draft.root) || draft.saving || draft.saveStatus === "outcome_unknown") return false;
+    setSchemaDrafts(current => current[schemaPath] ? { ...current, [schemaPath]: { ...current[schemaPath], saving: true, saveDiagnostic: null } } : current);
+    try {
+      const report = await invoke<SchemaDraftSaveReport>("save_schema_draft", {
+        projectPath: draft.root, schemaPath, baseSource: draft.baseSource,
+        baseContentIdentity: draft.baseContentIdentity,
+        fields: draft.fields.map(({ name, type, nullable, array }) => ({ name, type, nullable, array })),
+      });
+      if (report.status !== "success") {
+        setSchemaDrafts(current => current[schemaPath] ? { ...current, [schemaPath]: { ...current[schemaPath], saving: false, saveStatus: report.status, saveDiagnostic: report.diagnostic } } : current);
+        return false;
+      }
+      const saved = await invoke<SourceContentState>("source_content", { projectPath: draft.root, relativePath: schemaPath });
+      if (saved.contentIdentity !== report.candidateContentIdentity) {
+        setSchemaDrafts(current => current[schemaPath] ? { ...current, [schemaPath]: { ...current[schemaPath], saving: false, saveStatus: "outcome_unknown",
+          saveDiagnostic: { code: "E-FIELD-DECL-WRITE-VERIFY", kind: "validation", message: "The saved schema changed before the editor could verify it.", source: schemaPath } } } : current);
+        return false;
+      }
+      await finishSchemaSave(draft, saved);
+      return true;
+    } catch (cause) {
+      const diagnostic = apiDiagnosticToDiagnostic(asApiError(cause).diagnostic);
+      const status = cause && typeof cause === "object" && "diagnostic" in cause ? "failure" : "outcome_unknown";
+      setSchemaDrafts(current => current[schemaPath] ? { ...current, [schemaPath]: { ...current[schemaPath], saving: false, saveStatus: status, saveDiagnostic: diagnostic } } : current);
+      return false;
+    }
+  }, [finishSchemaSave, sourceMutationBlocked]);
+
+  const recheckSchemaDraft = useCallback(async (schemaPath: string) => {
+    const draft = schemaDraftsRef.current[schemaPath];
+    if (!draft) return;
+    try {
+      const saved = await invoke<SourceContentState>("source_content", { projectPath: draft.root, relativePath: schemaPath });
+      const preview = await invoke<SchemaDraftPreview>("preview_schema_draft", {
+        projectPath: draft.root, schemaPath, baseSource: draft.baseSource,
+        fields: draft.fields.map(({ name, type, nullable, array }) => ({ name, type, nullable, array })),
+        recordDrafts: [], selectedRecordPath: null,
+      });
+      if (saved.contentIdentity === preview.candidateContentIdentity) {
+        await finishSchemaSave(draft, saved);
+      } else {
+        setSchemaDrafts(current => current[schemaPath] ? { ...current, [schemaPath]: { ...current[schemaPath],
+          saveStatus: saved.contentIdentity === draft.baseContentIdentity ? "failure" : "conflict",
+          saveDiagnostic: saved.contentIdentity === draft.baseContentIdentity ? null : { code: "E-FIELD-DECL-CONFLICT", kind: "validation", message: "The schema source changed outside this draft.", source: schemaPath },
+        } } : current);
+      }
+    } catch (cause) { showNotice(asApiError(cause).diagnostic.message); }
+  }, [finishSchemaSave, showNotice]);
+
+  const reloadSchemaDraft = useCallback(async (schemaPath: string) => {
+    const draft = schemaDraftsRef.current[schemaPath];
+    if (!draft) return;
+    try {
+      const context = await invoke<TableContext>("open_table_context", { projectPath: draft.root, relativePath: schemaPath });
+      setSchemaDrafts(current => ({ ...current, [schemaPath]: schemaDraftFromContext(draft.root, context) }));
+      setTableEpoch(epoch => epoch + 1);
+    } catch (cause) { showNotice(asApiError(cause).diagnostic.message); }
+  }, [showNotice]);
+
   const saveAll = useCallback(async (): Promise<boolean> => {
     if (settingsDirty && !(await settingsSaveRef.current())) return false;
+    let allSaved = true;
+    for (const path of Object.keys(schemaDraftsRef.current).filter(path => schemaDraftIsDirty(schemaDraftsRef.current[path]))) {
+      if (!(await saveSchemaDraft(path))) allSaved = false;
+    }
     const paths = Object.entries(editorsRef.current)
       .filter(([, editor]) => editorIsDirty(editor))
       .map(([path]) => path);
-    let allSaved = true;
     for (const path of paths) {
       if (!(await saveFile(path))) {
         allSaved = false;
       }
     }
     return allSaved;
-  }, [saveFile, settingsDirty]);
+  }, [saveFile, saveSchemaDraft, settingsDirty]);
 
   const performAction = useCallback(async (action: PendingAction) => {
     setPendingAction(null);
@@ -1354,7 +1596,7 @@ function App({
   }, [loadWorkspace, surface]);
 
   const requestAction = useCallback((action: PendingAction) => {
-    const hasDirty = settingsDirty || Object.values(editorsRef.current).some(editorIsDirty);
+    const hasDirty = settingsDirty || Object.values(editorsRef.current).some(editorIsDirty) || Object.values(schemaDraftsRef.current).some(schemaDraftIsDirty);
     if (deliveryBusy || hasDirty) {
       setPendingAction(action);
       if (deliveryBusy) showNotice("A Build or Publish operation is running. Project navigation will wait until it finishes.");
@@ -1384,7 +1626,7 @@ function App({
 
   useEffect(() => {
     const listener = getCurrentWindow().onCloseRequested((event) => {
-      if (deliveryBusyRef.current || settingsDirtyRef.current || Object.values(editorsRef.current).some(editorIsDirty)) {
+      if (deliveryBusyRef.current || settingsDirtyRef.current || Object.values(editorsRef.current).some(editorIsDirty) || Object.values(schemaDraftsRef.current).some(schemaDraftIsDirty)) {
         event.preventDefault();
         setPendingAction({ kind: "close" });
       }
@@ -1401,7 +1643,8 @@ function App({
         if (surface === "settings") {
           if (deliveryBusy) showNotice("Settings Save is blocked while Build or Publish is running.");
           else void settingsSaveRef.current();
-        } else if (activePath) void saveFile(activePath);
+        } else if (activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft)) void saveSchemaDraft(activeSchemaDraft.path);
+        else if (activePath) void saveFile(activePath);
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         if (isTextEditingTarget(event.target)) return;
         event.preventDefault();
@@ -1417,7 +1660,7 @@ function App({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activePath, deliveryBusy, redoBuffer, saveFile, showNotice, surface, undoBuffer]);
+  }, [activePath, activeSchemaDraft, deliveryBusy, redoBuffer, saveFile, saveSchemaDraft, showNotice, surface, undoBuffer]);
 
   useEffect(() => {
     if (sourcePollingIntervalMs == null) return;
@@ -1831,6 +2074,11 @@ function App({
   const applyColumnIntent = async (input: ColumnIntent) => {
     if (!projectRoot || sourceMutationBlocked(projectRoot)) throw new Error("Source changes are currently unavailable.");
     if (!tableContext || tableContext.table !== input.table) throw new Error("Reload the Table before changing columns.");
+    if (input.operation === "change_declaration") {
+      changeSchemaDraft(tableContext.schemaPath, input.field, input);
+      return;
+    }
+    if (activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft)) throw new Error("Save or undo the pending type and modifier changes before changing the Table structure.");
     migrationBusyRef.current = projectRoot;
     setMigrationBusyRoot(projectRoot);
     try {
@@ -1850,7 +2098,7 @@ function App({
       }
       if (result.state === "recovery_required") recordRecovery(projectRoot, result);
       if (result.state !== "success") throw new Error(result.diagnostic?.message ?? result.state);
-      pendingColumnFocus.current = { table: input.table, field: input.operation === "add_default" ? "last" : input.operation === "rename" ? input.newName : input.field };
+      pendingColumnFocus.current = { table: input.table, field: input.operation === "add_default" ? "last" : input.newName };
       const paths = [...new Set([...result.files, ...(tableContext?.recordSources.map(source => source.path) ?? [])])];
       await refreshMigrationFiles(projectRoot, paths);
     } finally {
@@ -1869,11 +2117,15 @@ function App({
     } catch (error) { showNotice(asApiError(error).diagnostic.message); }
   };
 
-  const activeDiagnostics = activeEditor?.previewState === "current"
+  const activeDiagnostics = activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && activeSchemaDraft.previewState === "current" && activeSchemaDraft.preview
+    ? activeSchemaDraft.preview.validation.diagnostics
+    : activeEditor?.previewState === "current"
     ? activeEditor.preview.validation.diagnostics
     : [];
   const manualDiagnostics = manualValidation.kind === "done" ? manualValidation.value.diagnostics : [];
   const operationDiagnostics = [
+    ...(activeSchemaDraft?.previewError ? [activeSchemaDraft.previewError] : []),
+    ...(activeSchemaDraft?.saveDiagnostic ? [activeSchemaDraft.saveDiagnostic] : []),
     ...(activeEditor?.saveDiagnostic ? [activeEditor.saveDiagnostic] : []),
     ...(buildState.kind === "error" ? [apiDiagnosticToDiagnostic(buildState.diagnostic)] : []),
     ...(manualValidation.kind === "error" ? [apiDiagnosticToDiagnostic(manualValidation.diagnostic)] : []),
@@ -2146,6 +2398,15 @@ function App({
           {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
+          {activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && <div className="schema-draft-strip" role="status">
+            <span>Table schema changed{activeSchemaDraft.previewState === "pending" ? " · checking values…" : activeSchemaPreview && !activeSchemaPreview.validation.valid ? ` · ${activeSchemaPreview.validation.diagnostics.length} diagnostics` : ""}</span>
+            <Button size="small" onClick={() => undoSchemaDraft(activeSchemaDraft.path)} disabled={!activeSchemaDraft.historyPast.length || activeSchemaDraft.saving}>Undo schema</Button>
+            <Button size="small" onClick={() => undoSchemaDraft(activeSchemaDraft.path, true)} disabled={!activeSchemaDraft.historyFuture.length || activeSchemaDraft.saving}>Redo schema</Button>
+            <Button size="small" type="primary" onClick={() => void saveSchemaDraft(activeSchemaDraft.path)} disabled={mutationBlocked || activeSchemaDraft.saving || activeSchemaDraft.saveStatus === "outcome_unknown"}>Save schema</Button>
+            {activeSchemaDraft.saveStatus === "outcome_unknown" && <Button size="small" onClick={() => void recheckSchemaDraft(activeSchemaDraft.path)}>Recheck save</Button>}
+            {activeSchemaDraft.saveStatus === "conflict" && <Button size="small" onClick={() => void reloadSchemaDraft(activeSchemaDraft.path)}>Discard draft and reload schema</Button>}
+            {activeSchemaDraft.saveDiagnostic && <span role="alert">{activeSchemaDraft.saveDiagnostic.message}</span>}
+          </div>}
           {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && !tableContext && !tableContextError && (
             <EmptyEditor title={`Opening ${activeFile.table ?? "Table"}…`} copy="Loading Table context." />
           )}
@@ -2153,7 +2414,8 @@ function App({
             <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(tableContextError)} />
           )}
           {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableContext && !tableContext.selectedRecordSource && (
-            <EmptyTableSurface context={tableContext} disabled={mutationBlocked} onIntent={applyColumnIntent}
+            <EmptyTableSurface context={tableContext} disabled={mutationBlocked || !!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"} onIntent={applyColumnIntent}
+              onUndoSchema={redo => undoSchemaDraft(tableContext.schemaPath, redo)}
               onCreateData={() => openDataCreation(tableContext.table)} details={tableEditor} />
           )}
           {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
@@ -2184,13 +2446,15 @@ function App({
           {recordFileActive && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor key={`${projectRoot}:${activeFile.path}`}
               mutationBlocked={mutationBlocked}
+              schemaDraftBlocked={!!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"}
               file={activeFile}
               projectRoot={projectRoot!}
-              editor={activeEditor}
+              editor={displayEditor!}
               schemaEditor={tableEditor}
               tableContext={tableContext}
               onRecordSourceSelect={path => { setActivePath(path); setExplorerPath(path); if (projectRoot) void openDataFile(projectRoot, path); }}
               onColumnIntent={applyColumnIntent}
+              onUndoSchema={redo => { if (tableContext) undoSchemaDraft(tableContext.schemaPath, redo); }}
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
               uiCache={dataEditorUi}
@@ -2693,12 +2957,13 @@ type DataEditorUiState = {
   batchToolsOpen: boolean;
 };
 
-function ColumnHeader({ field, table, fieldTypes, disabled, onIntent }: {
+function ColumnHeader({ field, table, fieldTypes, disabled, onIntent, onUndoSchema }: {
   field: TableField;
   table: string;
   fieldTypes: string[];
   disabled: boolean;
   onIntent: (intent: ColumnIntent) => Promise<void>;
+  onUndoSchema: (redo: boolean) => void;
 }) {
   const [name, setName] = useState(field.name);
   const [error, setError] = useState<string | null>(null);
@@ -2722,7 +2987,12 @@ function ColumnHeader({ field, table, fieldTypes, disabled, onIntent }: {
     <input className="unified-column-name" data-column-field={field.name} aria-label={`Field name ${field.name}`} value={name} disabled={disabled || busy}
       onChange={event => setName(event.target.value)} onBlur={rename}
       onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } else if (event.key === "Escape") { cancelBlur.current = true; setName(field.name); event.currentTarget.blur(); } }} />
-    <div className="unified-column-type-row">
+    <div className="unified-column-type-row" onKeyDown={event => {
+      if ((event.metaKey || event.ctrlKey) && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
+        event.preventDefault(); event.stopPropagation();
+        onUndoSchema(event.shiftKey || event.key.toLowerCase() === "y");
+      }
+    }}>
       <Select size="small" aria-label={`Type of ${field.name}`} value={field.type} disabled={disabled || busy}
         options={fieldTypes.map(value => ({ value, label: value }))}
         onChange={type => void run({ operation: "change_declaration", table, field: field.name, type, nullable: field.nullable, array: field.array })} />
@@ -2735,10 +3005,11 @@ function ColumnHeader({ field, table, fieldTypes, disabled, onIntent }: {
   </div>;
 }
 
-function EmptyTableSurface({ context, disabled, onIntent, onCreateData, details }: {
+function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreateData, details }: {
   context: TableContext;
   disabled: boolean;
   onIntent: (intent: ColumnIntent) => Promise<void>;
+  onUndoSchema: (redo: boolean) => void;
   onCreateData: () => void;
   details: React.ReactNode;
 }) {
@@ -2752,7 +3023,7 @@ function EmptyTableSurface({ context, disabled, onIntent, onCreateData, details 
     <div className="grid-scroll"><table className="record-grid" role="grid" aria-rowcount={1} aria-colcount={context.schema.schema.fields.length + 2}>
       <thead><tr><th className="row-number">#</th>
         {context.schema.schema.fields.map(field => <th key={field.name}><ColumnHeader field={field} table={context.table}
-          fieldTypes={context.schema.fieldTypes} disabled={disabled} onIntent={onIntent} /></th>)}
+          fieldTypes={context.schema.fieldTypes} disabled={disabled} onIntent={onIntent} onUndoSchema={onUndoSchema} /></th>)}
         <th className="tag-column"><Button type="text" size="small" aria-label="Add column" disabled={disabled}
           onClick={() => void onIntent({ operation: "add_default", table: context.table }).catch(cause => setError(asApiError(cause).diagnostic.message))}>＋</Button></th>
       </tr></thead><tbody /></table>
@@ -2763,6 +3034,7 @@ function EmptyTableSurface({ context, disabled, onIntent, onCreateData, details 
 
 function DataEditor({
   mutationBlocked,
+  schemaDraftBlocked,
   file,
   projectRoot,
   editor,
@@ -2770,6 +3042,7 @@ function DataEditor({
   tableContext,
   onRecordSourceSelect,
   onColumnIntent,
+  onUndoSchema,
   onOverview,
   onCreateData,
   uiCache,
@@ -2793,6 +3066,7 @@ function DataEditor({
   onOverwriteConflict,
 }: {
   mutationBlocked: boolean;
+  schemaDraftBlocked: boolean;
   file: WorkspaceSourceFile;
   projectRoot: string;
   editor: EditorState;
@@ -2800,6 +3074,7 @@ function DataEditor({
   tableContext: TableContext | null;
   onRecordSourceSelect: (path: string) => void;
   onColumnIntent: (intent: ColumnIntent) => Promise<void>;
+  onUndoSchema: (redo: boolean) => void;
   onOverview?: () => void;
   onCreateData?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
@@ -3354,7 +3629,7 @@ function DataEditor({
                     {tableContext?.schema.schema.fields.find(field => field.name === column.name)
                       ? <ColumnHeader field={tableContext.schema.schema.fields.find(field => field.name === column.name)!}
                           table={tableContext.table} fieldTypes={tableContext.schema.fieldTypes}
-                          disabled={mutationBlocked} onIntent={onColumnIntent} />
+                          disabled={mutationBlocked || schemaDraftBlocked} onIntent={onColumnIntent} onUndoSchema={onUndoSchema} />
                       : <div className="column-heading"><strong>{column.name}</strong><span>{column.typeName}</span></div>}
                   </th>
                 ))}

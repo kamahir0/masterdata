@@ -1,5 +1,9 @@
 //! Session-owned plans bind Apply to reviewed bytes, never a frontend-supplied patch.
-use crate::authoring::project_relative_string;
+use crate::authoring::{
+    SourceContentState, SourceSaveStatus, install_source_candidate,
+    load_authoring_documents_with_overrides, project_relative_string, read_source_state,
+    resolve_source_file,
+};
 use masterdata_core::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -169,9 +173,47 @@ pub struct TableContext {
     pub table: String,
     pub schema_path: String,
     pub schema_content_identity: String,
+    pub schema_source: String,
     pub record_sources: Vec<TableRecordSource>,
     pub selected_record_source: Option<String>,
     pub schema: TableSnapshot,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDraftField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_name: String,
+    pub nullable: bool,
+    pub array: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDraftRecordSource {
+    pub path: String,
+    pub candidate_source: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDraftPreview {
+    pub candidate_source: String,
+    pub candidate_content_identity: String,
+    pub changed: bool,
+    pub validation: ValidationReport,
+    pub selected_snapshot: Option<DataFileSnapshot>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDraftSaveReport {
+    pub status: SourceSaveStatus,
+    pub path: String,
+    pub candidate_content_identity: String,
+    pub current: Option<SourceContentState>,
+    pub diagnostic: Option<Diagnostic>,
 }
 
 #[derive(Debug, Serialize)]
@@ -295,6 +337,7 @@ impl TableAuthoringSession {
             table,
             schema_path,
             schema_content_identity: source_content_identity(&schema_file.source),
+            schema_source: schema_file.source.clone(),
             record_sources,
             selected_record_source,
             schema,
@@ -305,6 +348,201 @@ impl TableAuthoringSession {
         let project = Project::discover(Some(root), root)?;
         let documents = project.load_documents()?;
         table_snapshot(&documents, &project.root().join(path), path)
+    }
+
+    pub fn preview_schema_draft(
+        &self,
+        root: &Path,
+        schema_path: &str,
+        base_source: &str,
+        fields: &[SchemaDraftField],
+        record_drafts: &[SchemaDraftRecordSource],
+        selected_record_path: Option<&str>,
+    ) -> Result<SchemaDraftPreview> {
+        let project = Project::discover(Some(root), root)?;
+        let target = resolve_source_file(&project, schema_path)?;
+        let record_paths = record_drafts
+            .iter()
+            .map(|draft| resolve_source_file(&project, &draft.path))
+            .collect::<Result<Vec<_>>>()?;
+        let mut overrides = vec![(target.as_path(), base_source)];
+        overrides.extend(
+            record_paths
+                .iter()
+                .zip(record_drafts)
+                .map(|(path, draft)| (path.as_path(), draft.candidate_source.as_str())),
+        );
+        if let Some(inline) = overrides.iter().rfind(|(path, _)| *path == target) {
+            overrides[0] = *inline;
+        }
+        let (documents, mut parse_diagnostics) =
+            load_authoring_documents_with_overrides(&project, &overrides)?;
+        let schema = documents
+            .files
+            .iter()
+            .find(|file| file.path == target)
+            .and_then(|file| match &file.document {
+                SourceDocument::Schema(schema) => Some(schema),
+                _ => None,
+            })
+            .ok_or_else(|| error("E-FIELD-DECL-SOURCE", "schema draft base is unavailable"))?;
+        if fields.len() != schema.fields.len() {
+            return Err(error(
+                "E-FIELD-DECL-IDENTITY",
+                "schema draft field count changed",
+            ));
+        }
+        let declarations = schema
+            .fields
+            .iter()
+            .zip(fields)
+            .map(|(old, draft)| {
+                if old.name != draft.name {
+                    return Err(error(
+                        "E-FIELD-DECL-IDENTITY",
+                        "schema draft field identity changed",
+                    ));
+                }
+                let mut next = old.clone();
+                next.type_name = draft.type_name.clone();
+                next.nullable = draft.nullable;
+                next.array = draft.array;
+                Ok(next)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let transformed = dry_run_schema_declaration_draft(&documents, &target, &declarations)?;
+        let candidate_source = transformed
+            .files
+            .iter()
+            .find(|file| file.path == target)
+            .expect("schema candidate")
+            .source
+            .clone();
+        let mut validation = validate_documents(&transformed);
+        if !parse_diagnostics.is_empty() {
+            validation.valid = false;
+            validation.diagnostics.append(&mut parse_diagnostics);
+        }
+        let selected_snapshot = selected_record_path
+            .map(|path| {
+                let selected = resolve_source_file(&project, path)?;
+                if !transformed.files.iter().any(|file| file.path == selected) {
+                    return Ok(None);
+                }
+                crate::authoring::data_file_snapshot(&project, &transformed, Vec::new(), &selected)
+                    .map(Some)
+            })
+            .transpose()?
+            .flatten();
+        Ok(SchemaDraftPreview {
+            candidate_content_identity: source_content_identity(&candidate_source),
+            changed: candidate_source != base_source,
+            candidate_source,
+            validation,
+            selected_snapshot,
+        })
+    }
+
+    pub fn save_schema_draft(
+        &self,
+        root: &Path,
+        schema_path: &str,
+        base_source: &str,
+        base_content_identity: &str,
+        fields: &[SchemaDraftField],
+    ) -> Result<SchemaDraftSaveReport> {
+        self.ensure_mutation_allowed(root)?;
+        let project = Project::discover(Some(root), root)?;
+        let target = resolve_source_file(&project, schema_path)?;
+        if source_content_identity(base_source) != base_content_identity {
+            return Err(error(
+                "E-FIELD-DECL-BASE-IDENTITY",
+                "schema draft base identity does not match its source",
+            ));
+        }
+        let preview =
+            self.preview_schema_draft(root, schema_path, base_source, fields, &[], None)?;
+        let current = read_source_state(&project, &target)?;
+        if current.content_identity != base_content_identity {
+            return Ok(SchemaDraftSaveReport {
+                status: SourceSaveStatus::Conflict,
+                path: schema_path.into(),
+                candidate_content_identity: preview.candidate_content_identity,
+                current: Some(current),
+                diagnostic: Some(
+                    error(
+                        "E-FIELD-DECL-CONFLICT",
+                        "schema source changed since this Table was opened",
+                    )
+                    .diagnostic()
+                    .clone(),
+                ),
+            });
+        }
+        if current.source == preview.candidate_source {
+            return Ok(SchemaDraftSaveReport {
+                status: SourceSaveStatus::Success,
+                path: schema_path.into(),
+                candidate_content_identity: preview.candidate_content_identity,
+                current: None,
+                diagnostic: None,
+            });
+        }
+        if let Err(failure) = install_source_candidate(
+            &target,
+            current.source.as_bytes(),
+            preview.candidate_source.as_bytes(),
+        ) {
+            let after = read_source_state(&project, &target).ok();
+            let status = if failure.diagnostic().code == "E-SOURCE-EDIT-CONFLICT" {
+                SourceSaveStatus::Conflict
+            } else if after
+                .as_ref()
+                .is_some_and(|state| state.content_identity == preview.candidate_content_identity)
+            {
+                SourceSaveStatus::Success
+            } else if after
+                .as_ref()
+                .is_some_and(|state| state.content_identity == current.content_identity)
+            {
+                SourceSaveStatus::Failure
+            } else {
+                SourceSaveStatus::OutcomeUnknown
+            };
+            return Ok(SchemaDraftSaveReport {
+                status,
+                path: schema_path.into(),
+                candidate_content_identity: preview.candidate_content_identity,
+                current: after,
+                diagnostic: (status != SourceSaveStatus::Success)
+                    .then(|| failure.diagnostic().clone()),
+            });
+        }
+        let after = read_source_state(&project, &target).ok();
+        let status = if after
+            .as_ref()
+            .is_some_and(|state| state.content_identity == preview.candidate_content_identity)
+        {
+            SourceSaveStatus::Success
+        } else {
+            SourceSaveStatus::OutcomeUnknown
+        };
+        Ok(SchemaDraftSaveReport {
+            status,
+            path: schema_path.into(),
+            candidate_content_identity: preview.candidate_content_identity,
+            current: (status != SourceSaveStatus::Success)
+                .then_some(after)
+                .flatten(),
+            diagnostic: (status != SourceSaveStatus::Success).then(|| {
+                error(
+                    "E-FIELD-DECL-WRITE-VERIFY",
+                    "saved schema could not be verified",
+                )
+                .diagnostic()
+                .clone()
+            }),
+        })
     }
     pub fn plan(&mut self, root: &Path, input: TableOperationInput) -> Result<TablePlanView> {
         self.ensure_mutation_allowed(root)?;

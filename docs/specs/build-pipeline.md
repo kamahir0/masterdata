@@ -76,7 +76,7 @@ Build Selectionとselected datasetに対するconstraint validationの順序は�
 `BUILD-SELECT-010`、`BUILD-SELECT-011`、および`BUILD-SELECT-017`に従う。pipelineはselection前のprofile-independent validationと、
 selection後のdataset-level validationを混同してはならない。
 
-Rust coreはproject/config解決、YAMLのtyped AST、semantic validation、Type System/Table resolution、BuildPlan、およびcanonical artifact生成に
+Rust coreはproject/config解決、YAMLのsource representation、schema-directed semantic interpretation、Type System/Table resolution、BuildPlan、およびcanonical artifact生成に
 必要なvalidated modelを担当する。`masterdata-codegen-csharp`はresolved modelからstructured C#をloweringし、MasterMemory binary formatと
 Source Generatorのbehaviorは.NET dependencyに残す。`.NET` process invocationは`masterdata-dotnet`に集約し、application serviceはstagingと
 artifact publicationを担当する。CLIとTauriはshared workflowを呼び出し、domain semanticsまたは.NET invocationを複製しない。
@@ -785,7 +785,7 @@ contractを閉じるが、ASCII lowercase、NFC-only normalization、またはOS
 
 ## 責務境界と非目標
 
-- `masterdata-core`: project/config解決、typed YAML AST、Type System/Table resolution、Build Selection、record/constraint validation、canonical ordering、
+- `masterdata-core`: project/config解決、source representationとschema-directed typed model、Type System/Table resolution、Build Selection、record/constraint validation、canonical ordering、
   normalized semantic model。
 - `masterdata-codegen-csharp`: resolved modelからのC# generation planとcanonical C# artifact materialization。raw YAMLからsemanticを推論しない。
 - `masterdata-dotnet`: internal normalized protocol、.NET process invocation、schema-specific builder、MasterMemory/MessagePack compile、DatabaseBuilder、

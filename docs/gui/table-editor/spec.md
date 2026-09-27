@@ -26,11 +26,13 @@ field名はheaderそのものからpointerとkeyboardでinline renameでき、ty
 
 ### GUI-UNIFIED-004
 
-#### Safe automatic schema commit
+#### Schema draftと通常Save
 
-非destructive header操作を確定すると、shared Applicationは内部でPlan、validation、affected-source resolution、lost-update preflight、commitを行う。intentは表示時のschema sourceと選択record sourceのexact content identityへbindし、外部変更後のstale画面から新しいsnapshotへ黙ってplanし直してはならない（MUST NOT）。frontendはPlan resultを自動承認する権限を持たず、dirty affected source、stale、invalid value、unresolved dependencyではmutationを開始しない（MUST）。成功後はaffected clean sourceを再取得し、field / cell selectionとfocusを可能な範囲で復元する。unrelated dirty bufferを破棄してはならない（MUST NOT）。
+type / Nullable / Arrayのheader操作は[Field Declaration Mutation](../../specs/field-declaration-mutation.md)の`FIELD-DECL-006..010`に従う可逆的なschema draftでなければならない（MUST）。headerは直ちに新宣言を表示し、shared Coreの再解釈によるcell/column/Problems diagnosticを更新する。既存valueが新宣言でinvalidでも操作を拒否せず、record source bytesを変換しない。Ctrl/Cmd+Zで未保存のtype変更を戻すと、sourceを変更せず該当diagnosticも消える。通常のschema Saveは対象schema fileだけを安全にpersistする。
 
-失敗時は対象、理由、可能な修正またはDetailsを対象付近に表示し、commit failure、Recovery Required、Outcome UnknownをSuccessと混同してはならない（MUST NOT）。Recovery Required中のcross-surface gateは[App shell](../app-shell.md)に従う。affected dirty sourceはfile名を示し、そのfileのSaveまたはbuffer整理へ進める。stale Planをsilent re-planしてcommitしてはならない（MUST NOT）。
+rename/add/drop、MessagePack key、Key、Reference等のstructural / destructive / dependency operationは各既存Plan・dirty・authorization契約へ従う。frontendはPlan resultを自動承認する権限を持たず、stale画面から新しいsnapshotへ黙ってplanし直してはならない（MUST NOT）。schema draftとrecord draftは同時に存在でき、片方のSaveやsource切替えで他方を失ってはならない（MUST NOT）。
+
+Save/operation失敗時は対象、理由、可能な修正またはDetailsを対象付近に表示し、Conflict、commit failure、Recovery Required、Outcome UnknownをSuccessと混同してはならない（MUST NOT）。Recovery Required中のcross-surface gateは[App shell](../app-shell.md)に従う。stale Planをsilent re-planしてcommitしてはならない（MUST NOT）。semantic diagnosticは操作失敗dialogではなく関連cell/column/Problemsで示す。
 
 Drop FieldとReference Remove等のdestructive operationは明示confirmationとbackend authorizationを維持する。Reference add/edit/removeはshared source-preserving mutationを通し、normal column headerには常設しない。advanced Table detailから名前、source/target fields、resolved cardinality/optionality、C# helper name、diagnosticsを確認・編集できるようにする。frontendでReference semantic resolutionを再実装してはならない（MUST NOT）。
 
@@ -38,7 +40,7 @@ Drop FieldとReference Remove等のdestructive operationは明示confirmationと
 
 #### Grid composition
 
-同じTable面のgridは[Data Editor](../data-editor/spec.md)と[Grid Authoring](../data-editor/grid-authoring.md)のcell / complex value / row / TSV / Undo/Redo / Save / Problems / virtualization contractを維持する。schema操作は確定時のdisk operation、record編集はfile-local dirty bufferである。record Undo/Redoを確定済みschema変更のdisk rollbackに見せかけてはならない（MUST NOT）。schema変更がaffected dirty fileと競合する場合、まずdirtyを解消する。Build / Publish / Gitをauthoringに暗黙結合しない（MUST NOT）。
+同じTable面のgridは[Data Editor](../data-editor/spec.md)と[Grid Authoring](../data-editor/grid-authoring.md)のcell / complex value / row / TSV / Undo/Redo / Save / Problems / virtualization contractを維持する。schema draftとrecord file-local dirty bufferは同じ編集面で区別して保持する。Undo/Redoを確定済みdisk変更のrollbackに見せかけてはならない（MUST NOT）。Build / Publish / Gitをauthoringに暗黙結合しない（MUST NOT）。
 
 Key、Reference、MessagePack key、低頻度metadataは補助面へprogressively discloseする。通常時はTable名とcolumn / row dataを最も強く表示し、正常状態の説明を繰り返し常設しない。gridのkeyboard selection、field headerのtab順、operation失敗後のfocus復元はpointerなしでも成立しなければならない（MUST）。状態は色だけに依存せずassistive technologyへ伝える。
 

@@ -55,7 +55,8 @@ beforeEach(() => {
     if (command === 'set_recent_projects') return {};
     if (command === 'migration_recovery_status') return null;
     if (command === 'authoring_workspace') return workspace;
-    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [{ key: 0, name: 'weight', type: 'ulong', nullable: false, array: false }], primaryKey: { fields: ['weight'] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n', recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [{ key: 0, name: 'weight', type: 'ulong', nullable: false, array: false }], primaryKey: { fields: ['weight'] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
+    if (command === 'preview_schema_draft') return { candidateSource: 'kind: schema\ntable: item\n# draft\n', candidateContentIdentity: 'schema-candidate', changed: true, validation, selectedSnapshot: null };
     if (command === 'open_data_file') return structuredClone(openSnapshot);
     if (command === 'preview_data_file') return preview(args);
     if (command === 'save_data_file') return { status: 'success', snapshot: snapshot() };
@@ -580,7 +581,7 @@ test('inline Table file opens record grid and its schema editor in one surface',
   invoke.mockImplementation(async (command,args) => {
     if (command === 'authoring_workspace') return inlineWorkspace;
     if (command === 'open_table') return tableSnapshot;
-    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'schema.yaml', inline: true }], selectedRecordSource: 'schema.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n', recordSources: [{ path: 'schema.yaml', inline: true }], selectedRecordSource: 'schema.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
     if (command === 'open_data_file') return {...snapshot(), path:'schema.yaml', baseSource:'kind: schema\ntable: item\nrecords:\n  - weight: 10\n'};
     return normal(command,args);
   });
@@ -595,7 +596,7 @@ test('split Data file exposes its Table schema without leaving the record grid',
   invoke.mockImplementation(async (command,args) => {
     if (command === 'authoring_workspace') return tableWorkspace;
     if (command === 'open_table') return tableSnapshot;
-    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'data.yaml', inline: false }, { path: 'other.yaml', inline: false }], selectedRecordSource: args?.relativePath === 'other.yaml' ? 'other.yaml' : 'data.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n', recordSources: [{ path: 'data.yaml', inline: false }, { path: 'other.yaml', inline: false }], selectedRecordSource: args?.relativePath === 'other.yaml' ? 'other.yaml' : 'data.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
     return normal(command,args);
   });
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
@@ -610,7 +611,7 @@ test('switching record files restores each file selection without mixing grid st
     if (command === 'authoring_workspace') return tableWorkspace;
     if (command === 'open_data_file') return { ...mutationSnapshot(), path: args.relativePath };
     if (command === 'open_table_context') return {
-      table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base',
+      table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n',
       recordSources: [{ path: 'data.yaml', inline: false }, { path: 'other.yaml', inline: false }],
       selectedRecordSource: args.relativePath,
       schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong'] },
@@ -632,7 +633,7 @@ test('column header commits rename and modifier through one safe intent without 
   let field = { key: 0, name: 'weight', type: 'ulong', nullable: false, array: false };
   const intents: any[] = [];
   invoke.mockImplementation(async (command,args) => {
-    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [field], primaryKey: { fields: [] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
+    if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: field.name === 'weight' ? 'schema-base' : 'schema-renamed', schemaSource: `kind: schema\ntable: item\n# ${field.name}\n`, recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [field], primaryKey: { fields: [] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
     if (command === 'apply_table_intent') {
       intents.push(args.input);
       field = { ...field, ...(args.input.operation === 'rename' ? { name: args.input.newName } : { nullable: args.input.nullable, array: args.input.array }) };
@@ -653,8 +654,52 @@ test('column header commits rename and modifier through one safe intent without 
   ]);
   const nullable = await screen.findByRole('button', { name: 'Nullable mass' });
   fireEvent.click(nullable);
-  await waitFor(() => expect(intents[1]).toMatchObject({ operation: 'change_declaration', field: 'mass', nullable: true, array: false }));
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'preview_schema_draft')?.[1].fields[0]).toMatchObject({ name: 'mass', nullable: true, array: false }));
+  expect(intents).toHaveLength(1);
   expect(screen.queryByRole('region', { name: 'Migration Plan' })).toBeNull();
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('schema header draft previews diagnostics, undo/redo, and saves the schema file', async () => {
+  const normal = invoke.getMockImplementation()!;
+  let saved = false;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'open_table_context') return {
+      table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: saved ? 'schema-new' : 'schema-base',
+      schemaSource: saved ? 'kind: schema\ntable: item\n# saved\n' : 'kind: schema\ntable: item\n',
+      recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml',
+      schema: { schema: { table: 'item', fields: [{ key: 0, name: 'weight', type: 'ulong', nullable: saved, array: false }] }, fieldTypes: ['ulong', 'string'] },
+    };
+    if (command === 'preview_schema_draft') return { candidateSource: 'kind: schema\ntable: item\n# saved\n', candidateContentIdentity: 'schema-new', changed: true,
+      validation: { valid: false, diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', kind: 'validation', message: 'field `weight` is invalid', source: 'data.yaml', record_identity: 'record[0]' }] },
+      selectedSnapshot: null };
+    if (command === 'save_schema_draft') { saved = true; return { status: 'success', path: 'schema.yaml', candidateContentIdentity: 'schema-new', current: null, diagnostic: null }; }
+    if (command === 'source_content' && args.relativePath === 'schema.yaml') return { path: 'schema.yaml', source: 'kind: schema\ntable: item\n# saved\n', contentIdentity: 'schema-new' };
+    if (command === 'open_data_file' && saved) {
+      const next = snapshot(); next.columns[0].shape.modifier = 'nullable'; return next;
+    }
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 weight: 10/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  const value = await screen.findByRole('textbox', { name: 'record 1 weight' });
+  fireEvent.change(value, { target: { value: '20' } });
+  fireEvent.keyDown(value, { key: 'Enter' });
+  await screen.findByRole('gridcell', { name: /^record 1 weight: 20/ });
+  const nullable = await screen.findByRole('button', { name: 'Nullable weight' });
+  fireEvent.click(nullable);
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'preview_schema_draft')).toBe(true));
+  expect(screen.getByText(/Table schema changed/)).toBeTruthy();
+  fireEvent.keyDown(nullable, { key: 'z', metaKey: true });
+  await waitFor(() => expect(screen.queryByText(/Table schema changed/)).toBeNull());
+  fireEvent.keyDown(nullable, { key: 'z', metaKey: true, shiftKey: true });
+  await screen.findByText(/Table schema changed/);
+  fireEvent.click(screen.getByRole('button', { name: 'Save schema' }));
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_schema_draft')?.[1].fields[0].nullable).toBe(true));
+  await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === 'open_data_file').length).toBeGreaterThan(1));
+  expect(screen.getByRole('gridcell', { name: /^record 1 weight: 20/ })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_data_file')?.[1].edits).toMatchObject([{ field: 'weight', value: { kind: 'number', value: '20' } }]));
+  expect(invoke.mock.calls.some(([command]) => command === 'apply_table_intent')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;

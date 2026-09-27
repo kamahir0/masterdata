@@ -6,21 +6,21 @@ Domain: Schema Language
 
 ## 概要
 
-本proposalは、Masterdataが受理するYAMLの構造・collection・scalar subsetを、特定のYAML parser/libraryの挙動から独立して定義する。
+本仕様は、Masterdataが受理するYAMLの構造・collection・scalar subsetを、特定のYAML parser/libraryの挙動から独立して定義する。
 parser libraryはこのproduct contractを暗黙に決定してはならず（MUST NOT）、implementationはsubset boundaryで明示的に検証する。
 
 Masterdataのnormative syntax reference baselineはYAML 1.2.2である。YAML 1.2.2は、Masterdata YAML subsetが明示的に委譲するsyntax
 semanticsのreferenceとして使用する。ただし、actual accepted source languageはMasterdata YAML subsetであり、YAML 1.2.2が許可する
 constructであっても、このsubsetが禁止するものは受理してはならない（MUST NOT）。
 
-このdocumentは、source documentの単位、mapping/collection、comment、scalar classification、およびunsupported YAML constructの
+このdocumentは、source documentの単位、mapping/collection、comment、record scalarのsource representation、およびunsupported YAML constructの
 canonical ownerである。document envelopeとschema declarationは[Schema言語仕様](schema-language.md)が、Primitive Typeのtarget
 value domainは[Primitive Types仕様](type-system/primitives.md)が所有する。parser libraryの選択は
 [YAML parser/library RFC](../rfcs/0002-yaml-parser-library.md)で別途扱い、このproposalからmigrationを導出しない。
 
 ## 用語
 
-`Masterdata YAML subset` は、Masterdata productが受理するYAML syntaxとscalar classificationの範囲である。`source file` は、
+`Masterdata YAML subset` は、Masterdata productが受理するYAML syntaxとsource scalar representationの範囲である。`source file` は、
 ちょうど1つのMasterdata YAML documentを含むfileである。`mapping key` はYAML mappingのmember name、`scalar category` はboolean、
 null、integer、floating-point、またはstringとしてsubsetが分類するleaf valueを指す。`YAML 1.2.2 syntax reference baseline` は、
 Masterdata subsetがsyntax detailを委譲する場合に参照するYAML versionである。
@@ -85,8 +85,7 @@ exactに保持するかどうかは、このrequirementでは定義しない。
 
 ### YAML-SUBSET-009
 
-boolean literalは、unquotedな `true` または `false` だけでなければならない（MUST）。`yes`、`no`、`on`、`off`をbooleanとして
-分類してはならない（MUST NOT）。
+schema-owned boolean optionのboolean literalは、unquotedな `true` または `false` だけでなければならない（MUST）。`yes`、`no`、`on`、`off`をbooleanとして分類してはならない（MUST NOT）。record valueでは本requirementをprimitive categoryの先行決定に使わず、`YAML-SUBSET-018`とresolved field typeに従う。
 
 ### YAML-SUBSET-010
 
@@ -101,10 +100,7 @@ unquoted integer scalarはordinary base-10 syntaxだけを使用しなければ�
 -?(?:0|[1-9][0-9]*)
 ```
 
-`0`、`123`、`-123`はsupportedである。hexadecimal（`0xFF`）、octal（`0o755`）、binary（`0b1010`）、numeric separator
-（`1_000`）、explicit leading `+`、および`0`以外のleading-zero formはサポートしてはならない（MUST NOT）。したがって、
-`00`、`00123`、`-00123`、`+123`はinvalidである。signed/unsignedのlegalityとtarget typeのrangeはPrimitive Types仕様の
-semantic validationが所有する。
+`0`、`123`、`-123`はinteger targetでsupportedである。hexadecimal（`0xFF`）、octal（`0o755`）、binary（`0b1010`）、numeric separator（`1_000`）、explicit leading `+`、および`0`以外のleading-zero formはintegerとしてサポートしてはならない（MUST NOT）。したがって、`00`、`00123`、`-00123`、`+123`はinteger targetではinvalidである。record string targetでは`YAML-SUBSET-018`に従ってScalar textとして受理できる。Enum/Flags member numeric declarationは従来どおりこのstrict grammarを要求する。signed/unsignedのlegalityとtarget typeのrangeはPrimitive Types仕様のsemantic validationが所有する。
 
 ### YAML-SUBSET-012
 
@@ -115,25 +111,16 @@ unquoted floating-point scalarは、decimal fractionまたはdecimal exponentに
 -?(?:[0-9]+\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+)
 ```
 
-`1.0`、`-0.5`、`1e3`、`1E3`、`1e+3`、`1e-3`、`1.5e-2`はsupportedである。`.5`、`1.`、`+1.5`、`1_000.0`、`NaN`、
-`Infinity`、`+Infinity`、`-Infinity`はサポートしてはならない（MUST NOT）。leading `+`は許可せず、exponent内部の`+`または`-`は許可する。
+`1.0`、`-0.5`、`1e3`、`1E3`、`1e+3`、`1e-3`、`1.5e-2`はfloating targetでsupportedである。`.5`、`1.`、`+1.5`、`1_000.0`、`NaN`、`Infinity`、`+Infinity`、`-Infinity`はfloating valueとしてサポートしてはならない（MUST NOT）。YAML syntax上のplain scalar textとして表せるrecord string targetでは`YAML-SUBSET-018`に従って受理できる。leading `+`はfloating grammarでは許可せず、exponent内部の`+`または`-`は許可する。
 既存Primitive Types仕様のfinite-only ruleは引き続き適用される。
 
 ### YAML-SUBSET-013
 
-scalar category間でimplicit numeric coercionを行ってはならない（MUST NOT）。integer scalar `1`はnumeric conversionによって
-`float`または`double` fieldを満たしてはならず、floating-point scalar `1.0`はinteger fieldを満たしてはならない。target typeの
-strict validationは[Primitive Types仕様](type-system/primitives.md)に従う。
+schema-directed interpretationはimplicit numeric coercionを行ってはならない（MUST NOT）。decoded text `1`はnumeric conversionによって`float`または`double` fieldを満たしてはならず、text `1.0`はinteger fieldを満たしてはならない。target typeのstrict validationは[Primitive Types仕様](type-system/primitives.md)に従う。
 
 ### YAML-SUBSET-014
 
-single-quoted stringとdouble-quoted stringをサポートしなければならない（MUST）。quote styleはdomainまたはbinary semanticsを
-変更してはならない（MUST NOT）。defined scalar categoryに一致しない通常のplain scalarはstringとして扱わなければならない
-（MUST）。例えば、`Potion`、`consumable`、`region-jp`、およびboolean literalではない`yes`、`no`、`on`、`off`はordinary
-string scalarである。不正なnumeric-looking formやunsupportedなnull/numeric token（`00`、`00123`、`-00123`、`+123`、
-`0xFF`、`0o755`、`0b1010`、`.5`、`1.`、`+1.5`、`1_000.0`、`NaN`、`Infinity`、`+Infinity`、`-Infinity`、`~`）を通常のstringへ
-fallbackさせてはならない（MUST NOT）。これらは`YAML-SUBSET-010`、`YAML-SUBSET-011`、`YAML-SUBSET-012`に従いinvalidまたは
-unsupportedとする。
+single-quoted stringとdouble-quoted stringをサポートしなければならない（MUST）。quote styleはdomainまたはbinary semanticsを変更してはならない（MUST NOT）。record valueのScalarはquoted / plainのどちらも`YAML-SUBSET-018`に従い、quoteをMasterData type annotationとして扱ってはならない（MUST NOT）。schema metadata等のrecord外では、defined scalar categoryに一致しない通常のplain scalarをstringとして扱う。`Potion`、`consumable`、`region-jp`、`yes`、`no`、`on`、`off`はordinary stringである。`~`は引き続きunsupportedであり、implicit nullへfallbackしてはならない（MUST NOT）。
 
 single-quoted scalarはYAML 1.2.2のsingle-quoted scalar semanticsに従わなければならない（MUST）。single quoteを表す`''`はdecoded
 valueの1つの`'`でなければならず（MUST）、backslashはsingle-quoted scalar内のescape sequenceを開始してはならない（MUST NOT）。
@@ -142,10 +129,7 @@ YAML 1.2.2で定義される範囲の`\n`、`\t`、`\"`、`\\`、`\uXXXX`など�
 Masterdata固有の別のescape languageを定義してはならない（MUST NOT）。decoded string valueがsemantic valueであり、quote styleそのものを
 semantic inputとして扱ってはならない（MUST NOT）。
 
-Unicode characterはplain、single-quoted、double-quoted、およびbare `|` literal blockのstring valueとして受理しなければならない（MUST）。Masterdataは、
-textがUnicodeであることだけを理由にUnicode normalizationを自動適用してはならない（MUST NOT）。このrequirementは、既存のtype name、
-field name、またはRecord Tagのlexical ruleを変更しない。timestamp-looking plain scalarは、このrequirementのstring fallbackから除外する。
-unquoted timestamp-looking plain scalarの意味は`Open Questions`で扱う。
+Unicode characterはplain、single-quoted、double-quoted、およびbare `|` literal blockのstring valueとして受理しなければならない（MUST）。Masterdataは、textがUnicodeであることだけを理由にUnicode normalizationを自動適用してはならない（MUST NOT）。このrequirementは、既存のtype name、field name、またはRecord Tagのlexical ruleを変更しない。timestamp-looking plain record scalarは`YAML-SUBSET-018`に従うScalar textであり、string fieldではそのtextとして受理する。Date/DateTimeへのimplicit解釈をしてはならない（MUST NOT）。
 
 ### YAML-SUBSET-015
 
@@ -172,20 +156,24 @@ implicit nullとして解釈してはならない（MUST NOT）。`null`はexpli
 それぞれのsemantic valueを明示しなければならない（MUST）。mapping memberの省略、explicit null、empty string、およびempty collectionを
 同一視してはならない（MUST NOT）。
 
+### YAML-SUBSET-018
+
+recordのfield value subtreeは、YAML syntaxを解析した後、Scalar(decoded textとsource/style/provenance)、Null、Sequence、Mappingとして保持しなければならない（MUST）。plain `true`、`123`、`00123`、`1.0`、`1e3`などのscalar textへ、YAML parserのimplicit primitive categoryをMasterData意味として先行割当してはならない（MUST NOT）。引用符はYAML syntaxとescapingに使用し、MasterData type annotationにしてはならない（MUST NOT）。plainとquotedのdecoded textが同じであれば、field typeに対する解釈は同じでなければならない（MUST）。
+
+unquoted `null`のみactual Nullとし、quoted `"null"`と`'null'`はScalar(`null`)として区別しなければならない（MUST）。`~`、valueを省略したentry、unsupported YAML constructは引き続きsource errorである。YAML syntax上のplain scalarとして表せる`00123`、`+123`、`0xFF`、`.5`、`NaN`等をrecord sourceのlexical段階で数値不正として一律rejectしてはならない（MUST NOT）。それらがfield typeでvalidかどうかはType Systemが決める。mapping key、document envelope、schema/type declaration、`$tags`等のrecord metadataの専用syntaxを本requirementで緩和してはならない（MUST NOT）。
+
+source bytesとdecoded textの両方を失わず、変更しないrecord leafをtype変更だけで再renderしてはならない（MUST NOT）。
+
 ## 検証ルール
 
-source fileごとにdocument数、directive、document marker、duplicate mapping key、mapping key type、explicit value presence、anchor/alias/merge、
-explicit tag、collection shape、comment、scalar categoryを検証する。scalarがtarget Primitive Typeへ渡される場合、scalar categoryとrepresentable valueは
-[Primitive Types仕様](type-system/primitives.md)のstrict validationへ渡され、implicit coercionを行わない。
+source fileごとにdocument数、directive、document marker、duplicate mapping key、mapping key type、explicit value presence、anchor/alias/merge、explicit tag、collection shape、commentを検証する。record scalarの意味はYAMLのimplicit categoryでなく、[Primitive Types仕様](type-system/primitives.md)等のdeclared target typeへ渡して決める。
 
 `kind`、`table`、`records`、schema fields、type declarationなどMasterdata-owned memberの具体的なrequired/unknown ruleは、
 [Schema言語仕様](schema-language.md)、[Custom Type仕様](type-system/custom-types.md)、その他のcanonical ownerへ委譲する。
 
 ## 互換性
 
-このproposalはsource YAMLの解釈可能範囲を定義する。duplicate key、unsupported construct、scalar classificationの変更は、同じ
-source textのparse結果、diagnostic、domain data、binary outputを変更し得るため、将来のstatus promotionまたはparser migrationには
-compatibility corpusと明示的なchange reviewが必要である。quote styleとcommentはdomain/binary semanticsを持たない。
+仕様変更0042のHuman承認により、record scalarのaccepted setと解釈をschema-directedへ変更した。従来invalidだったplain `true` / `123`のstring field、quoted numeric/boolの対応field、`00123`のstring fieldがvalidになり得る。現行valid sourceの意味は維持し、sourceの一括変換は要求しない。quote styleとcommentはdomain/binary semanticsを持たない。
 
 parser libraryの変更はこのsubset contractを変更せず、選択されたlibraryがsubsetを満たすようadapterまたはvalidation boundaryを
 提供しなければならない。`serde_yaml`から別libraryへのmigration、round-trip editorのexact preservation、released schema migrationは
@@ -204,15 +192,16 @@ parser libraryの変更はこのsubset contractを変更せず、選択された
 | `YAML-SUBSET-006` | explicit tagなしのscalarが受理される。 | `!!str`、`!!int`、`!!timestamp`、custom tagが受理される。 |
 | `YAML-SUBSET-007` | block mapping、block sequence、YAML 1.2.2 syntaxに従うsingle-lineおよびmultiline flow sequenceが受理される。 | flow mapping `{ itemId: 1001 }`、またはflow sequence内のflow mapping・anchor・alias・explicit tag・unsupported scalar formが受理される。 |
 | `YAML-SUBSET-008` | full-line/inline commentを含む入力のdomain/binary resultがcommentなしと一致する。 | commentがdomain valueやbinary semanticsを変更する。 |
-| `YAML-SUBSET-009` | `true`/`false`だけがbooleanになり、`yes`/`no`/`on`/`off`はbooleanにならない。 | YAML libraryの広いboolean resolutionが採用される。 |
+| `YAML-SUBSET-009` | schema-owned boolean optionは`true`/`false`だけを受理し、record値はfield schemaへ委譲する。 | YAML libraryの広いboolean resolutionがschema optionやrecord fieldのauthorityになる。 |
 | `YAML-SUBSET-010` | `null`だけがnullになり、`~`がrejectされ、quoted `"null"`がstringになる。 | `~`がnull shorthandとして受理される。 |
-| `YAML-SUBSET-011` | `0`、`123`、`-123`がinteger scalarになる。 | hex、octal、binary、separator、leading `+`、leading zero formが受理される。 |
-| `YAML-SUBSET-012` | fraction/exponent formがfloating scalarになり、finite-only ruleが適用される。 | `.5`、`1.`、`+1.5`、`NaN`、`Infinity`、`+Infinity`、`-Infinity`が受理される。 |
+| `YAML-SUBSET-011` | `0`、`123`、`-123`がinteger targetで受理され、Enum member numeric宣言はstrict grammarを使う。 | hex、octal、binary、separator、leading `+`、leading zero formがinteger targetで受理される。 |
+| `YAML-SUBSET-012` | fraction/exponent formがfloating targetで受理され、finite-only ruleが適用される。 | `.5`、`1.`、`+1.5`、`NaN`、`Infinity`等がfloating targetで受理される。 |
 | `YAML-SUBSET-013` | integer `1`とfloating `1.0`が互いのtarget fieldをcoercionなしに満たさない。 | numeric conversionでcategory mismatchが隠される。 |
-| `YAML-SUBSET-014` | single/double quoteとplain stringが定義どおりにdecoded stringとなり、`''`、backslash、YAML 1.2.2 double-quoted escape、Unicode value、quote styleのnon-semantic性が確認できる。 | quote styleがbinary semanticsを変更する、single-quoted backslashがescapeになる、YAML 1.2.2 escape semanticsから外れる、Unicode normalizationが自動適用される、`yes`等がbooleanになる、またはunsupportedなnumeric-looking/null tokenがstringへfallbackする。 |
+| `YAML-SUBSET-014` | single/double quoteとplain scalarが定義どおりにdecodedされ、quote styleはrecordのMasterData typeを変えない。 | quote styleがtype annotationになり、escape semanticsやUnicode preservationが崩れる。 |
 | `YAML-SUBSET-015` | bare `|` block scalarがYAML 1.2.2のliteral-block clip behaviorでdecodedされる。 | `|-`、`|+`、`|2`、`|2-`、`|2+`などのmodifier付きliteral block、または`>`が受理される、もしくはcustom chomping/foldingが適用される。 |
 | `YAML-SUBSET-016` | plainまたはquoted string mapping keyが受理され、`name`、`"name"`、`'name'`が同じdecoded key identityとして扱われる。 | numeric、boolean、null、complex keyが受理される、またはmapping keyがstringへimplicit coerceされる。 |
 | `YAML-SUBSET-017` | `name: null`、`name: ""`、`items: []`が明示された別々のvalueとして扱われる。 | `name:`がimplicit nullとして受理される、または省略member、explicit null、empty string、empty collectionが同一視される。 |
+| `YAML-SUBSET-018` | `true`/`"true"`と`123`/`"123"`は同じdecoded textとしてfield schemaへ渡り、`null`と`"null"`は区別され、`00123`はrecord stringで受理される。 | parserのBool/Number categoryまたはquote styleがrecord field typeを先行決定する。 |
 
 ## 例
 
@@ -245,8 +234,7 @@ values: [
 ]
 ```
 
-次はunsupportedまたはinvalidなconstructの例である。最後のtimestamp-looking plain scalarはOpen Questionの例であり、ここでは
-結論を示さない。
+次はunsupportedなYAML constructの例である。
 
 ```yaml
 ---
@@ -255,6 +243,8 @@ table: item
 records: { itemId: 1001 }
 value: !!str 1001
 ```
+
+次のrecord scalarはsourceとして保持できる。`enabled`がbool、`count`がint、`value`がfloatならそれぞれsemantic diagnosticになり、`timestamp`がstringならtextとしてvalidである。
 
 ```yaml
 kind: data
@@ -278,12 +268,11 @@ name:
 
 ## 未解決事項（Open Questions）
 
-- `2026-08-30`、`2026-08-30T12:34:56Z`のようなunquoted timestamp-looking plain scalarをreject、string、将来のDate/DateTime scalar、または別の明示的ruleとして扱うか。YAML 1.2.2のbaselineまたはYAML libraryのimplicit timestamp typeからMasterdataのsemanticsをblindly導出してはならない。quotedな`"2026-08-30"`はunambiguously stringである。このquestionはDate/DateTime type designまで延期する。
 - source span、diagnostic code、duplicate/unsupported constructのerror severityをどう割り当てるか。
 - GUI saveでcomment、formatting、quote、orderingを保持する必要があるか。
 - YAML parser/libraryの採用、migration、maintenance policyをRFC 0002の比較からどう決定するか。
 
 ## 非目標
 
-このproposalは、YAML parser/library migration、round-trip editorの実装、GUI save preservationの最終contract、schema/type/index/reference
+この仕様は、YAML parser/library migration、round-trip editorの実装、schema/type/index/reference
 のdomain semantics、Date/DateTime type、MasterMemory binary format、または新しいPrimitive Typeを実装・確定しない。

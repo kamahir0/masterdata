@@ -1,14 +1,15 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_yaml::Value;
+use serde_yaml::{Mapping, Value};
 
 use crate::document::{
     ConversionDefinition, EnumDefinition, EnumMember, FieldDefinition, FlagsDefinition,
     IntegerLiteral, ProjectDocuments, SourceDocument, TypeDocument, TypeFieldDefinition,
-    ValueObjectDefinition,
+    ValueObjectDefinition, is_masterdata_float_lexeme, is_masterdata_integer_lexeme,
 };
 use crate::{Diagnostic, ErrorKind, MasterdataError, Result};
 
@@ -772,6 +773,63 @@ impl TypeSystem {
                 }
                 Ok(())
             }
+        }
+    }
+
+    /// Resolve a source value after validation while keeping the persisted
+    /// source representation in ProjectDocuments unchanged.
+    pub fn interpret_field_source_value(
+        &self,
+        field: &ResolvedField,
+        value: &Value,
+    ) -> Result<Value> {
+        self.validate_field_value(field, value)?;
+        if value.is_null() {
+            return Ok(Value::Null);
+        }
+        match field.modifier {
+            FieldModifier::Required | FieldModifier::Nullable => {
+                self.interpret_reference_source_value(&field.base_type, value)
+            }
+            FieldModifier::Array => value
+                .as_sequence()
+                .expect("validated array")
+                .iter()
+                .map(|item| self.interpret_reference_source_value(&field.base_type, item))
+                .collect::<Result<Vec<_>>>()
+                .map(Value::Sequence),
+        }
+    }
+
+    fn interpret_reference_source_value(
+        &self,
+        reference: &TypeReference,
+        value: &Value,
+    ) -> Result<Value> {
+        match reference {
+            TypeReference::Primitive(primitive) => {
+                interpret_primitive_source_value(*primitive, value)
+            }
+            TypeReference::Named(name) => match self.types.get(name) {
+                Some(ResolvedType::ValueObject { underlying, .. }) => {
+                    interpret_primitive_source_value(*underlying, value)
+                }
+                Some(ResolvedType::Custom { fields, .. }) => {
+                    let mapping = value.as_mapping().expect("validated Custom mapping");
+                    let mut typed = Mapping::new();
+                    for field in fields {
+                        let key = Value::String(field.name.clone());
+                        let source = mapping.get(&key).expect("validated Custom member");
+                        typed.insert(key, self.interpret_field_source_value(field, source)?);
+                    }
+                    Ok(Value::Mapping(typed))
+                }
+                Some(ResolvedType::Enum { .. } | ResolvedType::Flags { .. }) => Ok(value.clone()),
+                None => Err(type_error(
+                    "E-TYPE-UNKNOWN-REFERENCE",
+                    format!("unknown type `{name}`"),
+                )),
+            },
         }
     }
 
@@ -1689,10 +1747,10 @@ fn compare_primitive_values(
             integer_value(right, true)?,
         ),
         PrimitiveType::String => {
-            let left = left.as_str().ok_or_else(|| {
+            let left = source_scalar_text(left).ok_or_else(|| {
                 type_error("E-TYPE-NOT-COMPARABLE", "comparison requires string values")
             })?;
-            let right = right.as_str().ok_or_else(|| {
+            let right = source_scalar_text(right).ok_or_else(|| {
                 type_error("E-TYPE-NOT-COMPARABLE", "comparison requires string values")
             })?;
             // .NET's approved Ordinal comparer orders UTF-16 code units. Use
@@ -1720,10 +1778,10 @@ fn compare_integer_values(primitive: PrimitiveType, left: i128, right: i128) -> 
 }
 
 fn integer_value(value: &Value, unsigned: bool) -> Result<i128> {
-    let number = value
-        .as_i64()
-        .map(i128::from)
-        .or_else(|| value.as_u64().filter(|_| unsigned).map(i128::from));
+    let number = source_scalar_text(value)
+        .filter(|text| is_masterdata_integer_lexeme(text))
+        .and_then(|text| text.parse::<i128>().ok())
+        .filter(|value| !unsigned || *value >= 0);
     number.ok_or_else(|| {
         type_error(
             "E-TYPE-NOT-COMPARABLE",
@@ -1741,89 +1799,122 @@ fn prepend_path(segment: String, mut nested: Vec<String>) -> Vec<String> {
     nested
 }
 
-fn normalize_primitive_value(primitive: PrimitiveType, value: &Value) -> Result<NormalizedValue> {
+pub(crate) fn normalize_primitive_value(
+    primitive: PrimitiveType,
+    value: &Value,
+) -> Result<NormalizedValue> {
+    let text = source_scalar_text(value).ok_or_else(|| {
+        type_error(
+            "E-TYPE-INVALID-SCALAR",
+            format!("`{}` requires a scalar", primitive.name()),
+        )
+    })?;
     match primitive {
-        PrimitiveType::Bool => value
-            .as_bool()
-            .map(|value| NormalizedValue::Bool { value })
-            .ok_or_else(|| type_error("E-TYPE-INVALID-SCALAR", "`bool` requires a boolean scalar")),
-        PrimitiveType::String => value
-            .as_str()
-            .map(|value| NormalizedValue::String {
-                value: value.to_owned(),
+        PrimitiveType::String => Ok(NormalizedValue::String {
+            value: text.into_owned(),
+        }),
+        PrimitiveType::Bool => match text.as_ref() {
+            "true" => Ok(NormalizedValue::Bool { value: true }),
+            "false" => Ok(NormalizedValue::Bool { value: false }),
+            _ => Err(type_error(
+                "E-TYPE-INVALID-SCALAR",
+                "`bool` requires `true` or `false`",
+            )),
+        },
+        PrimitiveType::Int | PrimitiveType::UInt | PrimitiveType::Long | PrimitiveType::ULong => {
+            if !is_masterdata_integer_lexeme(&text) {
+                return Err(type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    format!("`{}` requires a canonical integer scalar", primitive.name()),
+                ));
+            }
+            let out_of_range = || {
+                type_error(
+                    "E-TYPE-INTEGER-OUT-OF-RANGE",
+                    format!("value {text} is outside `{}` range", primitive.name()),
+                )
+            };
+            let integer = text.parse::<i128>().map_err(|_| out_of_range())?;
+            let (minimum, maximum) = primitive.integer_range().expect("integer primitive");
+            if !(minimum..=maximum).contains(&integer) {
+                return Err(out_of_range());
+            }
+            let value = integer.to_string();
+            Ok(match primitive {
+                PrimitiveType::Int => NormalizedValue::Int { value },
+                PrimitiveType::UInt => NormalizedValue::UInt { value },
+                PrimitiveType::Long => NormalizedValue::Long { value },
+                PrimitiveType::ULong => NormalizedValue::ULong { value },
+                _ => unreachable!(),
             })
-            .ok_or_else(|| {
-                type_error("E-TYPE-INVALID-SCALAR", "`string` requires a string scalar")
-            }),
-        PrimitiveType::Int => value
-            .as_i64()
-            .map(|value| NormalizedValue::Int {
-                value: value.to_string(),
-            })
-            .ok_or_else(|| {
+        }
+        PrimitiveType::Float | PrimitiveType::Double => {
+            if !is_masterdata_float_lexeme(&text) {
+                return Err(type_error(
+                    "E-TYPE-INVALID-SCALAR",
+                    format!(
+                        "`{}` requires a fraction or exponent scalar",
+                        primitive.name()
+                    ),
+                ));
+            }
+            let number = text.parse::<f64>().map_err(|_| {
                 type_error(
                     "E-TYPE-INVALID-SCALAR",
-                    "`int` requires a signed integer scalar",
+                    format!("`{}` requires a floating-point scalar", primitive.name()),
                 )
-            }),
-        PrimitiveType::UInt => value
-            .as_u64()
-            .filter(|value| *value <= u32::MAX as u64)
-            .map(|value| NormalizedValue::UInt {
-                value: value.to_string(),
+            })?;
+            if !number.is_finite()
+                || (primitive == PrimitiveType::Float && !(number as f32).is_finite())
+            {
+                return Err(type_error(
+                    "E-TYPE-NONFINITE-FLOAT",
+                    format!("`{}` requires a finite value", primitive.name()),
+                ));
+            }
+            Ok(match primitive {
+                PrimitiveType::Float => NormalizedValue::Float {
+                    value: (number as f32).to_string(),
+                },
+                PrimitiveType::Double => NormalizedValue::Double {
+                    value: number.to_string(),
+                },
+                _ => unreachable!(),
             })
-            .ok_or_else(|| {
-                type_error(
-                    "E-TYPE-INVALID-SCALAR",
-                    "`uint` requires an unsigned 32-bit integer scalar",
-                )
-            }),
-        PrimitiveType::Long => value
-            .as_i64()
-            .map(|value| NormalizedValue::Long {
-                value: value.to_string(),
-            })
-            .ok_or_else(|| {
-                type_error(
-                    "E-TYPE-INVALID-SCALAR",
-                    "`long` requires a signed integer scalar",
-                )
-            }),
-        PrimitiveType::ULong => value
-            .as_u64()
-            .map(|value| NormalizedValue::ULong {
-                value: value.to_string(),
-            })
-            .ok_or_else(|| {
-                type_error(
-                    "E-TYPE-INVALID-SCALAR",
-                    "`ulong` requires an unsigned integer scalar",
-                )
-            }),
-        PrimitiveType::Float => value
-            .as_f64()
-            .filter(|value| value.is_finite())
-            .map(|value| NormalizedValue::Float {
-                value: value.to_string(),
-            })
-            .ok_or_else(|| {
-                type_error(
-                    "E-TYPE-INVALID-SCALAR",
-                    "`float` requires a finite floating-point scalar",
-                )
-            }),
-        PrimitiveType::Double => value
-            .as_f64()
-            .filter(|value| value.is_finite())
-            .map(|value| NormalizedValue::Double {
-                value: value.to_string(),
-            })
-            .ok_or_else(|| {
-                type_error(
-                    "E-TYPE-INVALID-SCALAR",
-                    "`double` requires a finite floating-point scalar",
-                )
-            }),
+        }
+    }
+}
+
+fn source_scalar_text(value: &Value) -> Option<Cow<'_, str>> {
+    match value {
+        Value::String(text) => Some(Cow::Borrowed(text)),
+        Value::Bool(value) => Some(Cow::Borrowed(if *value { "true" } else { "false" })),
+        Value::Number(number) => Some(Cow::Owned(number.to_string())),
+        _ => None,
+    }
+}
+
+fn interpret_primitive_source_value(primitive: PrimitiveType, value: &Value) -> Result<Value> {
+    match normalize_primitive_value(primitive, value)? {
+        NormalizedValue::Bool { value } => Ok(Value::Bool(value)),
+        NormalizedValue::String { value } => Ok(Value::String(value)),
+        NormalizedValue::Int { value } | NormalizedValue::Long { value } => {
+            let integer = value.parse::<i64>().expect("validated signed integer");
+            Ok(Value::Number(integer.into()))
+        }
+        NormalizedValue::UInt { value } | NormalizedValue::ULong { value } => {
+            let integer = value.parse::<u64>().expect("validated unsigned integer");
+            Ok(Value::Number(integer.into()))
+        }
+        NormalizedValue::Float { value } => {
+            serde_yaml::to_value(value.parse::<f32>().expect("validated float"))
+                .map_err(|_| type_error("E-TYPE-INVALID-SCALAR", "could not lower float"))
+        }
+        NormalizedValue::Double { value } => {
+            serde_yaml::to_value(value.parse::<f64>().expect("validated double"))
+                .map_err(|_| type_error("E-TYPE-INVALID-SCALAR", "could not lower double"))
+        }
+        _ => unreachable!("primitive normalization returned a compound value"),
     }
 }
 
@@ -1867,56 +1958,7 @@ fn enum_member_value(members: &[ResolvedEnumMember], value: &Value) -> Result<i1
 }
 
 fn validate_primitive_value(primitive: PrimitiveType, value: &Value) -> Result<()> {
-    match primitive {
-        PrimitiveType::Bool if matches!(value, Value::Bool(_)) => Ok(()),
-        PrimitiveType::String if matches!(value, Value::String(_)) => Ok(()),
-        PrimitiveType::Int | PrimitiveType::UInt | PrimitiveType::Long | PrimitiveType::ULong => {
-            let number = match value {
-                Value::Number(number) if number.is_i64() || number.is_u64() => number,
-                _ => {
-                    return Err(type_error(
-                        "E-TYPE-INVALID-SCALAR",
-                        format!("`{}` requires an integer scalar", primitive.name()),
-                    ));
-                }
-            };
-            let integer = number
-                .as_i64()
-                .map(i128::from)
-                .or_else(|| number.as_u64().map(i128::from))
-                .expect("integer number was checked above");
-            let (minimum, maximum) = primitive.integer_range().expect("integer primitive");
-            if (minimum..=maximum).contains(&integer) {
-                Ok(())
-            } else {
-                Err(type_error(
-                    "E-TYPE-INTEGER-OUT-OF-RANGE",
-                    format!("value {integer} is outside `{}` range", primitive.name()),
-                ))
-            }
-        }
-        PrimitiveType::Float | PrimitiveType::Double => match value {
-            Value::Number(number) if number.is_f64() => {
-                let value = number.as_f64().expect("f64 number was checked above");
-                if value.is_finite() {
-                    Ok(())
-                } else {
-                    Err(type_error(
-                        "E-TYPE-NONFINITE-FLOAT",
-                        format!("`{}` requires a finite value", primitive.name()),
-                    ))
-                }
-            }
-            _ => Err(type_error(
-                "E-TYPE-INVALID-SCALAR",
-                format!("`{}` requires a floating-point scalar", primitive.name()),
-            )),
-        },
-        PrimitiveType::Bool | PrimitiveType::String => Err(type_error(
-            "E-TYPE-INVALID-SCALAR",
-            format!("value does not match `{}`", primitive.name()),
-        )),
-    }
+    normalize_primitive_value(primitive, value).map(|_| ())
 }
 
 fn validate_enum_value(members: &[ResolvedEnumMember], value: &Value) -> Result<()> {

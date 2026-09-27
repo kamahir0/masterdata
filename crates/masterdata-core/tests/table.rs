@@ -209,7 +209,7 @@ fn validates_record_shape_using_the_existing_type_system() {
 }
 
 #[test]
-fn table_data_accepts_canonical_integer_lexemes_and_rejects_invalid_forms() {
+fn record_integer_lexemes_are_source_text_until_schema_interpretation() {
     for value in [
         "0",
         "-0",
@@ -228,15 +228,103 @@ fn table_data_accepts_canonical_integer_lexemes_and_rejects_invalid_forms() {
         "+1", "01", "-01", "0x1", "0X1", "0o1", "0O1", "0b1", "0B1", "1_000",
     ] {
         let source = format!("kind: data\ntable: item\nrecords:\n  - id: {value}\n");
-        let error = parse_yaml_document(PathBuf::from("invalid-data.yaml"), &source)
-            .expect_err("invalid integer spelling");
-        assert_eq!(error.diagnostic().code, "E-YAML-INVALID-INTEGER", "{value}");
-        assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-011"]);
+        let parsed = parse_yaml_document(PathBuf::from("data.yaml"), &source)
+            .expect("record scalar source remains parsable");
+        assert_eq!(
+            parsed.document.record_data().unwrap().records[0]["id"].as_str(),
+            Some(value)
+        );
+        let int_schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\n";
+        let invalid = table_build(
+            &[("schema.yaml", int_schema), ("data.yaml", &source)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            diagnostic_codes(&invalid).contains(&"E-TABLE-INVALID-RECORD-VALUE"),
+            "{value}"
+        );
+        let string_schema = int_schema.replace("type: int", "type: string");
+        let valid = table_build(
+            &[("schema.yaml", &string_schema), ("data.yaml", &source)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            valid.diagnostics.is_empty(),
+            "{value}: {:?}",
+            valid.diagnostics
+        );
     }
 }
 
 #[test]
-fn table_data_rejects_invalid_float_lexemes_before_normalization() {
+fn record_scalar_interpretation_follows_field_schema() {
+    let cases = [
+        ("true", "string", Some("true"), None, None),
+        ("\"true\"", "bool", None, Some(true), None),
+        ("123", "string", Some("123"), None, None),
+        ("\"123\"", "int", None, None, Some(123)),
+        ("00123", "string", Some("00123"), None, None),
+        ("\"null\"", "string", Some("null"), None, None),
+        ("'null'", "string", Some("null"), None, None),
+        ("剣", "string", Some("剣"), None, None),
+    ];
+    for (source_value, type_name, text, boolean, integer) in cases {
+        let schema = format!(
+            "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: value\n    type: {type_name}\nprimaryKey:\n  fields: [id]\n"
+        );
+        let data =
+            format!("kind: data\ntable: item\nrecords:\n  - id: 1\n    value: {source_value}\n");
+        let build = table_build(
+            &[("schema.yaml", &schema), ("data.yaml", &data)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            build.diagnostics.is_empty(),
+            "{source_value}/{type_name}: {:?}",
+            build.diagnostics
+        );
+        let model = build.model.expect("resolved source");
+        let value = &model[0].records[0].fields["value"];
+        assert_eq!(value.as_str(), text, "{source_value}/{type_name}");
+        assert_eq!(value.as_bool(), boolean, "{source_value}/{type_name}");
+        assert_eq!(value.as_i64(), integer, "{source_value}/{type_name}");
+    }
+
+    let schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: value\n    type: string\n    nullable: true\nprimaryKey:\n  fields: [id]\n";
+    let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    value: null\n  - id: 2\n    value: \"null\"\n";
+    let build = table_build(
+        &[("schema.yaml", schema), ("data.yaml", data)],
+        &BuildSelection::unfiltered(),
+    );
+    assert!(build.diagnostics.is_empty(), "{:?}", build.diagnostics);
+    let records = &build.model.unwrap()[0].records;
+    assert!(records[0].fields["value"].is_null());
+    assert_eq!(records[1].fields["value"].as_str(), Some("null"));
+
+    for (source_value, type_name) in [
+        ("00123", "int"),
+        ("123", "float"),
+        ("abc", "bool"),
+        ("null", "string"),
+    ] {
+        let schema = schema
+            .replace("type: string", &format!("type: {type_name}"))
+            .replace("    nullable: true\n", "");
+        let data =
+            format!("kind: data\ntable: item\nrecords:\n  - id: 1\n    value: {source_value}\n");
+        let build = table_build(
+            &[("schema.yaml", &schema), ("data.yaml", &data)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            diagnostic_codes(&build).contains(&"E-TABLE-INVALID-RECORD-VALUE"),
+            "{source_value}/{type_name}"
+        );
+    }
+}
+
+#[test]
+fn record_float_lexemes_are_diagnosed_by_float_field_and_valid_as_string() {
     for value in [
         ".5",
         "1.",
@@ -247,11 +335,32 @@ fn table_data_rejects_invalid_float_lexemes_before_normalization() {
         "+Infinity",
         "-Infinity",
     ] {
-        let source = format!("kind: data\ntable: item\nrecords:\n  - value: {value}\n");
-        let error = parse_yaml_document(PathBuf::from("invalid-float.yaml"), &source)
-            .expect_err("invalid float spelling");
-        assert_eq!(error.diagnostic().code, "E-YAML-INVALID-FLOAT", "{value}");
-        assert_eq!(error.diagnostic().related_requirements, ["YAML-SUBSET-012"]);
+        let source = format!("kind: data\ntable: item\nrecords:\n  - id: 1\n    value: {value}\n");
+        let parsed = parse_yaml_document(PathBuf::from("data.yaml"), &source)
+            .expect("record scalar source remains parsable");
+        assert_eq!(
+            parsed.document.record_data().unwrap().records[0]["value"].as_str(),
+            Some(value)
+        );
+        let float_schema = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: value\n    type: float\nprimaryKey:\n  fields: [id]\n";
+        let invalid = table_build(
+            &[("schema.yaml", float_schema), ("data.yaml", &source)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            diagnostic_codes(&invalid).contains(&"E-TABLE-INVALID-RECORD-VALUE"),
+            "{value}"
+        );
+        let string_schema = float_schema.replace("type: float", "type: string");
+        let valid = table_build(
+            &[("schema.yaml", &string_schema), ("data.yaml", &source)],
+            &BuildSelection::unfiltered(),
+        );
+        assert!(
+            valid.diagnostics.is_empty(),
+            "{value}: {:?}",
+            valid.diagnostics
+        );
     }
 }
 

@@ -330,7 +330,9 @@ pub fn dry_run_type_migration(
             .into_iter()
             .find(|f| f.path == before.path)
             .expect("patched file");
-        if actual.document != desired.document {
+        if source_record_document(actual.document.clone())
+            != source_record_document(desired.document.clone())
+        {
             return Err(failure("source patch differs from expected semantic state")
                 .with_source(before.path.clone()));
         }

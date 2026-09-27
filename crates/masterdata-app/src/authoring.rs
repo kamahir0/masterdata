@@ -516,28 +516,23 @@ pub(super) fn load_authoring_documents(
     project: &Project,
     override_source: Option<(&Path, &str)>,
 ) -> masterdata_core::Result<(ProjectDocuments, Vec<Diagnostic>)> {
+    load_authoring_documents_with_overrides(
+        project,
+        &override_source.into_iter().collect::<Vec<_>>(),
+    )
+}
+
+pub(super) fn load_authoring_documents_with_overrides(
+    project: &Project,
+    override_sources: &[(&Path, &str)],
+) -> masterdata_core::Result<(ProjectDocuments, Vec<Diagnostic>)> {
     let mut documents = ProjectDocuments::default();
     let mut diagnostics = Vec::new();
     for path in project.source_files()? {
-        let source = if let Some((target, source)) = override_source {
-            if target == path {
-                source.to_owned()
-            } else {
-                match fs::read_to_string(&path) {
-                    Ok(source) => source,
-                    Err(error) => {
-                        diagnostics.push(
-                            io_authoring_error(
-                                &path,
-                                format!("could not read source file: {error}"),
-                            )
-                            .diagnostic()
-                            .clone(),
-                        );
-                        continue;
-                    }
-                }
-            }
+        let source = if let Some((_, source)) =
+            override_sources.iter().find(|(target, _)| *target == path)
+        {
+            (*source).to_owned()
         } else {
             match fs::read_to_string(&path) {
                 Ok(source) => source,

@@ -115,8 +115,7 @@ memberのうちちょうど1つへcase-sensitiveにresolveしなければなら�
 変換してはならない（MUST NOT）。したがって、`rarity: 2` はinvalidであり、`rarity: Rare` は `Rare` が宣言されている
 場合にvalidである。
 
-Approved YAML subsetに従う限り、plain stringとquoted stringのどちらも、decoded symbolic member nameが同じなら同じvalue
-を表してよい（MAY）。quote styleはEnumのdomainまたはbinary semanticsを変更してはならない（MUST NOT）。
+Approved YAML subsetのScalar source valueは、plain / quotedのどちらもdecoded symbolic member nameが同じなら同じvalueを表さなければならない（MUST）。quote styleはEnumのdomainまたはbinary semanticsを変更してはならない（MUST NOT）。numeric-looking scalar textをraw numeric Enum値へ変換してはならない（MUST NOT）。
 
 ### SCHEMA-ENUM-006
 

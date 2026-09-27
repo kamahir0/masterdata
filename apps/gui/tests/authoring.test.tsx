@@ -85,6 +85,29 @@ function reloadProject() {
   fireEvent.click(screen.getByRole('menuitem', { name: 'Reload Project' }));
 }
 
+// Run the 2,000-row fixture before repeated full-App mounts: this keeps the
+// bounded-rendering check from depending on accumulated jsdom test load.
+test('large record grid mounts only nearby rows and navigates after scrolling', async () => {
+  openSnapshot = mutationSnapshot(Array.from({ length: 2_000 }, (_, recordIndex) => ({
+    recordIndex,
+    cells: [
+      { field: 'id', text: String(recordIndex + 1), editable: true },
+      { field: 'weight', text: String(recordIndex + 1), editable: true },
+      { field: 'note', text: `record ${recordIndex + 1}`, editable: true },
+    ],
+  }))) as ReturnType<typeof snapshot>;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
+  const scroll = document.querySelector<HTMLElement>('.grid-scroll')!;
+  expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
+  scroll.scrollTop = 1_500 * 32;
+  fireEvent.scroll(scroll);
+  const farCell = await screen.findByRole('gridcell', { name: /^record 1501 weight:/ });
+  expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
+  fireEvent.keyDown(farCell, { key: 'ArrowDown' });
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toMatch(/^record 1502 weight:/));
+});
+
 test('initial Project-not-found is a Welcome state without an Explorer error', async () => {
   invoke.mockImplementation(async (command) => {
     if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
@@ -443,27 +466,6 @@ test('Explorer Escape cancels inline creation without a source mutation', async 
   fireEvent.keyDown(filename, { key: 'Escape' });
   expect(screen.queryByRole('textbox', { name: 'New source filename' })).toBeNull();
   expect(invoke.mock.calls.some(([command]) => command === 'create_source')).toBe(false);
-});
-
-test('large record grid mounts only nearby rows and navigates after scrolling', async () => {
-  openSnapshot = mutationSnapshot(Array.from({ length: 2_000 }, (_, recordIndex) => ({
-    recordIndex,
-    cells: [
-      { field: 'id', text: String(recordIndex + 1), editable: true },
-      { field: 'weight', text: String(recordIndex + 1), editable: true },
-      { field: 'note', text: `record ${recordIndex + 1}`, editable: true },
-    ],
-  }))) as ReturnType<typeof snapshot>;
-  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
-  await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
-  const scroll = document.querySelector<HTMLElement>('.grid-scroll')!;
-  expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
-  scroll.scrollTop = 1_500 * 32;
-  fireEvent.scroll(scroll);
-  const farCell = await screen.findByRole('gridcell', { name: /^record 1501 weight:/ });
-  expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
-  fireEvent.keyDown(farCell, { key: 'ArrowDown' });
-  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toMatch(/^record 1502 weight:/));
 });
 
 test('Existing primary key direct edit uses the ordinary cell mutation lifecycle', async () => {

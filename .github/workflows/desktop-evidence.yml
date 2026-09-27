@@ -1,14 +1,13 @@
 name: Desktop Evidence
 
 on:
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  CANDIDATE_SHA: ${{ github.sha }}
 
 concurrency:
   group: desktop-evidence-${{ github.ref }}

@@ -404,6 +404,69 @@ fn table_context_prefers_inline_records_and_type_change_checks_dirty_data() {
 }
 
 #[test]
+fn table_context_lists_inline_and_multiple_separate_record_sources_without_changing_schema_identity()
+ {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    let mut schema = fs::read_to_string(&schema_path).unwrap();
+    schema.push_str("records: []\n");
+    fs::write(&schema_path, schema).unwrap();
+    fs::write(
+        dir.path().join("sources/other.yaml"),
+        "kind: data\ntable: item\nrecords: []\n",
+    )
+    .unwrap();
+    let session = TableAuthoringSession::default();
+    let inline = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let separate = session
+        .open_context(dir.path(), "sources/other.yaml")
+        .unwrap();
+    let paths = inline
+        .record_sources
+        .iter()
+        .map(|source| (source.path.as_str(), source.inline))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        vec![
+            ("sources/schema.yaml", true),
+            ("sources/data.yaml", false),
+            ("sources/other.yaml", false),
+        ]
+    );
+    assert_eq!(
+        inline.selected_record_source.as_deref(),
+        Some("sources/schema.yaml")
+    );
+    assert_eq!(
+        separate.selected_record_source.as_deref(),
+        Some("sources/other.yaml")
+    );
+    assert_eq!(inline.schema_path, separate.schema_path);
+    assert_eq!(
+        inline.schema_content_identity,
+        separate.schema_content_identity
+    );
+}
+
+#[test]
+fn table_context_without_record_source_retains_the_same_schema_header() {
+    let dir = project();
+    fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    assert_eq!(context.table, "item");
+    assert_eq!(context.schema_path, "sources/schema.yaml");
+    assert_eq!(context.schema.schema.fields.len(), 2);
+    assert!(context.record_sources.is_empty());
+    assert!(context.selected_record_source.is_none());
+}
+
+#[test]
 fn table_context_rejects_ambiguous_schema_authority() {
     let dir = project();
     fs::write(

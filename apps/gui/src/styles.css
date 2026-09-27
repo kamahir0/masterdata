@@ -237,8 +237,8 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .authoring-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 1; max-height: min(50vh, 320px); overflow: auto; box-shadow: 0 12px 24px #0006; background: #151e2d; }
 .authoring-options[hidden] { display: none; }
 .authoring-toolbar > .ant-btn { display: inline-flex; gap: 5px; align-items: center; }
-.authoring-toolbar > .ant-input, .authoring-toolbar > .ant-select { min-width: 130px; max-width: 190px; }
-.authoring-toolbar > .ant-input:first-child { flex: 1 1 170px; }
+.authoring-toolbar > .ant-input, .authoring-toolbar > .ant-input-search, .authoring-toolbar > .ant-select { min-width: 130px; max-width: 190px; }
+.authoring-toolbar > .ant-input:first-child, .authoring-toolbar > .ant-input-search { flex: 1 1 170px; }
 .authoring-toolbar .ant-input-textarea { flex: 1 1 240px; min-width: 210px; }
 .query-result { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .record-grid td.selected { box-shadow: inset 0 0 0 1px #6574e9; background: #202e52; }

@@ -1,7 +1,7 @@
 import TypeEditor from "./TypeEditor";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, ConfigProvider, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag, theme as antdTheme } from "antd";
-import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Settings, X } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Search, Settings, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type Category, type CreationReport } from "./SourceCreation";
 import InlineSourceCreation from "./InlineSourceCreation";
@@ -3577,8 +3577,9 @@ function DataEditor({
 
       <div className="authoring-tools-shell">
       <div className="authoring-toolbar" aria-label="Data authoring tools">
-        <Input aria-label="Data search" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onPressEnter={() => void runQuery()} />
-        <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Search</Button>
+        <label htmlFor="data-search-input" className="visually-hidden">Data search</label>
+        <Input.Search id="data-search-input" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onSearch={() => void runQuery()} loading={queryBusy}
+          enterButton={<Button aria-label="Search data" icon={<Search size={14} aria-hidden="true" />} />} />
         <Button ref={filterButtonRef} htmlType="button" aria-expanded={queryAdvancedOpen} aria-controls="data-query-options" onClick={() => { setBatchToolsOpen(false); setQueryAdvancedOpen((open) => !open); }}>Filter &amp; sort{queryField || querySortField ? " · set" : ""} <ChevronDown size={13} aria-hidden="true" /></Button>
         {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
       </div>

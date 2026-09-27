@@ -331,6 +331,28 @@ test('filter options stay out of the default grid and retain their draft when re
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Filter & sort' }));
 });
 
+test('search runs from its input without a second toolbar button', async () => {
+  const normal = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'query_data_file') return {
+      orderedRecordIndices: [0], totalCount: 1, displayedCount: 1, query: args.request.query,
+    };
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const search = await screen.findByRole('searchbox', { name: 'Data search' });
+  fireEvent.change(search, { target: { value: '10' } });
+  fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'query_data_file')?.[1].request.query.search).toBe('10'));
+  const searchControl = document.querySelector<HTMLElement>('.authoring-toolbar > .ant-input-search');
+  expect(searchControl).toBeTruthy();
+  const searchButton = within(searchControl!).getByRole('button', { name: 'Search data' });
+  await waitFor(() => expect(searchButton.classList.contains('ant-btn-loading')).toBe(false));
+  fireEvent.click(searchButton);
+  await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === 'query_data_file')).toHaveLength(2));
+  expect(document.querySelectorAll('.authoring-toolbar:not(.authoring-options) > .ant-btn')).toHaveLength(1);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+
 test('Data query draft survives visiting a Project area and returning to the same source', async () => {
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
@@ -729,6 +751,35 @@ test('schema header draft previews diagnostics, undo/redo, and saves the schema 
   fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
   await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_data_file')?.[1].edits).toMatchObject([{ field: 'weight', value: { kind: 'number', value: '20' } }]));
   expect(invoke.mock.calls.some(([command]) => command === 'apply_table_intent')).toBe(false);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+
+test('schema diagnostic propagation leaves the separate record source clean', async () => {
+  const normal = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'preview_schema_draft') return {
+      candidateSource: 'kind: schema\ntable: item\n# draft\n',
+      candidateContentIdentity: 'schema-candidate',
+      changed: true,
+      validation: { valid: false, diagnostics: [{
+        code: 'E-TABLE-INVALID-RECORD-VALUE', kind: 'validation',
+        message: 'weight cannot be interpreted', source: 'data.yaml', record_identity: 'record[0]',
+      }] },
+      selectedSnapshot: null,
+    };
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('gridcell', { name: /^record 1 weight:/ }, { timeout: 10_000 });
+  const nullable = await screen.findByRole('button', { name: 'Nullable weight' });
+  expect(screen.getByRole('button', { name: 'Save', exact: true }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(nullable);
+  await screen.findByRole('button', { name: /PROBLEMS 1/ }, { timeout: 10_000 });
+  expect(screen.getByRole('button', { name: 'Schema unsaved changes and actions' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Save', exact: true }).hasAttribute('disabled')).toBe(true);
+  fireEvent.keyDown(nullable, { key: 'z', metaKey: true });
+  await screen.findByRole('button', { name: /PROBLEMS 0/ }, { timeout: 10_000 });
+  expect(screen.getByRole('button', { name: 'Save', exact: true }).hasAttribute('disabled')).toBe(true);
+  expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;

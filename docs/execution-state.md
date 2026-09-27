@@ -1,14 +1,13 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: 0a5634fe821470da20540fdefc577d453aa12c28
 Work base: 3a45126df210e83d98ffa8bf0201d2f4f3962d76
 
 ## Active work
 
-Completed: Unified Table interaction / Application boundary specification (`GUI-UNIFIED-001..005`, `FIELD-DECL-001..005`).
-In progress: shared Table context and safe schema intent, Unified Table surface.
-Remaining: focused verification, Desktop verification.
+Completed: Unified Table specification, shared Table context / safe schema intent, Desktop interaction, local checks.
+Remaining: Candidate fresh review and required remote CI reconciliation.
 
 ## Blocking findings
 

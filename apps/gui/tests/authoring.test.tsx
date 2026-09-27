@@ -319,11 +319,16 @@ test('filter options stay out of the default grid and retain their draft when re
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
   const value = screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement;
+  expect(value.closest('.authoring-tools-shell')).toBeTruthy();
+  expect(value.closest('.grid-scroll')).toBeNull();
   fireEvent.change(value, { target: { value: 'rare' } });
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
   expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Data filter value' }), { key: 'Escape' });
+  expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Filter & sort' }));
 });
 
 test('Data query draft survives visiting a Project area and returning to the same source', async () => {
@@ -710,12 +715,14 @@ test('schema header draft previews diagnostics, undo/redo, and saves the schema 
   const nullable = await screen.findByRole('button', { name: 'Nullable weight' });
   fireEvent.click(nullable);
   await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'preview_schema_draft')).toBe(true));
-  expect(screen.getByText(/Table schema changed/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Schema unsaved changes and actions' }).closest('.editor-tabs')).toBeTruthy();
+  expect(document.querySelector('.schema-draft-strip')).toBeNull();
   fireEvent.keyDown(nullable, { key: 'z', metaKey: true });
-  await waitFor(() => expect(screen.queryByText(/Table schema changed/)).toBeNull());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Schema redo available' })).toBeTruthy());
   fireEvent.keyDown(nullable, { key: 'z', metaKey: true, shiftKey: true });
-  await screen.findByText(/Table schema changed/);
-  fireEvent.click(screen.getByRole('button', { name: 'Save schema' }));
+  await screen.findByRole('button', { name: 'Schema unsaved changes and actions' });
+  fireEvent.click(screen.getByRole('button', { name: 'Schema unsaved changes and actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Save schema' }));
   await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_schema_draft')?.[1].fields[0].nullable).toBe(true));
   await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === 'open_data_file').length).toBeGreaterThan(1));
   expect(screen.getByRole('gridcell', { name: /^record 1 weight: 20/ })).toBeTruthy();

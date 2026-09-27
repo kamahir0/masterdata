@@ -2178,6 +2178,22 @@ function App({
     }
   };
 
+  const schemaDraftActions = activeSchemaDraft && (schemaDraftIsDirty(activeSchemaDraft) || activeSchemaDraft.historyFuture.length > 0 || activeSchemaDraft.saveDiagnostic)
+    ? <Dropdown trigger={["click"]} menu={{ items: [
+      { key: "undo", label: "Undo schema change", disabled: !activeSchemaDraft.historyPast.length || activeSchemaDraft.saving, onClick: () => undoSchemaDraft(activeSchemaDraft.path) },
+      { key: "redo", label: "Redo schema change", disabled: !activeSchemaDraft.historyFuture.length || activeSchemaDraft.saving, onClick: () => undoSchemaDraft(activeSchemaDraft.path, true) },
+      { key: "save", label: "Save schema", disabled: mutationBlocked || !schemaDraftIsDirty(activeSchemaDraft) || activeSchemaDraft.saving || activeSchemaDraft.saveStatus === "outcome_unknown", onClick: () => void saveSchemaDraft(activeSchemaDraft.path) },
+      ...(activeSchemaDraft.saveStatus === "outcome_unknown" ? [{ key: "recheck", label: "Recheck save", onClick: () => void recheckSchemaDraft(activeSchemaDraft.path) }] : []),
+      ...(activeSchemaDraft.saveStatus === "conflict" ? [{ key: "reload", label: "Discard draft and reload schema", onClick: () => void reloadSchemaDraft(activeSchemaDraft.path) }] : []),
+    ] }}>
+      <Button htmlType="button" size="small" className="schema-status-action"
+        aria-label={schemaDraftIsDirty(activeSchemaDraft) ? "Schema unsaved changes and actions" : "Schema redo available"}
+        title={activeSchemaDraft.saveDiagnostic?.message}>
+        {activeSchemaDraft.saving ? "Saving schema…" : schemaDraftIsDirty(activeSchemaDraft) ? "Schema unsaved" : "Schema redo"}
+        <ChevronDown size={12} aria-hidden="true" />
+      </Button>
+    </Dropdown> : null;
+
   return (
     <ConfigProvider theme={antThemeConfig}>
       <main className="app-shell">
@@ -2393,15 +2409,6 @@ function App({
           {workspace.files.length > 0 && !activeFile && (
             <EmptyEditor title="Select a source file" copy="Choose a YAML document from the Workspace Explorer." />
           )}
-          {activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && <div className="schema-draft-strip" role="status">
-            <span>Table schema changed{activeSchemaDraft.previewState === "pending" ? " · checking values…" : activeSchemaPreview && !activeSchemaPreview.validation.valid ? ` · ${activeSchemaPreview.validation.diagnostics.length} diagnostics` : ""}</span>
-            <Button size="small" onClick={() => undoSchemaDraft(activeSchemaDraft.path)} disabled={!activeSchemaDraft.historyPast.length || activeSchemaDraft.saving}>Undo schema</Button>
-            <Button size="small" onClick={() => undoSchemaDraft(activeSchemaDraft.path, true)} disabled={!activeSchemaDraft.historyFuture.length || activeSchemaDraft.saving}>Redo schema</Button>
-            <Button size="small" type="primary" onClick={() => void saveSchemaDraft(activeSchemaDraft.path)} disabled={mutationBlocked || activeSchemaDraft.saving || activeSchemaDraft.saveStatus === "outcome_unknown"}>Save schema</Button>
-            {activeSchemaDraft.saveStatus === "outcome_unknown" && <Button size="small" onClick={() => void recheckSchemaDraft(activeSchemaDraft.path)}>Recheck save</Button>}
-            {activeSchemaDraft.saveStatus === "conflict" && <Button size="small" onClick={() => void reloadSchemaDraft(activeSchemaDraft.path)}>Discard draft and reload schema</Button>}
-            {activeSchemaDraft.saveDiagnostic && <span role="alert">{activeSchemaDraft.saveDiagnostic.message}</span>}
-          </div>}
           {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && !tableContext && !tableContextError && (
             <EmptyEditor title={`Opening ${activeFile.table ?? "Table"}…`} copy="Loading Table context." />
           )}
@@ -2410,6 +2417,7 @@ function App({
           )}
           {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableContext && !tableContext.selectedRecordSource && (
             <EmptyTableSurface context={tableContext} disabled={mutationBlocked || !!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"} onIntent={applyColumnIntent}
+              schemaDraftActions={schemaDraftActions}
               onUndoSchema={redo => undoSchemaDraft(tableContext.schemaPath, redo)}
               onCreateData={() => openDataCreation(tableContext.table)} details={tableEditor} />
           )}
@@ -2440,6 +2448,7 @@ function App({
           )}
           {recordFileActive && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor key={`${projectRoot}:${activeFile.path}`}
+              schemaDraftActions={schemaDraftActions}
               mutationBlocked={mutationBlocked}
               schemaDraftBlocked={!!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"}
               file={activeFile}
@@ -2988,19 +2997,20 @@ function ColumnHeader({ field, table, fieldTypes, disabled, onIntent, onUndoSche
   </div>;
 }
 
-function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreateData, details }: {
+function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreateData, details, schemaDraftActions }: {
   context: TableContext;
   disabled: boolean;
   onIntent: (intent: ColumnIntent) => Promise<void>;
   onUndoSchema: (redo: boolean) => void;
   onCreateData: () => void;
   details: React.ReactNode;
+  schemaDraftActions: React.ReactNode;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   return <section className="data-editor unified-empty-table">
     <header className="editor-tabs"><div className="document-tab"><strong>{context.table}</strong></div>
-      <Button type="text" size="small" onClick={() => setDetailsOpen(open => !open)}>Table details</Button></header>
+      <div className="editor-actions">{schemaDraftActions}<Button type="text" size="small" onClick={() => setDetailsOpen(open => !open)}>Table details</Button></div></header>
     {error && <Alert type="error" title={error} closable onClose={() => setError(null)} />}
     {detailsOpen && details}
     <div className="grid-scroll"><table className="record-grid" role="grid" aria-rowcount={1} aria-colcount={context.schema.schema.fields.length + 2}>
@@ -3016,6 +3026,7 @@ function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreate
 }
 
 function DataEditor({
+  schemaDraftActions,
   mutationBlocked,
   schemaDraftBlocked,
   file,
@@ -3048,6 +3059,7 @@ function DataEditor({
   onReloadConflict,
   onOverwriteConflict,
 }: {
+  schemaDraftActions: React.ReactNode;
   mutationBlocked: boolean;
   schemaDraftBlocked: boolean;
   file: WorkspaceSourceFile;
@@ -3082,6 +3094,27 @@ function DataEditor({
 }) {
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
+  const diagnosticsByCell = useMemo(() => {
+    const result = new Map<string, Diagnostic[]>();
+    if (editor.previewState !== "current" || editor.preview.validation.diagnostics.length === 0) return result;
+    const pending = new Set(editor.pendingDeletes);
+    const sourceRows = editor.snapshot.rows.filter(row => !pending.has(row.recordIndex));
+    const source = normalizePath(`${projectRoot}/${file.path}`);
+    for (const diagnostic of editor.preview.validation.diagnostics) {
+      if (!diagnostic.source || normalizePath(diagnostic.source) !== source) continue;
+      const field = diagnosticField(diagnostic);
+      const index = diagnosticRecordIndex(diagnostic);
+      if (!field || index === null) continue;
+      const row = sourceRows[index];
+      const draft = row ? null : editor.addedRecords[index - sourceRows.length];
+      const key = row ? cellKey(row.recordIndex, field) : draft ? draftCellKey(draft.draftId, field) : null;
+      if (!key) continue;
+      const cellDiagnostics = result.get(key) ?? [];
+      cellDiagnostics.push(diagnostic);
+      result.set(key, cellDiagnostics);
+    }
+    return result;
+  }, [editor.previewState, editor.preview.validation.diagnostics, editor.pendingDeletes, editor.snapshot.rows, editor.addedRecords, projectRoot, file.path]);
   const uiKey = `${projectRoot}:${file.path}`;
   const rememberedUi = uiCache.current.get(uiKey);
   const lastFocusedCell = useRef<string | null>(null);
@@ -3108,6 +3141,8 @@ function DataEditor({
   const [queryAdvancedOpen, setQueryAdvancedOpen] = useState(rememberedUi?.queryAdvancedOpen ?? false);
   const [batchToolsOpen, setBatchToolsOpen] = useState(rememberedUi?.batchToolsOpen ?? false);
   const [schemaOpen, setSchemaOpen] = useState(false);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
   const [gridScrollTop, setGridScrollTop] = useState(0);
   const [gridViewportHeight, setGridViewportHeight] = useState(640);
@@ -3521,6 +3556,7 @@ function DataEditor({
           items={[{ key: "grid", label: "Data" }, { key: "diff", label: "Diff" },
             ...(editor.conflict ? [{ key: "compare", label: "Conflict" }] : [])]} />
         <div className="editor-actions">
+          {schemaDraftActions}
           {(editor.previewState !== "current" || !editor.preview.validation.valid) && <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>}
           <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !editingCell) || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
           <Dropdown trigger={["click"]} menu={{ items: [
@@ -3530,22 +3566,25 @@ function DataEditor({
             ...(schemaEditor ? [{ key: "schema", label: "Table details", onClick: () => setSchemaOpen(open => !open) }] : []),
             ...(onOverview ? [{ key: "overview", label: "Table Overview", onClick: onOverview }] : []),
             ...(onCreateData ? [{ key: "data", label: "New data file", onClick: onCreateData }] : []),
-            { key: "batch", label: "Batch tools", onClick: () => setBatchToolsOpen(open => !open) },
+            { key: "batch", label: "Batch tools", onClick: () => { setQueryAdvancedOpen(false); setBatchToolsOpen(open => !open); } },
           ] }}>
-            <Button htmlType="button" aria-label="More data actions" icon={<MoreHorizontal size={16} />} />
+            <Button ref={moreButtonRef} htmlType="button" aria-label="More data actions" icon={<MoreHorizontal size={16} />} />
           </Dropdown>
         </div>
       </header>
 
       {schemaEditor && schemaOpen && <section id="data-table-structure" className="data-table-structure" aria-label="Table structure">{schemaEditor}</section>}
 
+      <div className="authoring-tools-shell">
       <div className="authoring-toolbar" aria-label="Data authoring tools">
         <Input aria-label="Data search" placeholder="Search current buffer" value={querySearch} onChange={(event) => setQuerySearch(event.target.value)} onPressEnter={() => void runQuery()} />
         <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Search</Button>
-        <Button htmlType="button" aria-expanded={queryAdvancedOpen} aria-controls="data-query-options" onClick={() => setQueryAdvancedOpen((open) => !open)}>Filter &amp; sort{queryField || querySortField ? " · set" : ""} <ChevronDown size={13} aria-hidden="true" /></Button>
+        <Button ref={filterButtonRef} htmlType="button" aria-expanded={queryAdvancedOpen} aria-controls="data-query-options" onClick={() => { setBatchToolsOpen(false); setQueryAdvancedOpen((open) => !open); }}>Filter &amp; sort{queryField || querySortField ? " · set" : ""} <ChevronDown size={13} aria-hidden="true" /></Button>
         {editor.queryResult && <span className="query-result">{editor.queryResult.displayedCount} / {editor.queryResult.totalCount} rows</span>}
       </div>
-      <div className="authoring-toolbar authoring-options" id="data-query-options" hidden={!queryAdvancedOpen} aria-label="Filter and sort options">
+      <div className="authoring-toolbar authoring-options" id="data-query-options" hidden={!queryAdvancedOpen} aria-label="Filter and sort options" onKeyDown={event => {
+        if (event.key === "Escape") { event.stopPropagation(); setQueryAdvancedOpen(false); filterButtonRef.current?.focus(); }
+      }}>
         <Select aria-label="Data filter field" allowClear placeholder="Filter field" value={queryField || undefined} onChange={(value) => setQueryField(value ?? "")} options={editor.snapshot.columns.map((column) => ({ value: column.name, label: column.name }))} />
         <Select aria-label="Data filter operator" value={queryOperator} onChange={setQueryOperator} options={[{ value: "contains", label: "contains" }, { value: "equals", label: "equals" }, { value: "not-equals", label: "not equals" }, { value: "less-than", label: "<" }, { value: "greater-than", label: ">" }, { value: "is-null", label: "is null" }, { value: "is-invalid", label: "is invalid" }]} />
         <Input aria-label="Data filter value" placeholder="Filter contains" value={queryValue} onChange={(event) => setQueryValue(event.target.value)} />
@@ -3553,12 +3592,15 @@ function DataEditor({
         <Select aria-label="Data sort direction" value={querySortDirection} onChange={setQuerySortDirection} options={[{ value: "ascending", label: "A→Z" }, { value: "descending", label: "Z→A" }]} />
         <Button htmlType="button" onClick={() => void runQuery()} loading={queryBusy}>Apply filter &amp; sort</Button>
       </div>
-      <div className="authoring-toolbar authoring-options" id="data-batch-tools" hidden={!batchToolsOpen} aria-label="Batch tools">
+      <div className="authoring-toolbar authoring-options" id="data-batch-tools" hidden={!batchToolsOpen} aria-label="Batch tools" onKeyDown={event => {
+        if (event.key === "Escape") { event.stopPropagation(); setBatchToolsOpen(false); moreButtonRef.current?.focus(); }
+      }}>
         <Input.TextArea aria-label="Clipboard TSV" rows={1} placeholder="Paste TSV for the selected scalar range" value={batchText} onChange={(event) => setBatchText(event.target.value)} />
         <Button htmlType="button" onClick={() => void previewBatch(false)} disabled={batchBusy}>Paste preview</Button>
         <Button htmlType="button" onClick={() => void previewBatch(true)} disabled={batchBusy}>Fill preview</Button>
         <Button htmlType="button" onClick={() => void copySelection()} loading={copyBusy} disabled={batchBusy || copyBusy}>Copy selection</Button>
         <Button htmlType="button" onClick={() => void readClipboardAndPreview()}>Read clipboard & preview</Button>
+      </div>
       </div>
       <div className={`selection-status ${!batchIsStale && selectedCellCount <= 1 ? "visually-hidden" : ""}`} role="status" aria-live="polite">
         {selectedRange ? `${selectedCellCount} cells selected` : "One cell active"}
@@ -3568,13 +3610,6 @@ function DataEditor({
         {queryNotice && <Alert type="info" showIcon closable onClose={() => setQueryNotice(null)} title={queryNotice} />}
         {queryError && <Alert type="error" showIcon title={queryError.code} description={queryError.message} />}
       </div>}
-
-      {!capability.supported && (
-        <div className="add-row-reason" role="status">
-          <strong>Add Row unavailable</strong>
-          <span>{capability.reason ?? "This Table is outside the initial Required Primitive scope."}</span>
-        </div>
-      )}
 
       {(editor.saveStatus === "failure" || editor.saveStatus === "outcome_unknown") && (
         <div className="conflict-strip save-recovery-strip">
@@ -3645,12 +3680,7 @@ function DataEditor({
                     const value = gridRow.kind === "existing"
                       ? editor.edits[key]?.value ?? snapshotCell?.value ?? nullAuthoringValue()
                       : gridRow.draft.values[column.name] ?? nullAuthoringValue();
-                    const cellDiagnostics = diagnostics.filter((diagnostic) =>
-                      diagnostic.source != null &&
-                      normalizePath(diagnostic.source) === normalizePath(`${projectRoot}/${file.path}`) &&
-                      diagnosticField(diagnostic) === column.name &&
-                      diagnosticRecordIndex(diagnostic) !== null &&
-                      diagnosticCellKey(editor, diagnosticRecordIndex(diagnostic)!, column.name) === key);
+                    const cellDiagnostics = diagnosticsByCell.get(key) ?? [];
                     const hasDiagnostic = cellDiagnostics.length > 0;
                     const invalidPaths = new Set(cellDiagnostics.map((diagnostic) => diagnostic.value_path ?? ""));
                     const changed = gridRow.kind === "added" || key in editor.edits;
@@ -3800,6 +3830,10 @@ function DataEditor({
             </tbody>
           </table>
           <Button className="add-record-inline" htmlType="button" onClick={onAddRow} disabled={mutationBlocked || !capability.supported || editor.saving}>＋ Add Row</Button>
+          {!capability.supported && <div className="add-row-reason" role="status">
+            <strong>Add Row unavailable</strong>
+            <span>{capability.reason ?? "This Table is outside the initial Required Primitive scope."}</span>
+          </div>}
           {gridRows.length === 0 && <div className="empty-grid">This data file has no records.</div>}
         </div>
       )}

@@ -6,18 +6,19 @@
 
 ## Objective
 
-**Desktop編集画面の診断表示による意図しない高さの変化とProblemsの自動展開をなくし、Explorerのsource root直下を常時表示する。**
+**Unified Table Editorを日常的に軽快に使える編集面へ仕上げる。通常の編集状態でgridの位置を動かさず、Table文脈に沿ったSave / Undoと、短い直接操作を整える。**
 
 ## Completion slices
 
-- 編集中に診断が増減してもProblemsがユーザー操作なしに開閉せず、グリッド位置が移動しない。
-- Explorerのsource root直下はCollapse操作やキーボード操作で隠れず、子フォルダの開閉とfile操作は維持する。
-- GUI回帰テスト、repository check、Desktop表示で確認する。
+- Desktop操作とcurrent implementationからDaily Table authoringのfriction inventoryを作り、既存の安全契約とGUI仕様を照合する。
+- 通常のdirty / schema draft / diagnostic / validation stateでgridを動かさない編集面と、文脈に沿った高頻度操作を実装する。
+- Save / UndoのTable文脈を設計し、必要なHuman gateを解消した範囲でshared application / GUIへ適用する。
+- focused regression、repository check、DesktopのGolden Pathで検証する。
 
 ## Canonical requirements
 
-- [Data Editor](gui/data-editor/spec.md)、[Workspace Explorer](gui/explorer/spec.md)
+- [Unified Table Editor](gui/table-editor/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)、[Field Declaration Mutation](specs/field-declaration-mutation.md)、[Authoring Batch](specs/authoring-batch.md)
 
 ## Explicit non-scope
 
-- Source semantics、Save / Build、diagnostic内容、Explorerの子フォルダ構造の変更。
+- Source scalar semantics、MasterMemory binary format、Build / Publish semantics、Settings / Delivery全面再設計、Explorerのdomain tree化、visual theme全面刷新、安全契約の弱体化。

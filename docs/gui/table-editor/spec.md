@@ -44,6 +44,12 @@ Drop FieldとReference Remove等のdestructive operationは明示confirmationと
 
 Key、Reference、MessagePack key、低頻度metadataは補助面へprogressively discloseする。通常時はTable名とcolumn / row dataを最も強く表示し、正常状態の説明を繰り返し常設しない。gridのkeyboard selection、field headerのtab順、operation失敗後のfocus復元はpointerなしでも成立しなければならない（MUST）。状態は色だけに依存せずassistive technologyへ伝える。
 
+### GUI-UNIFIED-006
+
+#### Stable editing surface
+
+通常のdirty、schema draft作成/取消、diagnostic増減、validation pending、Undo/Redo/Save可否、query / batch補助面の開閉は、Table gridのtop edgeを移動させてはならない（MUST NOT）。状態は既存header、対象cell/column、Problems、または重畳する補助面で認識・操作可能にする（MUST）。状態を色のみに依存させずkeyboardとassistive technologyから到達可能にする（MUST）。Conflict、Recovery Required等の作業判断を要するblocking stateは例外とする。schema draft専用の追加横barを通常編集状態へ挿入しない。
+
 ## Adapter boundary
 
 Tauri frontendはschema Plan derivation、YAML patch、dependency resolution、lost-update preflight、rollbackを実装してはならない（MUST NOT）。shared Native Application ServiceをTauri command経由で呼び、frontendはTable contextとserialized intent / resultを扱う。complex value、record mutationも既存shared Application boundaryに従う。

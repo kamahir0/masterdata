@@ -920,6 +920,67 @@ secondaryKeys: []
     }
 
     #[test]
+    fn representable_schema_mismatch_can_be_explicitly_repaired() {
+        let temp = project();
+        fs::write(
+            temp.path().join("sources/schemas/item.yaml"),
+            r#"kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: ulong
+  - key: 1
+    name: weight
+    type: int
+    array: true
+primaryKey:
+  fields: [id]
+"#,
+        )
+        .expect("schema");
+        fs::write(temp.path().join("sources/data/items.yaml"), "kind: data\ntable: item\nrecords:\n  - id: 1 # preserve neighbor\n    weight: unexpected\n").expect("data");
+        let service = NativeApplicationService::new();
+        let snapshot = service
+            .open_data_file(Some(temp.path()), temp.path(), "sources/data/items.yaml")
+            .expect("snapshot");
+        assert!(!snapshot.validation.valid);
+        assert!(snapshot.rows[0].cells[1].editable);
+        assert_eq!(
+            snapshot.rows[0].cells[1].value,
+            AuthoringValue::String {
+                value: "unexpected".to_owned()
+            }
+        );
+        let preview = service
+            .preview_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                "sources/data/items.yaml",
+                &snapshot.base_source,
+                &AuthoringRecordMutation {
+                    edits: vec![AuthoringEdit {
+                        record_index: 0,
+                        field: "weight".to_owned(),
+                        value: AuthoringValue::Sequence {
+                            items: vec![],
+                            source_identity: true,
+                        },
+                    }],
+                    ..AuthoringRecordMutation::default()
+                },
+            )
+            .expect("safe explicit repair");
+        assert!(preview.candidate_source.contains("weight: []"));
+        assert!(!preview.candidate_source.contains("unexpected"));
+        assert!(
+            preview
+                .candidate_source
+                .contains("id: 1 # preserve neighbor")
+        );
+    }
+
+    #[test]
     fn existing_secondary_key_cells_are_directly_editable() {
         let temp = project();
         fs::write(

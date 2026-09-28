@@ -596,12 +596,14 @@ function diagnosticCellKey(editor: EditorState, candidateRecordIndex: number, fi
 
 function focusElement(element: HTMLElement | null): boolean {
   if (!element) return false;
+  // Ant keeps a closed popover's controls in the DOM; focusing them would consume Problems navigation.
+  if (element.closest('.ant-popover-hidden, [hidden], [inert], [aria-hidden="true"]')) return false;
   const focusable = element.matches("input, select, textarea, button, [tabindex='0']")
     ? element
     : element.querySelector<HTMLElement>("input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex='0']");
   if (!focusable) return false;
   focusable.focus();
-  return true;
+  return document.activeElement === focusable;
 }
 
 function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
@@ -610,7 +612,10 @@ function focusValuePathOrCell(cell: string, valuePath: string | null): boolean {
     if (focusElement(nested)) return true;
   }
   const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(cell)}"]`);
-  if (!focusElement(target)) return false;
+  if (!target) return false;
+  // Grid cells outside the roving tab stop still need programmatic Problems focus.
+  target.focus();
+  if (document.activeElement !== target) return false;
   if (valuePath !== null) document.dispatchEvent(new CustomEvent("masterdata:focus-value", { detail: { cell, valuePath } }));
   return true;
 }
@@ -1118,7 +1123,7 @@ function App({
     previewTimers.current.set(path, timer);
   }, [previewDelayMs]);
 
-  const updateCell = useCallback((path: string, recordIndex: number, field: string, value: AuthoringValue) => {
+  const updateCell = useCallback((path: string, recordIndex: number, field: string, value: AuthoringValue, operation = false) => {
     if (!projectRoot) return;
     setEditors((current) => {
       const editor = current[path];
@@ -1126,7 +1131,7 @@ function App({
       const nextEdits = { ...editor.edits };
       const key = cellKey(recordIndex, field);
       if (authoringValuesEqual(value, currentCellValue(editor, recordIndex, field))) return current;
-      const captureHistory = historyEditKey.current === key;
+      const captureHistory = operation || historyEditKey.current === key;
       if (captureHistory) historyEditKey.current = null;
       if (authoringValuesEqual(value, baseCellValue(editor.snapshot, recordIndex, field))) {
         delete nextEdits[key];
@@ -1166,7 +1171,7 @@ function App({
     });
   }, [projectRoot, schedulePreview]);
 
-  const updateDraftCell = useCallback((path: string, draftId: string, field: string, value: AuthoringValue) => {
+  const updateDraftCell = useCallback((path: string, draftId: string, field: string, value: AuthoringValue, operation = false) => {
     if (!projectRoot) return;
     setEditors((current) => {
       const editor = current[path];
@@ -1176,7 +1181,7 @@ function App({
       const currentValue = currentDraft?.values[field] ?? nullAuthoringValue();
       if (authoringValuesEqual(value, currentValue)) return current;
       const key = draftCellKey(draftId, field);
-      const captureHistory = historyEditKey.current === key;
+      const captureHistory = operation || historyEditKey.current === key;
       if (captureHistory) historyEditKey.current = null;
       const nextDrafts = editor.addedRecords.map((draft) => draft.draftId === draftId
         ? { ...draft, values: { ...draft.values, [field]: value } }
@@ -2618,8 +2623,8 @@ function App({
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
               uiCache={dataEditorUi}
-              onCellChange={(recordIndex, field, value) => updateCell(activeFile.path, recordIndex, field, value)}
-              onDraftCellChange={(draftId, field, value) => updateDraftCell(activeFile.path, draftId, field, value)}
+              onCellChange={(recordIndex, field, value, operation) => updateCell(activeFile.path, recordIndex, field, value, operation)}
+              onDraftCellChange={(draftId, field, value, operation) => updateDraftCell(activeFile.path, draftId, field, value, operation)}
               onCellFocus={(key) => { historyEditKey.current = key; }}
               onTagsChange={(recordIndex, tags) => updateExistingTags(activeFile.path, recordIndex, tags)}
               onDraftTagsChange={(draftId, tags) => updateDraftTags(activeFile.path, draftId, tags)}
@@ -3244,8 +3249,8 @@ function DataEditor({
   onOverview?: () => void;
   onCreateData?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
-  onCellChange: (recordIndex: number, field: string, value: AuthoringValue) => void;
-  onDraftCellChange: (draftId: string, field: string, value: AuthoringValue) => void;
+  onCellChange: (recordIndex: number, field: string, value: AuthoringValue, operation?: boolean) => void;
+  onDraftCellChange: (draftId: string, field: string, value: AuthoringValue, operation?: boolean) => void;
   onCellFocus: (key: string) => void;
   onTagsChange: (recordIndex: number, tags: string[]) => void;
   onDraftTagsChange: (draftId: string, tags: string[]) => void;
@@ -3386,15 +3391,40 @@ function DataEditor({
   };
   const finishCellEdit = (commit: boolean, nextRow?: number, nextColumn?: number, restoreFocus = true) => {
     if (!editingCell) return;
-    if (commit && !mutationBlocked && !editor.saving && editor.snapshot.baseContentIdentity === editingCell.baseIdentity) {
+    const shape = editor.snapshot.columns[editingCell.columnIndex]?.shape;
+    const complex = shape?.modifier === "array" || shape?.shape.kind === "custom" || shape?.shape.kind === "flags";
+    if (commit && !complex && !mutationBlocked && !editor.saving && editor.snapshot.baseContentIdentity === editingCell.baseIdentity) {
       if (editingCell.target.kind === "existing") onCellChange(editingCell.target.recordIndex, editingCell.target.field, editingCell.value);
       else onDraftCellChange(editingCell.target.draftId, editingCell.target.field, editingCell.value);
-    } else if (commit) setQueryNotice("Source changed or editing became unavailable. This cell change was not applied; reopen the cell to edit the current source.");
+    } else if (commit && !complex) setQueryNotice("Source changed or editing became unavailable. This cell change was not applied; reopen the cell to edit the current source.");
     const { rowIndex, columnIndex, key } = editingCell;
     setEditingCell(null);
     if (nextRow !== undefined && nextColumn !== undefined) focusGridCell(nextRow, nextColumn);
     else if (restoreFocus) pendingGridFocus.current = key;
   };
+  const commitComplexOperation = (key: string, value: AuthoringValue) => {
+    if (!editingCell || editingCell.key !== key || mutationBlocked || editor.saving) return;
+    if (editor.snapshot.baseContentIdentity !== editingCell.baseIdentity) {
+      setQueryNotice("Source changed. Reopen the cell to edit the current source.");
+      return;
+    }
+    if (editingCell.target.kind === "existing") onCellChange(editingCell.target.recordIndex, editingCell.target.field, value, true);
+    else onDraftCellChange(editingCell.target.draftId, editingCell.target.field, value, true);
+  };
+  useEffect(() => {
+    if (!editingCell) return;
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      // Nested controls and their Ant Design portals remain part of this edit.
+      if (target.closest(".complex-cell-popover, .ant-select-dropdown, .ant-dropdown")) return;
+      if (target.closest(`[data-cell="${CSS.escape(editingCell.key)}"]`)) return;
+      finishCellEdit(false, undefined, undefined, false);
+    };
+    // click runs after a nested text input's blur has committed its draft.
+    document.addEventListener("click", closeOutside, true);
+    return () => document.removeEventListener("click", closeOutside, true);
+  }, [editingCell]);
   const handleGridScroll = (top: number) => {
     if (editingCell) {
       const first = Math.max(0, Math.floor(top / GRID_ROW_HEIGHT) - GRID_OVERSCAN);
@@ -3872,11 +3902,17 @@ function DataEditor({
                     const label = `${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`;
                     return (
                       <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
-                        <Popover open={Boolean(isEditing && complex)} trigger={["click"]} onOpenChange={(open) => { if (!open && isEditing) finishCellEdit(false, undefined, undefined, false); }} placement="bottomLeft" overlayClassName="complex-cell-popover"
+                        <Popover open={Boolean(isEditing && complex)} trigger={["click"]} onOpenChange={(open) => { if (!open && isEditing) finishCellEdit(false, undefined, undefined, false); }}
+                          afterOpenChange={(open) => {
+                            if (!open || !isEditing) return;
+                            const container = document.querySelector<HTMLElement>(`[data-edit-cell="${CSS.escape(key)}"]`);
+                            if (container?.contains(document.activeElement)) return;
+                            focusElement(container);
+                          }} placement="bottomLeft" overlayClassName="complex-cell-popover"
                           content={isEditing && column.shape ? <div data-edit-cell={key} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); event.stopPropagation(); commitAndSave(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finishCellEdit(false); } }}>
-                            <ValueEditor field={column.shape} value={editingCell.value} label={label} cellKey={key} editable={editable} invalidPaths={invalidPaths}
-                              onChange={(next) => setEditingCell((current) => current?.key === key ? { ...current, value: next } : current)} />
-                            <div className="complex-cell-actions"><Button type="primary" size="small" onClick={() => finishCellEdit(true)}>Apply to buffer</Button><Button size="small" onClick={() => finishCellEdit(false)}>Cancel</Button></div>
+                            <ValueEditor field={column.shape} value={value} label={label} cellKey={key} editable={editable} invalidPaths={invalidPaths}
+                              bufferedText onChange={(next) => commitComplexOperation(key, next)} />
+                            <div className="complex-cell-actions"><Button size="small" onClick={() => finishCellEdit(false)}>Close</Button></div>
                           </div> : null}>
                         <div
                           className="cell-wrap"
@@ -3963,6 +3999,7 @@ function DataEditor({
                               editable={editable}
                               invalidPaths={invalidPaths}
                               onChange={(next) => setEditingCell((current) => current?.key === key ? { ...current, value: next } : current)}
+                              onOperation={(next) => { commitComplexOperation(key, next); finishCellEdit(false); }}
                             />
                           ) : (
                             <output className="cell-summary" data-value-path={key} title={readOnlyReason ?? authoringValueSummary(value)}>{authoringValueSummary(value)}</output>

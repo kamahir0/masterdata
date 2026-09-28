@@ -165,3 +165,33 @@ test("nested diagnostic paths mark the matching ValueEditor field", () => {
   expect(credits.getAttribute("aria-invalid")).toBe("true");
   expect(credits.getAttribute("data-value-path")).toBe("0:profile/credits");
 });
+
+test("buffered nested text commits once on Enter and Escape keeps the previous value", () => {
+  const onChange = vi.fn();
+  render(<ValueEditor field={field({ kind: "primitive", primitive: "string" })}
+    value={{ kind: "string", value: "before" }} label="label" cellKey="0:label"
+    editable invalidPaths={noInvalidPaths} bufferedText onChange={onChange} />);
+  const input = screen.getByRole("textbox", { name: "label" });
+  fireEvent.change(input, { target: { value: "draft" } });
+  expect(onChange).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Escape" });
+  expect((input as HTMLInputElement).value).toBe("before");
+  expect(onChange).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: "committed" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange).toHaveBeenCalledWith({ kind: "string", value: "committed" });
+});
+
+test("unknown Enum member is preserved until an explicit selection", async () => {
+  const onOperation = vi.fn();
+  render(<ValueEditor field={field({ kind: "enum", name: "Status", underlying: "int", members: ["Ready", "Paused"] })}
+    value={{ kind: "string", value: "Legacy" }} label="status" cellKey="0:status"
+    editable invalidPaths={noInvalidPaths} onChange={() => {}} onOperation={onOperation} />);
+  expect(screen.getByText("Legacy (unknown member)")).toBeTruthy();
+  expect(onOperation).not.toHaveBeenCalled();
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "status" }));
+  fireEvent.click((await screen.findAllByText("Paused", { selector: ".ant-select-item-option-content" })).at(-1)!);
+  expect(onOperation).toHaveBeenCalledOnce();
+  expect(onOperation).toHaveBeenCalledWith({ kind: "string", value: "Paused" });
+});

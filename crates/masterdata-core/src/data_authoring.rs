@@ -154,40 +154,42 @@ pub fn data_file_snapshot(
                 tags_read_only_reason,
                 cells: columns
                     .iter()
-                    .map(|column| DataEditorCell {
-                        field: column.name.clone(),
-                        text: record
-                            .get(&column.name)
-                            .map(display_value)
-                            .unwrap_or_default(),
-                        value: match record.get(&column.name) {
-                            Some(value) => column
+                    .map(|column| {
+                        let source = record.get(&column.name);
+                        // A typed mismatch may still be represented losslessly for explicit repair.
+                        let projected = source.map(|value| {
+                            column
                                 .shape
                                 .as_ref()
                                 .and_then(|shape| project_typed_source_value(shape, value).ok())
-                                .or_else(|| project_source_value(value).ok())
-                                .unwrap_or_else(|| AuthoringValue::String {
-                                    value: display_value(value),
-                                }),
-                            None => AuthoringValue::Null,
-                        },
-                        editable: column.editable
-                            && record.get(&column.name).is_some_and(|value| {
-                                column.shape.as_ref().is_some_and(|shape| {
-                                    project_typed_source_value(shape, value).is_ok()
-                                })
-                            }),
-                        read_only_reason: if !record.contains_key(&column.name) {
+                                .map(Ok)
+                                .unwrap_or_else(|| project_source_value(value))
+                        });
+                        let editable =
+                            column.editable && projected.as_ref().is_some_and(Result::is_ok);
+                        let read_only_reason = if source.is_none() {
                             Some(format!("The source record is missing `{}`.", column.name))
-                        } else if let Some(shape) = &column.shape {
-                            record
-                                .get(&column.name)
-                                .and_then(|value| project_typed_source_value(shape, value).err())
-                                .map(|error| error.diagnostic().message.clone())
-                                .or_else(|| column.read_only_reason.clone())
-                        } else {
+                        } else if !column.editable {
                             column.read_only_reason.clone()
-                        },
+                        } else {
+                            projected
+                                .as_ref()
+                                .and_then(|result| result.as_ref().err())
+                                .map(|error| error.diagnostic().message.clone())
+                        };
+                        DataEditorCell {
+                            field: column.name.clone(),
+                            text: source.map(display_value).unwrap_or_default(),
+                            value: projected.and_then(Result::ok).unwrap_or_else(|| {
+                                source
+                                    .map(|value| AuthoringValue::String {
+                                        value: display_value(value),
+                                    })
+                                    .unwrap_or(AuthoringValue::Null)
+                            }),
+                            editable,
+                            read_only_reason,
+                        }
                     })
                     .collect(),
             }

@@ -320,6 +320,200 @@ test('complex values remain summarized in rows and keyboard opens the nested edi
   expect(screen.queryByText('1 dirty')).toBeNull();
 });
 
+test('Array controls commit separately, nested typing commits once, and Close keeps committed edits', async () => {
+  const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'numbers', typeName: 'int[]', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'numbers', text: '[1]', value: { kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: 0, value: { kind: 'number', value: '1' } }] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 numbers:/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Add record 1 numbers item' }));
+  expect(screen.queryByRole('button', { name: 'Apply to buffer' })).toBeNull();
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, null\]/ })).toBeTruthy());
+  const item = await screen.findByRole('textbox', { name: 'record 1 numbers item 2' });
+  fireEvent.change(item, { target: { value: '42' } });
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, null\]/ })).toBeTruthy();
+  fireEvent.blur(item);
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 42\]/ })).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 42\]/ })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 42\]/ })));
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, null\]/ })).toBeTruthy();
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1\]/ })).toBeTruthy();
+  await dataAction('Redo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, null\]/ })).toBeTruthy();
+});
+
+test('clicking outside a complex editor closes it after committing pending nested text', async () => {
+  const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'numbers', typeName: 'int[]', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'numbers', text: '[1]', value: { kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: 0, value: { kind: 'number', value: '1' } }] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: /^record 1 numbers:/ }), { key: 'Enter' });
+  const input = await screen.findByRole('textbox', { name: 'record 1 numbers item 1' });
+  fireEvent.change(input, { target: { value: '42' } });
+  fireEvent.blur(input);
+  fireEvent.click(document.body);
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: 'record 1 numbers item 1' })).toBeNull());
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[42\]/ })).toBeTruthy();
+});
+
+test('Array move and remove are independent reversible source operations', async () => {
+  const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'numbers', typeName: 'int[]', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'numbers', text: '[1, 2]', value: { kind: 'sequence', sourceIdentity: true, items: [
+      { sourceIndex: 0, value: { kind: 'number', value: '1' } }, { sourceIndex: 1, value: { kind: 'number', value: '2' } },
+    ] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: /^record 1 numbers:/ }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for record 1 numbers item 2' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Move record 1 numbers item 2 up' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[2, 1\]/ })).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for record 1 numbers item 1' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove record 1 numbers item 1' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1\]/ })).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[2, 1\]/ })).toBeTruthy();
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 2\]/ })).toBeTruthy();
+  await dataAction('Redo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[2, 1\]/ })).toBeTruthy();
+});
+
+test('Cmd+S in a pending nested scalar commits its text before current Table Save', async () => {
+  const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'numbers', typeName: 'int[]', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'numbers', text: '[1]', value: { kind: 'sequence', sourceIdentity: true, items: [{ sourceIndex: 0, value: { kind: 'number', value: '1' } }] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 numbers:/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  const input = await screen.findByRole('textbox', { name: 'record 1 numbers item 1' });
+  fireEvent.change(input, { target: { value: '42' } });
+  fireEvent.keyDown(input, { key: 's', metaKey: true });
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')?.[1].request.recordDraft.mutation.edits[0].value.items[0].value).toEqual({ kind: 'number', value: '42' }));
+});
+
+test('Flags operations keep unknown members and Escape cancels only pending nested typing', async () => {
+  const shape = { name: 'flags', typeName: 'Tags', modifier: 'required', shape: { kind: 'flags', name: 'Tags', members: ['None', 'A', 'B'] } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'flags', typeName: 'Tags', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'flags', text: '[A, Mystery]', value: { kind: 'sequence', sourceIdentity: true, items: [
+      { sourceIndex: 0, value: { kind: 'string', value: 'A' } }, { sourceIndex: 1, value: { kind: 'string', value: 'Mystery' } },
+    ] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 flags:/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'record 1 flags B' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /Mystery.*B|B.*Mystery/ })).toBeTruthy());
+  expect(screen.getByText(/Unrecognized flag value:.*Mystery/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'record 1 flags A' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /Mystery.*B|B.*Mystery/ })).toBeTruthy());
+  expect((screen.getByRole('checkbox', { name: 'record 1 flags A' }) as HTMLInputElement).checked).toBe(false);
+  fireEvent.keyDown(screen.getByRole('checkbox', { name: 'record 1 flags B' }), { key: 'Escape' });
+  expect(screen.getByRole('gridcell', { name: /Mystery.*B|B.*Mystery/ })).toBeTruthy();
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /A.*Mystery.*B/ })).toBeTruthy();
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /A.*Mystery/ })).toBeTruthy();
+  await dataAction('Redo');
+  expect(screen.getByRole('gridcell', { name: /A.*Mystery.*B/ })).toBeTruthy();
+});
+
+test('Problems opens nested Custom control; Escape cancels only its pending text and preserves unknown members', async () => {
+  const nested = { name: 'detail', typeName: 'Detail', modifier: 'required', shape: { kind: 'custom', name: 'Detail', fields: [
+    { name: 'label', typeName: 'string', modifier: 'required', shape: { kind: 'primitive', primitive: 'string' } },
+  ] } };
+  const shape = { name: 'reward', typeName: 'Reward', modifier: 'required', shape: { kind: 'custom', name: 'Reward', fields: [nested] } };
+  const diagnostic = { code: 'E-TABLE-INVALID-RECORD-VALUE', source: '/project/data.yaml', record_identity: 'record[0]',
+    message: 'field `reward` detail label is invalid', value_path: '/detail/label' };
+  openSnapshot = { ...snapshot(), columns: [
+    { name: 'id', typeName: 'int', editable: true, keyField: false, shape: { name: 'id', typeName: 'int', modifier: 'required', shape: { kind: 'primitive', primitive: 'int' } }, readOnlyReason: null },
+    { name: 'reward', typeName: 'Reward', editable: true, keyField: false, shape, readOnlyReason: null },
+  ], rows: [
+    { recordIndex: 0, cells: [{ field: 'id', text: '1', value: { kind: 'number', value: '1' }, editable: true, readOnlyReason: null },
+    { field: 'reward', text: '{detail: {label: bad}, legacy: keep}', value: { kind: 'mapping', entries: [
+      { name: 'detail', value: { kind: 'mapping', entries: [{ name: 'label', value: { kind: 'string', value: 'bad' } }] } },
+      { name: 'legacy', value: { kind: 'string', value: 'keep' } },
+    ] }, editable: true, readOnlyReason: null }] },
+  ], validation: { valid: false, diagnostics: [diagnostic] } } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: /^record 1 reward:/ }), { key: 'Enter' });
+  await screen.findByRole('textbox', { name: 'label' });
+  fireEvent.click(await screen.findByRole('button', { name: /PROBLEMS 1/ }));
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: 'label' })).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: /field `reward` detail label is invalid/ }));
+  const input = await screen.findByRole('textbox', { name: 'label' });
+  await waitFor(() => expect(document.activeElement).toBe(input));
+  expect(screen.getByText('Unknown source members')).toBeTruthy();
+  fireEvent.change(input, { target: { value: 'discard me' } });
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect((input as HTMLInputElement).value).toBe('bad');
+  expect(screen.getByRole('textbox', { name: 'label' })).toBeTruthy();
+  fireEvent.change(input, { target: { value: 'fixed' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /fixed.*legacy.*keep/ })).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+  expect(screen.getByRole('gridcell', { name: /fixed.*legacy.*keep/ })).toBeTruthy();
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /bad.*legacy.*keep/ })).toBeTruthy();
+});
+
+test('Added Row uses the same Array operation history as an existing record', async () => {
+  const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'numbers', typeName: 'int[]', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'numbers', text: '[]', value: { kind: 'sequence', sourceIdentity: true, items: [] }, editable: true, readOnlyReason: null }] },
+  ], addRow: { supported: true, reason: null } } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole('gridcell', { name: /^record 1 numbers:/ });
+  fireEvent.click(screen.getByRole('button', { name: /Add Row/ }));
+  const added = await screen.findByRole('gridcell', { name: /^new record numbers:/ });
+  fireEvent.keyDown(added, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Make empty array for new record numbers' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^new record numbers: \[\]/ })).toBeTruthy());
+  fireEvent.click(screen.getByRole('button', { name: 'Close', exact: true }));
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^new record numbers: null/ })).toBeTruthy();
+  await dataAction('Redo');
+  expect(screen.getByRole('gridcell', { name: /^new record numbers: \[\]/ })).toBeTruthy();
+});
+
+test('nullable Set null is a direct source operation and Undo restores the value', async () => {
+  const shape = { name: 'alias', typeName: 'string', modifier: 'nullable', shape: { kind: 'primitive', primitive: 'string' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'alias', typeName: 'string', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'alias', text: 'kept', value: { kind: 'string', value: 'kept' }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 alias:/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Set record 1 alias to null' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 alias: null/ })).toBeTruthy());
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 alias: "kept"/ })).toBeTruthy();
+});
+
+test('unknown Enum member stays intact until selection commits one Undo operation', async () => {
+  const shape = { name: 'rarity', typeName: 'Rarity', modifier: 'required', shape: { kind: 'enum', name: 'Rarity', underlying: 'int', members: ['Common', 'Rare'] } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'rarity', typeName: 'Rarity', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'rarity', text: 'Legacy', value: { kind: 'string', value: 'Legacy' }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 rarity: "Legacy"/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  expect(screen.getAllByText('Legacy (unknown member)').length).toBeGreaterThan(0);
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'record 1 rarity' }));
+  fireEvent.click((await screen.findAllByText('Rare', { selector: '.ant-select-item-option-content' })).at(-1)!);
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 rarity: "Rare"/ })).toBeTruthy());
+  await dataAction('Undo');
+  expect(screen.getByRole('gridcell', { name: /^record 1 rarity: "Legacy"/ })).toBeTruthy();
+});
+
 test('filter options stay out of the default grid and retain their draft when reopened', async () => {
   await open();
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();

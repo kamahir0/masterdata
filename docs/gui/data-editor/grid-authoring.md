@@ -36,7 +36,7 @@ Save / explicit Overwrite successは対象fileの履歴をclearする（MUST）�
 
 ### GUI-GRID-006
 
-grid navigation modeではCmd/Ctrl+C / Vをcopy/paste、Cmd/Ctrl+ZをUndo、Cmd+Shift+ZまたはCtrl+Y / Ctrl+Shift+ZをRedo、Shift+Arrowをrange拡張へ割り当てる（MUST）。cell/nested text control編集中はclipboardとUndoをcontrol内text編集へ委ね、range操作やfile Undoを同時実行しない（MUST NOT）。Escapeはactive edit cancelを優先し、navigation modeではrangeをactive cellへ縮める。
+grid navigation modeではCmd/Ctrl+C / Vをcopy/paste、Cmd/Ctrl+ZをUndo、Cmd+Shift+ZまたはCtrl+Y / Ctrl+Shift+ZをRedo、Shift+Arrowをrange拡張へ割り当てる（MUST）。cell/nested text control編集中はclipboardとUndoをcontrol内text編集へ委ね、range操作やfile Undoを同時実行しない（MUST NOT）。Escapeは未確定のactive text edit cancelを優先する。complex editorでは`GUI-DATA-EDIT-004`に従い、既確定操作をcancelせずeditor closeとする。navigation modeではrangeをactive cellへ縮める。
 Enter/F2によるedit開始、Enter/Tabによる確定移動と[GUI-UNIFIED-004](../table-editor/spec.md)の通常Save shortcutは既存契約を保つ。IME composition中にEnterを確定移動へ誤解釈しない（MUST NOT）。Deleteキーをbulk row deleteへ割り当てない。preview終了後はsurviving active cell、なければgridへfocusを戻す。
 selection範囲、対象件数、read-only理由、preview失効、履歴有無をassistive technologyへ伝えなければならない（MUST）。
 

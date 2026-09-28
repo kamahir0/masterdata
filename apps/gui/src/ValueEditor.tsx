@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Dropdown, Input, Select } from "antd";
 import { MoreHorizontal } from "lucide-react";
 import type { AuthoringMember, AuthoringSequenceItem, AuthoringValue, ResolvedAuthoringField, ResolvedAuthoringType } from "./data-editor-types";
@@ -11,14 +12,17 @@ export type ValueEditorProps = {
   editable: boolean;
   invalidPaths: ReadonlySet<string>;
   onChange: (value: AuthoringValue) => void;
+  onOperation?: (value: AuthoringValue) => void;
+  bufferedText?: boolean;
 };
 
 export default function ValueEditor(props: ValueEditorProps) {
   return <FieldValueEditor {...props} path="" />;
 }
 
-function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths, onChange, path, primary = true }: ValueEditorProps & { path: string; primary?: boolean }) {
+function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths, onChange, onOperation, bufferedText = false, path, primary = true }: ValueEditorProps & { path: string; primary?: boolean }) {
   const invalid = invalidPaths.has(path);
+  const operation = onOperation ?? onChange;
   if (field.modifier === "array") {
     return (
       <fieldset className={`value-editor array-editor ${invalid ? "invalid" : ""}`} aria-invalid={invalid || undefined}>
@@ -26,7 +30,7 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
         {value.kind === "sequence" ? (
           <div className="array-value-list">
             {value.items.map((item, index) => (
-              <div className="array-value-item" key={index}>
+              <div className="array-value-item" key={sequenceItemKey(item)}>
                 <span className="array-item-label">Item {index + 1}</span>
                 <TypeValueEditor
                   shape={field.shape}
@@ -37,26 +41,36 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
                   primary={primary && index === 0}
                   editable={editable}
                   invalidPaths={invalidPaths}
-                  onChange={(next) => onChange({
-                    kind: "sequence",
-                    sourceIdentity: true,
-                    items: value.items.map((existing, itemIndex) => itemIndex === index
-                      ? { ...existing, value: next }
-                      : existing),
-                  })}
+                  bufferedText={bufferedText}
+                  onOperation={(next) => {
+                    const changed = { ...item, value: next };
+                    carrySequenceItemKey(item, changed);
+                    operation({ kind: "sequence", sourceIdentity: true,
+                      items: value.items.map((existing, itemIndex) => itemIndex === index ? changed : existing) });
+                  }}
+                  onChange={(next) => {
+                    const changed = { ...item, value: next };
+                    carrySequenceItemKey(item, changed);
+                    onChange({ kind: "sequence", sourceIdentity: true,
+                      items: value.items.map((existing, itemIndex) => itemIndex === index ? changed : existing) });
+                  }}
                 />
                 <Dropdown trigger={["click"]} menu={{ items: [
                   { key: "up", label: `Move ${label} item ${index + 1} up`, disabled: !editable || index === 0, onClick: () => {
                     const items = [...value.items]; [items[index - 1], items[index]] = [items[index], items[index - 1]];
-                    onChange({ kind: "sequence", sourceIdentity: true, items });
+                    operation({ kind: "sequence", sourceIdentity: true, items });
+                    focusValuePath(cellKey, joinPath(path, String(index - 1)), true);
                   } },
                   { key: "down", label: `Move ${label} item ${index + 1} down`, disabled: !editable || index === value.items.length - 1, onClick: () => {
                     const items = [...value.items]; [items[index], items[index + 1]] = [items[index + 1], items[index]];
-                    onChange({ kind: "sequence", sourceIdentity: true, items });
+                    operation({ kind: "sequence", sourceIdentity: true, items });
+                    focusValuePath(cellKey, joinPath(path, String(index + 1)), true);
                   } },
-                  { key: "remove", label: `Remove ${label} item ${index + 1}`, danger: true, disabled: !editable, onClick: () => onChange({
-                    kind: "sequence", sourceIdentity: true, items: value.items.filter((_, itemIndex) => itemIndex !== index),
-                  }) },
+                  { key: "remove", label: `Remove ${label} item ${index + 1}`, danger: true, disabled: !editable, onClick: () => {
+                    const items = value.items.filter((_, itemIndex) => itemIndex !== index);
+                    operation({ kind: "sequence", sourceIdentity: true, items });
+                    focusValuePath(cellKey, items.length ? joinPath(path, String(Math.min(index, items.length - 1))) : path, items.length > 0);
+                  } },
                 ] }}><Button className="array-item-menu" type="text" size="small" htmlType="button" data-value-path={valuePathKey(cellKey, joinPath(path, String(index)))}
                   aria-label={`Actions for ${label} item ${index + 1}`} disabled={!editable} icon={<MoreHorizontal size={15} />} /></Dropdown>
               </div>
@@ -73,14 +87,14 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
                 data-value-path={valuePathKey(cellKey, path)}
                 aria-label={`Make empty array for ${label}`}
                 disabled={!editable}
-                onClick={() => onChange({ kind: "sequence", sourceIdentity: true, items: [] })}
+                onClick={() => { operation({ kind: "sequence", sourceIdentity: true, items: [] }); focusValuePath(cellKey, path); }}
               >Make empty array</Button>
               <Button
                 htmlType="button"
                 data-value-path={valuePathKey(cellKey, path)}
                 aria-label={`Add first ${label} array item`}
                 disabled={!editable}
-                onClick={() => onChange({ kind: "sequence", sourceIdentity: true, items: [newSequenceItem(nullAuthoringValue())] })}
+                onClick={() => { operation({ kind: "sequence", sourceIdentity: true, items: [newSequenceItem(nullAuthoringValue())] }); focusValuePath(cellKey, joinPath(path, "0")); }}
               >Add first item</Button>
             </div>
           </div>
@@ -93,7 +107,7 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
             data-value-path={valuePathKey(cellKey, path)}
             aria-label={`Add ${label} item`}
             disabled={!editable}
-            onClick={() => onChange({ kind: "sequence", sourceIdentity: true, items: [...value.items, newSequenceItem(nullAuthoringValue())] })}
+            onClick={() => { operation({ kind: "sequence", sourceIdentity: true, items: [...value.items, newSequenceItem(nullAuthoringValue())] }); focusValuePath(cellKey, joinPath(path, String(value.items.length))); }}
           >Add item</Button>
         )}
         {invalid && <span className="nested-value-error" role="alert">This array value is invalid.</span>}
@@ -113,7 +127,9 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
         primary={primary}
         editable={editable}
         invalidPaths={invalidPaths}
+        bufferedText={bufferedText}
         onChange={onChange}
+        onOperation={operation}
       />
       {field.modifier === "nullable" && value.kind !== "null" && (
         <Button
@@ -122,7 +138,7 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
           data-value-path={valuePathKey(cellKey, path)}
           aria-label={`Set ${label} to null`}
           disabled={!editable}
-          onClick={() => onChange(nullAuthoringValue())}
+          onClick={() => operation(nullAuthoringValue())}
         >Set null</Button>
       )}
       {invalid && <span className="nested-value-error" role="alert">This value is invalid.</span>}
@@ -139,7 +155,9 @@ function TypeValueEditor({
   primary,
   editable,
   invalidPaths,
+  bufferedText,
   onChange,
+  onOperation,
 }: {
   shape: ResolvedAuthoringType;
   value: AuthoringValue;
@@ -149,7 +167,9 @@ function TypeValueEditor({
   primary: boolean;
   editable: boolean;
   invalidPaths: ReadonlySet<string>;
+  bufferedText: boolean;
   onChange: (value: AuthoringValue) => void;
+  onOperation: (value: AuthoringValue) => void;
 }) {
   const invalid = invalidPaths.has(dataPath);
   const sharedControlProps = {
@@ -176,30 +196,20 @@ function TypeValueEditor({
             value={value.kind === "bool" ? selected : value.kind === "null" ? undefined : "__invalid"}
             options={options}
             disabled={!editable}
-            onChange={(next: string) => onChange({ kind: "bool", value: next === "true" })}
+            onChange={(next: string) => onOperation({ kind: "bool", value: next === "true" })}
           />
         );
       }
       if (shape.primitive === "string") {
         return (
-          <Input
-            {...sharedControlProps}
-            aria-label={label}
-            value={scalarText(value)}
-            readOnly={!editable}
-            onChange={(event) => onChange({ kind: "string", value: event.target.value })}
-          />
+          <ScalarTextInput controlProps={sharedControlProps} label={label} value={scalarText(value)}
+            editable={editable} buffered={bufferedText} onCommit={(text) => onChange({ kind: "string", value: text })} />
         );
       }
       return (
-        <Input
-          {...sharedControlProps}
-          aria-label={label}
+        <ScalarTextInput controlProps={sharedControlProps} label={label} value={scalarText(value)}
           inputMode={shape.primitive === "float" || shape.primitive === "double" ? "decimal" : "numeric"}
-          value={scalarText(value)}
-          readOnly={!editable}
-          onChange={(event) => onChange({ kind: "number", value: event.target.value })}
-        />
+          editable={editable} buffered={bufferedText} onCommit={(text) => onChange({ kind: "number", value: text })} />
       );
     case "value_object":
       return (
@@ -214,7 +224,9 @@ function TypeValueEditor({
             primary={primary}
             editable={editable}
             invalidPaths={invalidPaths}
+            bufferedText={bufferedText}
             onChange={onChange}
+            onOperation={onOperation}
           />
         </div>
       );
@@ -237,7 +249,7 @@ function TypeValueEditor({
             value={current ?? (value.kind === "null" ? undefined : "__invalid")}
             options={options}
             disabled={!editable}
-            onChange={(member: string) => onChange({ kind: "string", value: member })}
+            onChange={(member: string) => onOperation({ kind: "string", value: member })}
           />
           <span className="value-editor-type">{shape.name}</span>
         </div>
@@ -254,7 +266,7 @@ function TypeValueEditor({
           primary={primary}
           editable={editable}
           invalidPaths={invalidPaths}
-          onChange={onChange}
+          onChange={onOperation}
         />
       );
     case "custom": {
@@ -269,10 +281,10 @@ function TypeValueEditor({
               data-value-path={valuePathKey(cellKey, dataPath)}
               aria-label={`${value.kind === "null" ? "Materialize" : "Replace with"} ${label} (${shape.name}) fields`}
               disabled={!editable}
-              onClick={() => onChange({
-                kind: "mapping",
-                entries: shape.fields.map((field) => ({ name: field.name, value: nullAuthoringValue() })),
-              })}
+              onClick={() => {
+                onOperation({ kind: "mapping", entries: shape.fields.map((field) => ({ name: field.name, value: nullAuthoringValue() })) });
+                focusValuePath(cellKey, joinPath(dataPath, shape.fields[0]?.name ?? ""));
+              }}
             >{value.kind === "null" ? "Materialize fields" : "Replace with fields"}</Button>
           </div>
         );
@@ -302,7 +314,15 @@ function TypeValueEditor({
                   path={joinPath(dataPath, nestedField.name)}
                   editable={editable}
                   invalidPaths={invalidPaths}
+                  bufferedText={bufferedText}
                   onChange={(next) => updateMember(nestedField.name, next)}
+                  onOperation={(next) => {
+                    const index = value.entries.findIndex((entry) => entry.name === nestedField.name);
+                    const entries = [...value.entries];
+                    if (index < 0) entries.push({ name: nestedField.name, value: next });
+                    else entries[index] = { ...entries[index], value: next };
+                    onOperation({ kind: "mapping", entries });
+                  }}
                   primary={primary && index === 0}
                 />
               );
@@ -407,6 +427,67 @@ function FlagsEditor({ shape, value, label, cellKey, dataPath, primary, editable
       })}
     </div>
   );
+}
+
+function ScalarTextInput({ controlProps, label, value, editable, buffered, inputMode, onCommit }: {
+  controlProps: { "data-cell": string | undefined; "data-value-path": string; "aria-invalid": boolean | undefined };
+  label: string;
+  value: string;
+  editable: boolean;
+  buffered: boolean;
+  inputMode?: "decimal" | "numeric";
+  onCommit: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const touched = useRef(false);
+  useEffect(() => { setDraft(value); touched.current = false; }, [value]);
+  const commit = () => {
+    if (!buffered || !touched.current) return;
+    touched.current = false;
+    onCommit(draft);
+  };
+  return <Input {...controlProps} aria-label={label} inputMode={inputMode}
+    value={buffered ? draft : value} readOnly={!editable}
+    onChange={(event) => {
+      if (buffered) { touched.current = true; setDraft(event.target.value); }
+      else onCommit(event.target.value);
+    }}
+    onBlur={commit}
+    onKeyDown={(event) => {
+      if (!buffered || event.nativeEvent.isComposing) return;
+      if (event.key === "Escape" && touched.current) {
+        event.preventDefault(); event.stopPropagation();
+        touched.current = false;
+        setDraft(value);
+      } else if (event.key === "Enter") {
+        event.preventDefault(); event.stopPropagation(); commit();
+      } else if (event.key === "Tab" || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s")) {
+        commit();
+      }
+    }} />;
+}
+
+// Presentation-only keys follow controls through reorder; sourceIndex remains the source identity.
+const sequenceItemKeys = new WeakMap<AuthoringSequenceItem, string>();
+let nextSequenceItemKey = 0;
+function sequenceItemKey(item: AuthoringSequenceItem): string {
+  let key = sequenceItemKeys.get(item);
+  if (!key) { key = `item-${++nextSequenceItemKey}`; sequenceItemKeys.set(item, key); }
+  return key;
+}
+function carrySequenceItemKey(previous: AuthoringSequenceItem, next: AuthoringSequenceItem) {
+  sequenceItemKeys.set(next, sequenceItemKey(previous));
+}
+
+function focusValuePath(cellKey: string, path: string, itemAction = false) {
+  window.requestAnimationFrame(() => {
+    const selector = `[data-value-path="${CSS.escape(valuePathKey(cellKey, path))}"]`;
+    const controls = [...document.querySelectorAll<HTMLElement>(selector)];
+    const target = itemAction
+      ? controls.find((control) => control.classList.contains("array-item-menu"))
+      : controls.find((control) => control.matches("input, button, [tabindex]"));
+    target?.focus();
+  });
 }
 
 function newSequenceItem(value: AuthoringValue): AuthoringSequenceItem {

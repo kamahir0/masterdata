@@ -6,19 +6,19 @@
 
 ## Objective
 
-**Unified Table Editorを日常的に軽快に使える編集面へ仕上げる。通常の編集状態でgridの位置を動かさず、Table文脈に沿ったSave / Undoと、短い直接操作を整える。**
+**Unified Table EditorのComplex Value編集を、直接・可逆なauthoringへ仕上げる。Array / Nullable / Enum / Flags / Custom Typeの意味ある操作をlocal bufferへ反映し、操作単位でUndo/Redoできるようにする。**
 
 ## Completion slices
 
-- Desktop操作とcurrent implementationからDaily Table authoringのfriction inventoryを作り、既存の安全契約とGUI仕様を照合する。
-- 通常のdirty / schema draft / diagnostic / validation stateでgridを動かさない編集面と、文脈に沿った高頻度操作を実装する。
-- Save / UndoのTable文脈を設計し、必要なHuman gateを解消した範囲でshared application / GUIへ適用する。
-- focused regression、repository check、DesktopのGolden Pathで検証する。
+- DesktopでComplex Valueの現行操作を観察し、Approved仕様とのfriction inventoryを作る。
+- complex session全体のApply/Cancel依存を解消し、意味あるcontrol操作ごとのbuffer反映とfile-local Undo/Redoを実装する。nested text入力は確定単位で扱う。
+- unknown / invalid source value、source-local lifecycle、keyboard/focus、nested Problems navigation、grid geometryを維持する。
+- focused regression、Desktop Golden Paths、repository check、required CIで検証する。
 
 ## Canonical requirements
 
-- [Unified Table Editor](gui/table-editor/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)、[Field Declaration Mutation](specs/field-declaration-mutation.md)、[Authoring Batch](specs/authoring-batch.md)
+- [Unified Table Editor](gui/table-editor/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)、[Record Mutation](gui/data-editor/record-mutation.md)
 
 ## Explicit non-scope
 
-- Source scalar semantics、MasterMemory binary format、Build / Publish semantics、Settings / Delivery全面再設計、Explorerのdomain tree化、visual theme全面刷新、安全契約の弱体化。
+- 0044 Save model、source scalar semantics、schema header、Migration、Search / Filter / Sort、Row配置、clipboard codec、Explorer、Source Creation、Settings / Delivery、visual themeの再設計。

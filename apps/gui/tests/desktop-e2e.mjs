@@ -295,31 +295,41 @@ try {
   await fill("//*[@aria-label='New project ID']", "desktop.evidence");
   await fill("//*[@aria-label='New project name']", "Desktop Evidence");
   await click("//section[@aria-label='Create Project']//button[normalize-space(.)='Create Project']");
-  await waitElement("//aside[@aria-label='Workspace Explorer']", 30_000);
+  await waitElement("//aside[@aria-label='Explorer']", 30_000);
   record("project-created-through-gui");
 
   await click("//*[@aria-label='New source artifact']");
+  await click("//*[@role='menuitem' and contains(normalize-space(.),'Advanced')]");
   await waitElement("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]");
   await fill("//*[@id='creation-filename']", "item-schema.yaml");
   await fill("//*[@id='creation-name']", "item");
   await fill("//*[@aria-label='C# name']", "ItemMaster");
+  await selectAnt("Record storage", "Separate data files");
   await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
   await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
   await waitText("item-schema.yaml", 30_000);
   record("table-created-through-gui");
 
   await click("//*[@aria-label='New source artifact']");
+  await click("//*[@role='menuitem' and contains(normalize-space(.),'Advanced')]");
   await waitElement("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]");
   await selectAnt("Artifact type", "Data");
   await selectAnt("Existing Table", "item");
   await fill("//*[@id='creation-filename']", "items.yaml");
   await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
   await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
-  await waitElement("//*[@aria-label='Add Row']", 30_000);
+  const addRowButton = "//section[contains(@class,'data-editor')]//button[contains(normalize-space(.),'Add Row')]";
+  await waitElement(addRowButton, 30_000);
   const dataFile = await waitUniqueYamlDocument(projectRoot, ["kind: data", "table: item"], 30_000);
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
-  await click("//*[@aria-label='Add Row']");
+  await click(addRowButton);
+  await click("//*[@role='gridcell' and starts-with(@aria-label,'new record id:')]");
+  const openedCell = await execute(`const cell = document.querySelector('[role="gridcell"][aria-label^="new record id:"]');
+    if (!cell) return false;
+    cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    return true;`);
+  if (!openedCell.ok || openedCell.value !== true) throw new Error("new record id cell was unavailable");
   await fill("//*[@aria-label='new record id']", "1001");
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(dataFile, "1001", 30_000);
@@ -329,6 +339,7 @@ try {
   await waitElement("//section[@aria-label='Project Settings']");
   await fill("//*[@aria-label='Profile name']", "prod");
   await click("//button[normalize-space(.)='Apply Profile to buffer' and not(@disabled)]");
+  await click("//section[@aria-label='Project Settings']//button[normalize-space(.)='Publish Targets']");
   await fill("//*[@aria-label='Publish target path']", "delivery");
   await click("//button[normalize-space(.)='Apply Target to buffer' and not(@disabled)]");
   await click("//section[@aria-label='Configuration diff']//button[normalize-space(.)='Save Settings' and not(@disabled)]", 30_000);

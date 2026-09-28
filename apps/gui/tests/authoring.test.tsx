@@ -92,6 +92,8 @@ function reloadProject() {
 
 // Run the 2,000-row fixture before repeated full-App mounts: this keeps the
 // bounded-rendering check from depending on accumulated jsdom test load.
+// Its fixture and accessibility queries take about 6s locally and may exceed
+// the default 10s test limit on a CI runner; the DOM row bound is still asserted.
 test('large record grid mounts only nearby rows and navigates after scrolling', async () => {
   openSnapshot = mutationSnapshot(Array.from({ length: 2_000 }, (_, recordIndex) => ({
     recordIndex,
@@ -111,7 +113,7 @@ test('large record grid mounts only nearby rows and navigates after scrolling', 
   expect(scroll.querySelectorAll('tbody tr:not(.virtual-spacer)').length).toBeLessThan(60);
   fireEvent.keyDown(farCell, { key: 'ArrowDown' });
   await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toMatch(/^record 1502 weight:/));
-});
+}, 20_000);
 
 test('initial Project-not-found is a Welcome state without an Explorer error', async () => {
   invoke.mockImplementation(async (command) => {
@@ -595,6 +597,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
 
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
   fireEvent.click(await screen.findByRole('button', { name: /Add Row/ }));
+  expect(screen.queryByText('Query cleared after Add Row.')).toBeNull();
   const draftId = await edit('new record id') as HTMLInputElement;
   fireEvent.change(draftId, { target: { value: '1' } });
   commit(draftId);

@@ -155,7 +155,12 @@ async function click(xpath, timeoutMs = 20_000) {
 
 async function fill(xpath, value, timeoutMs) {
   const id = await waitElement(xpath, timeoutMs);
-  await request("POST", `/session/${sessionId}/element/${id}/clear`, {});
+  // WebKitWebDriver's clear does not notify controlled Ant inputs of the new
+  // value. Replace through real key events so React observes the edit.
+  await request("POST", `/session/${sessionId}/element/${id}/value`, {
+    text: "\uE009a\uE000",
+    value: ["\uE009", "a", "\uE000"],
+  });
   await request("POST", `/session/${sessionId}/element/${id}/value`, {
     text: value,
     value: [...value],
@@ -308,6 +313,9 @@ try {
   await click("//div[@role='dialog']//button[normalize-space(.)='Create']");
   await waitGone("//div[@role='dialog' and .//*[contains(normalize-space(.),'New source artifact')]]", 30_000);
   await waitText("item-schema.yaml", 30_000);
+  if (!findYamlDocuments(projectRoot, []).some((file) => path.basename(file) === "item-schema.yaml")) {
+    throw new Error("Table creation did not preserve the requested filename");
+  }
   record("table-created-through-gui");
 
   await click("//*[@aria-label='New source artifact']");
@@ -321,6 +329,9 @@ try {
   const addRowButton = "//section[contains(@class,'data-editor')]//button[contains(normalize-space(.),'Add Row')]";
   await waitElement(addRowButton, 30_000);
   const dataFile = await waitUniqueYamlDocument(projectRoot, ["kind: data", "table: item"], 30_000);
+  if (path.basename(dataFile) !== "items.yaml") {
+    throw new Error(`Data creation did not preserve the requested filename: ${dataFile}`);
+  }
   record("data-source-created-through-gui", path.relative(projectRoot, dataFile));
 
   await click(addRowButton);
@@ -330,7 +341,11 @@ try {
     cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     return true;`);
   if (!openedCell.ok || openedCell.value !== true) throw new Error("new record id cell was unavailable");
-  await fill("//*[@aria-label='new record id']", "1001");
+  const rowInput = await fill("//*[@aria-label='new record id']", "1001");
+  await request("POST", `/session/${sessionId}/element/${rowInput}/value`, {
+    text: "\uE007",
+    value: ["\uE007"],
+  });
   await click("//section[contains(@class,'data-editor')]//button[normalize-space(.)='Save' and not(@disabled)]", 30_000);
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));

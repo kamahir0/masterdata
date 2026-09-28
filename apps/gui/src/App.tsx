@@ -3700,7 +3700,7 @@ function DataEditor({
       setQueryOperator("contains");
       setQuerySortField("");
       setQuerySortDirection("ascending");
-      setQueryNotice("Query cleared after Add Row.");
+      setQueryNotice(null);
       return;
     }
     if (editor.revision === 0 || (!querySearch && !queryField && !querySortField)) return;

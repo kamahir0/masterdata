@@ -28,9 +28,11 @@ field名はheaderそのものからpointerとkeyboardでinline renameでき、ty
 
 #### Schema draftと通常Save
 
-type / Nullable / Arrayのheader操作は[Field Declaration Mutation](../../specs/field-declaration-mutation.md)の`FIELD-DECL-006..010`に従う可逆的なschema draftでなければならない（MUST）。headerは直ちに新宣言を表示し、shared Coreの再解釈によるcell/column/Problems diagnosticを更新する。既存valueが新宣言でinvalidでも操作を拒否せず、record source bytesを変換しない。Ctrl/Cmd+Zで未保存のtype変更を戻すと、sourceを変更せず該当diagnosticも消える。通常のschema Saveは対象schema fileだけを安全にpersistする。
+type / Nullable / Arrayのheader操作は[Field Declaration Mutation](../../specs/field-declaration-mutation.md)の`FIELD-DECL-006..010`に従う可逆的なschema draftでなければならない（MUST）。headerは直ちに新宣言を表示し、shared Coreの再解釈によるcell/column/Problems diagnosticを更新する。既存valueが新宣言でinvalidでも操作を拒否せず、record source bytesを変換しない。Ctrl/Cmd+Zで未保存のtype変更を戻すと、sourceを変更せず該当diagnosticも消える。
 
-rename/add/drop、MessagePack key、Key、Reference等のstructural / destructive / dependency operationは各既存Plan・dirty・authorization契約へ従う。frontendはPlan resultを自動承認する権限を持たず、stale画面から新しいsnapshotへ黙ってplanし直してはならない（MUST NOT）。schema draftとrecord draftは同時に存在でき、片方のSaveやsource切替えで他方を失ってはならない（MUST NOT）。
+通常のheader SaveとCmd/Ctrl+Sは同じshared Application intentとして、current Tableのschema sourceとselected record sourceのうちactual candidateがdirtyなphysical sourceを全て対象としなければならない（MUST）。schema fileのinline records draftは別record source選択中でもschema source候補へ含め、schema宣言とinline recordsを一候補へcomposeして一回commitする（MUST）。inactiveな別physical record source、別Table、diagnosticだけのclean sourceを対象にしてはならない（MUST NOT）。複数fileのcandidateとexact identityは全件preflightしてからcommitし、partial resultはfile別に表現しなければならない（MUST）。Save AllはProject-wideな別commandである。dirty ownershipとcommit resultはfileごとに独立して保持する。
+
+rename/add/drop、MessagePack key、Key、Reference等のstructural / destructive / dependency operationは各既存Plan・dirty・authorization契約へ従う。frontendはPlan resultを自動承認する権限を持たず、stale画面から新しいsnapshotへ黙ってplanし直してはならない（MUST NOT）。schema draftとrecord draftは同時に存在でき、source切替えやpartial Saveで未保存のdraftを失ってはならない（MUST NOT）。
 
 Save/operation失敗時は対象、理由、可能な修正またはDetailsを対象付近に表示し、Conflict、commit failure、Recovery Required、Outcome UnknownをSuccessと混同してはならない（MUST NOT）。Recovery Required中のcross-surface gateは[App shell](../app-shell.md)に従う。stale Planをsilent re-planしてcommitしてはならない（MUST NOT）。semantic diagnosticは操作失敗dialogではなく関連cell/column/Problemsで示す。
 

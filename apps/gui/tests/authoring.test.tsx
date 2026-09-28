@@ -60,6 +60,10 @@ beforeEach(() => {
     if (command === 'open_data_file') return structuredClone(openSnapshot);
     if (command === 'preview_data_file') return preview(args);
     if (command === 'save_data_file') return { status: 'success', snapshot: snapshot() };
+    if (command === 'save_current_table_context') return { files: [
+      ...(args.request.schemaDraft ? [{ path: 'schema.yaml', status: 'success', candidateContentIdentity: 'schema-candidate', current: null, diagnostic: null }] : []),
+      ...(args.request.recordDraft ? [{ path: args.request.selectedRecordSource, status: 'success', candidateContentIdentity: 'base', current: null, diagnostic: null }] : []),
+    ] };
     if (command === 'source_content') return { contentIdentity: 'base', source: 'weight: 10' };
     if (command === 'build') return { generatedFiles: [] };
     throw new Error(`Unexpected command: ${command}`);
@@ -583,6 +587,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   let sourceResponse = { contentIdentity: 'base', source: openSnapshot.baseSource };
   const normalInvoke = invoke.getMockImplementation()!;
   invoke.mockImplementation(async (command, args) => {
+    if (command === 'save_current_table_context') return { files: [{ path: 'data.yaml', status: saveResponse.status, candidateContentIdentity: 'candidate', current: saveResponse.current, diagnostic: saveResponse.diagnostic }] };
     if (command === 'save_data_file') return saveResponse;
     if (command === 'source_content') return sourceResponse;
     return normalInvoke(command, args);
@@ -677,6 +682,60 @@ test('switching record files restores each file selection without mixing grid st
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml', exact: true }));
   await waitFor(() => expect(screen.getByText('1 cells selected')).toBeTruthy());
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('mixed Table Save composes dirty inline records with the selected separate source', async () => {
+  const normal = invoke.getMockImplementation()!;
+  const mixedWorkspace = { ...workspace, files: [
+    { path: 'data.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null, hasInlineRecords: false },
+    { path: 'schema.yaml', sourceRoot: '.', kind: 'schema', table: 'item', typeName: null, hasInlineRecords: true },
+  ] };
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'authoring_workspace') return mixedWorkspace;
+    if (command === 'open_table_context') return {
+      table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\nrecords:\n  - weight: 10\n',
+      recordSources: [{ path: 'schema.yaml', inline: true }, { path: 'data.yaml', inline: false }],
+      selectedRecordSource: args.relativePath === 'schema.yaml' ? 'schema.yaml' : 'data.yaml',
+      schema: { schema: { table: 'item', fields: [{ key: 0, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong'] },
+    };
+    if (command === 'open_data_file') return { ...snapshot(), path: args.relativePath,
+      baseSource: args.relativePath === 'schema.yaml' ? 'kind: schema\ntable: item\nrecords:\n  - weight: 10\n' : 'weight: 10',
+      baseContentIdentity: args.relativePath === 'schema.yaml' ? 'schema-base' : 'base' };
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  fireEvent.click(await screen.findByRole('treeitem', { name: 'schema.yaml', exact: true }));
+  const inlineInput = await edit('record 1 weight');
+  fireEvent.change(inlineInput, { target: { value: '21' } }); commit(inlineInput);
+  await screen.findByRole('gridcell', { name: /^record 1 weight: 21/ });
+  fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml', exact: true }));
+  const separateInput = await edit('record 1 weight');
+  fireEvent.change(separateInput, { target: { value: '22' } }); commit(separateInput);
+  await screen.findByRole('gridcell', { name: /^record 1 weight: 22/ });
+  fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_current_table_context')).toBe(true));
+  const request = invoke.mock.calls.find(([command]) => command === 'save_current_table_context')![1].request;
+  expect(request.selectedRecordSource).toBe('data.yaml');
+  expect(request.inlineRecordDraft.mutation.edits[0].value).toEqual({ kind: 'number', value: '21' });
+  expect(request.recordDraft.mutation.edits[0].value).toEqual({ kind: 'number', value: '22' });
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('Cmd+S uses the same current Table Save intent as the header', async () => {
+  const input = await open();
+  fireEvent.change(input, { target: { value: '20' } }); commit(input);
+  await screen.findByRole('gridcell', { name: /^record 1 weight: 20/ });
+  fireEvent.keyDown(window, { key: 's', metaKey: true });
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_current_table_context')).toBe(true));
+  expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')![1].request).toMatchObject({
+    schemaPath: 'schema.yaml', selectedRecordSource: 'data.yaml', schemaDraft: null,
+    recordDraft: { mutation: { edits: [{ field: 'weight', value: { kind: 'number', value: '20' } }] } },
+  });
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('Cmd+S inside a cell commits its current text before the Table Save intent', async () => {
+  const input = await open();
+  fireEvent.change(input, { target: { value: '20' } });
+  fireEvent.keyDown(input, { key: 's', metaKey: true });
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_current_table_context')).toBe(true));
+  expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')![1].request.recordDraft.mutation.edits)
+    .toMatchObject([{ field: 'weight', value: { kind: 'number', value: '20' } }]);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('column header commits rename and modifier through one safe intent without Plan UI', async () => {
   const normal = invoke.getMockImplementation()!;
   let field = { key: 0, name: 'weight', type: 'ulong', nullable: false, array: false };
@@ -707,7 +766,7 @@ test('column header commits rename and modifier through one safe intent without 
   expect(intents).toHaveLength(1);
   expect(screen.queryByRole('region', { name: 'Migration Plan' })).toBeNull();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
-test('schema header draft previews diagnostics, undo/redo, and saves the schema file', async () => {
+test('schema and record drafts save through one current Table command', async () => {
   const normal = invoke.getMockImplementation()!;
   let saved = false;
   invoke.mockImplementation(async (command, args) => {
@@ -720,10 +779,15 @@ test('schema header draft previews diagnostics, undo/redo, and saves the schema 
     if (command === 'preview_schema_draft') return { candidateSource: 'kind: schema\ntable: item\n# saved\n', candidateContentIdentity: 'schema-new', changed: true,
       validation: { valid: false, diagnostics: [{ code: 'E-TABLE-INVALID-RECORD-VALUE', kind: 'validation', message: 'field `weight` is invalid', source: 'data.yaml', record_identity: 'record[0]' }] },
       selectedSnapshot: null };
-    if (command === 'save_schema_draft') { saved = true; return { status: 'success', path: 'schema.yaml', candidateContentIdentity: 'schema-new', current: null, diagnostic: null }; }
+    if (command === 'save_current_table_context') { saved = true; return { files: [
+      { path: 'schema.yaml', status: 'success', candidateContentIdentity: 'schema-new', current: null, diagnostic: null },
+      { path: 'data.yaml', status: 'success', candidateContentIdentity: 'base', current: null, diagnostic: null },
+    ] }; }
     if (command === 'source_content' && args.relativePath === 'schema.yaml') return { path: 'schema.yaml', source: 'kind: schema\ntable: item\n# saved\n', contentIdentity: 'schema-new' };
     if (command === 'open_data_file' && saved) {
-      const next = snapshot(); next.columns[0].shape.modifier = 'nullable'; return next;
+      const next = snapshot(); next.columns[0].shape.modifier = 'nullable';
+      next.rows[0].cells[0].text = '20'; next.rows[0].cells[0].value = { kind: 'number', value: '20' };
+      return next;
     }
     return normal(command, args);
   });
@@ -743,14 +807,37 @@ test('schema header draft previews diagnostics, undo/redo, and saves the schema 
   await waitFor(() => expect(screen.getByRole('button', { name: 'Schema redo available' })).toBeTruthy());
   fireEvent.keyDown(nullable, { key: 'z', metaKey: true, shiftKey: true });
   await screen.findByRole('button', { name: 'Schema unsaved changes and actions' });
-  fireEvent.click(screen.getByRole('button', { name: 'Schema unsaved changes and actions' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Save schema' }));
-  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_schema_draft')?.[1].fields[0].nullable).toBe(true));
+  fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')?.[1].request.schemaDraft.fields[0].nullable).toBe(true));
+  expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')?.[1].request.recordDraft.mutation.edits).toMatchObject([{ field: 'weight', value: { kind: 'number', value: '20' } }]);
   await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === 'open_data_file').length).toBeGreaterThan(1));
   expect(screen.getByRole('gridcell', { name: /^record 1 weight: 20/ })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
-  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_data_file')?.[1].edits).toMatchObject([{ field: 'weight', value: { kind: 'number', value: '20' } }]));
+  expect(invoke.mock.calls.some(([command]) => command === 'save_schema_draft' || command === 'save_data_file')).toBe(false);
   expect(invoke.mock.calls.some(([command]) => command === 'apply_table_intent')).toBe(false);
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('partial Table Save reports each source and retains the failed schema draft', async () => {
+  const normal = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'save_current_table_context') return { files: [
+      { path: 'data.yaml', status: 'success', candidateContentIdentity: 'base', current: { path: 'data.yaml', source: 'weight: 20', contentIdentity: 'base' }, diagnostic: null },
+      { path: 'schema.yaml', status: 'failure', candidateContentIdentity: 'schema-candidate', current: { path: 'schema.yaml', source: 'kind: schema\ntable: item\n', contentIdentity: 'schema-base' }, diagnostic: { code: 'E-IO', kind: 'io', message: 'Schema write failed' } },
+    ] };
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
+  fireEvent.keyDown(cell, { key: 'Enter' });
+  const input = await screen.findByRole('textbox', { name: 'record 1 weight' });
+  fireEvent.change(input, { target: { value: '20' } }); commit(input);
+  fireEvent.click(await screen.findByRole('button', { name: 'Nullable weight' }));
+  await screen.findByRole('button', { name: 'Schema unsaved changes and actions' });
+  fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+  await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === 'save_current_table_context')).toBe(true));
+  const dialog = (await screen.findByText('Save incomplete')).closest('[role="dialog"]')!;
+  expect(within(dialog).getByText('data.yaml').closest('li')?.textContent).toContain('saved');
+  expect(within(dialog).getByText('schema.yaml').closest('li')?.textContent).toContain('failure');
+  expect(screen.getByRole('button', { name: 'Schema unsaved changes and actions' })).toBeTruthy();
+  expect(invoke.mock.calls.some(([command]) => command === 'save_schema_draft' || command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('schema diagnostic propagation leaves the separate record source clean', async () => {
@@ -775,7 +862,7 @@ test('schema diagnostic propagation leaves the separate record source clean', as
   fireEvent.click(nullable);
   await screen.findByRole('button', { name: /PROBLEMS 1/ }, { timeout: 10_000 });
   expect(screen.getByRole('button', { name: 'Schema unsaved changes and actions' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Save', exact: true }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('button', { name: 'Save', exact: true }).hasAttribute('disabled')).toBe(false);
   fireEvent.keyDown(nullable, { key: 'z', metaKey: true });
   await screen.findByRole('button', { name: /PROBLEMS 0/ }, { timeout: 10_000 });
   expect(screen.getByRole('button', { name: 'Save', exact: true }).hasAttribute('disabled')).toBe(true);
@@ -893,6 +980,22 @@ test('grid paste applies one shared batch to the local buffer and Undo restores 
   expect(screen.queryByRole('dialog', { name: 'Scalar range preview' })).toBeNull();
   await dataAction('Undo');
   expect(await screen.findByRole('gridcell', { name: /^record 1 weight: 10/ })).toBeTruthy();
+});
+
+test('single-cell Cmd+C uses shared copy instead of an empty native selection', async () => {
+  const normalInvoke = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'copy_data_file_batch') return { clipboardText: '10', targetCount: 1 };
+    return normalInvoke(command, args);
+  });
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText: vi.fn(), writeText } });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole('gridcell', { name: /^record 1 weight:/ });
+  fireEvent.mouseDown(cell, { button: 0 });
+  fireEvent.keyDown(cell, { key: 'c', metaKey: true });
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('10'));
+  expect(invoke.mock.calls.find(([command]) => command === 'copy_data_file_batch')![1].request.targets).toEqual([{ recordIndex: 0, field: 'weight' }]);
 });
 
 test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of flattening the selection', async () => {

@@ -1,6 +1,6 @@
 //! Session-owned plans bind Apply to reviewed bytes, never a frontend-supplied patch.
 use crate::authoring::{
-    SourceContentState, SourceSaveStatus, install_source_candidate,
+    AuthoringRecordMutation, SourceContentState, SourceSaveStatus, install_source_candidate,
     load_authoring_documents_with_overrides, project_relative_string, read_source_state,
     resolve_source_file,
 };
@@ -214,6 +214,59 @@ pub struct SchemaDraftSaveReport {
     pub candidate_content_identity: String,
     pub current: Option<SourceContentState>,
     pub diagnostic: Option<Diagnostic>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableSchemaSaveDraft {
+    pub base_source: String,
+    pub base_content_identity: String,
+    pub fields: Vec<SchemaDraftField>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableRecordSaveDraft {
+    pub base_source: String,
+    pub base_content_identity: String,
+    pub mutation: AuthoringRecordMutation,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableContextSaveRequest {
+    pub schema_path: String,
+    pub selected_record_source: Option<String>,
+    pub schema_draft: Option<TableSchemaSaveDraft>,
+    pub inline_record_draft: Option<TableRecordSaveDraft>,
+    pub record_draft: Option<TableRecordSaveDraft>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TableContextFileSaveStatus {
+    Success,
+    Unchanged,
+    Conflict,
+    Failure,
+    OutcomeUnknown,
+    NotAttempted,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableContextFileSaveResult {
+    pub path: String,
+    pub status: TableContextFileSaveStatus,
+    pub candidate_content_identity: String,
+    pub current: Option<SourceContentState>,
+    pub diagnostic: Option<Diagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableContextSaveReport {
+    pub files: Vec<TableContextFileSaveResult>,
 }
 
 #[derive(Debug, Serialize)]
@@ -544,6 +597,293 @@ impl TableAuthoringSession {
             }),
         })
     }
+
+    pub fn save_current_table_context(
+        &self,
+        root: &Path,
+        request: &TableContextSaveRequest,
+    ) -> Result<TableContextSaveReport> {
+        self.save_current_table_context_with_installer(root, request, install_source_candidate)
+    }
+
+    fn save_current_table_context_with_installer(
+        &self,
+        root: &Path,
+        request: &TableContextSaveRequest,
+        mut install: impl FnMut(&Path, &[u8], &[u8]) -> Result<()>,
+    ) -> Result<TableContextSaveReport> {
+        self.ensure_mutation_allowed(root)?;
+        let project = Project::discover(Some(root), root)?;
+        let schema_path = resolve_source_file(&project, &request.schema_path)?;
+        let schema_relative = project_relative_string(project.root(), &schema_path);
+        let context = self.open_context(root, &schema_relative)?;
+        if context.schema_path != schema_relative {
+            return Err(error(
+                "E-TABLE-SAVE-CONTEXT",
+                "selected source is not the Table schema",
+            ));
+        }
+        let record_path = request
+            .selected_record_source
+            .as_deref()
+            .map(|path| resolve_source_file(&project, path))
+            .transpose()?;
+        if let Some(path) = &record_path {
+            let relative = project_relative_string(project.root(), path);
+            if !context
+                .record_sources
+                .iter()
+                .any(|source| source.path == relative)
+            {
+                return Err(error(
+                    "E-TABLE-SAVE-CONTEXT",
+                    "selected record source does not belong to this Table",
+                ));
+            }
+        }
+        if request.record_draft.is_some() && record_path.is_none() {
+            return Err(error(
+                "E-TABLE-SAVE-CONTEXT",
+                "record draft has no selected record source",
+            ));
+        }
+        if request.inline_record_draft.is_some()
+            && !context
+                .record_sources
+                .iter()
+                .any(|source| source.path == schema_relative)
+        {
+            return Err(error(
+                "E-TABLE-SAVE-CONTEXT",
+                "schema has no inline record source",
+            ));
+        }
+        if request.inline_record_draft.is_some()
+            && request.record_draft.is_some()
+            && record_path.as_ref() == Some(&schema_path)
+        {
+            return Err(error(
+                "E-TABLE-SAVE-CONTEXT",
+                "inline record draft is duplicated",
+            ));
+        }
+
+        struct Candidate {
+            path: PathBuf,
+            relative: String,
+            base_source: String,
+            base_identity: String,
+            source: String,
+        }
+        let mut candidates = Vec::<Candidate>::new();
+        let schema_source = if let Some(draft) = &request.schema_draft {
+            if source_content_identity(&draft.base_source) != draft.base_content_identity {
+                return Err(error(
+                    "E-FIELD-DECL-BASE-IDENTITY",
+                    "schema draft base identity does not match its source",
+                ));
+            }
+            let preview = self.preview_schema_draft(
+                root,
+                &schema_relative,
+                &draft.base_source,
+                &draft.fields,
+                &[],
+                None,
+            )?;
+            candidates.push(Candidate {
+                path: schema_path.clone(),
+                relative: schema_relative.clone(),
+                base_source: draft.base_source.clone(),
+                base_identity: draft.base_content_identity.clone(),
+                source: preview.candidate_source.clone(),
+            });
+            preview.candidate_source
+        } else {
+            context.schema_source
+        };
+
+        for (path, draft) in [
+            request
+                .inline_record_draft
+                .as_ref()
+                .map(|draft| (&schema_path, draft)),
+            record_path.as_ref().zip(request.record_draft.as_ref()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if source_content_identity(&draft.base_source) != draft.base_content_identity {
+                return Err(error(
+                    "E-SOURCE-EDIT-BASE-IDENTITY",
+                    "record draft base identity does not match its source",
+                ));
+            }
+            if *path == schema_path
+                && request.schema_draft.as_ref().is_some_and(|schema| {
+                    schema.base_content_identity != draft.base_content_identity
+                        || schema.base_source != draft.base_source
+                })
+            {
+                return Err(error(
+                    "E-TABLE-SAVE-BASE-IDENTITY",
+                    "schema and inline records have different physical source bases",
+                ));
+            }
+            let current_schema_candidate = candidates
+                .iter()
+                .find(|item| item.path == schema_path)
+                .map(|item| item.source.as_str())
+                .unwrap_or(schema_source.as_str());
+            let mut overrides = vec![(schema_path.as_path(), current_schema_candidate)];
+            if *path != schema_path {
+                overrides.push((path.as_path(), draft.base_source.as_str()));
+            }
+            let (documents, _) = load_authoring_documents_with_overrides(&project, &overrides)?;
+            let dry_run = dry_run_source_record_mutation(
+                &documents,
+                path,
+                &SourceRecordMutation::from(&draft.mutation),
+            )?;
+            if let Some(schema_candidate) = candidates.iter_mut().find(|item| item.path == *path) {
+                schema_candidate.source = dry_run.plan.candidate_source;
+            } else {
+                candidates.push(Candidate {
+                    path: path.clone(),
+                    relative: project_relative_string(project.root(), path),
+                    base_source: draft.base_source.clone(),
+                    base_identity: draft.base_content_identity.clone(),
+                    source: dry_run.plan.candidate_source,
+                });
+            }
+        }
+
+        candidates.sort_by(|left, right| left.relative.cmp(&right.relative));
+        let mut files = candidates
+            .iter()
+            .map(|candidate| TableContextFileSaveResult {
+                path: candidate.relative.clone(),
+                status: if candidate.source == candidate.base_source {
+                    TableContextFileSaveStatus::Unchanged
+                } else {
+                    TableContextFileSaveStatus::NotAttempted
+                },
+                candidate_content_identity: source_content_identity(&candidate.source),
+                current: None,
+                diagnostic: None,
+            })
+            .collect::<Vec<_>>();
+
+        // All known conflicts are found before the first write. The installer
+        // still rechecks exact bytes immediately before each individual commit.
+        let mut preflight = Vec::with_capacity(candidates.len());
+        let mut blocked = false;
+        for (index, candidate) in candidates.iter().enumerate() {
+            match read_source_state(&project, &candidate.path) {
+                Ok(current)
+                    if current.content_identity == candidate.base_identity
+                        && current.source == candidate.base_source =>
+                {
+                    if files[index].status != TableContextFileSaveStatus::Unchanged {
+                        let eligible = candidate
+                            .path
+                            .parent()
+                            .and_then(|parent| tempfile::TempDir::new_in(parent).ok());
+                        if eligible.is_none() {
+                            blocked = true;
+                            files[index].status = TableContextFileSaveStatus::Failure;
+                            files[index].diagnostic = Some(
+                                error(
+                                    "E-TABLE-SAVE-PREFLIGHT",
+                                    "could not stage a source candidate beside the target",
+                                )
+                                .diagnostic()
+                                .clone(),
+                            );
+                            preflight.push(None);
+                            continue;
+                        }
+                    }
+                    preflight.push(
+                        (files[index].status != TableContextFileSaveStatus::Unchanged)
+                            .then_some(current),
+                    )
+                }
+                Ok(current) => {
+                    blocked = true;
+                    files[index].status = TableContextFileSaveStatus::Conflict;
+                    files[index].current = Some(current);
+                    files[index].diagnostic = Some(
+                        error(
+                            "E-TABLE-SAVE-CONFLICT",
+                            "source changed since this Table was opened",
+                        )
+                        .diagnostic()
+                        .clone(),
+                    );
+                    preflight.push(None);
+                }
+                Err(failure) => {
+                    blocked = true;
+                    files[index].status = TableContextFileSaveStatus::Failure;
+                    files[index].diagnostic = Some(failure.diagnostic().clone());
+                    preflight.push(None);
+                }
+            }
+        }
+        if blocked {
+            return Ok(TableContextSaveReport { files });
+        }
+
+        for (index, candidate) in candidates.iter().enumerate() {
+            let Some(current) = &preflight[index] else {
+                continue;
+            };
+            let installed = install(
+                &candidate.path,
+                current.source.as_bytes(),
+                candidate.source.as_bytes(),
+            );
+            let after = read_source_state(&project, &candidate.path).ok();
+            files[index].status = if installed
+                .as_ref()
+                .err()
+                .is_some_and(|failure| failure.diagnostic().code == "E-SOURCE-EDIT-CONFLICT")
+            {
+                TableContextFileSaveStatus::Conflict
+            } else if installed.is_ok()
+                && after.as_ref().is_some_and(|state| {
+                    state.content_identity == files[index].candidate_content_identity
+                        && state.source == candidate.source
+                })
+            {
+                TableContextFileSaveStatus::Success
+            } else if installed.is_ok() || after.is_none() {
+                TableContextFileSaveStatus::OutcomeUnknown
+            } else if after
+                .as_ref()
+                .is_some_and(|state| state.content_identity == current.content_identity)
+            {
+                TableContextFileSaveStatus::Failure
+            } else {
+                TableContextFileSaveStatus::OutcomeUnknown
+            };
+            files[index].current = after;
+            if files[index].status != TableContextFileSaveStatus::Success {
+                files[index].diagnostic = Some(match installed {
+                    Err(failure) => failure.diagnostic().clone(),
+                    Ok(()) => error(
+                        "E-TABLE-SAVE-WRITE-VERIFY",
+                        "saved source could not be verified",
+                    )
+                    .diagnostic()
+                    .clone(),
+                });
+                break;
+            }
+        }
+        Ok(TableContextSaveReport { files })
+    }
     pub fn plan(&mut self, root: &Path, input: TableOperationInput) -> Result<TablePlanView> {
         self.ensure_mutation_allowed(root)?;
         let project = Project::discover(Some(root), root)?;
@@ -843,4 +1183,103 @@ fn recovery_required_error() -> MasterdataError {
         "E-MIGRATION-RECOVERY-REQUIRED",
         "Project requires source recovery before further mutation or Build",
     )
+}
+
+#[cfg(test)]
+mod context_save_tests {
+    use super::*;
+    use crate::authoring::{AuthoringEdit, AuthoringRecordMutation};
+    use std::fs;
+
+    #[test]
+    fn runtime_second_write_failure_reports_committed_subset() {
+        let dir = tempfile::tempdir().unwrap();
+        initialize_project(
+            dir.path(),
+            &InitOptions {
+                project_id: "test.partial".into(),
+                name: "Partial".into(),
+                version: "0.1.0".into(),
+            },
+        )
+        .unwrap();
+        fs::write(dir.path().join("sources/schema.yaml"), "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\n").unwrap();
+        fs::write(
+            dir.path().join("sources/data.yaml"),
+            "kind: data\ntable: item\nrecords:\n  - id: 1\n    note: old\n",
+        )
+        .unwrap();
+        let session = TableAuthoringSession::default();
+        let context = session
+            .open_context(dir.path(), "sources/data.yaml")
+            .unwrap();
+        let snapshot = crate::NativeApplicationService::new()
+            .open_data_file(Some(dir.path()), dir.path(), "sources/data.yaml")
+            .unwrap();
+        let schema_before = fs::read(dir.path().join("sources/schema.yaml")).unwrap();
+        let request = TableContextSaveRequest {
+            schema_path: context.schema_path,
+            selected_record_source: context.selected_record_source,
+            schema_draft: Some(TableSchemaSaveDraft {
+                base_source: context.schema_source,
+                base_content_identity: context.schema_content_identity,
+                fields: vec![
+                    SchemaDraftField {
+                        name: "id".into(),
+                        type_name: "int".into(),
+                        nullable: false,
+                        array: false,
+                    },
+                    SchemaDraftField {
+                        name: "note".into(),
+                        type_name: "string".into(),
+                        nullable: true,
+                        array: false,
+                    },
+                ],
+            }),
+            inline_record_draft: None,
+            record_draft: Some(TableRecordSaveDraft {
+                base_source: snapshot.base_source,
+                base_content_identity: snapshot.base_content_identity,
+                mutation: AuthoringRecordMutation {
+                    edits: vec![AuthoringEdit {
+                        record_index: 0,
+                        field: "note".into(),
+                        value: AuthoringValue::String {
+                            value: "new".into(),
+                        },
+                    }],
+                    ..Default::default()
+                },
+            }),
+        };
+        let mut attempts = 0;
+        let report = session
+            .save_current_table_context_with_installer(
+                dir.path(),
+                &request,
+                |path, base, candidate| {
+                    attempts += 1;
+                    if attempts == 2 {
+                        Err(error("E-IO-TEST", "injected second write failure"))
+                    } else {
+                        install_source_candidate(path, base, candidate)
+                    }
+                },
+            )
+            .unwrap();
+        assert_eq!(attempts, 2);
+        assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+        assert_eq!(report.files[1].status, TableContextFileSaveStatus::Failure);
+        assert!(
+            fs::read_to_string(dir.path().join("sources/data.yaml"))
+                .unwrap()
+                .contains("note: new")
+        );
+        assert_eq!(
+            fs::read(dir.path().join("sources/schema.yaml")).unwrap(),
+            schema_before
+        );
+    }
 }

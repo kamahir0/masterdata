@@ -216,6 +216,16 @@ fn save_schema_draft(
         .map_err(ApiError::from)
 }
 #[tauri::command(rename_all = "camelCase")]
+fn save_current_table_context(
+    project_path: Option<String>,
+    request: masterdata_app::TableContextSaveRequest,
+) -> std::result::Result<masterdata_app::TableContextSaveReport, ApiError> {
+    let root = table_root(project_path)?;
+    table_session()?
+        .save_current_table_context(&root, &request)
+        .map_err(ApiError::from)
+}
+#[tauri::command(rename_all = "camelCase")]
 fn apply_table_intent(
     project_path: Option<String>,
     input: serde_json::Value,
@@ -798,6 +808,7 @@ pub fn run() {
             open_table_context,
             preview_schema_draft,
             save_schema_draft,
+            save_current_table_context,
             apply_table_intent,
             open_type,
             plan_type_migration,

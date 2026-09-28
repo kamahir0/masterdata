@@ -20,7 +20,8 @@ test("GUI exposes file-scoped dirty, save, validation, and diff interactions", (
   assert.match(source, /function editorIsDirty/);
   assert.match(source, /Object\.values\(editor\.edits\)/);
   assert.match(source, /event\.metaKey \|\| event\.ctrlKey/);
-  assert.match(source, /activePath\) void saveFile\(activePath\)/);
+  assert.match(source, /saveCurrentTableContext\(tableContext/);
+  assert.match(source, /invoke<TableContextSaveReport>\("save_current_table_context"/);
   assert.match(source, /Buffer validation pending/);
   assert.match(source, /Unsaved source diff/);
   assert.match(source, /Build uses saved source and config only/);

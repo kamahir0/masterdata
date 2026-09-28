@@ -44,6 +44,327 @@ fn apply_current(
         dirty_paths,
     )
 }
+
+fn schema_save_draft(context: &TableContext) -> TableSchemaSaveDraft {
+    TableSchemaSaveDraft {
+        base_source: context.schema_source.clone(),
+        base_content_identity: context.schema_content_identity.clone(),
+        fields: context
+            .schema
+            .schema
+            .fields
+            .iter()
+            .map(|field| SchemaDraftField {
+                name: field.name.clone(),
+                type_name: field.type_name.clone(),
+                nullable: field.name == "note" || field.nullable,
+                array: field.array,
+            })
+            .collect(),
+    }
+}
+
+fn record_save_draft(root: &Path, path: &str) -> TableRecordSaveDraft {
+    let snapshot = NativeApplicationService::new()
+        .open_data_file(Some(root), root, path)
+        .unwrap();
+    TableRecordSaveDraft {
+        base_source: snapshot.base_source,
+        base_content_identity: snapshot.base_content_identity,
+        mutation: AuthoringRecordMutation {
+            edits: vec![AuthoringEdit {
+                record_index: 0,
+                field: "note".into(),
+                value: AuthoringValue::String {
+                    value: "changed".into(),
+                },
+            }],
+            ..AuthoringRecordMutation::default()
+        },
+    }
+}
+
+#[test]
+fn current_context_saves_separate_dirty_schema_and_selected_record_only() {
+    let dir = project();
+    let other = dir.path().join("sources/other.yaml");
+    fs::write(&other, "kind: data\ntable: item\nrecords: []\n").unwrap();
+    let other_before = fs::read(&other).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path.clone(),
+                selected_record_source: context.selected_record_source.clone(),
+                schema_draft: Some(schema_save_draft(&context)),
+                inline_record_draft: None,
+                record_draft: Some(record_save_draft(dir.path(), "sources/data.yaml")),
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 2);
+    assert!(
+        report
+            .files
+            .iter()
+            .all(|file| file.status == TableContextFileSaveStatus::Success)
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/schema.yaml"))
+            .unwrap()
+            .contains("nullable: true")
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("sources/data.yaml"))
+            .unwrap()
+            .contains("note: changed")
+    );
+    assert_eq!(fs::read(&other).unwrap(), other_before);
+}
+
+#[test]
+fn current_context_known_conflict_prevents_every_commit() {
+    let dir = project();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let record = record_save_draft(dir.path(), "sources/data.yaml");
+    let schema_before = fs::read(dir.path().join("sources/schema.yaml")).unwrap();
+    fs::write(
+        dir.path().join("sources/data.yaml"),
+        "kind: data\ntable: item\nrecords: []\n",
+    )
+    .unwrap();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path.clone(),
+                selected_record_source: context.selected_record_source.clone(),
+                schema_draft: Some(schema_save_draft(&context)),
+                inline_record_draft: None,
+                record_draft: Some(record),
+            },
+        )
+        .unwrap();
+    assert!(
+        report
+            .files
+            .iter()
+            .any(|file| file.status == TableContextFileSaveStatus::Conflict)
+    );
+    assert!(
+        report
+            .files
+            .iter()
+            .any(|file| file.status == TableContextFileSaveStatus::NotAttempted)
+    );
+    assert_eq!(
+        fs::read(dir.path().join("sources/schema.yaml")).unwrap(),
+        schema_before
+    );
+}
+
+#[test]
+fn current_context_composes_schema_and_inline_records_into_one_candidate() {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    fs::write(&schema_path, "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n    note: text # preserve\n").unwrap();
+    fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path.clone(),
+                selected_record_source: context.selected_record_source.clone(),
+                schema_draft: Some(schema_save_draft(&context)),
+                inline_record_draft: Some(record_save_draft(dir.path(), "sources/schema.yaml")),
+                record_draft: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+    let source = fs::read_to_string(&schema_path).unwrap();
+    assert!(source.contains("nullable: true"));
+    assert!(source.contains("note: changed # preserve"));
+}
+
+#[test]
+fn current_context_mixed_saves_inline_and_selected_separate_but_not_inactive() {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    let original = fs::read_to_string(&schema_path).unwrap();
+    fs::write(
+        &schema_path,
+        format!("{original}records:\n  - id: 2\n    note: inline\n"),
+    )
+    .unwrap();
+    let inactive_path = dir.path().join("sources/inactive.yaml");
+    fs::write(&inactive_path, "kind: data\ntable: item\nrecords: []\n").unwrap();
+    let inactive_before = fs::read(&inactive_path).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path.clone(),
+                selected_record_source: Some("sources/data.yaml".into()),
+                schema_draft: Some(schema_save_draft(&context)),
+                inline_record_draft: Some(record_save_draft(dir.path(), "sources/schema.yaml")),
+                record_draft: Some(record_save_draft(dir.path(), "sources/data.yaml")),
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 2);
+    assert!(
+        report
+            .files
+            .iter()
+            .all(|file| file.status == TableContextFileSaveStatus::Success)
+    );
+    let schema = fs::read_to_string(schema_path).unwrap();
+    assert!(schema.contains("nullable: true"));
+    assert!(schema.contains("note: changed"));
+    assert!(
+        fs::read_to_string(dir.path().join("sources/data.yaml"))
+            .unwrap()
+            .contains("note: changed")
+    );
+    assert_eq!(fs::read(inactive_path).unwrap(), inactive_before);
+}
+
+#[test]
+fn current_context_schema_only_does_not_write_clean_diagnostic_source() {
+    let dir = project();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let data_path = dir.path().join("sources/data.yaml");
+    let data_before = fs::read(&data_path).unwrap();
+    let mut draft = schema_save_draft(&context);
+    draft.fields[1].type_name = "bool".into();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path.clone(),
+                selected_record_source: context.selected_record_source.clone(),
+                schema_draft: Some(draft),
+                inline_record_draft: None,
+                record_draft: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+    assert_eq!(fs::read(data_path).unwrap(), data_before);
+}
+
+#[test]
+fn current_context_record_only_saves_selected_document() {
+    let dir = project();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/data.yaml")
+        .unwrap();
+    let schema_before = fs::read(dir.path().join("sources/schema.yaml")).unwrap();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path,
+                selected_record_source: context.selected_record_source,
+                schema_draft: None,
+                inline_record_draft: None,
+                record_draft: Some(record_save_draft(dir.path(), "sources/data.yaml")),
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].path, "sources/data.yaml");
+    assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+    assert_eq!(
+        fs::read(dir.path().join("sources/schema.yaml")).unwrap(),
+        schema_before
+    );
+}
+
+#[test]
+fn current_context_inline_row_only_uses_schema_physical_source() {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    let original = fs::read_to_string(&schema_path).unwrap();
+    fs::write(
+        &schema_path,
+        format!("{original}records:\n  - id: 2\n    note: inline\n"),
+    )
+    .unwrap();
+    fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path,
+                selected_record_source: Some("sources/schema.yaml".into()),
+                schema_draft: None,
+                inline_record_draft: Some(record_save_draft(dir.path(), "sources/schema.yaml")),
+                record_draft: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].path, "sources/schema.yaml");
+    assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+    assert!(
+        fs::read_to_string(schema_path)
+            .unwrap()
+            .contains("note: changed")
+    );
+}
+
+#[test]
+fn current_context_without_record_source_saves_schema_only() {
+    let dir = project();
+    fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    assert!(context.selected_record_source.is_none());
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path.clone(),
+                selected_record_source: None,
+                schema_draft: Some(schema_save_draft(&context)),
+                inline_record_draft: None,
+                record_draft: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].path, "sources/schema.yaml");
+    assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+}
 #[test]
 fn plan_is_read_only_and_apply_checks_exact_reviewed_snapshot() {
     let dir = project();

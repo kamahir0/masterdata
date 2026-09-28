@@ -34,7 +34,7 @@ shared Coreはschema draftとすべてのinline / 分離record sourceのcurrent 
 
 ### FIELD-DECL-008
 
-schema draftの通常Saveは対象schema source fileだけをsource-preservingな最小patchで更新しなければならない（MUST）。record source fileと他のdirty bufferを暗黙保存・変換してはならない（MUST NOT）。対象schema fileのbase exact content identityをwrite直前に比較し、staleならConflictとしてmutation前に停止しなければならない（MUST）。source locationを安全に再特定できない、candidateがsubset syntax/structural shapeと期待patch postconditionを満たさない、I/O failure、Outcome Unknown、Recovery RequiredではSuccessを返してはならない（MUST NOT）。write safetyと失敗後のbuffer保持は`SOURCE-EDIT-005..012`と同等の境界を維持する。
+schema draftのsource mutation targetはschema physical source fileであり、record source textを解釈やdiagnosticだけを理由に変換してはならない（MUST NOT）。Unified Tableの通常Save commandが同時に選択record sourceのactual dirty candidateを対象にする場合も、file別のsource-preserving candidate、base exact content identity、commit resultを保持しなければならない（MUST）。inline recordsとschema declarationが同じfileで両方dirtyなら、一つのcandidateにcomposeして一回だけcommitする（MUST）。source locationを安全に再特定できない、candidateがsubset syntax/structural shapeと期待patch postconditionを満たさない、I/O failure、Outcome Unknown、Recovery RequiredではSuccessを返してはならない（MUST NOT）。write safetyと失敗後のbuffer保持は`SOURCE-EDIT-005..012`と同等の境界を維持する。
 
 ### FIELD-DECL-009
 
@@ -42,7 +42,7 @@ schema draftのSave可否をrecord/domain validation errorの有無へ依存さ�
 
 ### FIELD-DECL-010
 
-schemaと各record sourceはfileごとに独立したbase identity・dirty state・historyを持たなければならない（MUST）。schema Save後はそのschema fileだけをnew baseへ進め、他fileのdraftを保持してdiagnosticを再評価する。別fileのexternal changeはそのfileのdirty bufferを黙って上書き・rebaseしてはならず（MUST NOT）、Conflict/Failure/Outcome Unknownの区別とRecovery Required gateを維持する。Save Allは各fileの明示的な上位workflowであり、途中失敗を全成功と報告してはならない（MUST NOT）。
+schemaと各separate record sourceはphysical fileごとに独立したbase identity・dirty state・historyを持たなければならない（MUST）。schema declarationsとinline recordsは同一schema fileのbase identity・dirty lifecycleを共有する。通常Saveで複数fileを対象にしても成功fileだけをnew baseへ進め、他fileのdraftを保持してdiagnosticを再評価する。別fileのexternal changeはそのfileのdirty bufferを黙って上書き・rebaseしてはならず（MUST NOT）、Conflict/Failure/Outcome Unknownの区別とRecovery Required gateを維持する。Save AllはProject-wideな明示的上位workflowであり、途中失敗を全成功と報告してはならない（MUST NOT）。
 
 ## Compatibility
 

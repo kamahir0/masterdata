@@ -150,6 +150,15 @@ type SchemaDraftSaveReport = {
   current: SourceContentState | null;
   diagnostic: Diagnostic | null;
 };
+type TableContextSaveReport = {
+  files: {
+    path: string;
+    status: "success" | "unchanged" | "conflict" | "failure" | "outcome_unknown" | "not_attempted";
+    candidateContentIdentity: string;
+    current: SourceContentState | null;
+    diagnostic: Diagnostic | null;
+  }[];
+};
 function schemaDraftIsDirty(draft: SchemaDraftState): boolean {
   return draft.fields.some((field, index) => {
     const base = draft.baseFields[index];
@@ -656,6 +665,7 @@ function App({
   const [schemaDrafts, setSchemaDrafts] = useState<Record<string, SchemaDraftState>>({});
   const schemaDraftsRef = useRef(schemaDrafts);
   const [tableContextError, setTableContextError] = useState<ApiDiagnostic | null>(null);
+  const [tableSaveFailure, setTableSaveFailure] = useState<TableContextSaveReport | null>(null);
   const pendingColumnFocus = useRef<{ table: string; field: string | "last" } | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const dataEditorUi = useRef(new Map<string, DataEditorUiState>());
@@ -840,7 +850,10 @@ function App({
     const target = document.querySelector<HTMLInputElement>(`[data-column-field="${CSS.escape(field)}"]`);
     if (target) { target.focus(); pendingColumnFocus.current = null; }
   }, [tableContext, activeEditor]);
-  const dirtyCount = Object.values(editors).filter(editorIsDirty).length + Object.values(schemaDrafts).filter(schemaDraftIsDirty).length;
+  const dirtyCount = new Set([
+    ...Object.entries(editors).filter(([, editor]) => editorIsDirty(editor)).map(([path]) => path),
+    ...Object.entries(schemaDrafts).filter(([, draft]) => schemaDraftIsDirty(draft)).map(([path]) => path),
+  ]).size;
   const totalDirtyCount = dirtyCount + (settingsDirty ? 1 : 0);
 
   const showNotice = useCallback((message: string) => {
@@ -1451,7 +1464,7 @@ function App({
     });
   }, []);
 
-  const finishSchemaSave = useCallback(async (draft: SchemaDraftState, saved: SourceContentState) => {
+  const finishSchemaSave = useCallback(async (draft: SchemaDraftState, saved: SourceContentState, notify = true) => {
     const schemaPath = draft.path;
     const dirtyPaths = Object.entries(editorsRef.current)
       .filter(([, editor]) => editor.snapshot.table === draft.table && editorIsDirty(editor))
@@ -1492,7 +1505,7 @@ function App({
     await Promise.all(Object.entries(nextEditors)
       .filter(([, editor]) => editor.snapshot.table === draft.table && !editorIsDirty(editor))
       .map(([path]) => openDataFile(draft.root, path, true)));
-    showNotice(`${sourceName(schemaPath)} saved`);
+    if (notify) showNotice(`${sourceName(schemaPath)} saved`);
   }, [openDataFile, schedulePreview, showNotice]);
 
   const saveSchemaDraft = useCallback(async (schemaPath: string): Promise<boolean> => {
@@ -1525,6 +1538,133 @@ function App({
       return false;
     }
   }, [finishSchemaSave, sourceMutationBlocked]);
+
+  const saveCurrentTableContext = useCallback(async (context: TableContext, selectedPath: string | null): Promise<boolean> => {
+    const schema = schemaDraftsRef.current[context.schemaPath];
+    const inline = context.recordSources.some(source => source.path === context.schemaPath && source.inline)
+      ? editorsRef.current[context.schemaPath] : null;
+    const record = selectedPath && selectedPath !== context.schemaPath ? editorsRef.current[selectedPath] : null;
+    const schemaDirty = !!schema && schemaDraftIsDirty(schema);
+    const inlineDirty = !!inline && editorIsDirty(inline);
+    const recordDirty = !!record && editorIsDirty(record);
+    if (!schemaDirty && !inlineDirty && !recordDirty) return true;
+    const workspaceState = workspaceStateRef.current;
+    const root = schema?.root ?? (workspaceState.kind === "ready" ? workspaceState.workspace.project.project_root : workspaceState.previous?.project.project_root);
+    if (!root || sourceMutationBlocked(root) || schema?.saving || inline?.saving || record?.saving
+      || schema?.saveStatus === "outcome_unknown" || inline?.saveStatus === "outcome_unknown" || record?.saveStatus === "outcome_unknown") return false;
+    const generation = workspaceGeneration.current;
+    setTableSaveFailure(null);
+    if (schemaDirty) {
+      schemaDraftsRef.current = { ...schemaDraftsRef.current, [context.schemaPath]: { ...schema!, saving: true, saveDiagnostic: null } };
+      setSchemaDrafts(schemaDraftsRef.current);
+    }
+    const dirtyRecordPaths = [inlineDirty ? context.schemaPath : null, recordDirty ? selectedPath : null].filter((path): path is string => !!path);
+    if (dirtyRecordPaths.length) {
+      editorsRef.current = Object.fromEntries(Object.entries(editorsRef.current).map(([path, editor]) =>
+        [path, dirtyRecordPaths.includes(path) ? { ...editor, saving: true, saveDiagnostic: null } : editor]));
+      setEditors(editorsRef.current);
+    }
+    try {
+      const report = await invoke<TableContextSaveReport>("save_current_table_context", {
+        projectPath: root,
+        request: {
+          schemaPath: context.schemaPath,
+          selectedRecordSource: selectedPath,
+          schemaDraft: schemaDirty ? { baseSource: schema!.baseSource, baseContentIdentity: schema!.baseContentIdentity,
+            fields: schema!.fields.map(({ name, type, nullable, array }) => ({ name, type, nullable, array })) } : null,
+          inlineRecordDraft: inlineDirty ? { baseSource: inline!.snapshot.baseSource,
+            baseContentIdentity: inline!.snapshot.baseContentIdentity, mutation: mutationForEditor(inline!) } : null,
+          recordDraft: recordDirty ? { baseSource: record!.snapshot.baseSource,
+            baseContentIdentity: record!.snapshot.baseContentIdentity, mutation: mutationForEditor(record!) } : null,
+        },
+      });
+      if (workspaceGeneration.current !== generation) return false;
+      const byPath = new Map(report.files.map(file => [file.path, file]));
+      for (const path of dirtyRecordPaths) {
+      const recordResult = byPath.get(path);
+      if (recordResult) {
+        if (recordResult.status === "success" || recordResult.status === "unchanged") {
+          try {
+            const snapshot = await invoke<DataFileSnapshot>("open_data_file", { projectPath: root, relativePath: path });
+            if (workspaceGeneration.current !== generation) return false;
+            if (snapshot.baseContentIdentity !== recordResult.candidateContentIdentity) {
+              const conflict = { path, source: snapshot.baseSource, contentIdentity: snapshot.baseContentIdentity };
+              recordResult.status = "conflict";
+              recordResult.current = conflict;
+              recordResult.diagnostic = { code: "E-TABLE-SAVE-POST-COMMIT-CONFLICT", kind: "validation",
+                message: "Source changed again after the Save commit. Compare the current source before continuing.", source: path };
+              const current = editorsRef.current;
+              const next = { ...current, [path]: { ...current[path], saving: false, saveStatus: "conflict" as const,
+                saveDiagnostic: recordResult.diagnostic, conflict, view: "compare" as const } };
+              editorsRef.current = next;
+              setEditors(next);
+              continue;
+            }
+            const current = editorsRef.current;
+            const next = { ...current, [path]: { ...editorFromSnapshot(snapshot), view: current[path]?.view ?? "grid" } };
+            editorsRef.current = next;
+            setEditors(next);
+            if (path === context.schemaPath && !schemaDirty) setTableEpoch(epoch => epoch + 1);
+          } catch (cause) {
+            const diagnostic = apiDiagnosticToDiagnostic(asApiError(cause).diagnostic);
+            const current = editorsRef.current;
+            const committed = recordResult.current?.contentIdentity === recordResult.candidateContentIdentity
+              ? recordResult.current : null;
+            const next = { ...current, [path]: committed
+              ? { ...editorFromSnapshot({ ...current[path].snapshot, baseSource: committed.source,
+                  baseContentIdentity: committed.contentIdentity }), loadError: asApiError(cause).diagnostic }
+              : { ...current[path], saving: false, saveStatus: "outcome_unknown" as const, saveDiagnostic: diagnostic } };
+            editorsRef.current = next;
+            setEditors(next);
+            if (!committed) {
+              recordResult.status = "outcome_unknown";
+              recordResult.diagnostic = diagnostic;
+            }
+          }
+        } else {
+          const current = editorsRef.current;
+          const next = { ...current, [path]: { ...current[path], saving: false,
+            saveStatus: recordResult.status === "not_attempted" ? null : recordResult.status,
+            saveDiagnostic: recordResult.diagnostic,
+            conflict: recordResult.status === "conflict" ? recordResult.current : current[path].conflict,
+            view: recordResult.status === "conflict" ? "compare" as const : current[path].view } };
+          editorsRef.current = next;
+          setEditors(next);
+        }
+      }
+      }
+      const schemaResult = schemaDirty ? byPath.get(context.schemaPath) : null;
+      if (schemaResult && schema) {
+        if (schemaResult.status === "success" || schemaResult.status === "unchanged") {
+          const saved = schemaResult.current ?? await invoke<SourceContentState>("source_content", { projectPath: root, relativePath: context.schemaPath });
+          if (saved.contentIdentity === schemaResult.candidateContentIdentity) await finishSchemaSave(schema, saved, false);
+          else {
+            schemaResult.status = "outcome_unknown";
+            schemaResult.diagnostic = { code: "E-TABLE-SAVE-WRITE-VERIFY", kind: "validation", message: "Saved schema could not be verified.", source: context.schemaPath };
+          }
+        }
+        if (schemaResult.status !== "success" && schemaResult.status !== "unchanged") {
+          setSchemaDrafts(current => current[context.schemaPath] ? { ...current, [context.schemaPath]: {
+            ...current[context.schemaPath], saving: false,
+            saveStatus: schemaResult.status === "not_attempted" ? null : schemaResult.status === "unchanged" ? "success" : schemaResult.status,
+            saveDiagnostic: schemaResult.diagnostic,
+          } } : current);
+        }
+      }
+      const complete = report.files.every(file => file.status === "success" || file.status === "unchanged");
+      if (complete) showNotice("Current Table changes saved");
+      else setTableSaveFailure({ files: [...report.files] });
+      return complete;
+    } catch (cause) {
+      const diagnostic = apiDiagnosticToDiagnostic(asApiError(cause).diagnostic);
+      if (schemaDirty) setSchemaDrafts(current => current[context.schemaPath] ? { ...current, [context.schemaPath]: {
+        ...current[context.schemaPath], saving: false, saveStatus: "failure", saveDiagnostic: diagnostic } } : current);
+      if (dirtyRecordPaths.length) setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) =>
+        [path, dirtyRecordPaths.includes(path) ? { ...editor, saving: false, saveStatus: "failure", saveDiagnostic: diagnostic } : editor])));
+      showNotice(diagnostic.message);
+      return false;
+    }
+  }, [finishSchemaSave, showNotice, sourceMutationBlocked]);
 
   const recheckSchemaDraft = useCallback(async (schemaPath: string) => {
     const draft = schemaDraftsRef.current[schemaPath];
@@ -1560,11 +1700,23 @@ function App({
   const saveAll = useCallback(async (): Promise<boolean> => {
     if (settingsDirty && !(await settingsSaveRef.current())) return false;
     let allSaved = true;
+    const handledInline = new Set<string>();
     for (const path of Object.keys(schemaDraftsRef.current).filter(path => schemaDraftIsDirty(schemaDraftsRef.current[path]))) {
-      if (!(await saveSchemaDraft(path))) allSaved = false;
+      const draft = schemaDraftsRef.current[path];
+      const inlineDirty = !!editorsRef.current[path] && editorIsDirty(editorsRef.current[path]);
+      if (inlineDirty) {
+        handledInline.add(path);
+        try {
+          const context = await invoke<TableContext>("open_table_context", { projectPath: draft.root, relativePath: path });
+          if (!(await saveCurrentTableContext(context, path))) allSaved = false;
+        } catch (cause) {
+          showNotice(asApiError(cause).diagnostic.message);
+          allSaved = false;
+        }
+      } else if (!(await saveSchemaDraft(path))) allSaved = false;
     }
     const paths = Object.entries(editorsRef.current)
-      .filter(([, editor]) => editorIsDirty(editor))
+      .filter(([path, editor]) => !handledInline.has(path) && editorIsDirty(editor))
       .map(([path]) => path);
     for (const path of paths) {
       if (!(await saveFile(path))) {
@@ -1572,7 +1724,7 @@ function App({
       }
     }
     return allSaved;
-  }, [saveFile, saveSchemaDraft, settingsDirty]);
+  }, [saveCurrentTableContext, saveFile, saveSchemaDraft, settingsDirty, showNotice]);
 
   const performAction = useCallback(async (action: PendingAction) => {
     setPendingAction(null);
@@ -1643,8 +1795,7 @@ function App({
         if (surface === "settings") {
           if (deliveryBusy) showNotice("Settings Save is blocked while Build or Publish is running.");
           else void settingsSaveRef.current();
-        } else if (activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft)) void saveSchemaDraft(activeSchemaDraft.path);
-        else if (activePath) void saveFile(activePath);
+        } else if (tableContext) void saveCurrentTableContext(tableContext, activePath && tableContext.recordSources.some(source => source.path === activePath) ? activePath : tableContext.selectedRecordSource);
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         if (isTextEditingTarget(event.target)) return;
         event.preventDefault();
@@ -1660,7 +1811,7 @@ function App({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activePath, activeSchemaDraft, deliveryBusy, redoBuffer, saveFile, saveSchemaDraft, showNotice, surface, undoBuffer]);
+  }, [activePath, deliveryBusy, redoBuffer, saveCurrentTableContext, showNotice, surface, tableContext, undoBuffer]);
 
   useEffect(() => {
     if (sourcePollingIntervalMs == null) return;
@@ -2182,7 +2333,6 @@ function App({
     ? <Dropdown trigger={["click"]} menu={{ items: [
       { key: "undo", label: "Undo schema change", disabled: !activeSchemaDraft.historyPast.length || activeSchemaDraft.saving, onClick: () => undoSchemaDraft(activeSchemaDraft.path) },
       { key: "redo", label: "Redo schema change", disabled: !activeSchemaDraft.historyFuture.length || activeSchemaDraft.saving, onClick: () => undoSchemaDraft(activeSchemaDraft.path, true) },
-      { key: "save", label: "Save schema", disabled: mutationBlocked || !schemaDraftIsDirty(activeSchemaDraft) || activeSchemaDraft.saving || activeSchemaDraft.saveStatus === "outcome_unknown", onClick: () => void saveSchemaDraft(activeSchemaDraft.path) },
       ...(activeSchemaDraft.saveStatus === "outcome_unknown" ? [{ key: "recheck", label: "Recheck save", onClick: () => void recheckSchemaDraft(activeSchemaDraft.path) }] : []),
       ...(activeSchemaDraft.saveStatus === "conflict" ? [{ key: "reload", label: "Discard draft and reload schema", onClick: () => void reloadSchemaDraft(activeSchemaDraft.path) }] : []),
     ] }}>
@@ -2419,7 +2569,9 @@ function App({
             <EmptyTableSurface context={tableContext} disabled={mutationBlocked || !!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"} onIntent={applyColumnIntent}
               schemaDraftActions={schemaDraftActions}
               onUndoSchema={redo => undoSchemaDraft(tableContext.schemaPath, redo)}
-              onCreateData={() => openDataCreation(tableContext.table)} details={tableEditor} />
+              onCreateData={() => openDataCreation(tableContext.table)} details={tableEditor}
+              saveEnabled={!!activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft)}
+              onSave={() => void saveCurrentTableContext(tableContext, null)} />
           )}
           {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
             projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
@@ -2449,6 +2601,10 @@ function App({
           {recordFileActive && !activeLoading && !activeLoadDiagnostic && activeEditor && (
             <DataEditor key={`${projectRoot}:${activeFile.path}`}
               schemaDraftActions={schemaDraftActions}
+              contextDirty={(!!activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft))
+                || (!!tableContext?.recordSources.some(source => source.path === tableContext.schemaPath && source.inline)
+                  && !!editors[tableContext.schemaPath] && editorIsDirty(editors[tableContext.schemaPath]))}
+              contextSaving={!!activeSchemaDraft?.saving || !!editors[tableContext?.schemaPath ?? ""]?.saving}
               mutationBlocked={mutationBlocked}
               schemaDraftBlocked={!!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"}
               file={activeFile}
@@ -2475,7 +2631,7 @@ function App({
               onDeleteExistingRow={(recordIndex) => deleteExistingRow(activeFile.path, recordIndex)}
               onUndoExistingDelete={(recordIndex) => undoExistingDelete(activeFile.path, recordIndex)}
               onDeleteDraftRow={(draftId) => deleteDraftRow(activeFile.path, draftId)}
-              onSave={() => void saveFile(activeFile.path)}
+              onSave={() => { if (tableContext) void saveCurrentTableContext(tableContext, activeFile.path); }}
               onRecheckSource={() => void recheckSource(activeFile.path)}
               onSwitchView={(view) => switchView(activeFile.path, view)}
               onReloadConflict={() => void reloadConflict(activeFile.path)}
@@ -2605,6 +2761,15 @@ function App({
         {pathMutationPhase === "result" && pathMutationResult?.kind === "error" && (
           <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(pathMutationResult.diagnostic)} />
         )}
+      </Modal>
+
+      <Modal open={tableSaveFailure !== null} title="Save incomplete" footer={<Button onClick={() => setTableSaveFailure(null)}>Close</Button>}
+        onCancel={() => setTableSaveFailure(null)}>
+        <p>Some current Table sources were not saved. Unsaved drafts remain available.</p>
+        <ul>{tableSaveFailure?.files.map(file => <li key={file.path}>
+          <strong>{file.path}</strong>: {file.status === "success" ? "saved" : file.status === "unchanged" ? "unchanged" : file.status === "not_attempted" ? "not attempted" : file.status.replace("_", " ")}
+          {file.diagnostic && <> — {file.diagnostic.message}</>}
+        </li>)}</ul>
       </Modal>
 
       <Modal open={pendingAction !== null} title="Save changes before continuing?"
@@ -2997,7 +3162,7 @@ function ColumnHeader({ field, table, fieldTypes, disabled, onIntent, onUndoSche
   </div>;
 }
 
-function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreateData, details, schemaDraftActions }: {
+function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreateData, details, schemaDraftActions, saveEnabled, onSave }: {
   context: TableContext;
   disabled: boolean;
   onIntent: (intent: ColumnIntent) => Promise<void>;
@@ -3005,12 +3170,14 @@ function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreate
   onCreateData: () => void;
   details: React.ReactNode;
   schemaDraftActions: React.ReactNode;
+  saveEnabled: boolean;
+  onSave: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   return <section className="data-editor unified-empty-table">
     <header className="editor-tabs"><div className="document-tab"><strong>{context.table}</strong></div>
-      <div className="editor-actions">{schemaDraftActions}<Button type="text" size="small" onClick={() => setDetailsOpen(open => !open)}>Table details</Button></div></header>
+      <div className="editor-actions">{schemaDraftActions}<Button size="small" disabled={disabled || !saveEnabled} onClick={onSave}>Save</Button><Button type="text" size="small" onClick={() => setDetailsOpen(open => !open)}>Table details</Button></div></header>
     {error && <Alert type="error" title={error} closable onClose={() => setError(null)} />}
     {detailsOpen && details}
     <div className="grid-scroll"><table className="record-grid" role="grid" aria-rowcount={1} aria-colcount={context.schema.schema.fields.length + 2}>
@@ -3027,6 +3194,8 @@ function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreate
 
 function DataEditor({
   schemaDraftActions,
+  contextDirty,
+  contextSaving,
   mutationBlocked,
   schemaDraftBlocked,
   file,
@@ -3060,6 +3229,8 @@ function DataEditor({
   onOverwriteConflict,
 }: {
   schemaDraftActions: React.ReactNode;
+  contextDirty: boolean;
+  contextSaving: boolean;
   mutationBlocked: boolean;
   schemaDraftBlocked: boolean;
   file: WorkspaceSourceFile;
@@ -3558,7 +3729,7 @@ function DataEditor({
         <div className="editor-actions">
           {schemaDraftActions}
           {(editor.previewState !== "current" || !editor.preview.validation.valid) && <span className={`validation-state ${editor.previewState}`}>{validationLabel(editor)}</span>}
-          <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !editingCell) || editor.saving || editor.saveStatus === "outcome_unknown"}>{editor.saving ? "Saving…" : "Save"}</Button>
+          <Button htmlType="button" onClick={commitAndSave} disabled={mutationBlocked || (!dirty && !contextDirty && !editingCell) || editor.saving || contextSaving || editor.saveStatus === "outcome_unknown" || schemaDraftBlocked}>{editor.saving || contextSaving ? "Saving…" : "Save"}</Button>
           <Dropdown trigger={["click"]} menu={{ items: [
             { key: "add", label: "Add Row", disabled: mutationBlocked || !capability.supported || editor.saving, onClick: onAddRow },
             { key: "undo", label: "Undo", disabled: mutationBlocked || editor.saving || editor.historyPast.length === 0, onClick: onUndo },
@@ -3754,8 +3925,7 @@ function DataEditor({
                             if (!isEditing && (event.metaKey || event.ctrlKey)
                               && !event.altKey
                               && !textSelectionActive
-                              && (event.key.toLowerCase() === "v"
-                                || (event.key.toLowerCase() === "c" && selectedTargets().length > 1))) {
+                              && (event.key.toLowerCase() === "v" || event.key.toLowerCase() === "c")) {
                               event.preventDefault();
                               if (event.key.toLowerCase() === "c") void copySelection();
                               else void pasteClipboard();

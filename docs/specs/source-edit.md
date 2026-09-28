@@ -67,9 +67,9 @@ base snapshotに対して編集対象source location、nested logical value path
 
 ### SOURCE-EDIT-007
 
-通常Saveのcommit unitは1つのrecord-bearing source fileでなければならない（MUST）。同じfileのlocal bufferに含まれる複数record / field変更は、1つのSave candidateとしてまとめてcommitしなければならない（MUST）。
+通常Saveのdirty ownershipとcommit unitは各physical source fileでなければならない（MUST）。同じfileのlocal bufferに含まれる複数record / field変更は、1つのSave candidateとしてまとめてcommitしなければならない（MUST）。schema declarationsとinline recordsが同じphysical fileならそれらも一candidateにcomposeしなければならない（MUST）。
 
-1つのfileの通常Saveを理由に別のdirty source fileを暗黙に保存してはならず（MUST NOT）、別fileのcontentを変更してはならない（MUST NOT）。複数fileを保存する`Save All`は、各fileのSOURCE-EDIT-008以降のpreflight / resultを独立に満たす上位workflowとして扱う。
+Unified Tableの通常Save commandは[GUI-UNIFIED-004](../gui/table-editor/spec.md)のcurrent contextにあるactual dirty schema sourceとselected record sourceを対象にできる。各fileのcandidate / exact identity / commit resultは独立させ、inactive sourceや別Tableを暗黙保存してはならない（MUST NOT）。複数fileを対象にする場合はcommit前に全targetをpreflightし、既知Conflictで予防可能なpartial writeを開始してはならない（MUST NOT）。commit開始後の不可避なpartial resultはfile別に報告する。Project-wideの`Save All`は別の明示的上位workflowである。
 
 ### SOURCE-EDIT-008
 

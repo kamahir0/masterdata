@@ -110,7 +110,7 @@ Array element等の各itemに共通のmove / remove action群を値より強い�
 
 ### GUI-DATA-SAVE-001
 
-Saveは現在activeなrecord-bearing source fileに対する明示操作でなければならない（MUST）。Saveによって別のdirty fileを暗黙に保存してはならない（MUST NOT）。
+Unified Table面の通常Saveは[GUI-UNIFIED-004](../table-editor/spec.md)のcurrent editing contextを対象とする。選択record sourceのactual candidateがdirtyならそのphysical sourceを保存し、同時にschema sourceがdirtyならそれも保存する（MUST）。inactive record sourceと別Tableを通常Saveで保存してはならない（MUST NOT）。各sourceのdirty、base、commit resultは独立して保持する（MUST）。
 
 ### GUI-DATA-SAVE-002
 
@@ -160,7 +160,7 @@ Conflict状態のfileに通常Saveを実行した場合、外部変更を暗黙�
 
 ### GUI-DATA-KEY-001
 
-file Saveにはplatform標準のSave shortcut（macOSではCmd+S、その他一般的DesktopではCtrl+S）を提供しなければならない（MUST）。shortcutはactiveなrecord-bearing source fileだけを通常Saveし、Save Allとして動作してはならない（MUST NOT）。
+通常Saveにはplatform標準のSave shortcut（macOSではCmd+S、その他一般的DesktopではCtrl+S）を提供しなければならない（MUST）。shortcutとheader Saveは[GUI-UNIFIED-004](../table-editor/spec.md)の同一target resolverを使用し、Save Allとして動作してはならない（MUST NOT）。
 
 ### GUI-DATA-KEY-002
 

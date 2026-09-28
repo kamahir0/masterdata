@@ -350,7 +350,8 @@ try {
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));
 
-  await click("//button[normalize-space(.)='Settings']");
+  await click("//*[@aria-label='Project menu']");
+  await click("//*[@role='menuitem' and normalize-space(.)='Project Settings']");
   await waitElement("//section[@aria-label='Project Settings']");
   await fill("//*[@aria-label='Profile name']", "prod");
   await click("//button[normalize-space(.)='Apply Profile to buffer' and not(@disabled)]");
@@ -362,7 +363,8 @@ try {
   await waitFileContains(path.join(projectRoot, "masterdata.toml"), "delivery", 30_000);
   record("settings-profile-and-publish-target-saved-through-gui");
 
-  await click("//button[normalize-space(.)='Delivery']");
+  await click("//*[@aria-label='Project menu']");
+  await click("//*[@role='menuitem' and normalize-space(.)='Build & Publish']");
   await waitElement("//section[@aria-label='Build and Publish']");
   await click("//section[@aria-label='Build and Publish']//button[normalize-space(.)='Build saved input' and not(@disabled)]");
   await waitText("Build succeeded", 180_000);

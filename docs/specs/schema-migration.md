@@ -396,7 +396,8 @@ record memberが削除され、drop対象fieldを必要とする依存が黙っ�
 
 既存Approved semanticsではschemaの`fields` declaration orderはpresentation semanticsを
 持ち、GUI column orderやgenerated C# property declaration orderに影響する。したがって
-AddFieldのschema末尾appendはこのMigration Operationのobservable behaviorである。
+AddFieldは指定された位置へschema fieldを挿入し、位置を省略した場合は末尾へappendする。
+このplacementはMigration Operationのobservable behaviorである。
 
 一方、data record mappingのmember source orderは、同じfield/value mappingである限りdomain
 semanticsを持たない。これは`docs/specs/table-and-keys.md`の`SCHEMA-TABLE-006`へ適用された
@@ -437,7 +438,7 @@ inspectorを作る場合でも、YAML project Migration/query engineと内部実
   として報告する。
 - Project全体のerror-freeはMigration successの条件にせず、Migration Resolvable、意図した
   transformationの確認、safe commitを成功条件とする。
-- AddFieldのschema fieldは末尾へappendし、record memberも末尾へappendする。record mapping
+- AddFieldのschema fieldは指定位置へ挿入し、位置の省略時は末尾へappendする。record memberは末尾へappendする。record mapping
   orderをMessagePack key orderへ正規化しない。
 
 これらはこのApproved specificationのcontractである。implementation statusやexact test inventoryはこの文書のownerではなく、
@@ -454,7 +455,7 @@ current code / tests / Gitから確認する。
 | MIGRATION-002, MIGRATION-003 | v1 operationをAdd / Rename / Dropとして扱い、semantic commandとtext edit / SQL-like grammarを分離する。 |
 | MIGRATION-004 | 同一snapshot・closure・command・optionsからdeterministicなplanとtransformed semantic resultを得る。 |
 | MIGRATION-005, MIGRATION-013 | closureとoperation-specific postconditionをresolveし、unrelated diagnosticsだけでrejectせず、blocking condition・authorization・stale planなしにmutationしない。 |
-| MIGRATION-006 | AddFieldでcanonical constant valueを検証し、schema/dataの末尾append、既存key維持、record存在時のexplicit initializerを守る。 |
+| MIGRATION-006 | AddFieldでcanonical constant valueを検証し、schema fieldは指定位置（省略時は末尾）へ挿入、record memberは末尾へappendし、既存key維持、record存在時のexplicit initializerを守る。 |
 | MIGRATION-007 | RenameFieldをlogical Table identityとcurrent field nameで解決し、MessagePack keyを維持し、Approvedなfield referenceをsemanticに更新する。 |
 | MIGRATION-008 | DropFieldにexplicit destructive authorizationを要求し、authorization不足や依存更新不能時にmutationせずfail closedする。 |
 | MIGRATION-009 | mutation前にdeterministic planを構成し、dry-runでsourceを変更せず、affected files / recordsとdiagnosticsを表現する。 |

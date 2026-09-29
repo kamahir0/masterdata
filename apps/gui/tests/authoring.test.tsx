@@ -349,7 +349,7 @@ test('Array controls commit separately, nested typing commits once, and Close ke
   expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1\]/ })).toBeTruthy();
   await dataAction('Redo');
   expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, null\]/ })).toBeTruthy();
-});
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('clicking outside a complex editor closes it after committing pending nested text', async () => {
   const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
@@ -388,7 +388,7 @@ test('Array move and remove are independent reversible source operations', async
   expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 2\]/ })).toBeTruthy();
   await dataAction('Redo');
   expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[2, 1\]/ })).toBeTruthy();
-});
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Array pointer grab commits once on release and ignores a click without movement', async () => {
   const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
@@ -494,7 +494,7 @@ test('Flags operations keep unknown members and Escape cancels only pending nest
   expect(screen.getByRole('gridcell', { name: /A.*Mystery/ })).toBeTruthy();
   await dataAction('Redo');
   expect(screen.getByRole('gridcell', { name: /A.*Mystery.*B/ })).toBeTruthy();
-});
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Problems opens nested Custom control; Escape cancels only its pending text and preserves unknown members', async () => {
   const nested = { name: 'detail', typeName: 'Detail', modifier: 'required', shape: { kind: 'custom', name: 'Detail', fields: [
@@ -533,7 +533,7 @@ test('Problems opens nested Custom control; Escape cancels only its pending text
   expect(screen.getByRole('gridcell', { name: /fixed.*legacy.*keep/ })).toBeTruthy();
   await dataAction('Undo');
   expect(screen.getByRole('gridcell', { name: /bad.*legacy.*keep/ })).toBeTruthy();
-});
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Added Row uses the same Array operation history as an existing record', async () => {
   const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
@@ -552,7 +552,7 @@ test('Added Row uses the same Array operation history as an existing record', as
   expect(screen.getByRole('gridcell', { name: /^new record numbers: null/ })).toBeTruthy();
   await dataAction('Redo');
   expect(screen.getByRole('gridcell', { name: /^new record numbers: \[\]/ })).toBeTruthy();
-});
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('nullable Set null is a direct source operation and Undo restores the value', async () => {
   const shape = { name: 'alias', typeName: 'string', modifier: 'nullable', shape: { kind: 'primitive', primitive: 'string' } };

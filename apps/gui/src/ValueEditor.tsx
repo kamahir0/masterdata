@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Dropdown, Input, Select } from "antd";
-import { MoreHorizontal } from "lucide-react";
+import { GripVertical, MoreHorizontal } from "lucide-react";
 import type { AuthoringMember, AuthoringSequenceItem, AuthoringValue, ResolvedAuthoringField, ResolvedAuthoringType } from "./data-editor-types";
 import { authoringValueSummary, nullAuthoringValue } from "./data-editor-types";
 
@@ -21,8 +21,25 @@ export default function ValueEditor(props: ValueEditorProps) {
 }
 
 function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths, onChange, onOperation, bufferedText = false, path, primary = true }: ValueEditorProps & { path: string; primary?: boolean }) {
+  const draggingItem = useRef<number | null>(null);
+  const pointerCleanup = useRef<(() => void) | null>(null);
+  const [dropPosition, setDropPosition] = useState<number | null>(null);
+  useEffect(() => () => pointerCleanup.current?.(), []);
   const invalid = invalidPaths.has(path);
   const operation = onOperation ?? onChange;
+  const reorderArrayItem = (target: number) => {
+    const from = draggingItem.current;
+    draggingItem.current = null;
+    setDropPosition(null);
+    if (from === null || value.kind !== "sequence") return;
+    const destination = from < target ? target - 1 : target;
+    if (destination === from) return;
+    const items = [...value.items];
+    const [moved] = items.splice(from, 1);
+    items.splice(destination, 0, moved);
+    operation({ kind: "sequence", sourceIdentity: true, items });
+    focusValuePath(cellKey, joinPath(path, String(destination)), true);
+  };
   if (field.modifier === "array") {
     return (
       <fieldset className={`value-editor array-editor ${invalid ? "invalid" : ""}`} aria-invalid={invalid || undefined}>
@@ -30,7 +47,62 @@ function FieldValueEditor({ field, value, label, cellKey, editable, invalidPaths
         {value.kind === "sequence" ? (
           <div className="array-value-list">
             {value.items.map((item, index) => (
-              <div className="array-value-item" key={sequenceItemKey(item)}>
+              <div data-array-index={index} className={`array-value-item ${dropPosition === index ? "drop-before" : ""} ${dropPosition === index + 1 ? "drop-after" : ""}`} key={sequenceItemKey(item)}>
+                <button className="array-item-grab" type="button" disabled={!editable}
+                  aria-label={`Drag ${label} item ${index + 1} to reorder`}
+                  onPointerDown={event => {
+                    if (!editable || (event.button != null && event.button !== 0)) return;
+                    const list = event.currentTarget.closest<HTMLElement>(".array-value-list");
+                    if (!list) return;
+                    const startY = event.clientY;
+                    const pointerId = event.pointerId;
+                    let target: number | null = null;
+                    let moved = false;
+                    let pointerX = event.clientX;
+                    let pointerY = event.clientY;
+                    draggingItem.current = index;
+                    const locate = () => {
+                      const item = document.elementFromPoint(pointerX, pointerY)?.closest<HTMLElement>(".array-value-item");
+                      if (item && list.contains(item)) {
+                        const rect = item.getBoundingClientRect();
+                        target = Number(item.dataset.arrayIndex) + (pointerY >= rect.top + rect.height / 2 ? 1 : 0);
+                        setDropPosition(target);
+                      } else { target = null; setDropPosition(null); }
+                    };
+                    const edgeScroll = () => {
+                      if (!moved) return;
+                      const scroll = list.closest<HTMLElement>(".ant-popover-inner");
+                      if (scroll) {
+                        const rect = scroll.getBoundingClientRect();
+                        if (pointerY < rect.top + 28) scroll.scrollTop -= 12;
+                        else if (pointerY > rect.bottom - 28) scroll.scrollTop += 12;
+                      }
+                      locate();
+                    };
+                    const timer = window.setInterval(edgeScroll, 30);
+                    const move = (pointer: PointerEvent) => {
+                      if (pointer.pointerId !== pointerId) return;
+                      pointerX = pointer.clientX;
+                      pointerY = pointer.clientY;
+                      if (Math.abs(pointerY - startY) < 5 && !moved) return;
+                      moved = true;
+                      locate();
+                    };
+                    const cleanup = () => {
+                      window.clearInterval(timer);
+                      window.removeEventListener("pointermove", move);
+                      window.removeEventListener("pointerup", up);
+                      window.removeEventListener("pointercancel", cancel);
+                      pointerCleanup.current = null;
+                    };
+                    const cancel = (pointer: PointerEvent) => { if (pointer.pointerId !== pointerId) return; cleanup(); draggingItem.current = null; setDropPosition(null); };
+                    const up = (pointer: PointerEvent) => { if (pointer.pointerId !== pointerId) return; cleanup(); if (moved && target !== null) reorderArrayItem(target); else { draggingItem.current = null; setDropPosition(null); } };
+                    pointerCleanup.current?.();
+                    pointerCleanup.current = cleanup;
+                    window.addEventListener("pointermove", move);
+                    window.addEventListener("pointerup", up);
+                    window.addEventListener("pointercancel", cancel);
+                  }}><GripVertical size={14} /></button>
                 <span className="array-item-label">Item {index + 1}</span>
                 <TypeValueEditor
                   shape={field.shape}

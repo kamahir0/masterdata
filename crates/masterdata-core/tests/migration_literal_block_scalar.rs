@@ -32,6 +32,7 @@ fn add_label() -> MigrationCommand {
             array: false,
         },
         initializer: Some(string("ok")),
+        position: None,
     })
 }
 

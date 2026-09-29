@@ -85,6 +85,7 @@ fn add_field_command() -> MigrationCommand {
             array: false,
         },
         initializer: Some(Value::String("Potion".to_owned())),
+        position: None,
     })
 }
 

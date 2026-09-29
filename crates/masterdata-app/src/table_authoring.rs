@@ -16,6 +16,8 @@ use std::{
 pub enum TableOperationInput {
     AddDefault {
         table: String,
+        #[serde(rename = "beforeField")]
+        before_field: Option<String>,
     },
     Add {
         table: String,
@@ -57,7 +59,10 @@ pub enum TableOperationInput {
 impl TableOperationInput {
     fn command(self, documents: &ProjectDocuments) -> Result<MigrationCommand> {
         Ok(match self {
-            Self::AddDefault { table } => {
+            Self::AddDefault {
+                table,
+                before_field,
+            } => {
                 let schema = documents
                     .schemas()
                     .find(|(_, schema)| schema.table == table)
@@ -85,6 +90,20 @@ impl TableOperationInput {
                     }
                     serial += 1;
                 };
+                let position = before_field
+                    .map(|before| {
+                        schema
+                            .fields
+                            .iter()
+                            .position(|field| field.name == before)
+                            .ok_or_else(|| {
+                                error(
+                                    "E-TABLE-FIELD-POSITION",
+                                    "Insert target column is unavailable",
+                                )
+                            })
+                    })
+                    .transpose()?;
                 MigrationCommand::AddField(AddFieldCommand {
                     table,
                     field: FieldDefinition {
@@ -95,6 +114,7 @@ impl TableOperationInput {
                         array: false,
                     },
                     initializer: Some(serde_yaml::Value::Null),
+                    position,
                 })
             }
             Self::Add {
@@ -107,6 +127,7 @@ impl TableOperationInput {
                 initializer: initializer
                     .map(|text| crate::type_authoring::parse_constant(&text))
                     .transpose()?,
+                position: None,
             }),
             Self::Rename {
                 table,
@@ -445,17 +466,19 @@ impl TableAuthoringSession {
                 "schema draft field count changed",
             ));
         }
-        let declarations = schema
-            .fields
+        let declarations = fields
             .iter()
-            .zip(fields)
-            .map(|(old, draft)| {
-                if old.name != draft.name {
-                    return Err(error(
-                        "E-FIELD-DECL-IDENTITY",
-                        "schema draft field identity changed",
-                    ));
-                }
+            .map(|draft| {
+                let old = schema
+                    .fields
+                    .iter()
+                    .find(|old| old.name == draft.name)
+                    .ok_or_else(|| {
+                        error(
+                            "E-FIELD-DECL-IDENTITY",
+                            "schema draft field identity changed",
+                        )
+                    })?;
                 let mut next = old.clone();
                 next.type_name = draft.type_name.clone();
                 next.nullable = draft.nullable;

@@ -44,6 +44,10 @@ schema draftのSave可否をrecord/domain validation errorの有無へ依存さ�
 
 schemaと各separate record sourceはphysical fileごとに独立したbase identity・dirty state・historyを持たなければならない（MUST）。schema declarationsとinline recordsは同一schema fileのbase identity・dirty lifecycleを共有する。通常Saveで複数fileを対象にしても成功fileだけをnew baseへ進め、他fileのdraftを保持してdiagnosticを再評価する。別fileのexternal changeはそのfileのdirty bufferを黙って上書き・rebaseしてはならず（MUST NOT）、Conflict/Failure/Outcome Unknownの区別とRecovery Required gateを維持する。Save AllはProject-wideな明示的上位workflowであり、途中失敗を全成功と報告してはならない（MUST NOT）。
 
+### FIELD-DECL-011
+
+Table field declarationの順序変更はschema physical sourceの可逆的authoring draftとして保持し、Saveまでdiskへ書いてはならない（MUST NOT）。field identity、name、type、modifier、MessagePack key、PK/SK、Reference、record valueを順序変更だけで変えてはならない（MUST NOT）。source-preserving candidateとsemantic postconditionをshared Coreが検証し、inline record draftがあれば同じphysical candidateへcomposeする。no-opは履歴を増やさない。
+
 ## Compatibility
 
 logical Table identity、Migration v1の明示Plan operation、CLI grammarは維持する。通常header authoringは即時Migrationからdraft Saveへ移り、既存のinvalid valueで操作が拒否されずdiagnosticになる。record scalarのaccepted setは仕様変更0042に従って変わる。valuesの暗黙変換やarray wrapping、null埋めは行わない。

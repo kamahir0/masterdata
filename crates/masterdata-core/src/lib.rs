@@ -87,9 +87,9 @@ pub use source_creation::{
     prepare_source_creation,
 };
 pub use source_edit::{
-    AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceEditDryRun,
-    SourceEditPlan, SourceRecordMutation, dry_run_source_edit, dry_run_source_record_mutation,
-    source_content_identity,
+    AddedRecordDraft, AddedRecordField, RecordOccurrence, RecordTagEdit, RecordValueEdit,
+    SourceEditDryRun, SourceEditPlan, SourceRecordMutation, dry_run_source_edit,
+    dry_run_source_record_mutation, source_content_identity,
 };
 pub use table::{
     BuildSelection, ReferenceCardinality, ReferenceKeyKind, ReferenceOptionality,

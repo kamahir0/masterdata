@@ -187,6 +187,7 @@ fn add_field_migrates_inline_and_split_records_without_duplicate_file_plan() {
                 array: false,
             },
             initializer: Some(Value::Number(5.into())),
+            position: None,
         }),
     )
     .unwrap();

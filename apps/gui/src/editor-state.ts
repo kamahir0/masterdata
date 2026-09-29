@@ -12,11 +12,14 @@ export type EditorMutationDraft = {
   tags: string[];
 };
 
+export type EditorRowRef = { kind: "existing"; recordIndex: number } | { kind: "added"; draftId: string };
+
 export type EditorMutationHistoryState = {
   edits: Record<string, EditorMutationEdit>;
   addedRecords: EditorMutationDraft[];
   pendingDeletes: number[];
   tagEdits: Record<string, string[]>;
+  rowOrder: EditorRowRef[] | null;
 };
 
 export type EditorMutationState = EditorMutationHistoryState & {
@@ -39,6 +42,7 @@ function mutationHistoryState(editor: EditorMutationState): EditorMutationHistor
     addedRecords: editor.addedRecords,
     pendingDeletes: editor.pendingDeletes,
     tagEdits: editor.tagEdits,
+    rowOrder: editor.rowOrder,
   };
 }
 
@@ -54,7 +58,7 @@ export function boundedHistoryPush(
 
 function beginMutation<T extends EditorMutationState>(
   editor: T,
-  changes: Partial<Pick<T, "edits" | "addedRecords" | "pendingDeletes" | "tagEdits">>,
+  changes: Partial<Pick<T, "edits" | "addedRecords" | "pendingDeletes" | "tagEdits" | "rowOrder">>,
 ): T {
   return {
     ...editor,
@@ -73,12 +77,14 @@ export function addDraft<T extends EditorMutationState>(editor: T, draftId: stri
   const values = Object.fromEntries(fields.map((field) => [field, nullAuthoringValue()])) as Record<string, AuthoringValue>;
   return beginMutation(editor, {
     addedRecords: [...editor.addedRecords, { draftId, values, tags: [] }],
+    rowOrder: editor.rowOrder ? [...editor.rowOrder, { kind: "added", draftId }] : null,
   });
 }
 
 export function deleteDraft<T extends EditorMutationState>(editor: T, draftId: string): T {
   return beginMutation(editor, {
     addedRecords: editor.addedRecords.filter((draft) => draft.draftId !== draftId),
+    rowOrder: editor.rowOrder?.filter((row) => row.kind !== "added" || row.draftId !== draftId) ?? null,
   });
 }
 
@@ -101,6 +107,7 @@ export function applyPreviewResult<T extends EditorMutationState>(editor: T, pre
     addedRecords: preview.changed ? editor.addedRecords : [],
     pendingDeletes: preview.changed ? editor.pendingDeletes : [],
     tagEdits: preview.changed ? editor.tagEdits : {},
+    rowOrder: preview.changed ? editor.rowOrder : null,
     preview,
     previewState: "current",
     previewError: null,

@@ -110,6 +110,12 @@ Native filesystem write等のmutationはshared applicationのnative I/O boundary
 
 Added record draftとexisting record editは、base snapshot presenceやkey editability等のlifecycle差を除き、同じresolved value shapeとvalue authoring semanticsを使用しなければならない（MUST）。record addition専用にfrontend-owned YAML rendering、Enum lookup、Flags resolution、Custom Type reconstructionを持ってはならない（MUST NOT）。
 
+### SOURCE-RECORD-016
+
+record-bearing source内のexisting occurrenceとAdded record draftは、source sequence上の明示位置へ挿入・並べ替えできなければならない（MUST）。mutation requestの最終順序は、Pending delete以外のbase occurrenceとAdded draftを重複・欠落なく一度ずつ含み、shared Coreが検証しなければならない（MUST）。対象はbase occurrence / Added draft identityで指定し、Primary Key値またはquery上のordinalから推測してはならない（MUST NOT）。通常Add Recordは`SOURCE-RECORD-005`の末尾appendを維持する。
+
+順序変更は選択physical sourceのlocal candidateだけを変更し、他source、recordのfield value、logical/binary semanticsを変更してはならない（MUST NOT）。existing edit、Add、Pending delete、inline schema draftと同じfile candidateへcomposeし、source-preserving patchと再parse postcondition、file-local Save safetyを満たさなければならない（MUST）。record内部のsource textはそのoccurrenceと共に移動し、item間の独立comment / blank separatorは元位置へ残す。境界を一意に特定できないsource shapeを全面serializeへfallbackしてはならない（MUST NOT）。
+
 ## 検証ルール
 
 少なくとも次をfocused unit / integration / GUI workflow evidenceで検証する。
@@ -150,7 +156,7 @@ None identified. Exact typed DTO shape、draft data structure、editor component
 ## 非目標
 
 - `$tags`の追加・編集。
-- record duplicate、move / reorder、bulk add / bulk delete。
+- record duplicate、source間move、bulk add / bulk delete。
 - schema / field / key / type mutation。
 - source file rename / move / folder operation。
 - multi-file atomic transaction。

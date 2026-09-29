@@ -124,7 +124,7 @@ None identified. Exact complex editor layout、DTO field name、internal draft d
 ## 非目標
 
 - `$tags` authoring。
-- record duplicate、move / reorder、bulk add / bulk delete。
+- record duplicate、source間move、bulk add / bulk delete。
 - range selection、一括paste、fill handle、general Undo/Redo。
 - schema / type editor、source file / folder mutation。
 - existing recordのPrimary / Secondary Key編集。

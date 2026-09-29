@@ -1,12 +1,14 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 4e3ac3b64d10e68d15882422f3e3d85805cf7c56
-Work base: 50f2ca4ef85f14b58c7fbcd7a6e4b573eeba78c0
+Stage: implementation-ready
+Candidate: none
+Work base: 0d7a26c36a43adca22a740d48088ae686c151f9b
 
 ## Active work
 
-None.
+Completed: Desktop spatial friction inventory、0046 review / approval / canonical適用。
+In progress: shared Core/ApplicationとGUI実装。
+Remaining: focused / Desktop / CI検証。
 
 ## Blocking findings
 

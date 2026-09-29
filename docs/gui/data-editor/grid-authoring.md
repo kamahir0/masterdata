@@ -40,6 +40,12 @@ grid navigation modeではCmd/Ctrl+C / Vをcopy/paste、Cmd/Ctrl+ZをUndo、Cmd+
 Enter/F2によるedit開始、Enter/Tabによる確定移動と[GUI-UNIFIED-004](../table-editor/spec.md)の通常Save shortcutは既存契約を保つ。IME composition中にEnterを確定移動へ誤解釈しない（MUST NOT）。Deleteキーをbulk row deleteへ割り当てない。preview終了後はsurviving active cell、なければgridへfocusを戻す。
 selection範囲、対象件数、read-only理由、preview失効、履歴有無をassistive technologyへ伝えなければならない（MUST）。
 
+### GUI-GRID-007 — Spatial row / Array authoring
+
+source-order viewではrow header handleからselected physical source内のrecord occurrenceをdrag reorderし、row contextからInsert Above/Below、Move Up/Down、Deleteへkeyboard/pointerで到達できなければならない（MUST）。search/filter/sortがactiveなviewではvisible adjacencyをsource位置へ推測せず、position mutationをdisabled reason付きで停止する（MUST）。Pending delete occurrenceはposition actionの対象にしない。Insertは既存Added Row shapeを使用し、1操作のhistoryにする。dragはdrop時のみhistoryへ入り、cancel/no-opでは増やさない。移動/追加したoccurrenceへのfocus、Problems navigation、virtualization、selection、clipboardを維持する。
+
+Array item handleのdrag/dropは0045の一つのcomplex value operationへ変換し、one Undo unitとする（MUST）。既存item menuのMove Up/Down/Removeをkeyboard fallbackとして維持する。nested sequence identity、diagnostic path、focusは移動したitemへ追従しなければならない（MUST）。
+
 ## 既存Data Editor contractへの適用
 
 - `GUI-DATA-EDIT-001`のsingle-cell editingを維持し、本仕様のrange / paste / fill / Undo/Redoを追加する。fill handle、非連続range、bulk row add/deleteは対象外。

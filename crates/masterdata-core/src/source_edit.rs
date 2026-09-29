@@ -50,6 +50,14 @@ pub struct SourceRecordMutation {
     pub additions: Vec<AddedRecordDraft>,
     pub deletions: Vec<usize>,
     pub tag_edits: Vec<RecordTagEdit>,
+    /// Exact final source order, when positional authoring is requested.
+    pub order: Option<Vec<RecordOccurrence>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RecordOccurrence {
+    Existing(usize),
+    Added(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +94,7 @@ pub fn dry_run_source_edit(
             additions: Vec::new(),
             deletions: Vec::new(),
             tag_edits: Vec::new(),
+            order: None,
         },
     )
 }
@@ -328,7 +337,53 @@ pub fn dry_run_source_record_mutation(
         }
     }
 
-    let candidate_source = apply_patches(&loaded.source, &patches, path)?;
+    let mut candidate_source = apply_patches(&loaded.source, &patches, path)?;
+    if let Some(order) = &mutation.order {
+        let canonical_order = (0..data.records.len())
+            .filter(|index| !deleted.contains(index))
+            .map(RecordOccurrence::Existing)
+            .chain((0..additions.len()).map(RecordOccurrence::Added))
+            .collect::<Vec<_>>();
+        let expected_set = canonical_order.iter().copied().collect::<BTreeSet<_>>();
+        if order.len() != canonical_order.len()
+            || order.iter().copied().collect::<BTreeSet<_>>() != expected_set
+        {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-ORDER",
+                "record order must include each surviving occurrence exactly once",
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-016",
+            ));
+        }
+        if order != &canonical_order {
+            let intermediate = parse_yaml_document(path.to_path_buf(), &candidate_source)
+                .map_err(|error| with_requirement(error, "SOURCE-RECORD-016"))?;
+            let intermediate_data = intermediate.document.record_data().ok_or_else(|| {
+                source_edit_error(
+                    "E-SOURCE-RECORD-ORDER",
+                    "candidate has no records sequence",
+                    Some(path.to_path_buf()),
+                    "SOURCE-RECORD-016",
+                )
+            })?;
+            let source_positions = canonical_order
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(index, occurrence)| (occurrence, index))
+                .collect::<BTreeMap<_, _>>();
+            let locations = order
+                .iter()
+                .map(|item| source_positions[item])
+                .collect::<Vec<_>>();
+            candidate_source =
+                reorder_record_source(&candidate_source, &intermediate_data, &locations, path)?;
+            expected.records = locations
+                .iter()
+                .map(|&index| expected.records[index].clone())
+                .collect();
+        }
+    }
     let reparsed = parse_yaml_document(path.to_path_buf(), &candidate_source)
         .map_err(|error| with_requirement(error, "SOURCE-EDIT-005"))?;
     let expected_records = expected
@@ -1926,6 +1981,75 @@ fn delete_record_patches(
     patches
 }
 
+fn reorder_record_source(
+    source: &str,
+    data: &DataDocument,
+    locations: &[usize],
+    path: &Path,
+) -> Result<String> {
+    let location = locate_record_sequence(source, data, path)?;
+    let Some(sequence) = location.sequence else {
+        return Err(source_edit_error(
+            "E-SOURCE-RECORD-ORDER-SHAPE",
+            "record sequence cannot be reordered from this source shape",
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-016",
+        ));
+    };
+    if sequence.items.len() != locations.len() {
+        return Err(source_edit_error(
+            "E-SOURCE-RECORD-ORDER-COUNT",
+            "record order count does not match source occurrences",
+            Some(path.to_path_buf()),
+            "SOURCE-RECORD-016",
+        ));
+    }
+    let lines = source_lines(source);
+    let literal = literal_block_scalar_content_lines(&lines);
+    let mut blocks = Vec::with_capacity(locations.len());
+    let mut spans = Vec::with_capacity(locations.len());
+    for (index, &start_line) in sequence.items.iter().enumerate() {
+        let next_line = sequence
+            .items
+            .get(index + 1)
+            .copied()
+            .unwrap_or(location.region_end);
+        let mut body_end = next_line;
+        while body_end > start_line + 1
+            && is_ignorable_line(lines[body_end - 1].text)
+            && !literal[body_end - 1]
+        {
+            body_end -= 1;
+        }
+        let start = lines[start_line].start;
+        let end = lines.get(body_end).map_or(source.len(), |line| line.start);
+        let block = &source[start..end];
+        if !block.ends_with('\n') {
+            return Err(source_edit_error(
+                "E-SOURCE-RECORD-ORDER-SHAPE",
+                "record block without final newline cannot be moved safely",
+                Some(path.to_path_buf()),
+                "SOURCE-RECORD-016",
+            ));
+        }
+        spans.push((start, end));
+        blocks.push(block);
+    }
+    let patches = locations
+        .iter()
+        .enumerate()
+        .map(|(target, &origin)| {
+            let (start, end) = spans[target];
+            SourcePatch {
+                start,
+                end,
+                replacement: blocks[origin].to_owned(),
+            }
+        })
+        .collect::<Vec<_>>();
+    apply_patches(source, &patches, path)
+}
+
 fn add_record_patches(
     source: &str,
     location: &RecordSequenceLocation,
@@ -3387,8 +3511,8 @@ fn with_requirement(error: MasterdataError, requirement: &str) -> MasterdataErro
 #[cfg(test)]
 mod tests {
     use super::{
-        AddedRecordDraft, AddedRecordField, RecordTagEdit, RecordValueEdit, SourceRecordMutation,
-        dry_run_source_edit, dry_run_source_record_mutation,
+        AddedRecordDraft, AddedRecordField, RecordOccurrence, RecordTagEdit, RecordValueEdit,
+        SourceRecordMutation, dry_run_source_edit, dry_run_source_record_mutation,
     };
     use crate::{
         AuthoringSequenceItem, AuthoringValue, ProjectDocuments, parse_yaml_document,
@@ -4810,6 +4934,7 @@ secondaryKeys: []
                 ])],
                 deletions: vec![1],
                 tag_edits: Vec::new(),
+                order: None,
             },
         )
         .expect("all mutation kinds compose");
@@ -4923,5 +5048,71 @@ secondaryKeys: []
                 .records
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn record_order_moves_exact_occurrence_and_keeps_separator_comment_in_place() {
+        let data = "kind: data\r\ntable: item\r\nrecords:\r\n  - id: 1\r\n    weight: 10\r\n    note: first\r\n  # separator stays here\r\n  - id: 1\r\n    weight: 20\r\n    note: second\r\n  - id: 3\r\n    weight: 30\r\n    note: third\r\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let result = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                order: Some(vec![
+                    RecordOccurrence::Existing(2),
+                    RecordOccurrence::Existing(0),
+                    RecordOccurrence::Existing(1),
+                ]),
+                ..SourceRecordMutation::default()
+            },
+        )
+        .unwrap();
+        let source = &result.plan.candidate_source;
+        assert!(source.find("note: third").unwrap() < source.find("note: first").unwrap());
+        assert!(
+            source.find("# separator stays here").unwrap() < source.find("note: first").unwrap()
+        );
+        assert!(source.contains("note: third\r\n"));
+        assert_eq!(snapshot.files[1].source, data);
+    }
+
+    #[test]
+    fn record_order_composes_add_edit_and_rejects_missing_occurrence() {
+        let data = "kind: data\ntable: item\nrecords:\n  - id: 1\n    weight: 10\n    note: first\n  - id: 2\n    weight: 20\n    note: second\n";
+        let snapshot = documents(SCHEMA, "data.yaml", data);
+        let mutation = SourceRecordMutation {
+            edits: vec![RecordValueEdit {
+                record_index: 1,
+                field: "weight".into(),
+                value: number("21"),
+            }],
+            additions: vec![added(&[
+                ("id", number("3")),
+                ("weight", number("30")),
+                ("note", text("third")),
+            ])],
+            order: Some(vec![
+                RecordOccurrence::Existing(0),
+                RecordOccurrence::Added(0),
+                RecordOccurrence::Existing(1),
+            ]),
+            ..SourceRecordMutation::default()
+        };
+        let result =
+            dry_run_source_record_mutation(&snapshot, Path::new("data.yaml"), &mutation).unwrap();
+        let source = &result.plan.candidate_source;
+        assert!(source.find("note: first").unwrap() < source.find("note: third").unwrap());
+        assert!(source.find("note: third").unwrap() < source.find("note: second").unwrap());
+        assert!(source.contains("weight: 21"));
+        let error = dry_run_source_record_mutation(
+            &snapshot,
+            Path::new("data.yaml"),
+            &SourceRecordMutation {
+                order: Some(vec![RecordOccurrence::Existing(0)]),
+                ..SourceRecordMutation::default()
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.diagnostic().code, "E-SOURCE-RECORD-ORDER");
     }
 }

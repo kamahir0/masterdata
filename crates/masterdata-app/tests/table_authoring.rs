@@ -200,6 +200,68 @@ fn current_context_composes_schema_and_inline_records_into_one_candidate() {
 }
 
 #[test]
+fn current_context_composes_field_and_inline_record_order_in_one_file() {
+    let dir = project();
+    let schema_path = dir.path().join("sources/schema.yaml");
+    fs::write(&schema_path, "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n    note: first\n  # separator stays here\n  - id: 2\n    note: second\n").unwrap();
+    fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
+    let session = TableAuthoringSession::default();
+    let context = session
+        .open_context(dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let schema_draft = TableSchemaSaveDraft {
+        base_source: context.schema_source.clone(),
+        base_content_identity: context.schema_content_identity.clone(),
+        fields: vec![
+            SchemaDraftField {
+                name: "note".into(),
+                type_name: "string".into(),
+                nullable: false,
+                array: false,
+            },
+            SchemaDraftField {
+                name: "id".into(),
+                type_name: "int".into(),
+                nullable: false,
+                array: false,
+            },
+        ],
+    };
+    let snapshot = NativeApplicationService::new()
+        .open_data_file(Some(dir.path()), dir.path(), "sources/schema.yaml")
+        .unwrap();
+    let record_draft = TableRecordSaveDraft {
+        base_source: snapshot.base_source,
+        base_content_identity: snapshot.base_content_identity,
+        mutation: AuthoringRecordMutation {
+            record_order: Some(vec![
+                AuthoringRecordOccurrence::Existing(1),
+                AuthoringRecordOccurrence::Existing(0),
+            ]),
+            ..Default::default()
+        },
+    };
+    let report = session
+        .save_current_table_context(
+            dir.path(),
+            &TableContextSaveRequest {
+                schema_path: context.schema_path,
+                selected_record_source: context.selected_record_source,
+                schema_draft: Some(schema_draft),
+                inline_record_draft: Some(record_draft),
+                record_draft: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].status, TableContextFileSaveStatus::Success);
+    let source = fs::read_to_string(schema_path).unwrap();
+    assert!(source.find("name: note").unwrap() < source.find("name: id").unwrap());
+    assert!(source.find("note: second").unwrap() < source.find("note: first").unwrap());
+    assert!(source.contains("  # separator stays here\n"));
+}
+
+#[test]
 fn current_context_mixed_saves_inline_and_selected_separate_but_not_inactive() {
     let dir = project();
     let schema_path = dir.path().join("sources/schema.yaml");

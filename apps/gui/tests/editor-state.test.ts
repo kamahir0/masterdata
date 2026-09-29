@@ -17,6 +17,7 @@ function editor(): EditorMutationState {
     addedRecords: [],
     pendingDeletes: [],
     tagEdits: {},
+    rowOrder: null,
     historyPast: [],
     historyFuture: [],
     revision: 0,
@@ -79,6 +80,7 @@ test("bounded history keeps the newest 50 states and warns before eviction", () 
     addedRecords: [],
     pendingDeletes: [],
     tagEdits: {},
+    rowOrder: null,
   });
   const history = Array.from({ length: 50 }, (_, index) => state(index));
   const next = boundedHistoryPush(history, state(50));

@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 use masterdata_app::{
     AuthoringBatchCopyRequest, AuthoringBatchCopyResult, AuthoringBatchPreview,
     AuthoringBatchRequest, AuthoringClipboardShape, AuthoringEdit, AuthoringRecordDraft,
-    AuthoringRecordMutation, AuthoringWorkspace, ConfigSaveReport, CreationContext,
-    CreationDestinationState, CreationReport, CreationRequest, DataFileQueryRequest,
-    DataFileQueryResult, DataFileSnapshot, NativeApplicationService, ProjectConfigEditPreviewView,
-    ProjectConfigEditRequest, ProjectConfigSnapshot, ProjectInitReport, ProjectInitRequest,
-    PublishAggregateStatus, PublishExecutionReport, PublishPreview, RecordTagEditRequest,
-    SourceContentState, SourceEditPreview, SourcePathMutationReport, SourcePathMutationRequest,
-    SourcePathStateReport, SourceSaveReport, TableOverviewRequest, TableOverviewSnapshot,
+    AuthoringRecordMutation, AuthoringRecordOccurrence, AuthoringWorkspace, ConfigSaveReport,
+    CreationContext, CreationDestinationState, CreationReport, CreationRequest,
+    DataFileQueryRequest, DataFileQueryResult, DataFileSnapshot, NativeApplicationService,
+    ProjectConfigEditPreviewView, ProjectConfigEditRequest, ProjectConfigSnapshot,
+    ProjectInitReport, ProjectInitRequest, PublishAggregateStatus, PublishExecutionReport,
+    PublishPreview, RecordTagEditRequest, SourceContentState, SourceEditPreview,
+    SourcePathMutationReport, SourcePathMutationRequest, SourcePathStateReport, SourceSaveReport,
+    TableOverviewRequest, TableOverviewSnapshot,
 };
 use masterdata_core::{Diagnostic, ErrorKind, MasterdataError, ProjectInfo, ValidationReport};
 use serde::Serialize;
@@ -601,6 +602,7 @@ fn publish_from_preview(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command(rename_all = "camelCase")]
 fn preview_data_file(
     project_path: Option<String>,
@@ -610,6 +612,7 @@ fn preview_data_file(
     added_records: Option<Vec<AuthoringRecordDraft>>,
     deleted_record_indices: Option<Vec<usize>>,
     tag_edits: Option<Vec<RecordTagEditRequest>>,
+    record_order: Option<Vec<AuthoringRecordOccurrence>>,
 ) -> std::result::Result<SourceEditPreview, ApiError> {
     let current_dir = current_directory()?;
     let configured_path = configured_project_path(project_path);
@@ -618,6 +621,7 @@ fn preview_data_file(
         added_records: added_records.unwrap_or_default(),
         deleted_record_indices: deleted_record_indices.unwrap_or_default(),
         tag_edits: tag_edits.unwrap_or_default(),
+        record_order,
     };
     NativeApplicationService::new()
         .preview_data_file_mutation(
@@ -699,6 +703,7 @@ fn save_data_file(
     added_records: Option<Vec<AuthoringRecordDraft>>,
     deleted_record_indices: Option<Vec<usize>>,
     tag_edits: Option<Vec<RecordTagEditRequest>>,
+    record_order: Option<Vec<AuthoringRecordOccurrence>>,
     overwrite_expected_identity: Option<String>,
 ) -> std::result::Result<SourceSaveReport, ApiError> {
     let root = table_root(project_path.clone())?;
@@ -716,6 +721,7 @@ fn save_data_file(
         added_records: added_records.unwrap_or_default(),
         deleted_record_indices: deleted_record_indices.unwrap_or_default(),
         tag_edits: tag_edits.unwrap_or_default(),
+        record_order,
     };
     NativeApplicationService::new()
         .save_data_file_mutation(
@@ -1162,6 +1168,7 @@ mod desktop_workflow_tests {
                 ],
                 tags: Vec::new(),
             }]),
+            None,
             None,
             None,
             None,

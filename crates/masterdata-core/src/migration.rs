@@ -28,6 +28,8 @@ pub struct AddFieldCommand {
     pub table: String,
     pub field: FieldDefinition,
     pub initializer: Option<Value>,
+    /// Declaration insertion position; None preserves the existing append behavior.
+    pub position: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,22 +78,28 @@ pub fn dry_run_schema_declaration_draft(
             "FIELD-DECL-008",
         ));
     };
+    let requested = declarations
+        .iter()
+        .map(|field| (field.name.as_str(), field))
+        .collect::<BTreeMap<_, _>>();
     if declarations.len() != schema.fields.len()
-        || schema
-            .fields
-            .iter()
-            .zip(declarations)
-            .any(|(old, next)| old.key != next.key || old.name != next.name)
+        || requested.len() != declarations.len()
+        || schema.fields.iter().any(|old| {
+            requested
+                .get(old.name.as_str())
+                .is_none_or(|next| old.key != next.key)
+        })
     {
         return Err(migration_error(
             "E-FIELD-DECL-IDENTITY",
-            "schema draft must retain field identity and order",
+            "schema draft must retain every field identity",
             Some(schema_path.to_path_buf()),
             "FIELD-DECL-006",
         ));
     }
     let mut patches = Vec::new();
-    for (index, (old, next)) in schema.fields.iter().zip(declarations).enumerate() {
+    for (index, old) in schema.fields.iter().enumerate() {
+        let next = requested[old.name.as_str()];
         if old != next {
             if next.nullable && next.array {
                 return Err(migration_error(
@@ -110,16 +118,45 @@ pub fn dry_run_schema_declaration_draft(
             )?);
         }
     }
-    if patches.is_empty() {
-        return Ok(documents.clone());
-    }
-    let transformed = apply_file_plans(
-        documents,
-        &[MigrationFilePlan {
-            path: schema_path.to_path_buf(),
-            patches,
-        }],
-    )?;
+    let intermediate = if patches.is_empty() {
+        documents.clone()
+    } else {
+        apply_file_plans(
+            documents,
+            &[MigrationFilePlan {
+                path: schema_path.to_path_buf(),
+                patches,
+            }],
+        )?
+    };
+    let original_order = schema
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect::<Vec<_>>();
+    let desired_order = declarations
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect::<Vec<_>>();
+    let transformed = if original_order == desired_order {
+        intermediate
+    } else {
+        let source = &intermediate
+            .files
+            .iter()
+            .find(|file| file.path == schema_path)
+            .expect("schema exists")
+            .source;
+        let reorder_patches =
+            schema_field_order_patches(source, &original_order, &desired_order, schema_path)?;
+        apply_file_plans(
+            &intermediate,
+            &[MigrationFilePlan {
+                path: schema_path.to_path_buf(),
+                patches: reorder_patches,
+            }],
+        )?
+    };
     let mut expected = documents.clone();
     let expected_schema = expected
         .files
@@ -139,6 +176,82 @@ pub fn dry_run_schema_declaration_draft(
         ));
     }
     Ok(transformed)
+}
+
+fn schema_field_order_patches(
+    source: &str,
+    original: &[&str],
+    desired: &[&str],
+    path: &Path,
+) -> Result<Vec<MigrationPatch>> {
+    let lines = source_lines(source);
+    let header = find_top_level_key(&lines, "fields").ok_or_else(|| {
+        migration_error(
+            "E-FIELD-DECL-SOURCE",
+            "fields source missing",
+            Some(path.to_path_buf()),
+            "FIELD-DECL-011",
+        )
+    })?;
+    let end = block_region_end(&lines, header);
+    let sequence = find_block_sequence(&lines, header, end).ok_or_else(|| {
+        migration_error(
+            "E-FIELD-DECL-SOURCE",
+            "fields sequence unavailable",
+            Some(path.to_path_buf()),
+            "FIELD-DECL-011",
+        )
+    })?;
+    if sequence.items.len() != original.len() {
+        return Err(migration_error(
+            "E-FIELD-DECL-SOURCE",
+            "field source count mismatch",
+            Some(path.to_path_buf()),
+            "FIELD-DECL-011",
+        ));
+    }
+    let literal = literal_block_scalar_content_lines(&lines);
+    let mut bodies = Vec::with_capacity(original.len());
+    let mut spans = Vec::with_capacity(original.len());
+    for (index, &start_line) in sequence.items.iter().enumerate() {
+        let next_line = sequence.items.get(index + 1).copied().unwrap_or(end);
+        let mut body_end_line = next_line;
+        while body_end_line > start_line + 1
+            && is_ignorable_line(lines[body_end_line - 1].text)
+            && !literal[body_end_line - 1]
+        {
+            body_end_line -= 1;
+        }
+        let start = lines[start_line].start;
+        let finish = line_start(&lines, body_end_line, source.len());
+        spans.push((start, finish));
+        bodies.push(&source[start..finish]);
+    }
+    desired
+        .iter()
+        .enumerate()
+        .map(|(index, field)| {
+            let origin = original
+                .iter()
+                .position(|old| old == field)
+                .expect("field identity checked");
+            let body = bodies[origin];
+            if index + 1 < original.len() && !body.ends_with('\n') {
+                return Err(migration_error(
+                    "E-FIELD-DECL-SOURCE",
+                    "field block without newline cannot move before another field",
+                    Some(path.to_path_buf()),
+                    "FIELD-DECL-011",
+                ));
+            }
+            let (start, end) = spans[index];
+            Ok(MigrationPatch {
+                start,
+                end,
+                replacement: body.to_owned(),
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -288,6 +401,25 @@ fn prepare_add_field(
     let (closure_documents, type_system) =
         resolve_target_snapshot(documents, &command.table, &command.field)?;
 
+    let field_count = match &find_loaded_schema(&closure_documents, &command.table)
+        .expect("target schema resolved")
+        .document
+    {
+        SourceDocument::Schema(schema) => schema.fields.len(),
+        _ => unreachable!("schema lookup returned another document"),
+    };
+    if command
+        .position
+        .is_some_and(|position| position > field_count)
+    {
+        return Err(migration_error(
+            "E-MIGRATION-FIELD-POSITION",
+            "AddField position is outside the field sequence",
+            schema_path(&closure_documents, &command.table),
+            "MIGRATION-006",
+        ));
+    }
+
     validate_candidate_table_schema(&closure_documents, &type_system, command)?;
 
     let new_field = ResolvedField {
@@ -349,8 +481,12 @@ fn prepare_add_field(
         SourceDocument::Schema(schema) => schema,
         _ => unreachable!("target schema lookup returned a non-schema document"),
     };
-    let mut schema_patches =
-        plan_schema_patch(&schema_loaded.source, schema_document, &command.field)?;
+    let mut schema_patches = plan_schema_patch(
+        &schema_loaded.source,
+        schema_document,
+        &command.field,
+        command.position,
+    )?;
     if let (Some(records), Some(initializer)) = (&schema_document.records, &initializer)
         && !records.is_empty()
     {
@@ -543,7 +679,8 @@ fn validate_candidate_table_schema(
     let SourceDocument::Schema(schema) = &mut loaded.document else {
         unreachable!("target schema lookup returned a non-schema document")
     };
-    schema.fields.push(command.field.clone());
+    let position = command.position.unwrap_or(schema.fields.len());
+    schema.fields.insert(position, command.field.clone());
     validate_table_schema_resolution(&candidate, type_system, &command.table)
 }
 
@@ -557,7 +694,8 @@ fn expected_add_field_semantics(
         let mut document = loaded.document.clone();
         match &mut document {
             SourceDocument::Schema(schema) if schema.table == command.table => {
-                schema.fields.push(command.field.clone());
+                let position = command.position.unwrap_or(schema.fields.len());
+                schema.fields.insert(position, command.field.clone());
                 if let (Some(records), Some(initializer)) = (&mut schema.records, initializer) {
                     add_field_to_records(records, &command.field.name, initializer, &loaded.path)?;
                 }
@@ -807,6 +945,7 @@ fn plan_schema_patch(
     source: &str,
     schema: &SchemaDocument,
     field: &FieldDefinition,
+    requested_position: Option<usize>,
 ) -> Result<Vec<MigrationPatch>> {
     // WHY: Patch only the source spans required by AddField instead of
     // serializing the semantic AST, preserving comments and presentation.
@@ -860,17 +999,22 @@ fn plan_schema_patch(
             "MIGRATION-015",
         ));
     }
-    let position = line_start(
-        &lines,
-        sequence_append_boundary(
-            &lines,
-            sequence.items[sequence.items.len() - 1],
-            region_end,
-            sequence.indent,
-            &literal_scalar_content,
-        ),
-        source.len(),
-    );
+    let position =
+        if let Some(&item) = requested_position.and_then(|index| sequence.items.get(index)) {
+            lines[item].start
+        } else {
+            line_start(
+                &lines,
+                sequence_append_boundary(
+                    &lines,
+                    sequence.items[sequence.items.len() - 1],
+                    region_end,
+                    sequence.indent,
+                    &literal_scalar_content,
+                ),
+                source.len(),
+            )
+        };
     let replacement = insertion_at(
         source,
         position,

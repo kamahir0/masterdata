@@ -4,9 +4,9 @@ use std::path::{Component, Path, PathBuf};
 
 use masterdata_core::{
     AddedRecordDraft, AddedRecordField, AuthoringValue, Diagnostic, ErrorKind, MasterdataError,
-    Project, ProjectDocuments, ProjectInfo, RecordTagEdit, RecordValueEdit, SourceRecordMutation,
-    ValidationReport, dry_run_source_record_mutation, parse_yaml_document, source_content_identity,
-    validate_documents,
+    Project, ProjectDocuments, ProjectInfo, RecordOccurrence, RecordTagEdit, RecordValueEdit,
+    SourceRecordMutation, ValidationReport, dry_run_source_record_mutation, parse_yaml_document,
+    source_content_identity, validate_documents,
 };
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
@@ -89,6 +89,15 @@ pub struct AuthoringRecordMutation {
     pub deleted_record_indices: Vec<usize>,
     #[serde(default)]
     pub tag_edits: Vec<RecordTagEditRequest>,
+    #[serde(default)]
+    pub record_order: Option<Vec<AuthoringRecordOccurrence>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", content = "index", rename_all = "snake_case")]
+pub enum AuthoringRecordOccurrence {
+    Existing(usize),
+    Added(usize),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -127,6 +136,17 @@ impl From<&AuthoringRecordMutation> for SourceRecordMutation {
                     tags: edit.tags.clone(),
                 })
                 .collect(),
+            order: value.record_order.as_ref().map(|order| {
+                order
+                    .iter()
+                    .map(|item| match item {
+                        AuthoringRecordOccurrence::Existing(index) => {
+                            RecordOccurrence::Existing(*index)
+                        }
+                        AuthoringRecordOccurrence::Added(index) => RecordOccurrence::Added(*index),
+                    })
+                    .collect()
+            }),
         }
     }
 }
@@ -1493,6 +1513,7 @@ custom:
             }],
             deleted_record_indices: Vec::new(),
             tag_edits: Vec::new(),
+            record_order: None,
         };
         let preview = service
             .preview_data_file_mutation(

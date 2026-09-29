@@ -1,7 +1,7 @@
 import TypeEditor from "./TypeEditor";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Alert, Button, ConfigProvider, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag, theme as antdTheme } from "antd";
-import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, MoreHorizontal, RefreshCw, Search, Settings, X } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, GripVertical, MoreHorizontal, RefreshCw, Search, Settings, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
 import SourceCreation, { type Category, type CreationReport } from "./SourceCreation";
 import InlineSourceCreation from "./InlineSourceCreation";
@@ -39,6 +39,7 @@ import {
   deleteDraft,
   deleteExisting,
   serializeAddedRecords,
+  type EditorRowRef,
   undoExistingDelete as undoExistingDeleteState,
 } from "./editor-state";
 import { migrationRefreshPlan, resolveDirtyPathMutation } from "./authoring-workflow";
@@ -160,9 +161,9 @@ type TableContextSaveReport = {
   }[];
 };
 function schemaDraftIsDirty(draft: SchemaDraftState): boolean {
-  return draft.fields.some((field, index) => {
+  return draft.fields.length !== draft.baseFields.length || draft.fields.some((field, index) => {
     const base = draft.baseFields[index];
-    return !base || field.type !== base.type || field.nullable !== base.nullable || field.array !== base.array;
+    return !base || field.name !== base.name || field.key !== base.key || field.type !== base.type || field.nullable !== base.nullable || field.array !== base.array;
   });
 }
 function schemaDraftFromContext(root: string, context: TableContext): SchemaDraftState {
@@ -173,7 +174,8 @@ function schemaDraftFromContext(root: string, context: TableContext): SchemaDraf
     previewError: null, saving: false, saveStatus: null, saveDiagnostic: null };
 }
 type ColumnIntent =
-  | { operation: "add_default"; table: string }
+  | { operation: "add_default"; table: string; beforeField?: string }
+  | { operation: "reorder"; table: string; field: string; newIndex: number }
   | { operation: "rename"; table: string; field: string; newName: string }
   | { operation: "change_declaration"; table: string; field: string; type: string; nullable: boolean; array: boolean };
 
@@ -259,6 +261,7 @@ type AuthoringRecordMutation = {
   addedRecords: AuthoringRecordDraft[];
   deletedRecordIndices: number[];
   tagEdits: RecordTagEdit[];
+  recordOrder?: { kind: "existing" | "added"; index: number }[];
 };
 
 type RecordTagEdit = {
@@ -403,6 +406,7 @@ type EditorState = {
   addedRecords: AddedRecordDraft[];
   pendingDeletes: number[];
   tagEdits: Record<string, string[]>;
+  rowOrder: EditorRowRef[] | null;
   queryResult: DataFileQueryResult | null;
   historyPast: MutationHistoryState[];
   historyFuture: MutationHistoryState[];
@@ -423,6 +427,7 @@ type MutationHistoryState = {
   addedRecords: AddedRecordDraft[];
   pendingDeletes: number[];
   tagEdits: Record<string, string[]>;
+  rowOrder: EditorRowRef[] | null;
 };
 
 type Surface = "editor" | "overview" | "settings" | "delivery" | "create";
@@ -471,6 +476,7 @@ function editorFromSnapshot(snapshot: DataFileSnapshot): EditorState {
     addedRecords: [],
     pendingDeletes: [],
     tagEdits: {},
+    rowOrder: null,
     queryResult: null,
     historyPast: [],
     historyFuture: [],
@@ -506,7 +512,24 @@ function editorIsDirty(editor: EditorState): boolean {
   return Object.keys(editor.edits).length > 0
     || editor.addedRecords.length > 0
     || editor.pendingDeletes.length > 0
-    || Object.keys(editor.tagEdits).length > 0;
+    || Object.keys(editor.tagEdits).length > 0
+    || !rowOrderIsDefault(editor);
+}
+
+function defaultRowOrder(editor: EditorState): EditorRowRef[] {
+  return [
+    ...editor.snapshot.rows.map(row => ({ kind: "existing" as const, recordIndex: row.recordIndex })),
+    ...editor.addedRecords.map(draft => ({ kind: "added" as const, draftId: draft.draftId })),
+  ];
+}
+
+function rowOrderIsDefault(editor: EditorState): boolean {
+  if (!editor.rowOrder) return true;
+  const baseline = defaultRowOrder(editor);
+  return editor.rowOrder.length === baseline.length && editor.rowOrder.every((row, index) =>
+    row.kind === baseline[index].kind && (row.kind === "existing"
+      ? row.recordIndex === (baseline[index] as Extract<EditorRowRef, {kind: "existing"}>).recordIndex
+      : row.draftId === (baseline[index] as Extract<EditorRowRef, {kind: "added"}>).draftId));
 }
 
 function draftCellKey(draftId: string, field: string): string {
@@ -539,6 +562,9 @@ function queryInputValue(column: DataEditorColumn | undefined, text: string): Au
 }
 
 function mutationForEditor(editor: EditorState): AuthoringRecordMutation {
+  const order = editor.rowOrder && !rowOrderIsDefault(editor) ? editor.rowOrder : null;
+  const deleted = order ? new Set(editor.pendingDeletes) : null;
+  const addedIndices = order ? new Map(editor.addedRecords.map((draft, index) => [draft.draftId, index])) : null;
   return {
     edits: Object.values(editor.edits),
     addedRecords: serializeAddedRecords(editor.snapshot.columns.map((column) => column.name), editor.addedRecords),
@@ -547,6 +573,9 @@ function mutationForEditor(editor: EditorState): AuthoringRecordMutation {
       recordIndex: Number(recordIndex),
       tags,
     })),
+    ...(order ? { recordOrder: order.filter(row => row.kind === "added" || !deleted!.has(row.recordIndex)).map(row => row.kind === "existing"
+      ? { kind: "existing" as const, index: row.recordIndex }
+      : { kind: "added" as const, index: addedIndices!.get(row.draftId)! }) } : {}),
   };
 }
 
@@ -556,6 +585,7 @@ function mutationHistoryState(editor: EditorState): MutationHistoryState {
     addedRecords: editor.addedRecords,
     pendingDeletes: editor.pendingDeletes,
     tagEdits: editor.tagEdits,
+    rowOrder: editor.rowOrder,
   };
 }
 
@@ -671,7 +701,7 @@ function App({
   const schemaDraftsRef = useRef(schemaDrafts);
   const [tableContextError, setTableContextError] = useState<ApiDiagnostic | null>(null);
   const [tableSaveFailure, setTableSaveFailure] = useState<TableContextSaveReport | null>(null);
-  const pendingColumnFocus = useRef<{ table: string; field: string | "last" } | null>(null);
+  const pendingColumnFocus = useRef<{ table: string; field: string | "last"; grip?: boolean } | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const dataEditorUi = useRef(new Map<string, DataEditorUiState>());
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
@@ -836,10 +866,15 @@ function App({
   const activeEditor = activePath ? editors[activePath] ?? null : null;
   const activeSchemaPreview = activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && activeSchemaDraft.previewState === "current"
     ? activeSchemaDraft.preview : null;
-  const displayEditor = activeEditor && activeSchemaPreview?.selectedSnapshot?.path === activePath
+  const displayEditor = activeEditor && activeSchemaDraft
     ? { ...activeEditor,
-        snapshot: { ...activeEditor.snapshot, columns: activeSchemaPreview.selectedSnapshot.columns },
-        preview: { ...activeEditor.preview, validation: activeSchemaPreview.validation } }
+        snapshot: { ...activeEditor.snapshot, columns: (() => {
+          const columns = activeSchemaPreview?.selectedSnapshot?.columns ?? activeEditor.snapshot.columns;
+          if (activeSchemaDraft.fields.every((field, index) => field.name === activeSchemaDraft.baseFields[index]?.name)) return columns;
+          const order = new Map(activeSchemaDraft.fields.map((field, index) => [field.name, index]));
+          return [...columns].sort((left, right) => (order.get(left.name) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.name) ?? Number.MAX_SAFE_INTEGER));
+        })() },
+        preview: activeSchemaPreview ? { ...activeEditor.preview, validation: activeSchemaPreview.validation } : activeEditor.preview }
     : activeEditor;
   const activeLoading = activePath ? loadingPaths.has(activePath) : false;
   const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
@@ -852,9 +887,15 @@ function App({
       ? tableContext.schema.schema.fields.at(-1)?.name
       : pending.field;
     if (!field) return;
-    const target = document.querySelector<HTMLInputElement>(`[data-column-field="${CSS.escape(field)}"]`);
-    if (target) { target.focus(); pendingColumnFocus.current = null; }
-  }, [tableContext, activeEditor]);
+    const name = document.querySelector<HTMLInputElement>(`[data-column-field="${CSS.escape(field)}"]`);
+    const target = pending.grip ? name?.closest(".unified-column-header")?.querySelector<HTMLButtonElement>(".column-grab") : name;
+    if (!target) return;
+    const frame = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: pending.grip });
+      pendingColumnFocus.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tableContext, activeEditor, activeSchemaDraft]);
   const dirtyCount = new Set([
     ...Object.entries(editors).filter(([, editor]) => editorIsDirty(editor)).map(([path]) => path),
     ...Object.entries(schemaDrafts).filter(([, draft]) => schemaDraftIsDirty(draft)).map(([path]) => path),
@@ -1153,7 +1194,7 @@ function App({
     });
   }, [projectRoot, schedulePreview]);
 
-  const addRow = useCallback((path: string) => {
+  const addRow = useCallback((path: string, at?: number) => {
     if (!projectRoot) return;
     setEditors((current) => {
       const editor = current[path];
@@ -1161,11 +1202,36 @@ function App({
       const draftId = `draft-${draftSequence.current + 1}`;
       draftSequence.current += 1;
       const next = addDraft(editor, draftId, editor.snapshot.columns.map((column) => column.name));
+      if (at !== undefined) {
+        const currentOrder = editor.rowOrder ?? defaultRowOrder(editor);
+        next.rowOrder = [...currentOrder.slice(0, at), { kind: "added", draftId }, ...currentOrder.slice(at)];
+      }
       const firstField = editor.snapshot.columns[0]?.name;
       if (firstField) {
         pendingCellFocus.current = draftCellKey(draftId, firstField);
         pendingValueFocus.current = null;
       }
+      schedulePreview(projectRoot, path, next);
+      return { ...current, [path]: next };
+    });
+  }, [projectRoot, schedulePreview]);
+
+  const moveRow = useCallback((path: string, row: EditorRowRef, destination: number) => {
+    if (!projectRoot) return;
+    setEditors(current => {
+      const editor = current[path];
+      if (!editor || editor.saving || editor.queryResult || editor.pendingDeletes.length) return current;
+      const order = editor.rowOrder ?? defaultRowOrder(editor);
+      const from = order.findIndex(item => item.kind === row.kind && (item.kind === "existing"
+        ? item.recordIndex === (row as Extract<EditorRowRef, {kind: "existing"}>).recordIndex
+        : item.draftId === (row as Extract<EditorRowRef, {kind: "added"}>).draftId));
+      if (from < 0 || destination < 0 || destination >= order.length || from === destination) return current;
+      const nextOrder = [...order];
+      const [moved] = nextOrder.splice(from, 1);
+      nextOrder.splice(destination, 0, moved);
+      const next: EditorState = { ...editor, rowOrder: nextOrder, revision: editor.revision + 1,
+        previewState: "pending", previewError: null, saveDiagnostic: null, queryResult: null,
+        ...mutationHistoryFields(editor) };
       schedulePreview(projectRoot, path, next);
       return { ...current, [path]: next };
     });
@@ -1449,6 +1515,21 @@ function App({
       if (!draft || draft.saving || draft.saveStatus === "outcome_unknown") return current;
       const fields = draft.fields.map(item => item.name === field ? { ...item, ...change } : item);
       if (fields.every((item, index) => item.type === draft.fields[index].type && item.nullable === draft.fields[index].nullable && item.array === draft.fields[index].array)) return current;
+      return { ...current, [schemaPath]: { ...draft, fields,
+        historyPast: [...draft.historyPast, draft.fields].slice(-100), historyFuture: [], revision: draft.revision + 1,
+        preview: null, previewState: "pending", previewError: null, saveStatus: null, saveDiagnostic: null } };
+    });
+  }, []);
+
+  const reorderSchemaDraft = useCallback((schemaPath: string, field: string, newIndex: number) => {
+    setSchemaDrafts(current => {
+      const draft = current[schemaPath];
+      if (!draft || draft.saving || draft.saveStatus === "outcome_unknown") return current;
+      const from = draft.fields.findIndex(item => item.name === field);
+      if (from < 0 || newIndex < 0 || newIndex >= draft.fields.length || from === newIndex) return current;
+      const fields = [...draft.fields];
+      const [moved] = fields.splice(from, 1);
+      fields.splice(newIndex, 0, moved);
       return { ...current, [schemaPath]: { ...draft, fields,
         historyPast: [...draft.historyPast, draft.fields].slice(-100), historyFuture: [], revision: draft.revision + 1,
         preview: null, previewState: "pending", previewError: null, saveStatus: null, saveDiagnostic: null } };
@@ -2232,6 +2313,11 @@ function App({
       changeSchemaDraft(tableContext.schemaPath, input.field, input);
       return;
     }
+    if (input.operation === "reorder") {
+      reorderSchemaDraft(tableContext.schemaPath, input.field, input.newIndex);
+      pendingColumnFocus.current = { table: input.table, field: input.field, grip: true };
+      return;
+    }
     if (activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft)) throw new Error("Save or undo the pending type and modifier changes before changing the Table structure.");
     migrationBusyRef.current = projectRoot;
     setMigrationBusyRoot(projectRoot);
@@ -2252,7 +2338,13 @@ function App({
       }
       if (result.state === "recovery_required") recordRecovery(projectRoot, result);
       if (result.state !== "success") throw new Error(result.diagnostic?.message ?? result.state);
-      pendingColumnFocus.current = { table: input.table, field: input.operation === "add_default" ? "last" : input.newName };
+      let focusField = input.operation === "add_default" ? "last" : input.newName;
+      if (input.operation === "add_default") {
+        let serial = tableContext.schema.schema.fields.length + 1;
+        while (tableContext.schema.schema.fields.some(field => field.name === `field${serial}`)) serial++;
+        focusField = `field${serial}`;
+      }
+      pendingColumnFocus.current = { table: input.table, field: focusField };
       const paths = [...new Set([...result.files, ...(tableContext?.recordSources.map(source => source.path) ?? [])])];
       await refreshMigrationFiles(projectRoot, paths);
     } finally {
@@ -2633,6 +2725,8 @@ function App({
               onUndo={() => undoBuffer(activeFile.path)}
               onRedo={() => redoBuffer(activeFile.path)}
               onAddRow={() => addRow(activeFile.path)}
+              onInsertRow={position => addRow(activeFile.path, position)}
+              onMoveRow={(row, position) => moveRow(activeFile.path, row, position)}
               onDeleteExistingRow={(recordIndex) => deleteExistingRow(activeFile.path, recordIndex)}
               onUndoExistingDelete={(recordIndex) => undoExistingDelete(activeFile.path, recordIndex)}
               onDeleteDraftRow={(draftId) => deleteDraftRow(activeFile.path, draftId)}
@@ -3106,6 +3200,80 @@ type GridRange = {
 const GRID_ROW_HEIGHT = 32;
 const GRID_OVERSCAN = 12;
 
+function startPointerReorder(event: ReactPointerEvent<HTMLElement>, options: {
+  root: HTMLElement;
+  selector: string;
+  axis: "x" | "y";
+  beforeClass: string;
+  afterClass: string;
+  onDrop: (target: HTMLElement, before: boolean) => void;
+}): () => void {
+  const { root, selector, axis, beforeClass, afterClass, onDrop } = options;
+  const scroll = root.closest<HTMLElement>(".grid-scroll");
+  const pointerId = event.pointerId;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let active = false;
+  let pointerX = startX;
+  let pointerY = startY;
+  let marker: HTMLElement | null = null;
+  let destination: { target: HTMLElement; before: boolean } | null = null;
+  const clearMarker = () => {
+    marker?.classList.remove(beforeClass, afterClass);
+    marker = null;
+  };
+  const locate = () => {
+    const target = document.elementFromPoint(pointerX, pointerY)?.closest<HTMLElement>(selector);
+    clearMarker();
+    if (!target || !root.contains(target)) { destination = null; return; }
+    const rect = target.getBoundingClientRect();
+    const before = axis === "x" ? pointerX < rect.left + rect.width / 2 : pointerY < rect.top + rect.height / 2;
+    target.classList.add(before ? beforeClass : afterClass);
+    marker = target;
+    destination = { target, before };
+  };
+  const edgeScroll = () => {
+    if (!active || !scroll) return;
+    const rect = scroll.getBoundingClientRect();
+    if (axis === "x") {
+      if (pointerX < rect.left + 34) scroll.scrollLeft -= 18;
+      else if (pointerX > rect.right - 34) scroll.scrollLeft += 18;
+    } else {
+      if (pointerY < rect.top + 34) scroll.scrollTop -= 18;
+      else if (pointerY > rect.bottom - 34) scroll.scrollTop += 18;
+    }
+    locate();
+  };
+  const timer = window.setInterval(edgeScroll, 30);
+  const cleanup = () => {
+    window.clearInterval(timer);
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", cancel);
+    clearMarker();
+  };
+  const move = (pointer: PointerEvent) => {
+    if (pointer.pointerId !== pointerId) return;
+    pointerX = pointer.clientX;
+    pointerY = pointer.clientY;
+    if (!active && Math.hypot(pointerX - startX, pointerY - startY) < 5) return;
+    active = true;
+    locate();
+  };
+  const up = (pointer: PointerEvent) => {
+    if (pointer.pointerId !== pointerId) return;
+    if (active) pointer.preventDefault();
+    const result = active ? destination : null;
+    cleanup();
+    if (result) onDrop(result.target, result.before);
+  };
+  const cancel = (pointer: PointerEvent) => { if (pointer.pointerId === pointerId) cleanup(); };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", cancel);
+  return cleanup;
+}
+
 type DataEditorUiState = {
   selectedRange: GridRange | null;
   batchText: string;
@@ -3119,10 +3287,13 @@ type DataEditorUiState = {
   batchToolsOpen: boolean;
 };
 
-function ColumnHeader({ field, table, fieldTypes, disabled, onIntent, onUndoSchema }: {
+function ColumnHeader({ field, table, fieldTypes, fieldIndex, fieldCount, nextField, disabled, onIntent, onUndoSchema }: {
   field: TableField;
   table: string;
   fieldTypes: string[];
+  fieldIndex: number;
+  fieldCount: number;
+  nextField?: string;
   disabled: boolean;
   onIntent: (intent: ColumnIntent) => Promise<void>;
   onUndoSchema: (redo: boolean) => void;
@@ -3130,6 +3301,8 @@ function ColumnHeader({ field, table, fieldTypes, disabled, onIntent, onUndoSche
   const [name, setName] = useState(field.name);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const pointerCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => pointerCleanup.current?.(), []);
   const cancelBlur = useRef(false);
   useEffect(() => { setName(field.name); setError(null); }, [field.name]);
   const run = async (intent: ColumnIntent) => {
@@ -3145,7 +3318,34 @@ function ColumnHeader({ field, table, fieldTypes, disabled, onIntent, onUndoSche
     if (next && next !== field.name) void run({ operation: "rename", table, field: field.name, newName: next });
     else setName(field.name);
   };
-  return <div className="unified-column-header">
+  return <div className="unified-column-header" data-column-index={fieldIndex}
+    onContextMenu={event => { if ((event.target as HTMLElement).closest(".column-menu")) return; event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".column-menu")?.click(); }}
+    onKeyDown={event => { if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+      event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".column-menu")?.click(); }}
+  >
+    <div className="unified-column-actions">
+      <button type="button" className="column-grab" aria-label={`Drag column ${field.name} to reorder`} disabled={disabled || busy}
+        onPointerDown={event => {
+          if (event.button != null && event.button !== 0) return;
+          const root = event.currentTarget.closest("table");
+          if (!root) return;
+          pointerCleanup.current?.();
+          pointerCleanup.current = startPointerReorder(event, { root, selector: ".unified-column-header", axis: "x",
+            beforeClass: "drop-before", afterClass: "drop-after", onDrop: (target, before) => {
+              const targetIndex = Number(target.dataset.columnIndex);
+              let destination = targetIndex + (before ? 0 : 1);
+              if (fieldIndex < destination) destination--;
+              if (destination !== fieldIndex) void run({ operation: "reorder", table, field: field.name, newIndex: destination });
+            } });
+        }}><GripVertical size={13} /></button>
+      <Dropdown trigger={["click", "contextMenu"]} menu={{ items: [
+        { key: "insert-left", label: "Insert column left", disabled, onClick: () => void run({ operation: "add_default", table, beforeField: field.name }) },
+        { key: "insert-right", label: "Insert column right", disabled, onClick: () => void run({ operation: "add_default", table, beforeField: nextField }) },
+        { type: "divider" },
+        { key: "move-left", label: "Move column left", disabled: disabled || fieldIndex === 0, onClick: () => void run({ operation: "reorder", table, field: field.name, newIndex: fieldIndex - 1 }) },
+        { key: "move-right", label: "Move column right", disabled: disabled || fieldIndex === fieldCount - 1, onClick: () => void run({ operation: "reorder", table, field: field.name, newIndex: fieldIndex + 1 }) },
+      ] }}><Button type="text" size="small" className="column-menu" aria-label={`Actions for column ${field.name}`} icon={<MoreHorizontal size={13} />} /></Dropdown>
+    </div>
     <input className="unified-column-name" data-column-field={field.name} aria-label={`Field name ${field.name}`} value={name} disabled={disabled || busy}
       onChange={event => setName(event.target.value)} onBlur={rename}
       onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } else if (event.key === "Escape") { cancelBlur.current = true; setName(field.name); event.currentTarget.blur(); } }} />
@@ -3187,7 +3387,7 @@ function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreate
     {detailsOpen && details}
     <div className="grid-scroll"><table className="record-grid" role="grid" aria-rowcount={1} aria-colcount={context.schema.schema.fields.length + 2}>
       <thead><tr><th className="row-number">#</th>
-        {context.schema.schema.fields.map(field => <th key={field.name}><ColumnHeader field={field} table={context.table}
+        {context.schema.schema.fields.map((field, fieldIndex) => <th key={field.name}><ColumnHeader field={field} table={context.table} fieldIndex={fieldIndex} fieldCount={context.schema.schema.fields.length} nextField={context.schema.schema.fields[fieldIndex + 1]?.name}
           fieldTypes={context.schema.fieldTypes} disabled={disabled} onIntent={onIntent} onUndoSchema={onUndoSchema} /></th>)}
         <th className="tag-column"><Button type="text" size="small" aria-label="Add column" disabled={disabled}
           onClick={() => void onIntent({ operation: "add_default", table: context.table }).catch(cause => setError(asApiError(cause).diagnostic.message))}>＋</Button></th>
@@ -3224,6 +3424,8 @@ function DataEditor({
   onUndo,
   onRedo,
   onAddRow,
+  onInsertRow,
+  onMoveRow,
   onDeleteExistingRow,
   onUndoExistingDelete,
   onDeleteDraftRow,
@@ -3259,6 +3461,8 @@ function DataEditor({
   onUndo: () => void;
   onRedo: () => void;
   onAddRow: () => void;
+  onInsertRow: (position: number) => void;
+  onMoveRow: (row: EditorRowRef, position: number) => void;
   onDeleteExistingRow: (recordIndex: number) => void;
   onUndoExistingDelete: (recordIndex: number) => void;
   onDeleteDraftRow: (draftId: string) => void;
@@ -3274,23 +3478,22 @@ function DataEditor({
     const result = new Map<string, Diagnostic[]>();
     if (editor.previewState !== "current" || editor.preview.validation.diagnostics.length === 0) return result;
     const pending = new Set(editor.pendingDeletes);
-    const sourceRows = editor.snapshot.rows.filter(row => !pending.has(row.recordIndex));
+    const sourceOrder = (editor.rowOrder ?? defaultRowOrder(editor)).filter(row => row.kind === "added" || !pending.has(row.recordIndex));
     const source = normalizePath(`${projectRoot}/${file.path}`);
     for (const diagnostic of editor.preview.validation.diagnostics) {
       if (!diagnostic.source || normalizePath(diagnostic.source) !== source) continue;
       const field = diagnosticField(diagnostic);
       const index = diagnosticRecordIndex(diagnostic);
       if (!field || index === null) continue;
-      const row = sourceRows[index];
-      const draft = row ? null : editor.addedRecords[index - sourceRows.length];
-      const key = row ? cellKey(row.recordIndex, field) : draft ? draftCellKey(draft.draftId, field) : null;
+      const row = sourceOrder[index];
+      const key = row?.kind === "existing" ? cellKey(row.recordIndex, field) : row?.kind === "added" ? draftCellKey(row.draftId, field) : null;
       if (!key) continue;
       const cellDiagnostics = result.get(key) ?? [];
       cellDiagnostics.push(diagnostic);
       result.set(key, cellDiagnostics);
     }
     return result;
-  }, [editor.previewState, editor.preview.validation.diagnostics, editor.pendingDeletes, editor.snapshot.rows, editor.addedRecords, projectRoot, file.path]);
+  }, [editor.previewState, editor.preview.validation.diagnostics, editor.pendingDeletes, editor.snapshot.rows, editor.addedRecords, editor.rowOrder, projectRoot, file.path]);
   const uiKey = `${projectRoot}:${file.path}`;
   const rememberedUi = uiCache.current.get(uiKey);
   const lastFocusedCell = useRef<string | null>(null);
@@ -3300,7 +3503,10 @@ function DataEditor({
     target: { kind: "existing"; recordIndex: number; field: string } | { kind: "added"; draftId: string; field: string };
   } | null>(null);
   const pendingGridFocus = useRef<string | null>(null);
+  const pendingRowFocus = useRef<string | null>(null);
   const draggingSelection = useRef(false);
+  const rowPointerCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => rowPointerCleanup.current?.(), []);
   const [batchText, setBatchText] = useState(rememberedUi?.batchText ?? "");
   const [batchPreview, setBatchPreview] = useState<AuthoringBatchPreview | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
@@ -3332,26 +3538,31 @@ function DataEditor({
   const [batchContext, setBatchContext] = useState<{ revision: number; selectionKey: string } | null>(null);
   const capability = addCapability(editor.snapshot);
   const rowsByRecordIndex = useMemo(() => new Map(editor.snapshot.rows.map((row) => [row.recordIndex, row])), [editor.snapshot.rows]);
-  const draftsByQueryIndex = useMemo(() => new Map(editor.addedRecords.map((draft, index) => [editor.snapshot.rows.length + index, draft])), [editor.addedRecords, editor.snapshot.rows.length]);
+  const draftsById = useMemo(() => new Map(editor.addedRecords.map(draft => [draft.draftId, draft])), [editor.addedRecords]);
   const queryOrder = editor.queryResult?.orderedRecordIndices;
   const gridRows: GridRow[] = useMemo(() => {
     const pending = new Set(editor.pendingDeletes);
+    const localOrder = editor.rowOrder ?? defaultRowOrder(editor);
+    const candidateOrder = localOrder.filter(row => row.kind === "added" || !pending.has(row.recordIndex));
+    const toGridRow = (row: EditorRowRef): GridRow[] => row.kind === "existing"
+      ? rowsByRecordIndex.has(row.recordIndex) ? [{ kind: "existing", recordIndex: row.recordIndex, pendingDelete: pending.has(row.recordIndex) }] : []
+      : draftsById.has(row.draftId) ? [{ kind: "added", draft: draftsById.get(row.draftId)! }] : [];
     return queryOrder
-    ? queryOrder.flatMap<GridRow>((recordIndex) => {
-        const row = rowsByRecordIndex.get(recordIndex);
-        if (row) return [{ kind: "existing" as const, recordIndex: row.recordIndex, pendingDelete: pending.has(row.recordIndex) }];
-        const draft = draftsByQueryIndex.get(recordIndex);
-        return draft ? [{ kind: "added" as const, draft }] : [];
-      })
-    : [
-        ...editor.snapshot.rows.map((row) => ({
-          kind: "existing" as const,
-          recordIndex: row.recordIndex,
-          pendingDelete: pending.has(row.recordIndex),
-        })),
-        ...editor.addedRecords.map((draft) => ({ kind: "added" as const, draft })),
-      ];
-  }, [queryOrder, rowsByRecordIndex, draftsByQueryIndex, editor.snapshot.rows, editor.pendingDeletes, editor.addedRecords]);
+    ? queryOrder.flatMap<GridRow>(recordIndex => candidateOrder[recordIndex] ? toGridRow(candidateOrder[recordIndex]) : [])
+    : localOrder.flatMap(toGridRow);
+  }, [queryOrder, rowsByRecordIndex, draftsById, editor.snapshot.rows, editor.pendingDeletes, editor.addedRecords, editor.rowOrder]);
+  const rowPositionEnabled = !mutationBlocked && !editor.saving && !editor.queryResult && editor.pendingDeletes.length === 0;
+  const rowPositionReason = editor.queryResult ? "Clear search, filter, or sort to edit source row positions." : editor.pendingDeletes.length ? "Undo or save pending deletions before moving rows." : "Row positions are unavailable while source changes are blocked.";
+  const refForRow = (row: GridRow): EditorRowRef => row.kind === "existing"
+    ? { kind: "existing", recordIndex: row.recordIndex }
+    : { kind: "added", draftId: row.draft.draftId };
+  const moveGridRow = (row: GridRow, destination: number) => {
+    if (!rowPositionEnabled || destination < 0 || destination >= gridRows.length) return;
+    pendingRowFocus.current = row.kind === "existing" ? `existing:${row.recordIndex}` : `added:${row.draft.draftId}`;
+    revealGridRow(destination);
+    setSelectedRange(null);
+    onMoveRow(refForRow(row), destination);
+  };
   const gridCellKeyAt = (rowIndex: number, columnIndex: number) => {
     const row = gridRows[rowIndex];
     const column = editor.snapshot.columns[columnIndex];
@@ -3477,7 +3688,7 @@ function DataEditor({
   useLayoutEffect(() => {
     if (!editingCell) return;
     const focusInput = () => {
-      const input = document.querySelector<HTMLElement>(`[data-edit-cell="${CSS.escape(editingCell.key)}"] input:not([disabled]), [data-edit-cell="${CSS.escape(editingCell.key)}"] button:not([disabled]), [data-edit-cell="${CSS.escape(editingCell.key)}"] [tabindex="0"]`);
+      const input = document.querySelector<HTMLElement>(`[data-edit-cell="${CSS.escape(editingCell.key)}"] input:not([disabled]), [data-edit-cell="${CSS.escape(editingCell.key)}"] button:not(.array-item-grab):not([disabled]), [data-edit-cell="${CSS.escape(editingCell.key)}"] [tabindex="0"]`);
       input?.focus();
       if (editingCell.selectAll && input instanceof HTMLInputElement) input.select();
       return Boolean(input);
@@ -3494,6 +3705,15 @@ function DataEditor({
     const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`);
     if (target) { target.focus(); pendingGridFocus.current = null; }
   }, [editingCell, selectedRange, firstGridRow, lastGridRow]);
+  useEffect(() => {
+    const key = pendingRowFocus.current;
+    if (!key || editor.previewState === "pending") return;
+    const timer = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(`[data-row-grab="${CSS.escape(key)}"]`);
+      if (target) { target.focus({ preventScroll: true }); pendingRowFocus.current = null; }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [editor.rowOrder, editor.previewState, firstGridRow, lastGridRow]);
 
   useEffect(() => {
     lastFocusedCell.current = null;
@@ -3724,6 +3944,24 @@ function DataEditor({
     const previous = previousAddedCount.current;
     previousAddedCount.current = editor.addedRecords.length;
     if (editor.addedRecords.length > previous) {
+      const newest = editor.addedRecords.at(-1);
+      const rowIndex = gridRows.findIndex(row => row.kind === "added" && row.draft.draftId === newest?.draftId);
+      if (rowIndex >= 0) {
+        setSelectedRange({ startRow: rowIndex, endRow: rowIndex, startColumn: 0, endColumn: 0 });
+        const field = editor.snapshot.columns[0]?.name;
+        if (field) {
+          const key = draftCellKey(newest!.draftId, field);
+          pendingGridFocus.current = key;
+          window.requestAnimationFrame(() => {
+            // Let the new virtual row extend the scrollable height before revealing it.
+            revealGridRow(rowIndex);
+            window.requestAnimationFrame(() => {
+              const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`);
+              if (target) { target.focus({ preventScroll: true }); pendingGridFocus.current = null; }
+            });
+          });
+        }
+      }
       setQuerySearch("");
       setQueryField("");
       setQueryValue("");
@@ -3841,16 +4079,17 @@ function DataEditor({
       )}
 
       {editor.view === "grid" && (
-        <div className="grid-scroll" ref={gridScrollRef} onScroll={(event) => handleGridScroll(event.currentTarget.scrollTop)}>
+        <div className="grid-scroll" ref={gridScrollRef} onScroll={(event) => handleGridScroll(event.currentTarget.scrollTop)}
+        >
           <table className="record-grid" role="grid" aria-rowcount={gridRows.length + 1} aria-colcount={editor.snapshot.columns.length + 2}>
             <thead>
               <tr>
                 <th className="row-number">#</th>
-                {editor.snapshot.columns.map((column) => (
+                {editor.snapshot.columns.map((column, fieldIndex) => (
                   <th key={column.name}>
                     {tableContext?.schema.schema.fields.find(field => field.name === column.name)
                       ? <ColumnHeader field={tableContext.schema.schema.fields.find(field => field.name === column.name)!}
-                          table={tableContext.table} fieldTypes={tableContext.schema.fieldTypes}
+                          table={tableContext.table} fieldTypes={tableContext.schema.fieldTypes} fieldIndex={fieldIndex} fieldCount={editor.snapshot.columns.length} nextField={editor.snapshot.columns[fieldIndex + 1]?.name}
                           disabled={mutationBlocked || schemaDraftBlocked} onIntent={onColumnIntent} onUndoSchema={onUndoSchema} />
                       : <div className="column-heading"><strong>{column.name}</strong><span>{column.typeName}</span></div>}
                   </th>
@@ -3865,13 +4104,43 @@ function DataEditor({
                 <tr
                   key={gridRow.kind === "existing" ? `record-${gridRow.recordIndex}` : gridRow.draft.draftId}
                   aria-rowindex={gridRowIndex + 2}
+                  data-grid-row-index={gridRowIndex}
                   className={gridRow.kind === "existing" && gridRow.pendingDelete ? "pending-delete" : ""}
                 >
-                  <th className="row-number">
-                    <span title={gridRow.kind === "existing" && gridRow.pendingDelete ? "Pending delete" : gridRow.kind === "added" ? "New draft" : undefined}>{gridRow.kind === "existing" ? gridRow.recordIndex + 1 : "+"}</span>
-                    <Dropdown menu={{ items: gridRow.kind === "existing" ? [{ key: "delete", label: gridRow.pendingDelete ? "Undo Delete" : "Delete Record", danger: !gridRow.pendingDelete, disabled: mutationBlocked || editor.saving, onClick: () => gridRow.pendingDelete ? onUndoExistingDelete(gridRow.recordIndex) : onDeleteExistingRow(gridRow.recordIndex) }] : [{ key: "delete", label: "Delete New Row", danger: true, disabled: mutationBlocked || editor.saving, onClick: () => onDeleteDraftRow(gridRow.draft.draftId) }] }} trigger={["click"]}>
-                      <Button type="text" size="small" aria-label={`Actions for record ${gridRowIndex + 1}`} icon={<MoreHorizontal size={13} />} />
+                  <th className="row-number" onContextMenu={event => { if ((event.target as HTMLElement).closest(".row-menu")) return;
+                    event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".row-menu")?.click(); }}
+                    onKeyDown={event => { if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+                      event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".row-menu")?.click(); }}>
+                    <div className="row-number-content">
+                    <button className="row-grab" type="button" data-row-grab={gridRow.kind === "existing" ? `existing:${gridRow.recordIndex}` : `added:${gridRow.draft.draftId}`} aria-label={`Drag row ${gridRowIndex + 1} to reorder`} title={!rowPositionEnabled ? rowPositionReason : "Drag to reorder"}
+                      disabled={!rowPositionEnabled}
+                      onPointerDown={event => {
+                        if (event.button != null && event.button !== 0) return;
+                        const root = event.currentTarget.closest("table");
+                        if (!root) return;
+                        rowPointerCleanup.current?.();
+                        rowPointerCleanup.current = startPointerReorder(event, { root, selector: "tr[data-grid-row-index]", axis: "y",
+                          beforeClass: "drop-row-before", afterClass: "drop-row-after", onDrop: (target, before) => {
+                            let destination = Number(target.dataset.gridRowIndex) + (before ? 0 : 1);
+                            if (gridRowIndex < destination) destination--;
+                            if (destination !== gridRowIndex) moveGridRow(gridRow, destination);
+                          } });
+                      }}><GripVertical size={12} /></button>
+                    <span title={gridRow.kind === "existing" && gridRow.pendingDelete ? "Pending delete" : gridRow.kind === "added" ? "New draft" : `Source occurrence ${gridRow.recordIndex + 1}`}>{gridRow.kind === "added" ? "+" : gridRowIndex + 1}</span>
+                    <Dropdown menu={{ items: [
+                      { key: "insert-above", label: "Insert row above", disabled: !rowPositionEnabled || !capability.supported, onClick: () => onInsertRow(gridRowIndex) },
+                      { key: "insert-below", label: "Insert row below", disabled: !rowPositionEnabled || !capability.supported, onClick: () => onInsertRow(gridRowIndex + 1) },
+                      { type: "divider" },
+                      { key: "move-up", label: "Move row up", disabled: !rowPositionEnabled || gridRowIndex === 0, onClick: () => moveGridRow(gridRow, gridRowIndex - 1) },
+                      { key: "move-down", label: "Move row down", disabled: !rowPositionEnabled || gridRowIndex === gridRows.length - 1, onClick: () => moveGridRow(gridRow, gridRowIndex + 1) },
+                      { type: "divider" },
+                      gridRow.kind === "existing"
+                        ? { key: "delete", label: gridRow.pendingDelete ? "Undo Delete" : "Delete Record", danger: !gridRow.pendingDelete, disabled: mutationBlocked || editor.saving, onClick: () => gridRow.pendingDelete ? onUndoExistingDelete(gridRow.recordIndex) : onDeleteExistingRow(gridRow.recordIndex) }
+                        : { key: "delete", label: "Delete New Row", danger: true, disabled: mutationBlocked || editor.saving, onClick: () => onDeleteDraftRow(gridRow.draft.draftId) },
+                    ] }} trigger={["click", "contextMenu"]}>
+                      <Button type="text" size="small" className="row-menu" aria-label={`Actions for record ${gridRowIndex + 1}`} icon={<MoreHorizontal size={13} />} />
                     </Dropdown>
+                    </div>
                   </th>
                   {editor.snapshot.columns.map((column, columnIndex) => {
                     const key = gridCellKeyAt(gridRowIndex, columnIndex)!;

@@ -38,7 +38,10 @@ const workspace = { project: { project_root: '/project', name: 'Demo', project_i
   files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null, hasInlineRecords: false }] };
 let openSnapshot: ReturnType<typeof snapshot>;
 let preview: (args: any) => Promise<any>;
+const originalPointerEvent = window.PointerEvent;
 beforeEach(() => {
+  // jsdom has no native PointerEvent constructor; retain real pointer coordinates.
+  Object.defineProperty(window, 'PointerEvent', { configurable: true, value: MouseEvent });
   window.localStorage.clear();
   desktopWindow.onCloseRequested.mockReset();
   desktopWindow.onCloseRequested.mockResolvedValue(() => {});
@@ -71,6 +74,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  Object.defineProperty(window, 'PointerEvent', { configurable: true, value: originalPointerEvent });
   window.localStorage.clear();
 });
 async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); const cell = await screen.findByRole('gridcell', { name: new RegExp(`^${label}:`) }); fireEvent.keyDown(cell, { key: 'Enter' }); return await screen.findByRole('textbox', { name: label }); }
@@ -384,6 +388,72 @@ test('Array move and remove are independent reversible source operations', async
   expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 2\]/ })).toBeTruthy();
   await dataAction('Redo');
   expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[2, 1\]/ })).toBeTruthy();
+});
+
+test('Array pointer grab commits once on release and ignores a click without movement', async () => {
+  const shape = { name: 'numbers', typeName: 'int', modifier: 'array', shape: { kind: 'primitive', primitive: 'int' } };
+  openSnapshot = { ...snapshot(), columns: [{ name: 'numbers', typeName: 'int[]', editable: true, keyField: false, shape, readOnlyReason: null }], rows: [
+    { recordIndex: 0, cells: [{ field: 'numbers', text: '[1, 2, 3]', value: { kind: 'sequence', sourceIdentity: true, items: [
+      { sourceIndex: 0, value: { kind: 'number', value: '1' } }, { sourceIndex: 1, value: { kind: 'number', value: '2' } }, { sourceIndex: 2, value: { kind: 'number', value: '3' } },
+    ] }, editable: true, readOnlyReason: null }] },
+  ] } as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: /^record 1 numbers:/ }), { key: 'Enter' });
+  const first = screen.getByRole('button', { name: 'Drag record 1 numbers item 1 to reorder' }).closest('.array-value-item') as HTMLElement;
+  vi.spyOn(first, 'getBoundingClientRect').mockReturnValue({ top: 0, height: 20 } as DOMRect);
+  const originalElementFromPoint = document.elementFromPoint;
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: vi.fn(() => first) });
+  const last = screen.getByRole('button', { name: 'Drag record 1 numbers item 3 to reorder' });
+  fireEvent.pointerDown(last, { button: 0, clientX: 1, clientY: 50 });
+  fireEvent.pointerUp(window, { clientX: 1, clientY: 50 });
+  expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[1, 2, 3\]/ })).toBeTruthy();
+  fireEvent.pointerDown(last, { button: 0, clientX: 1, clientY: 50 });
+  fireEvent.pointerMove(window, { clientX: 1, clientY: 1 });
+  expect(document.elementFromPoint).toHaveBeenCalled();
+  fireEvent.pointerUp(window, { clientX: 1, clientY: 1 });
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /^record 1 numbers: \[3, 1, 2\]/ })).toBeTruthy());
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: originalElementFromPoint });
+});
+
+test('Row context move and positional insert preserve source occurrence order in the mutation request', async () => {
+  openSnapshot = mutationSnapshot([
+    { recordIndex: 0, cells: [{ field: 'id', text: '1', editable: true }, { field: 'weight', text: '10', editable: true }, { field: 'note', text: 'A', editable: true }] },
+    { recordIndex: 1, cells: [{ field: 'id', text: '2', editable: true }, { field: 'weight', text: '20', editable: true }, { field: 'note', text: 'B', editable: true }] },
+    { recordIndex: 2, cells: [{ field: 'id', text: '3', editable: true }, { field: 'weight', text: '30', editable: true }, { field: 'note', text: 'C', editable: true }] },
+  ]) as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for record 3' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Move row up' }));
+  await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'preview_data_file' && args.recordOrder?.[1]?.index === 2)).toBe(true));
+  await waitFor(() => expect(document.activeElement?.getAttribute('data-row-grab')).toBe('existing:2'));
+  const notes = () => within(document.querySelector('.record-grid tbody') as HTMLElement).getAllByRole('gridcell', { name: / note:/ }).map(cell => cell.getAttribute('aria-label'));
+  expect(notes()).toEqual(['record 1 note: "A"', 'record 3 note: "C"', 'record 2 note: "B"']);
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for record 2' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Insert row above' }));
+  await waitFor(() => expect(screen.getByRole('gridcell', { name: /new record id:/ })).toBeTruthy());
+  expect(notes()[1]).toContain('new record');
+});
+
+test('Row pointer drag uses the same source occurrence operation and keyboard context remains reachable', async () => {
+  openSnapshot = mutationSnapshot([
+    { recordIndex: 0, cells: [{ field: 'id', text: '1', editable: true }, { field: 'weight', text: '10', editable: true }, { field: 'note', text: 'A', editable: true }] },
+    { recordIndex: 1, cells: [{ field: 'id', text: '2', editable: true }, { field: 'weight', text: '20', editable: true }, { field: 'note', text: 'B', editable: true }] },
+    { recordIndex: 2, cells: [{ field: 'id', text: '3', editable: true }, { field: 'weight', text: '30', editable: true }, { field: 'note', text: 'C', editable: true }] },
+  ]) as any;
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const lastGrab = await screen.findByRole('button', { name: 'Drag row 3 to reorder' });
+  const firstRow = screen.getByRole('button', { name: 'Drag row 1 to reorder' }).closest('tr') as HTMLElement;
+  vi.spyOn(firstRow, 'getBoundingClientRect').mockReturnValue({ top: 0, height: 32 } as DOMRect);
+  const originalElementFromPoint = document.elementFromPoint;
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: vi.fn(() => firstRow) });
+  fireEvent.pointerDown(lastGrab, { button: 0, pointerId: 1, clientX: 1, clientY: 100 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 1, clientY: 1 });
+  fireEvent.pointerUp(window, { pointerId: 1, clientX: 1, clientY: 1 });
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: originalElementFromPoint });
+  await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'preview_data_file' && args.recordOrder?.[0]?.index === 2)).toBe(true));
+  await waitFor(() => expect(document.activeElement?.getAttribute('data-row-grab')).toBe('existing:2'));
+  fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'F10', shiftKey: true });
+  expect(await screen.findByRole('menuitem', { name: 'Insert row above' })).toBeTruthy();
 });
 
 test('Cmd+S in a pending nested scalar commits its text before current Table Save', async () => {
@@ -855,6 +925,36 @@ test('split Data file exposes its Table schema without leaving the record grid',
   expect(await screen.findByRole('textbox',{name:'Field name weight'})).toBeTruthy();
   expect(screen.getByRole('combobox',{name:'Record set'})).toBeTruthy();
   expect(screen.getByRole('gridcell',{name:/record 1 weight:/})).toBeTruthy();
+}, APP_INTEGRATION_TEST_TIMEOUT_MS);
+test('Column pointer drag changes declaration order and retains keyboard context actions', async () => {
+  const normal = invoke.getMockImplementation()!;
+  openSnapshot = mutationSnapshot() as any;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === 'open_table_context') return {
+      table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n',
+      recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml',
+      schema: { schema: { table: 'item', fields: [
+        { key: 0, name: 'id', type: 'ulong', nullable: false, array: false },
+        { key: 1, name: 'weight', type: 'ulong', nullable: false, array: false },
+        { key: 2, name: 'note', type: 'string', nullable: false, array: false },
+      ] }, fieldTypes: ['ulong', 'string'] },
+    };
+    return normal(command, args);
+  });
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const grab = await screen.findByRole('button', { name: 'Drag column note to reorder' }, { timeout: 10_000 });
+  const first = screen.getByRole('textbox', { name: 'Field name id' }).closest('.unified-column-header') as HTMLElement;
+  vi.spyOn(first, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect);
+  const originalElementFromPoint = document.elementFromPoint;
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: vi.fn(() => first) });
+  fireEvent.pointerDown(grab, { button: 0, pointerId: 1, clientX: 300, clientY: 10 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 1, clientY: 10 });
+  fireEvent.pointerUp(window, { pointerId: 1, clientX: 1, clientY: 10 });
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: originalElementFromPoint });
+  await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'preview_schema_draft')?.[1].fields.map((field: any) => field.name)).toEqual(['note', 'id', 'weight']));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Drag column note to reorder' })));
+  fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'F10', shiftKey: true });
+  expect(await screen.findByRole('menuitem', { name: 'Insert column right' })).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('switching record files restores each file selection without mixing grid state', async () => {
   const normal = invoke.getMockImplementation()!;

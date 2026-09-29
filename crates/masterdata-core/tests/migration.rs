@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use masterdata_core::{
     AddFieldCommand, FieldDefinition, MigrationCommand, ProjectDocuments, SourceDocument,
-    dry_run_migration, parse_yaml_document,
+    dry_run_migration, dry_run_schema_declaration_draft, parse_yaml_document,
 };
 use serde_yaml::{Mapping, Value};
 
@@ -34,11 +34,55 @@ fn add_field(
             array: false,
         },
         initializer,
+        position: None,
     })
 }
 
 fn string(value: &str) -> Value {
     Value::String(value.to_owned())
+}
+
+#[test]
+fn schema_draft_reorders_field_blocks_without_rekeying_or_moving_separators() {
+    let source = "kind: schema\r\ntable: item\r\nfields:\r\n  - key: 0\r\n    name: id\r\n    type: int\r\n  # Position comment\r\n  - key: 1\r\n    name: label\r\n    type: string\r\n";
+    let snapshot = documents(&[("sources/item-schema.yaml", source)]);
+    let SourceDocument::Schema(schema) = &snapshot.files[0].document else {
+        panic!("schema")
+    };
+    let fields = vec![schema.fields[1].clone(), schema.fields[0].clone()];
+    let result =
+        dry_run_schema_declaration_draft(&snapshot, Path::new("sources/item-schema.yaml"), &fields)
+            .unwrap();
+    let changed = &result.files[0];
+    assert!(changed.source.starts_with(
+        "kind: schema\r\ntable: item\r\nfields:\r\n  - key: 1\r\n    name: label\r\n"
+    ));
+    assert!(
+        changed
+            .source
+            .contains("  # Position comment\r\n  - key: 0")
+    );
+    let SourceDocument::Schema(changed_schema) = &changed.document else {
+        panic!("schema")
+    };
+    assert_eq!(changed_schema.fields[0].key, 1);
+    assert_eq!(changed_schema.fields[1].key, 0);
+}
+
+#[test]
+fn add_field_can_insert_before_a_named_declaration_without_rekeying() {
+    let source = "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: label\n    type: string\nprimaryKey:\n  fields: [id]\n";
+    let snapshot = documents(&[("sources/item-schema.yaml", source)]);
+    let mut command = add_field("item", 2, "price", "int", None);
+    let MigrationCommand::AddField(input) = &mut command else {
+        unreachable!()
+    };
+    input.position = Some(1);
+    let changed = dry_run_migration(&snapshot, &command).unwrap();
+    let source = &changed.transformed_documents.files[0].source;
+    assert!(source.find("name: id").unwrap() < source.find("name: price").unwrap());
+    assert!(source.find("name: price").unwrap() < source.find("name: label").unwrap());
+    assert!(source.contains("- key: 1\n    name: label"));
 }
 
 #[test]
@@ -295,6 +339,7 @@ fn add_field_canonicalizes_nested_custom_initializer_and_array_value() {
             array: true,
         },
         initializer: Some(Value::Sequence(vec![initializer])),
+        position: None,
     });
 
     let result = dry_run_migration(&snapshot, &command).expect("nested initializer");

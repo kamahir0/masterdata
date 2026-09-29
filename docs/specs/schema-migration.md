@@ -150,8 +150,8 @@ implicit language/runtime default、implicit `null`をinitializerとして許可
 （MUST NOT）。existing recordsが0件の場合はinitializerを省略してよい（MAY）。initializerを
 指定した場合は、recordsの有無にかかわらず同じcanonical type/value semanticsで検証する。
 
-v1ではfield insertion positionをCommandから指定できない。新field declarationはschemaの
-`fields` sequence末尾へappendしなければならず（MUST）、MessagePack `key`順へ並べ替えては
+`AddField` commandはfield declaration insertion positionを指定できる（MAY）。省略時はschemaの
+`fields` sequence末尾へappendする（MUST）。位置を指定してもMessagePack `key`順へ並べ替えては
 ならない（MUST NOT）。対象Tableの各record mappingへ新memberを追加する場合もexisting
 mapping memberの末尾へappendし、既存record memberをreorderしてはならない（MUST NOT）。
 このappend ruleはsource-preserving minimal patchのためのoperation behaviorであり、record

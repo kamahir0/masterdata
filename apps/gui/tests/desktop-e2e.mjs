@@ -379,6 +379,9 @@ try {
             const style = getComputedStyle(cell, '::after');
             const cellRect = cell.getBoundingClientRect();
             if (style.content !== '""' || style.pointerEvents !== 'none') return 'marker blocks hit testing';
+            const actions = cell.querySelector('.unified-column-actions');
+            if (axis === 'x' && actions && !(Number(style.zIndex) > Number(getComputedStyle(actions).zIndex)))
+              return 'column marker is behind header actions';
             if (axis === 'x' && (!near(parseFloat(style.height), cellRect.height) ||
                 !near(parseFloat(style.top), 0))) return 'column marker does not span header height';
             if (axis === 'y' && (!near(parseFloat(style.width), cellRect.width) ||

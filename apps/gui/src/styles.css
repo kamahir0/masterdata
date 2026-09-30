@@ -575,7 +575,7 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .column-grab:active { cursor: grabbing; }
 .column-grab:focus-visible { outline: 2px solid var(--accent); }
 .record-grid thead th.drop-before::after, .record-grid thead th.drop-after::after {
-  content: ""; position: absolute; top: 0; bottom: -1px; width: 2px; background: var(--accent); pointer-events: none;
+  content: ""; position: absolute; top: 0; bottom: -1px; width: 2px; background: var(--accent); pointer-events: none; z-index: 2;
 }
 .record-grid thead th.drop-before::after { left: -1px; }
 .record-grid thead th.drop-after::after { right: -2px; }

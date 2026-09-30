@@ -51,7 +51,7 @@ import {
   type AuthoringValue,
   type ResolvedAuthoringField,
 } from "./data-editor-types";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, navigationMark, navigationCommit } from "./navigation-trace";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
@@ -877,6 +877,7 @@ function App({
         })() },
         preview: activeSchemaPreview ? { ...activeEditor.preview, validation: activeSchemaPreview.validation } : activeEditor.preview }
     : activeEditor;
+  useLayoutEffect(() => navigationCommit(activePath), [activePath, editors, tableContextState]);
   const activeLoading = activePath ? loadingPaths.has(activePath) : false;
   const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
     ? null
@@ -1995,6 +1996,7 @@ function App({
   }, [sourceMutationBlocked, buildState.kind, deliveryBusy, dirtyCount, projectRoot, selectedProfile, settingsDirty, showNotice, workspace]);
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
+    navigationMark("selection", file.path);
     setActivePath(file.path);
     setExplorerPath(file.path);
     if (file.table) setSelectedTable(file.table);
@@ -2640,7 +2642,7 @@ function App({
       </section>
 
       {workspace && <section className="workspace-layout" hidden={surface !== "editor"}>
-        <section className="editor-area" aria-label="Editor" tabIndex={-1}>
+        <section className="editor-area" aria-label="Editor" data-active-source={activePath} tabIndex={-1}>
           {workspaceState.kind === "error" && workspace && (
             <div className="workspace-error-strip">
               <strong>{workspaceState.diagnostic.code}</strong>

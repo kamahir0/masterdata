@@ -73,6 +73,7 @@ pub fn data_file_snapshot(
     mut parse_diagnostics: Vec<Diagnostic>,
     target: &Path,
 ) -> crate::Result<DataFileSnapshot> {
+    let _read_span = crate::read_trace::read_span("dataProjection");
     let loaded = documents
         .files
         .iter()

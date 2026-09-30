@@ -67,6 +67,7 @@ impl Project {
     /// Resolve an explicit project path, or search for `masterdata.toml` from
     /// `start` toward the filesystem root.
     pub fn discover(explicit_project: Option<&Path>, start: &Path) -> Result<Self> {
+        let _read_span = crate::read_trace::read_span("discovery");
         let start = absolute_path(
             start,
             &std::env::current_dir().map_err(|error| io_error(Path::new("."), error))?,
@@ -214,6 +215,7 @@ impl Project {
     }
 
     pub fn source_files(&self) -> Result<Vec<PathBuf>> {
+        let _read_span = crate::read_trace::read_span("enumeration");
         let mut files = Vec::new();
         for root in &self.config.sources.roots {
             let root_path = resolve_project_path(&self.root, root);
@@ -238,7 +240,10 @@ impl Project {
     pub fn load_documents(&self) -> Result<ProjectDocuments> {
         let mut documents = ProjectDocuments::default();
         for path in self.source_files()? {
-            let content = fs::read_to_string(&path).map_err(|error| io_error(&path, error))?;
+            let content = {
+                let _span = crate::read_trace::read_span("fileIo");
+                fs::read_to_string(&path).map_err(|error| io_error(&path, error))?
+            };
             documents.files.push(parse_yaml_document(path, &content)?);
         }
         Ok(documents)

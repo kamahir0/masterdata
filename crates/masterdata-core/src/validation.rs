@@ -35,6 +35,7 @@ pub fn validate_documents_with_selection(
     selection: &BuildSelection,
 ) -> ValidationReport {
     let mut diagnostics = Vec::new();
+    let _read_span = crate::read_trace::read_span("validation");
     let type_build = build_type_system(documents);
     diagnostics.extend(type_build.diagnostics.iter().cloned());
 

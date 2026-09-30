@@ -339,6 +339,7 @@ fn source_scalar_values(value: &Value) -> Value {
 }
 
 pub fn parse_yaml_document(path: PathBuf, content: &str) -> Result<LoadedDocument> {
+    let _read_span = crate::read_trace::read_span("yamlParse");
     let source = content.to_owned();
     // WHY: serde_yaml eagerly resolves plain scalars. Normalize record leaves
     // to decoded text before deserialization while retaining original bytes

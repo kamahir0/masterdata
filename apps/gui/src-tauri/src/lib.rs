@@ -68,6 +68,23 @@ impl From<MasterdataError> for ApiError {
     }
 }
 
+// Opt-in benchmark logging; the production path does not allocate a trace.
+fn trace_navigation<T>(command: &str, operation: impl FnOnce() -> T) -> T {
+    if std::env::var_os("MASTERDATA_READ_TRACE").is_none() {
+        return operation();
+    }
+    let started = std::time::Instant::now();
+    let (result, metrics) = masterdata_core::read_trace::measure_read(operation);
+    eprintln!(
+        "[navigation-read] {}",
+        serde_json::json!({
+            "command": command, "wallMs": started.elapsed().as_secs_f64()*1000.0,
+            "thread": format!("{:?}", std::thread::current().id()), "metrics":metrics
+        })
+    );
+    result
+}
+
 fn current_directory() -> std::result::Result<PathBuf, ApiError> {
     std::env::current_dir().map_err(|error| {
         ApiError::from(MasterdataError::new(
@@ -163,18 +180,22 @@ fn open_table(
     project_path: Option<String>,
     relative_path: String,
 ) -> std::result::Result<masterdata_app::TableSnapshot, ApiError> {
-    table_session()?
-        .open_table(&table_root(project_path)?, &relative_path)
-        .map_err(ApiError::from)
+    trace_navigation("open_table", || {
+        table_session()?
+            .open_table(&table_root(project_path)?, &relative_path)
+            .map_err(ApiError::from)
+    })
 }
 #[tauri::command(rename_all = "camelCase")]
 fn open_table_context(
     project_path: Option<String>,
     relative_path: String,
 ) -> std::result::Result<masterdata_app::TableContext, ApiError> {
-    table_session()?
-        .open_context(&table_root(project_path)?, &relative_path)
-        .map_err(ApiError::from)
+    trace_navigation("open_table_context", || {
+        table_session()?
+            .open_context(&table_root(project_path)?, &relative_path)
+            .map_err(ApiError::from)
+    })
 }
 #[tauri::command(rename_all = "camelCase")]
 fn preview_schema_draft(
@@ -267,9 +288,11 @@ fn open_type(
     project_path: Option<String>,
     relative_path: String,
 ) -> std::result::Result<masterdata_app::TypeSnapshot, ApiError> {
-    table_session()?
-        .open_type(&table_root(project_path)?, &relative_path)
-        .map_err(ApiError::from)
+    trace_navigation("open_type", || {
+        table_session()?
+            .open_type(&table_root(project_path)?, &relative_path)
+            .map_err(ApiError::from)
+    })
 }
 #[tauri::command(rename_all = "camelCase")]
 fn plan_type_migration(
@@ -338,11 +361,13 @@ fn create_project(request: ProjectInitRequest) -> std::result::Result<ProjectIni
 fn authoring_workspace(
     project_path: Option<String>,
 ) -> std::result::Result<AuthoringWorkspace, ApiError> {
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .authoring_workspace(configured_path.as_deref().map(Path::new), &current_dir)
-        .map_err(ApiError::from)
+    trace_navigation("authoring_workspace", || {
+        let current_dir = current_directory()?;
+        let configured_path = configured_project_path(project_path);
+        NativeApplicationService::new()
+            .authoring_workspace(configured_path.as_deref().map(Path::new), &current_dir)
+            .map_err(ApiError::from)
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -444,15 +469,17 @@ fn open_data_file(
     project_path: Option<String>,
     relative_path: String,
 ) -> std::result::Result<DataFileSnapshot, ApiError> {
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .open_data_file(
-            configured_path.as_deref().map(Path::new),
-            &current_dir,
-            &relative_path,
-        )
-        .map_err(ApiError::from)
+    trace_navigation("open_data_file", || {
+        let current_dir = current_directory()?;
+        let configured_path = configured_project_path(project_path);
+        NativeApplicationService::new()
+            .open_data_file(
+                configured_path.as_deref().map(Path::new),
+                &current_dir,
+                &relative_path,
+            )
+            .map_err(ApiError::from)
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]

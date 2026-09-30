@@ -99,6 +99,25 @@ jobs:
               "$EVIDENCE_DIR/desktop-e2e.json"
           '
           cat "$EVIDENCE_DIR/desktop-e2e.json"
+      - name: Measure interactive navigation in actual Desktop
+        env:
+          WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+        run: |
+          set -euxo pipefail
+          export EVIDENCE_DIR="$RUNNER_TEMP/desktop-evidence"
+          cargo build --release -p masterdata-app --example navigation_performance
+          target/release/examples/navigation_performance | tee "$EVIDENCE_DIR/navigation-native.jsonl"
+          target/release/examples/navigation_performance --write-fixture "$EVIDENCE_DIR/navigation-project"
+          export MASTERDATA_PROJECT_PATH="$EVIDENCE_DIR/navigation-project"
+          export MASTERDATA_READ_TRACE=1
+          dbus-run-session -- xvfb-run -a sh -c '
+            set -eu
+            tauri-driver --native-driver "$(command -v WebKitWebDriver)" > "$EVIDENCE_DIR/navigation-driver.log" 2>&1 &
+            driver=$!
+            trap "kill $driver 2>/dev/null || true" EXIT
+            node apps/gui/tests/navigation-desktop.mjs target/release/masterdata-gui "$MASTERDATA_PROJECT_PATH" "$EVIDENCE_DIR/navigation-desktop.json"
+          '
+          cat "$EVIDENCE_DIR/navigation-desktop.json"
       - name: Upload Desktop evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -109,6 +128,8 @@ jobs:
             ${{ runner.temp }}/desktop-evidence/desktop-e2e.json
             ${{ runner.temp }}/desktop-evidence/desktop-e2e-failure.png
             ${{ runner.temp }}/desktop-evidence/tauri-driver.log
+            ${{ runner.temp }}/desktop-evidence/navigation-*.json*
+            ${{ runner.temp }}/desktop-evidence/navigation-driver.log
           if-no-files-found: ignore
 
   performance-evidence:

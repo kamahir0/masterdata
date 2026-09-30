@@ -1,12 +1,14 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 88a3bb95cfbbc259f09ac49aacf1ccb3111c194a
-Work base: 3c171667e0e413097c49bb3128837c6b15775f57
+Stage: designing
+Candidate: none
+Work base: 1194a59f9d7493b186a92cc418efbeeac449443d
 
 ## Active work
 
-None.
+Completed: baseline instrumentationとnative latency / duplicate work診断。
+In progress: Desktop baseline / UI blocking evidenceとread ownership設計。
+Remaining: spec / architecture decision、implementation、safety / Desktop / performance検証。
 
 ## Blocking findings
 

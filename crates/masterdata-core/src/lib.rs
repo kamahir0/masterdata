@@ -19,6 +19,8 @@ mod migration;
 mod migration_commit;
 mod pipeline;
 mod project;
+#[doc(hidden)]
+pub mod read_trace;
 mod schema_authoring;
 mod source_creation;
 mod source_edit;

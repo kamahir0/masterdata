@@ -353,6 +353,7 @@ fn error(code: &str, message: &str) -> MasterdataError {
 }
 impl TableAuthoringSession {
     pub fn open_context(&self, root: &Path, selected_path: &str) -> Result<TableContext> {
+        let _span = masterdata_core::read_trace::read_span("tableContext");
         let project = Project::discover(Some(root), root)?;
         let documents = project.load_documents()?;
         let selected = documents

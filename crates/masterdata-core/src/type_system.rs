@@ -988,6 +988,7 @@ pub fn resolve_authoring_field_shape(
     documents: &ProjectDocuments,
     field: &FieldDefinition,
 ) -> Option<ResolvedAuthoringField> {
+    let _span = crate::read_trace::read_span("shapeResolution");
     let type_system = authoring_type_system_for_reference(documents, &field.type_name)?;
     type_system.authoring_field_shape(&field.name, &field.type_name, field.nullable, field.array)
 }
@@ -1043,6 +1044,7 @@ fn authoring_type_system_for_reference(
 }
 
 pub fn build_type_system(documents: &ProjectDocuments) -> TypeSystemBuild {
+    let _span = crate::read_trace::read_span("semanticIndex");
     let type_documents: Vec<_> = documents.types().collect();
     let mut diagnostics = Vec::new();
     let mut declarations: BTreeMap<String, (&Path, &TypeDocument)> = BTreeMap::new();

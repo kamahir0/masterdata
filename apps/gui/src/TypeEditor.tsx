@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Dropdown, Form, Input, InputNumber, Modal, Select, Space, Spin, Table, Tabs, Tag } from "antd";
 import { MoreHorizontal } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./navigation-trace";
 import type { MigrationResult } from "./TableEditor";
 import { TypedInitializer, initializerJson, resetInitializer } from "./TypedInitializer";
 import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types";

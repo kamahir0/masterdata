@@ -210,7 +210,7 @@ impl NativeApplicationService {
                 .find(|root| path.starts_with(root))
                 .map(|root| project_relative_string(project.root(), root))
                 .unwrap_or_else(|| ".".to_owned());
-            match fs::read_to_string(&path) {
+            match { let _span = masterdata_core::read_trace::read_span("fileIo"); fs::read_to_string(&path) } {
                 Ok(source) => match parse_yaml_document(path.clone(), &source) {
                     Ok(loaded) => entries.push(WorkspaceSourceFile {
                         path: relative,
@@ -554,7 +554,10 @@ pub(super) fn load_authoring_documents_with_overrides(
         {
             (*source).to_owned()
         } else {
-            match fs::read_to_string(&path) {
+            match {
+                let _span = masterdata_core::read_trace::read_span("fileIo");
+                fs::read_to_string(&path)
+            } {
                 Ok(source) => source,
                 Err(error) => {
                     diagnostics.push(

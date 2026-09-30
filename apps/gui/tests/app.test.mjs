@@ -41,6 +41,8 @@ test("GUI protects dirty buffers across navigation and external changes", () => 
 
 test("Desktop host grants the exact window lifecycle and native directory picker capabilities", () => {
   assert.ok(capability.permissions.includes("core:window:allow-destroy"));
+  assert.ok(capability.permissions.includes("core:window:allow-start-dragging"));
+  assert.deepEqual(capability.windows, ["main"]);
   assert.ok(capability.permissions.includes("dialog:allow-open"));
   assert.match(source, /openDialog\(\{/);
   assert.match(source, /directory: true/);

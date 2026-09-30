@@ -51,6 +51,8 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body, #root { width: 100%; min-width: 900px; min-height: 100%; margin: 0; }
+html, body { overscroll-behavior: none; }
+
 body { min-height: 100vh; overflow: hidden; background: var(--bg); }
 button, input { font: inherit; }
 button:not(.ant-btn) { color: inherit; }
@@ -66,11 +68,13 @@ code, pre, .statusbar, .tree-file-name { font-family: ui-monospace, SFMono-Regul
 
 .titlebar {
   display: grid;
-  grid-template-columns: 220px minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  min-height: 52px;
-  padding: 7px 10px 7px 12px;
+  flex: none;
+  min-height: 40px;
+  height: 40px;
+  padding: 4px 12px;
   border-bottom: 1px solid var(--border);
   background: rgba(16, 22, 30, .96);
 }
@@ -256,11 +260,11 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .save-recovery-strip strong { color: #f0aeb5; }
 .save-recovery-strip span { color: #c39198; }
 
-.grid-scroll { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; background: #0c1218; }
+.grid-scroll { overscroll-behavior: none; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; background: #0c1218; }
 .record-grid { min-width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 11px; }
 .record-grid th, .record-grid td { min-width: 145px; height: 30px; padding: 0; border-right: 1px solid #25303d; border-bottom: 1px solid #222d39; }
 .record-grid thead th { position: sticky; top: 0; z-index: 3; height: 42px; padding: 0 8px; color: #b9c5d4; background: #151d27; text-align: left; }
-.record-grid .row-number { position: sticky; left: 0; z-index: 4; width: 62px; min-width: 62px; max-width: 62px; color: #637185; background: #171e30; text-align: center; font-family: ui-monospace, monospace; font-weight: 500; }
+.record-grid .row-number { position: sticky; left: 0; z-index: 4; width: 88px; min-width: 88px; max-width: 88px; color: #637185; background: #171e30; text-align: center; font-family: ui-monospace, monospace; font-weight: 500; }
 .record-grid thead .row-number { z-index: 5; }
 .record-grid tbody .row-number-content { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; min-height: 30px; padding: 4px; }
 .record-grid tbody .row-number .ant-btn { flex: 0 0 auto; min-height: 20px; padding: 0 4px; font-size: 9px; }
@@ -388,13 +392,12 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .tag-read-only-reason { line-height: 1.3; }
 
 @media (max-width: 1280px) {
-  .command-bar { flex-wrap: wrap; }
   .settings-content { grid-template-columns: 1fr; }
   .settings-diff { grid-column: auto; }
 }
 
 @media (max-width: 1080px) {
-  .titlebar { grid-template-columns: 190px minmax(220px, 1fr) auto; }
+  .titlebar { grid-template-columns: minmax(160px, 260px) minmax(0, 1fr) auto; }
   .command-bar button:not(.ant-btn) { padding: 0 7px; }
   .workbench { grid-template-columns: 220px minmax(0, 1fr); }
   .validation-state { display: none; }
@@ -403,14 +406,17 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 /* Ant Design tokens follow front-end-sample. Layout retains the source editor's
    keyboard tree/grid model; controls and dialog focus belong to Ant Design. */
 .app-shell { background: #0e1320; }
-.titlebar { min-height: 72px; padding: 14px 20px; gap: 20px; background: #111725; }
-.brand-mark { width: 34px; height: 34px; background: #292340; border-color: #514478; }
-.brand-block strong { font-size: 15px; }
-.brand-block span { font-size: 11px; }
+.titlebar { gap: 12px; background: #111725; }
+.macos-titlebar .titlebar { padding-left: 88px; }
+.brand-mark { width: 20px; height: 20px; flex: none; pointer-events: none; background: #292340; border-color: #514478; }
+.brand-block strong { flex: none; font-size: 12px; }
+.brand-block > div:last-child { display: flex; align-items: center; gap: 10px; overflow: hidden; }
+.brand-block span { min-width: 0; font-size: 11px; }
 .project-open { gap: 8px; }
 .project-open .ant-input { height: 34px; border: 1px solid #303951; border-radius: 8px; background: #171e30; }
 .project-open .ant-btn { border-radius: 8px; }
-.command-bar { gap: 8px; }
+.command-bar { gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
+.command-bar .ant-btn { height: 28px; padding: 0 9px; font-size: 12px; }
 .workspace-layout { margin: 14px 16px 0 0; border: 1px solid #283149; border-radius: 0 12px 0 0; overflow: hidden; }
 .workbench > .surface-layout:not(.create-surface) { margin-left: 0; border-radius: 0 12px 0 0; }
 .source-tree { padding: 8px; }
@@ -442,9 +448,7 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .diagnostic-banner.ant-alert { display: flex; text-align: left; }
 .toast.ant-alert { max-width: 560px; }
 @media (max-width: 1180px) {
- .titlebar { grid-template-columns: 180px 1fr; gap: 10px; }
- .command-bar { grid-column: 2; }
- .brand-block { grid-row: span 2; }
+ .titlebar { gap: 10px; }
  .project-open { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -546,7 +550,7 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .add-record-inline.ant-btn:hover:not(:disabled) { color: var(--text); background: var(--panel-2); }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .record-grid tbody td, .record-grid tbody .row-number { height: 32px; min-height: 32px; max-height: 32px; vertical-align: middle; }
-.record-grid tbody .row-number-content { display: flex; flex-wrap: nowrap; justify-content: space-between; padding: 0 2px 0 6px; }
+.record-grid tbody .row-number-content { display: grid; grid-template-columns: 20px minmax(0, 1fr) 20px; gap: 2px; padding: 0 4px; font-size: 10px; }
 .record-grid tbody .row-number .ant-btn { opacity: 0; width: 20px; height: 20px; min-height: 20px; padding: 0; }
 .record-grid tbody tr:hover .row-number .ant-btn, .record-grid tbody .row-number .ant-btn:focus-visible { opacity: 1; }
 .row-grab { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 20px; padding: 0; border: 0; color: var(--muted); background: transparent; cursor: grab; }
@@ -559,15 +563,16 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .array-item-grab:focus-visible { outline: 2px solid var(--accent); }
 .array-value-item.drop-before { box-shadow: inset 0 2px var(--accent); }
 .array-value-item.drop-after { box-shadow: inset 0 -2px var(--accent); }
-.record-grid thead th { height: 62px; }
-.unified-column-header { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.unified-column-actions { position: absolute; top: -5px; right: -4px; z-index: 1; display: flex; align-items: center; opacity: 0; background: var(--panel); }
-.unified-column-header:hover .unified-column-actions, .unified-column-header:focus-within .unified-column-actions { opacity: 1; }
+.record-grid thead th { height: 82px; padding: 6px 8px; }
+.unified-column-header { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.unified-column-actions { display: flex; align-items: center; justify-content: space-between; height: 20px; }
+.unified-column-actions .column-menu { opacity: 0; }
+.unified-column-header:hover .column-menu, .unified-column-header:focus-within .column-menu { opacity: 1; }
 .column-grab, .column-menu.ant-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; min-width: 18px; padding: 0; border: 0; background: transparent; color: var(--muted); }
 .column-grab { cursor: grab; }
 .column-grab:active { cursor: grabbing; }
 .column-grab:focus-visible { outline: 2px solid var(--accent); }
-.unified-column-name { width: 100%; min-width: 0; padding: 1px 2px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 3px; font: inherit; font-weight: 650; }
+.unified-column-name { width: 100%; height: 22px; min-width: 0; padding: 1px 2px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 3px; font: inherit; font-weight: 650; }
 .unified-column-name:hover, .unified-column-name:focus { border-color: var(--accent); outline: none; }
 .unified-column-type-row { display: flex; align-items: center; gap: 2px; }
 .unified-column-type-row .ant-select { flex: 1; min-width: 54px; font-size: 10px; }
@@ -714,4 +719,15 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .grid-drag-copy .unified-column-actions { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .grid-reorder-item { transition: none; }
+}
+
+/* Explicit specificity keeps native HTML handles from inheriting the large
+   generic button box, which otherwise covers the adjacent field-name input. */
+.column-grab:not(.ant-btn), .row-grab:not(.ant-btn) {
+  flex: none; width: 20px; min-width: 20px; height: 20px; min-height: 20px;
+  margin: 0; padding: 0; border: 0; border-radius: 4px;
+  color: var(--muted); background: var(--panel-2); line-height: 1;
+}
+.column-grab:not(.ant-btn):hover:not(:disabled), .row-grab:not(.ant-btn):hover:not(:disabled) {
+  color: var(--text); background: var(--border-strong);
 }

@@ -6,19 +6,19 @@
 
 ## Objective
 
-**Unified Table EditorのColumn / Record Rowがdragへ追従し、周囲が移動先を空ける並べ替え表示を実装する。**
+**Table header / drag handle / scroll edgeとwindow上部の密度を整え、編集面を広く、操作しやすくする。**
 
 ## Completion slices
 
-- drag previewのobservable behaviorを仕様へ反映する。
-- Column / Record Rowのpreviewを実装し、既存mutation、history、focus、sticky / virtualizationを維持する。
-- focused regression、画面確認、repository check、required CIで検証する。
+- field名と操作の重なりを解消し、Legacyを参考にdrag handleを整える。
+- scroll端のaffordanceと上部command surfaceを調整する。
+- keyboard / native window操作、drag / virtualizationを保ち、focused / Desktop evidenceとrepository checkで検証する。
 
 ## Canonical requirements
 
-- [Unified Table Editor](gui/table-editor/spec.md) `GUI-UNIFIED-008`
-- [Grid Authoring](gui/data-editor/grid-authoring.md) `GUI-GRID-007`
+- [Unified Table Editor](gui/table-editor/spec.md) `GUI-UNIFIED-005`, `GUI-UNIFIED-007`, `GUI-UNIFIED-008`
+- [App shell](gui/app-shell.md) `GUI-SHELL-LAYOUT-002`, `GUI-SHELL-NAV-001`, `GUI-SHELL-LIFECYCLE-001`
 
 ## Explicit non-scope
 
-- Array item drag、shared source mutation、Save、Search / Filter / Sort、visual themeの再設計。
+- source semantics、Save / history、Table query、他surfaceのvisual theme再設計。

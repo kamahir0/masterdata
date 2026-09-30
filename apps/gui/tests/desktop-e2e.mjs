@@ -350,6 +350,50 @@ try {
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));
 
+  // Use the minimum supported window width to catch toolbar wrapping and
+  // measure controls after keyboard focus exposes the header actions.
+  const previousWindow = await request("GET", `/session/${sessionId}/window/rect`);
+  try {
+    await request("POST", `/session/${sessionId}/window/rect`, { width: 960, height: 800 });
+    const chrome = await execute(`
+      const toolbar = document.querySelector('.titlebar');
+      const header = document.querySelector('.unified-column-header');
+      const name = header?.querySelector('.unified-column-name');
+      if (!toolbar || !name) return 'missing toolbar or field header';
+      name.focus();
+      const bounds = name.getBoundingClientRect();
+      const toolbarBounds = toolbar.getBoundingClientRect();
+      for (const selector of ['.column-grab', '.column-menu', '.unified-column-type-row']) {
+        const element = header.querySelector(selector);
+        const rect = element.getBoundingClientRect();
+        if (rect.left < bounds.right && rect.right > bounds.left && rect.top < bounds.bottom && rect.bottom > bounds.top)
+          return selector + ' overlaps the focused name input';
+      }
+      for (const element of document.querySelectorAll('.column-grab, .row-grab')) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 24 || rect.height > 24 || rect.width < 16 || getComputedStyle(element).opacity === '0')
+          return 'oversized or invisible drag grip';
+      }
+      if (toolbarBounds.height > 44) return 'toolbar occupies multiple rows';
+      for (const element of toolbar.querySelectorAll('.brand-block, .project-open, .command-bar, button')) {
+        const rect = element.getBoundingClientRect();
+        if (rect.top < toolbarBounds.top || rect.bottom > toolbarBounds.bottom || rect.right > toolbarBounds.right)
+          return 'toolbar control escapes compact toolbar';
+      }
+      if (!toolbar.hasAttribute('data-tauri-drag-region') || toolbar.querySelector('button[data-tauri-drag-region]'))
+        return 'window dragging intercepts interactive commands';
+      const scroll = document.querySelector('.grid-scroll');
+      if (getComputedStyle(scroll).overscrollBehaviorX !== 'none' || getComputedStyle(scroll).overscrollBehaviorY !== 'none')
+        return 'grid allows outer edge overscroll';
+      name.blur();
+      return 'pass';
+    `);
+    if (!chrome.ok || chrome.value !== 'pass') throw new Error('table/window chrome geometry failed: ' + JSON.stringify(chrome));
+    record('compact-toolbar-and-separated-field-controls-verified');
+  } finally {
+    if (previousWindow.ok) await request("POST", `/session/${sessionId}/window/rect`, previousWindow.payload.value);
+  }
+
   // Real WebKit geometry: the visual copy follows the pointer, stays clipped,
   // preserves layout and exposes no duplicate controls to hit testing.
   const dragPreview = await execute(`

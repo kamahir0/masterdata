@@ -44,7 +44,7 @@ Drop FieldとReference Remove等のdestructive operationは明示confirmationと
 
 同じTable面のgridは[Data Editor](../data-editor/spec.md)と[Grid Authoring](../data-editor/grid-authoring.md)のcell / complex value / row / TSV / Undo/Redo / Save / Problems / virtualization contractを維持する。schema draftとrecord file-local dirty bufferは同じ編集面で区別して保持する。Undo/Redoを確定済みdisk変更のrollbackに見せかけてはならない（MUST NOT）。Build / Publish / Gitをauthoringに暗黙結合しない（MUST NOT）。
 
-Key、Reference、MessagePack key、低頻度metadataは補助面へprogressively discloseする。通常時はTable名とcolumn / row dataを最も強く表示し、正常状態の説明を繰り返し常設しない。gridのkeyboard selection、field headerのtab順、operation失敗後のfocus復元はpointerなしでも成立しなければならない（MUST）。状態は色だけに依存せずassistive technologyへ伝える。
+Key、Reference、MessagePack key、低頻度metadataは補助面へprogressively discloseする。通常時はTable名とcolumn / row dataを最も強く表示し、正常状態の説明を繰り返し常設しない。gridのkeyboard selection、field headerのtab順、operation失敗後のfocus復元はpointerなしでも成立しなければならない（MUST）。状態は色だけに依存せずassistive technologyへ伝える。 field名、type、header操作はhover / focus時にも重ねず、それぞれのhit areaを確保する。
 
 ### GUI-UNIFIED-006
 
@@ -54,11 +54,11 @@ Key、Reference、MessagePack key、低頻度metadataは補助面へprogressivel
 
 ### GUI-UNIFIED-007
 
-長大Tableの縦scrollでもcolumn headerを見失わず、横長Tableの横scrollでもrow occurrence番号とcontext actionへ到達できなければならない（MUST）。sticky層はpopover/dropdown、focus、Problems navigationを妨げてはならず、bounded row renderingを維持する。Add Row supportedなselected record sourceでは、末尾がviewport外でもgrid内のappend actionへ到達できなければならない（MUST）。末尾が見えている場合は同じactionを重複して強調しない。sourceのないTableではrecord source作成導線を維持する。
+長大Tableの縦scrollでもcolumn headerを見失わず、横長Tableの横scrollでもrow occurrence番号とcontext actionへ到達できなければならない（MUST）。sticky層はpopover/dropdown、focus、Problems navigationを妨げてはならず、bounded row renderingを維持する。 grid外側の左端・上端から固定row header / column headerが離れるoverscroll表現を抑える。通常scrollとdrag auto-scrollは維持する。Add Row supportedなselected record sourceでは、末尾がviewport外でもgrid内のappend actionへ到達できなければならない（MUST）。末尾が見えている場合は同じactionを重複して強調しない。sourceのないTableではrecord source作成導線を維持する。
 
 ### GUI-UNIFIED-008
 
-column handleからのdrag/dropとheader context menuからのMove Left/Rightは`FIELD-DECL-011`の同じschema draft順序変更へ結び付ける（MUST）。Insert Left/Rightは対象fieldに対する位置指定をshared Application/Coreへ渡し、既存AddField Migrationの安全境界で実行する（MUST）。keyboard context entryを提供し、dragを唯一の経路にしてはならない（MUST NOT）。通常の末尾`+`、inline rename、type、Nullable、Arrayは維持する。drop cancel / same-positionはno-op。
+column handleからのdrag/dropとheader context menuからのMove Left/Rightは`FIELD-DECL-011`の同じschema draft順序変更へ結び付ける（MUST）。Insert Left/Rightは対象fieldに対する位置指定をshared Application/Coreへ渡し、既存AddField Migrationの安全境界で実行する（MUST）。keyboard context entryを提供し、dragを唯一の経路にしてはならない（MUST NOT）。 field drag handleは名前と独立したheader上側の左端に常時表示し、record row handleも一貫したgrip表示とする。通常の末尾`+`、inline rename、type、Nullable、Arrayは維持する。drop cancel / same-positionはno-op。
 
 column drag中はfield定義headerと表示中の同column cellsが一体で横方向のpointer移動へ追従し、通過したcolumnが滑らかに移動先を空ける。挿入線を使用しない。previewはgrid viewportへclipし、固定row header / sticky column headerを妨げず、横scroll中も着地点と表示を一致させ、layout寸法を維持する。共通cancel / preview安全境界は[GUI-GRID-007](../data-editor/grid-authoring.md)に従う。
 

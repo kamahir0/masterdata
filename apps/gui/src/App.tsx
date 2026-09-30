@@ -2444,22 +2444,24 @@ function App({
 
   return (
     <ConfigProvider theme={antThemeConfig}>
-      <main className="app-shell">
-      <header className="titlebar">
-        <div className="brand-block">
-          <div className="brand-mark"><Database size={18} /></div>
-          <div>
-            <strong>masterdata</strong>
-            <span>{workspace?.project.name ?? "No project"}</span>
+      <main className={`app-shell${/Mac/.test(navigator.platform) ? " macos-titlebar" : ""}`}>
+      {/* Tauri checks the exact event target for dragging, so passive children
+          also carry the region attribute; interactive controls keep their clicks. */}
+      <header className="titlebar" data-tauri-drag-region aria-label="Window toolbar">
+        <div className="brand-block" data-tauri-drag-region>
+          <div className="brand-mark" aria-hidden="true" data-tauri-drag-region><Database size={14} /></div>
+          <div data-tauri-drag-region>
+            <strong data-tauri-drag-region>masterdata</strong>
+            <span data-tauri-drag-region title={workspace?.project.name}>{workspace?.project.name ?? "No project"}</span>
           </div>
         </div>
-        <div className="project-open">
-          <span className="project-location" title={projectRoot ?? undefined}>{projectRoot ?? "Choose a folder to begin"}</span>
+        <div className="project-open" data-tauri-drag-region>
+          <span className="project-location" data-tauri-drag-region title={projectRoot ?? undefined}>{projectRoot ?? "Choose a folder to begin"}</span>
         </div>
-        <div className="command-bar">
-          {totalDirtyCount > 0 && <span className="header-dirty" role="status">{totalDirtyCount} unsaved</span>}
-          {manualValidation.kind === "loading" && <span className="header-operation" role="status">Validating…</span>}
-          {buildState.kind === "loading" && <span className="header-operation" role="status">Building…</span>}
+        <div className="command-bar" data-tauri-drag-region>
+          {totalDirtyCount > 0 && <span className="header-dirty" role="status" data-tauri-drag-region>{totalDirtyCount} unsaved</span>}
+          {manualValidation.kind === "loading" && <span className="header-operation" role="status" data-tauri-drag-region>Validating…</span>}
+          {buildState.kind === "loading" && <span className="header-operation" role="status" data-tauri-drag-region>Building…</span>}
           <Button
             htmlType="button"
             aria-label="Application Settings"

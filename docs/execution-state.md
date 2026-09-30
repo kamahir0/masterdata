@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 0f59b802603d295d404dc8ff76dff308fbfaad92
-Work base: a228d2b15ca1844c3fb9c4aa728c28cdca6bb61d
+Stage: implementation-ready
+Candidate: none
+Work base: 3c171667e0e413097c49bb3128837c6b15775f57
 
 ## Active work
 
-None.
+In progress: Table / window chrome調整の実装。
 
 ## Blocking findings
 

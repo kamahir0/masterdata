@@ -94,7 +94,7 @@ export function startGridReorder(event: DragStart, options: ReorderOptions): () 
   const refreshGhost = () => {
     if (!overlay || !ghost) return;
     const viewport = bounds();
-    const head = root.tHead?.getBoundingClientRect();
+    const head = root.querySelector<HTMLElement>("thead th")?.getBoundingClientRect();
     const rowHeader = root.querySelector<HTMLElement>("thead .row-number")?.getBoundingClientRect();
     const clipLeft = axis === "x" ? Math.max(viewport.left, rowHeader?.right ?? viewport.left) : viewport.left;
     const clipTop = axis === "y" ? Math.max(viewport.top, head?.bottom ?? viewport.top) : viewport.top;
@@ -158,7 +158,7 @@ export function startGridReorder(event: DragStart, options: ReorderOptions): () 
   const edgeScroll = () => {
     if (!active || closed || !inside()) return;
     const rect = bounds();
-    const headerBottom = root.tHead?.getBoundingClientRect().bottom ?? rect.top;
+    const headerBottom = root.querySelector<HTMLElement>("thead th")?.getBoundingClientRect().bottom ?? rect.top;
     const oldLeft = scroll.scrollLeft, oldTop = scroll.scrollTop;
     if (axis === "x") {
       if (pointerX < rect.left + 34) scroll.scrollLeft = Math.max(0, scroll.scrollLeft - 18);

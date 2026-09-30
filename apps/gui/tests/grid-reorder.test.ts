@@ -133,3 +133,12 @@ test('horizontal scrolling adjusts a column destination and refreshes visible co
   expect(document.querySelectorAll('.grid-drag-copy')).toHaveLength(4);
   expect(document.querySelector('.grid-drag-overlay')?.getAttribute('style')).toContain('left: 60px');
 });
+
+
+test('row preview remains below sticky header cells when the thead box scrolls away', () => {
+  const g = grid(); begin(g, 'y', 0, 30, 78, 1000);
+  pointer('pointermove', 30, 180);
+  vi.mocked(g.root.tHead!.getBoundingClientRect).mockImplementation(() => rect(0, -g.scroll.scrollTop, 400, 62));
+  g.scroll.scrollTop = 160; g.scroll.dispatchEvent(new Event('scroll'));
+  expect(document.querySelector('.grid-drag-overlay')?.getAttribute('style')).toContain('top: 62px');
+});

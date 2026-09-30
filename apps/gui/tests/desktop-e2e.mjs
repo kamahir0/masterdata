@@ -383,10 +383,26 @@ try {
         if (!near(copyRect.width, originalRect.width) || !near(copyRect.height, originalRect.height))
           return 'copy changes cell dimensions';
         const clip = overlay.getBoundingClientRect();
-        if (axis === 'y' && clip.top < grid.tHead.getBoundingClientRect().bottom - 0.5)
+        if (axis === 'y' && clip.top < grid.querySelector("thead th").getBoundingClientRect().bottom - 0.5)
           return 'row preview covers sticky header';
         if (axis === 'x' && clip.left < grid.querySelector('thead .row-number').getBoundingClientRect().right - 0.5)
           return 'column preview covers fixed row header';
+        if (axis === 'y') {
+          const scroll = grid.closest('.grid-scroll');
+          const previousStyle = scroll.getAttribute('style');
+          const previousTop = scroll.scrollTop;
+          try {
+            scroll.style.height = '90px'; scroll.style.flex = 'none'; scroll.scrollTop = 32;
+            scroll.dispatchEvent(new Event('scroll'));
+            if (scroll.scrollTop === 0) return 'sticky clip scroll test did not scroll';
+            const stickyBottom = grid.querySelector('thead th').getBoundingClientRect().bottom;
+            if (overlay.getBoundingClientRect().top < stickyBottom - 0.5)
+              return 'scrolled row preview covers sticky header';
+          } finally {
+            if (previousStyle === null) scroll.removeAttribute('style'); else scroll.setAttribute('style', previousStyle);
+            scroll.scrollTop = previousTop; scroll.dispatchEvent(new Event('scroll'));
+          }
+        }
         if (!near(target.getBoundingClientRect().height, rect.height)) return 'preview changes layout';
         if (grid.querySelector('.drop-before, .drop-after, .drop-row-before, .drop-row-after'))
           return 'obsolete insertion marker';

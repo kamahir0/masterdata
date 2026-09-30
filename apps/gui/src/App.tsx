@@ -3228,9 +3228,15 @@ function startPointerReorder(event: ReactPointerEvent<HTMLElement>, options: {
     if (!target || !root.contains(target)) { destination = null; return; }
     const rect = target.getBoundingClientRect();
     const before = axis === "x" ? pointerX < rect.left + rect.width / 2 : pointerY < rect.top + rect.height / 2;
-    target.classList.add(before ? beforeClass : afterClass);
-    marker = target;
-    destination = { target, before };
+    // One gap has one owner, so crossing the shared edge cannot shift its marker.
+    // EVIDENCE: GUI-UNIFIED-008, docs/gui/data-editor/grid-authoring.md.
+    const items = Array.from(root.querySelectorAll<HTMLElement>(selector));
+    const next = before ? null : items[items.indexOf(target) + 1];
+    const boundaryTarget = next ?? target;
+    const boundaryBefore = before || Boolean(next);
+    boundaryTarget.classList.add(boundaryBefore ? beforeClass : afterClass);
+    marker = boundaryTarget;
+    destination = { target: boundaryTarget, before: boundaryBefore };
   };
   const edgeScroll = () => {
     if (!active || !scroll) return;
@@ -3318,7 +3324,7 @@ function ColumnHeader({ field, table, fieldTypes, fieldIndex, fieldCount, nextFi
     if (next && next !== field.name) void run({ operation: "rename", table, field: field.name, newName: next });
     else setName(field.name);
   };
-  return <div className="unified-column-header" data-column-index={fieldIndex}
+  return <div className="unified-column-header"
     onContextMenu={event => { if ((event.target as HTMLElement).closest(".column-menu")) return; event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".column-menu")?.click(); }}
     onKeyDown={event => { if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
       event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".column-menu")?.click(); }}
@@ -3330,7 +3336,7 @@ function ColumnHeader({ field, table, fieldTypes, fieldIndex, fieldCount, nextFi
           const root = event.currentTarget.closest("table");
           if (!root) return;
           pointerCleanup.current?.();
-          pointerCleanup.current = startPointerReorder(event, { root, selector: ".unified-column-header", axis: "x",
+          pointerCleanup.current = startPointerReorder(event, { root, selector: "thead th[data-column-index]", axis: "x",
             beforeClass: "drop-before", afterClass: "drop-after", onDrop: (target, before) => {
               const targetIndex = Number(target.dataset.columnIndex);
               let destination = targetIndex + (before ? 0 : 1);
@@ -4086,7 +4092,7 @@ function DataEditor({
               <tr>
                 <th className="row-number">#</th>
                 {editor.snapshot.columns.map((column, fieldIndex) => (
-                  <th key={column.name}>
+                  <th key={column.name} data-column-index={fieldIndex}>
                     {tableContext?.schema.schema.fields.find(field => field.name === column.name)
                       ? <ColumnHeader field={tableContext.schema.schema.fields.find(field => field.name === column.name)!}
                           table={tableContext.table} fieldTypes={tableContext.schema.fieldTypes} fieldIndex={fieldIndex} fieldCount={editor.snapshot.columns.length} nextField={editor.snapshot.columns[fieldIndex + 1]?.name}

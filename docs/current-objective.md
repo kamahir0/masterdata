@@ -6,20 +6,19 @@
 
 ## Objective
 
-**Unified Table EditorのGrid Spatial Authoringを仕上げる。長大・横長Tableでrow / column contextを保ち、Column / Record Row / Array Itemの順序を直接操作できるようにする。position-relativeなInsert / Move / Removeをcontextual actionとして揃え、pointerとkeyboardから到達可能にする。**
+**Unified Table EditorのColumn / Record Row drag挿入線を整え、移動先の境界を一意に認識できるようにする。**
 
 ## Completion slices
 
-- Desktopでlong / wide / empty gridを観察し、spatial friction inventoryを作る。
-- sticky header / row identityと、長いgridでのAdd Row到達性を整える。
-- Column / Array Itemのdrag reorderとkeyboard fallback、Columnのposition-relative Insertを実装する。
-- source-order Record Rowのreorder / position-relative Insertをshared source-preserving authoringとして仕様化・実装し、filter / sort時は安全に制限する。
-- source-local history / Save、focus、virtualization、clipboard / range selectionを維持し、focused regression、Desktop Golden Paths、repository check、required CIで検証する。
+- 現行実装とMasterData-Legacyを比較し、挿入線の位置・範囲を仕様へ反映する。
+- Column / Record Rowの挿入線を修正し、既存mutation、history、focus、sticky / virtualizationを維持する。
+- focused regression、画面確認、repository check、required CIで検証する。
 
 ## Canonical requirements
 
-- [Table / Keys](specs/table-and-keys.md)、[Source Record Mutation](specs/source-record-mutation.md)、[Field Declaration Mutation](specs/field-declaration-mutation.md)、[Unified Table Editor](gui/table-editor/spec.md)、[Data Editor](gui/data-editor/spec.md)、[Grid Authoring](gui/data-editor/grid-authoring.md)、[Record Mutation](gui/data-editor/record-mutation.md)
+- [Unified Table Editor](gui/table-editor/spec.md) `GUI-UNIFIED-008`
+- [Grid Authoring](gui/data-editor/grid-authoring.md) `GUI-GRID-007`
 
 ## Explicit non-scope
 
-- 0044 Save、0042 scalar semantics、0045 Complex Value commit model、Search / Filter / Sort UI、record source間move、PK / SKとMessagePack key、Explorer、Source Creation、Settings / Delivery、visual themeの再設計。
+- Array item drag、shared source mutation、Save、Search / Filter / Sort、visual themeの再設計。

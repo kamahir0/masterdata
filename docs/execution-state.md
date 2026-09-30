@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: d14fc72120972b2652cdb2d34aaf93d4e783e8ca
-Work base: 0d7a26c36a43adca22a740d48088ae686c151f9b
+Stage: implementation-ready
+Candidate: none
+Work base: f9bb1d071f3779ebed8b215be738a93645d4c9f3
 
 ## Active work
 
-None.
+In progress: GUI-UNIFIED-008 / GUI-GRID-007 drag挿入境界の実装・検証。
 
 ## Blocking findings
 

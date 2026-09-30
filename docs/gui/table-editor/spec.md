@@ -60,6 +60,8 @@ Key、Reference、MessagePack key、低頻度metadataは補助面へprogressivel
 
 column handleからのdrag/dropとheader context menuからのMove Left/Rightは`FIELD-DECL-011`の同じschema draft順序変更へ結び付ける（MUST）。Insert Left/Rightは対象fieldに対する位置指定をshared Application/Coreへ渡し、既存AddField Migrationの安全境界で実行する（MUST）。keyboard context entryを提供し、dragを唯一の経路にしてはならない（MUST NOT）。通常の末尾`+`、inline rename、type、Nullable、Arrayは維持する。drop cancel / same-positionはno-op。
 
+column dragの挿入線は各隣接column間で単一の境界位置を示し、境界のどちら側からpointerを近づけても同じ位置に表示する。縦線はfield定義header cellの上端から下端まで一致させ、padding内のcontent幅/高さへ縮めない。線はlayoutを動かさずpointer hit testingを妨げない。
+
 ## Adapter boundary
 
 Tauri frontendはschema Plan derivation、YAML patch、dependency resolution、lost-update preflight、rollbackを実装してはならない（MUST NOT）。shared Native Application ServiceをTauri command経由で呼び、frontendはTable contextとserialized intent / resultを扱う。complex value、record mutationも既存shared Application boundaryに従う。

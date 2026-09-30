@@ -350,6 +350,54 @@ try {
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));
 
+  // Validate the rendered marker geometry in WebKit, including header padding.
+  const dropMarkers = await execute(`
+    const grid = document.querySelector('.record-grid');
+    const column = grid?.querySelector('thead th[data-column-index]');
+    const row = grid?.querySelector('tr[data-grid-row-index]');
+    if (!column || !row) return 'missing drag targets';
+    const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
+    const pointer = (target, type, x, y) => target.dispatchEvent(new PointerEvent(type,
+      { bubbles: true, button: 0, pointerId: 47, clientX: x, clientY: y }));
+    for (const [target, handle, axis, beforeClass, afterClass] of [
+      [column, '.column-grab', 'x', 'drop-before', 'drop-after'],
+      [row, '.row-grab', 'y', 'drop-row-before', 'drop-row-after'],
+    ]) {
+      const rect = target.getBoundingClientRect();
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+      for (const before of [true, false]) {
+        pointer(target.querySelector(handle), 'pointerdown', x, y);
+        try {
+          pointer(window, 'pointermove', axis === 'x' ? (before ? rect.left + 1 : rect.right - 2) : x,
+            axis === 'y' ? (before ? rect.top + 1 : rect.bottom - 2) : y);
+          const targets = [...grid.querySelectorAll(axis === 'x' ? 'thead th[data-column-index]' : 'tr[data-grid-row-index]')];
+          const expected = before ? target : (targets[targets.indexOf(target) + 1] ?? target);
+          const marker = grid.querySelector('.' + beforeClass + ', .' + afterClass);
+          if (marker !== expected) return 'incorrect insertion boundary';
+          const cells = axis === 'x' ? [marker] : [...marker.children];
+          for (const cell of cells) {
+            const style = getComputedStyle(cell, '::after');
+            const cellRect = cell.getBoundingClientRect();
+            if (style.content !== '""' || style.pointerEvents !== 'none') return 'marker blocks hit testing';
+            if (axis === 'x' && (!near(parseFloat(style.height), cellRect.height) ||
+                !near(parseFloat(style.top), 0))) return 'column marker does not span header height';
+            if (axis === 'y' && (!near(parseFloat(style.width), cellRect.width) ||
+                !near(parseFloat(style.height), 2))) return 'row marker does not span cell width';
+          }
+          if (!near(target.getBoundingClientRect().height, rect.height)) return 'marker shifts layout';
+        } finally {
+          pointer(window, 'pointercancel', x, y);
+        }
+        if (grid.querySelector('.' + beforeClass + ', .' + afterClass)) return 'marker survives cancel';
+      }
+    }
+    return 'pass';
+  `);
+  if (!dropMarkers.ok || dropMarkers.value !== 'pass') {
+    throw new Error('drag insertion marker geometry failed: ' + JSON.stringify(dropMarkers));
+  }
+  record('drag-insertion-marker-geometry-and-cancel-verified');
+
   await click("//*[@aria-label='Project menu']");
   await click("//*[@role='menuitem' and normalize-space(.)='Project Settings']");
   await waitElement("//section[@aria-label='Project Settings']");

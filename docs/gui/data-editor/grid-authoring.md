@@ -44,7 +44,9 @@ selection範囲、対象件数、read-only理由、preview失効、履歴有無�
 
 source-order viewではrow header handleからselected physical source内のrecord occurrenceをdrag reorderし、row contextからInsert Above/Below、Move Up/Down、Deleteへkeyboard/pointerで到達できなければならない（MUST）。search/filter/sortがactiveなviewではvisible adjacencyをsource位置へ推測せず、position mutationをdisabled reason付きで停止する（MUST）。Pending delete occurrenceはposition actionの対象にしない。Insertは既存Added Row shapeを使用し、1操作のhistoryにする。dragはdrop時のみhistoryへ入り、cancel/no-opでは増やさない。移動/追加したoccurrenceへのfocus、Problems navigation、virtualization、selection、clipboardを維持する。
 
-record row dragの挿入線は各隣接record間で単一の境界位置を示し、境界のどちら側からpointerを近づけても同じ位置に表示する。横線はrow headerから最終cellまでのgrid幅を維持し、layoutを動かさずpointer hit testingを妨げない。
+record row drag中はrow headerとcellsが一体で縦方向のpointer移動へ追従し、通過したrowが滑らかに移動先を空ける。挿入線を使用しない。固定row height / bounded renderingを維持し、縦scrollで描画windowを跨いでも同じoccurrenceのdragを継続する。previewはsticky header下のgrid viewportへclipし、layout寸法を維持する。
+
+Column / Record Row共通で、pointercancel / Escape / window blur / grid外drop / context失効はpreviewを破棄する。previewはmutation/historyやsourceを書き換えず、pointer hit testing / assistive technologyへ重複controlを追加しない。reduced motion設定時は周囲の補間animationを抑える。
 
 Array item handleのdrag/dropは0045の一つのcomplex value operationへ変換し、one Undo unitとする（MUST）。既存item menuのMove Up/Down/Removeをkeyboard fallbackとして維持する。nested sequence identity、diagnostic path、focusは移動したitemへ追従しなければならない（MUST）。
 

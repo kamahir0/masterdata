@@ -1,5 +1,6 @@
+import { startGridReorder } from "./grid-reorder";
 import TypeEditor from "./TypeEditor";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, ConfigProvider, Dropdown, Empty, Input, Modal, Popover, Select, Tabs, Tag, theme as antdTheme } from "antd";
 import { ArrowRight, ChevronDown, ChevronsUp, Database, FilePlus2, FolderOpen, FolderPlus, GripVertical, MoreHorizontal, RefreshCw, Search, Settings, X } from "lucide-react";
 import TableEditor, { type MigrationResult } from "./TableEditor";
@@ -3200,86 +3201,6 @@ type GridRange = {
 const GRID_ROW_HEIGHT = 32;
 const GRID_OVERSCAN = 12;
 
-function startPointerReorder(event: ReactPointerEvent<HTMLElement>, options: {
-  root: HTMLElement;
-  selector: string;
-  axis: "x" | "y";
-  beforeClass: string;
-  afterClass: string;
-  onDrop: (target: HTMLElement, before: boolean) => void;
-}): () => void {
-  const { root, selector, axis, beforeClass, afterClass, onDrop } = options;
-  const scroll = root.closest<HTMLElement>(".grid-scroll");
-  const pointerId = event.pointerId;
-  const startX = event.clientX;
-  const startY = event.clientY;
-  let active = false;
-  let pointerX = startX;
-  let pointerY = startY;
-  let marker: HTMLElement | null = null;
-  let destination: { target: HTMLElement; before: boolean } | null = null;
-  const clearMarker = () => {
-    marker?.classList.remove(beforeClass, afterClass);
-    marker = null;
-  };
-  const locate = () => {
-    const target = document.elementFromPoint(pointerX, pointerY)?.closest<HTMLElement>(selector);
-    clearMarker();
-    if (!target || !root.contains(target)) { destination = null; return; }
-    const rect = target.getBoundingClientRect();
-    const before = axis === "x" ? pointerX < rect.left + rect.width / 2 : pointerY < rect.top + rect.height / 2;
-    // One gap has one owner, so crossing the shared edge cannot shift its marker.
-    // EVIDENCE: GUI-UNIFIED-008, docs/gui/data-editor/grid-authoring.md.
-    const items = Array.from(root.querySelectorAll<HTMLElement>(selector));
-    const next = before ? null : items[items.indexOf(target) + 1];
-    const boundaryTarget = next ?? target;
-    const boundaryBefore = before || Boolean(next);
-    boundaryTarget.classList.add(boundaryBefore ? beforeClass : afterClass);
-    marker = boundaryTarget;
-    destination = { target: boundaryTarget, before: boundaryBefore };
-  };
-  const edgeScroll = () => {
-    if (!active || !scroll) return;
-    const rect = scroll.getBoundingClientRect();
-    if (axis === "x") {
-      if (pointerX < rect.left + 34) scroll.scrollLeft -= 18;
-      else if (pointerX > rect.right - 34) scroll.scrollLeft += 18;
-    } else {
-      if (pointerY < rect.top + 34) scroll.scrollTop -= 18;
-      else if (pointerY > rect.bottom - 34) scroll.scrollTop += 18;
-    }
-    locate();
-  };
-  const timer = window.setInterval(edgeScroll, 30);
-  const cleanup = () => {
-    window.clearInterval(timer);
-    window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", up);
-    window.removeEventListener("pointercancel", cancel);
-    clearMarker();
-  };
-  const move = (pointer: PointerEvent) => {
-    if (pointer.pointerId !== pointerId) return;
-    pointerX = pointer.clientX;
-    pointerY = pointer.clientY;
-    if (!active && Math.hypot(pointerX - startX, pointerY - startY) < 5) return;
-    active = true;
-    locate();
-  };
-  const up = (pointer: PointerEvent) => {
-    if (pointer.pointerId !== pointerId) return;
-    if (active) pointer.preventDefault();
-    const result = active ? destination : null;
-    cleanup();
-    if (result) onDrop(result.target, result.before);
-  };
-  const cancel = (pointer: PointerEvent) => { if (pointer.pointerId === pointerId) cleanup(); };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
-  window.addEventListener("pointercancel", cancel);
-  return cleanup;
-}
-
 type DataEditorUiState = {
   selectedRange: GridRange | null;
   batchText: string;
@@ -3309,6 +3230,7 @@ function ColumnHeader({ field, table, fieldTypes, fieldIndex, fieldCount, nextFi
   const [busy, setBusy] = useState(false);
   const pointerCleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => pointerCleanup.current?.(), []);
+  useEffect(() => { pointerCleanup.current?.(); }, [disabled, fieldIndex, fieldCount, field, table]);
   const cancelBlur = useRef(false);
   useEffect(() => { setName(field.name); setError(null); }, [field.name]);
   const run = async (intent: ColumnIntent) => {
@@ -3336,13 +3258,8 @@ function ColumnHeader({ field, table, fieldTypes, fieldIndex, fieldCount, nextFi
           const root = event.currentTarget.closest("table");
           if (!root) return;
           pointerCleanup.current?.();
-          pointerCleanup.current = startPointerReorder(event, { root, selector: "thead th[data-column-index]", axis: "x",
-            beforeClass: "drop-before", afterClass: "drop-after", onDrop: (target, before) => {
-              const targetIndex = Number(target.dataset.columnIndex);
-              let destination = targetIndex + (before ? 0 : 1);
-              if (fieldIndex < destination) destination--;
-              if (destination !== fieldIndex) void run({ operation: "reorder", table, field: field.name, newIndex: destination });
-            } });
+          pointerCleanup.current = startGridReorder(event, { root, axis: "x", sourceIndex: fieldIndex, itemCount: fieldCount,
+            onDrop: destination => { void run({ operation: "reorder", table, field: field.name, newIndex: destination }); } });
         }}><GripVertical size={13} /></button>
       <Dropdown trigger={["click", "contextMenu"]} menu={{ items: [
         { key: "insert-left", label: "Insert column left", disabled, onClick: () => void run({ operation: "add_default", table, beforeField: field.name }) },
@@ -3393,7 +3310,7 @@ function EmptyTableSurface({ context, disabled, onIntent, onUndoSchema, onCreate
     {detailsOpen && details}
     <div className="grid-scroll"><table className="record-grid" role="grid" aria-rowcount={1} aria-colcount={context.schema.schema.fields.length + 2}>
       <thead><tr><th className="row-number">#</th>
-        {context.schema.schema.fields.map((field, fieldIndex) => <th key={field.name}><ColumnHeader field={field} table={context.table} fieldIndex={fieldIndex} fieldCount={context.schema.schema.fields.length} nextField={context.schema.schema.fields[fieldIndex + 1]?.name}
+        {context.schema.schema.fields.map((field, fieldIndex) => <th key={field.name} data-column-index={fieldIndex}><ColumnHeader field={field} table={context.table} fieldIndex={fieldIndex} fieldCount={context.schema.schema.fields.length} nextField={context.schema.schema.fields[fieldIndex + 1]?.name}
           fieldTypes={context.schema.fieldTypes} disabled={disabled} onIntent={onIntent} onUndoSchema={onUndoSchema} /></th>)}
         <th className="tag-column"><Button type="text" size="small" aria-label="Add column" disabled={disabled}
           onClick={() => void onIntent({ operation: "add_default", table: context.table }).catch(cause => setError(asApiError(cause).diagnostic.message))}>＋</Button></th>
@@ -3558,6 +3475,7 @@ function DataEditor({
     : localOrder.flatMap(toGridRow);
   }, [queryOrder, rowsByRecordIndex, draftsById, editor.snapshot.rows, editor.pendingDeletes, editor.addedRecords, editor.rowOrder]);
   const rowPositionEnabled = !mutationBlocked && !editor.saving && !editor.queryResult && editor.pendingDeletes.length === 0;
+  useEffect(() => { rowPointerCleanup.current?.(); }, [editor.snapshot.baseContentIdentity, editor.rowOrder, gridRows, rowPositionEnabled, editor.view]);
   const rowPositionReason = editor.queryResult ? "Clear search, filter, or sort to edit source row positions." : editor.pendingDeletes.length ? "Undo or save pending deletions before moving rows." : "Row positions are unavailable while source changes are blocked.";
   const refForRow = (row: GridRow): EditorRowRef => row.kind === "existing"
     ? { kind: "existing", recordIndex: row.recordIndex }
@@ -4125,12 +4043,8 @@ function DataEditor({
                         const root = event.currentTarget.closest("table");
                         if (!root) return;
                         rowPointerCleanup.current?.();
-                        rowPointerCleanup.current = startPointerReorder(event, { root, selector: "tr[data-grid-row-index]", axis: "y",
-                          beforeClass: "drop-row-before", afterClass: "drop-row-after", onDrop: (target, before) => {
-                            let destination = Number(target.dataset.gridRowIndex) + (before ? 0 : 1);
-                            if (gridRowIndex < destination) destination--;
-                            if (destination !== gridRowIndex) moveGridRow(gridRow, destination);
-                          } });
+                        rowPointerCleanup.current = startGridReorder(event, { root, axis: "y", sourceIndex: gridRowIndex,
+                          itemCount: gridRows.length, rowHeight: GRID_ROW_HEIGHT, onDrop: destination => moveGridRow(gridRow, destination) });
                       }}><GripVertical size={12} /></button>
                     <span title={gridRow.kind === "existing" && gridRow.pendingDelete ? "Pending delete" : gridRow.kind === "added" ? "New draft" : `Source occurrence ${gridRow.recordIndex + 1}`}>{gridRow.kind === "added" ? "+" : gridRowIndex + 1}</span>
                     <Dropdown menu={{ items: [
@@ -4176,7 +4090,7 @@ function DataEditor({
                     const isEditing = editingCell?.key === key;
                     const label = `${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`;
                     return (
-                      <td key={column.name} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
+                      <td key={column.name} data-column-index={columnIndex} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
                         <Popover open={Boolean(isEditing && complex)} trigger={["click"]} onOpenChange={(open) => { if (!open && isEditing) finishCellEdit(false, undefined, undefined, false); }}
                           afterOpenChange={(open) => {
                             if (!open || !isEditing) return;

@@ -553,13 +553,6 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .row-grab:active { cursor: grabbing; }
 .row-grab:disabled { opacity: .35; cursor: not-allowed; }
 .row-grab:focus-visible { outline: 2px solid var(--accent); }
-.record-grid tbody tr.drop-row-before td, .record-grid tbody tr.drop-row-after td { position: relative; }
-.record-grid tbody tr.drop-row-before > th::after, .record-grid tbody tr.drop-row-before > td::after,
-.record-grid tbody tr.drop-row-after > th::after, .record-grid tbody tr.drop-row-after > td::after {
-  content: ""; position: absolute; left: 0; right: -1px; height: 2px; background: var(--accent); pointer-events: none; z-index: 1;
-}
-.record-grid tbody tr.drop-row-before > th::after, .record-grid tbody tr.drop-row-before > td::after { top: -1px; }
-.record-grid tbody tr.drop-row-after > th::after, .record-grid tbody tr.drop-row-after > td::after { bottom: -2px; }
 .add-record-inline.ant-btn { position: sticky; bottom: 0; left: 0; z-index: 2; padding-left: 76px; background: var(--panel); border-top: 1px solid var(--border); }
 .array-item-grab { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: grab; }
 .array-item-grab:active { cursor: grabbing; }
@@ -574,11 +567,6 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 .column-grab { cursor: grab; }
 .column-grab:active { cursor: grabbing; }
 .column-grab:focus-visible { outline: 2px solid var(--accent); }
-.record-grid thead th.drop-before::after, .record-grid thead th.drop-after::after {
-  content: ""; position: absolute; top: 0; bottom: -1px; width: 2px; background: var(--accent); pointer-events: none; z-index: 2;
-}
-.record-grid thead th.drop-before::after { left: -1px; }
-.record-grid thead th.drop-after::after { right: -2px; }
 .unified-column-name { width: 100%; min-width: 0; padding: 1px 2px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 3px; font: inherit; font-weight: 650; }
 .unified-column-name:hover, .unified-column-name:focus { border-color: var(--accent); outline: none; }
 .unified-column-type-row { display: flex; align-items: center; gap: 2px; }
@@ -713,3 +701,17 @@ button.danger { border-color: #8b4853; color: #ffc5cb; background: #40242b; }
 [data-theme="light"] .value-editor legend { color: var(--text); }
 [data-theme="light"] .read-only-value output, [data-theme="light"] .unmaterialized-value > output { color: var(--text); }
 [data-theme="light"] .complex-cell-popover .ant-popover-inner, [data-theme="light"] .tags-cell-popover .ant-popover-inner { background: #ffffff; }
+
+/* The source slot remains in layout; only the visual permutation moves. */
+.column-grab, .row-grab { touch-action: none; user-select: none; }
+.grid-reordering { user-select: none; cursor: grabbing; }
+.grid-reorder-item { transition: transform 150ms ease-out; will-change: transform; }
+.grid-drag-source { visibility: hidden; }
+.grid-drag-overlay { position: fixed; z-index: 8; overflow: hidden; pointer-events: none; }
+.grid-drag-ghost { position: absolute; inset: 0; pointer-events: none; }
+.grid-drag-copy { position: absolute; min-width: 0; margin: 0; background: var(--panel); pointer-events: none; box-shadow: 0 3px 12px #0005; outline: 1px solid var(--accent); }
+.grid-drag-copy th, .grid-drag-copy td, .grid-drag-copy .row-number { position: static !important; visibility: visible; }
+.grid-drag-copy .unified-column-actions { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .grid-reorder-item { transition: none; }
+}

@@ -6,12 +6,12 @@
 
 ## Objective
 
-**Unified Table EditorのColumn / Record Row drag挿入線を整え、移動先の境界を一意に認識できるようにする。**
+**Unified Table EditorのColumn / Record Rowがdragへ追従し、周囲が移動先を空ける並べ替え表示を実装する。**
 
 ## Completion slices
 
-- 現行実装とMasterData-Legacyを比較し、挿入線の位置・範囲を仕様へ反映する。
-- Column / Record Rowの挿入線を修正し、既存mutation、history、focus、sticky / virtualizationを維持する。
+- drag previewのobservable behaviorを仕様へ反映する。
+- Column / Record Rowのpreviewを実装し、既存mutation、history、focus、sticky / virtualizationを維持する。
 - focused regression、画面確認、repository check、required CIで検証する。
 
 ## Canonical requirements

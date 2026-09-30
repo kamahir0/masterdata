@@ -350,56 +350,56 @@ try {
   await waitFileContains(dataFile, "1001", 30_000);
   record("record-edited-and-saved-through-gui", path.relative(projectRoot, dataFile));
 
-  // Validate the rendered marker geometry in WebKit, including header padding.
-  const dropMarkers = await execute(`
+  // Real WebKit geometry: the visual copy follows the pointer, stays clipped,
+  // preserves layout and exposes no duplicate controls to hit testing.
+  const dragPreview = await execute(`
     const grid = document.querySelector('.record-grid');
     const column = grid?.querySelector('thead th[data-column-index]');
     const row = grid?.querySelector('tr[data-grid-row-index]');
     if (!column || !row) return 'missing drag targets';
-    const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
+    const near = (a, b) => Math.abs(a - b) < 0.5;
     const pointer = (target, type, x, y) => target.dispatchEvent(new PointerEvent(type,
-      { bubbles: true, button: 0, pointerId: 47, clientX: x, clientY: y }));
-    for (const [target, handle, axis, beforeClass, afterClass] of [
-      [column, '.column-grab', 'x', 'drop-before', 'drop-after'],
-      [row, '.row-grab', 'y', 'drop-row-before', 'drop-row-after'],
-    ]) {
+      { bubbles: true, cancelable: true, button: 0, pointerId: 47, clientX: x, clientY: y }));
+    for (const [target, handle, axis] of [[column, '.column-grab', 'x'], [row, '.row-grab', 'y']]) {
       const rect = target.getBoundingClientRect();
       const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-      for (const before of [true, false]) {
-        pointer(target.querySelector(handle), 'pointerdown', x, y);
-        try {
-          pointer(window, 'pointermove', axis === 'x' ? (before ? rect.left + 1 : rect.right - 2) : x,
-            axis === 'y' ? (before ? rect.top + 1 : rect.bottom - 2) : y);
-          const targets = [...grid.querySelectorAll(axis === 'x' ? 'thead th[data-column-index]' : 'tr[data-grid-row-index]')];
-          const expected = before ? target : (targets[targets.indexOf(target) + 1] ?? target);
-          const marker = grid.querySelector('.' + beforeClass + ', .' + afterClass);
-          if (marker !== expected) return 'incorrect insertion boundary';
-          const cells = axis === 'x' ? [marker] : [...marker.children];
-          for (const cell of cells) {
-            const style = getComputedStyle(cell, '::after');
-            const cellRect = cell.getBoundingClientRect();
-            if (style.content !== '""' || style.pointerEvents !== 'none') return 'marker blocks hit testing';
-            const actions = cell.querySelector('.unified-column-actions');
-            if (axis === 'x' && actions && !(Number(style.zIndex) > Number(getComputedStyle(actions).zIndex)))
-              return 'column marker is behind header actions';
-            if (axis === 'x' && (!near(parseFloat(style.height), cellRect.height) ||
-                !near(parseFloat(style.top), 0))) return 'column marker does not span header height';
-            if (axis === 'y' && (!near(parseFloat(style.width), cellRect.width) ||
-                !near(parseFloat(style.height), 2))) return 'row marker does not span cell width';
-          }
-          if (!near(target.getBoundingClientRect().height, rect.height)) return 'marker shifts layout';
-        } finally {
-          pointer(window, 'pointercancel', x, y);
-        }
-        if (grid.querySelector('.' + beforeClass + ', .' + afterClass)) return 'marker survives cancel';
-      }
+      pointer(target.querySelector(handle), 'pointerdown', x, y);
+      try {
+        pointer(window, 'pointermove', x + (axis === 'x' ? 10 : 0), y + (axis === 'y' ? 10 : 0));
+        const overlay = document.querySelector('.grid-drag-overlay');
+        const ghost = overlay?.querySelector('.grid-drag-ghost');
+        if (!ghost || overlay.getAttribute('aria-hidden') !== 'true' || !overlay.inert)
+          return 'missing noninteractive preview';
+        if (getComputedStyle(overlay).pointerEvents !== 'none' || getComputedStyle(overlay).overflow !== 'hidden')
+          return 'preview blocks pointer or escapes viewport';
+        const transform = new DOMMatrix(getComputedStyle(ghost).transform);
+        if (!near(axis === 'x' ? transform.m41 : transform.m42, 10)) return 'preview does not follow pointer';
+        if (overlay.querySelector('[id], [data-cell], [data-grid-row-index], [data-column-index]'))
+          return 'preview duplicates grid identity';
+        const copy = ghost.querySelector('th, td');
+        const copyRect = copy.getBoundingClientRect();
+        const originalCell = axis === 'x' ? target : target.firstElementChild;
+        const originalRect = originalCell.getBoundingClientRect();
+        if (!near(copyRect.width, originalRect.width) || !near(copyRect.height, originalRect.height))
+          return 'copy changes cell dimensions';
+        const clip = overlay.getBoundingClientRect();
+        if (axis === 'y' && clip.top < grid.tHead.getBoundingClientRect().bottom - 0.5)
+          return 'row preview covers sticky header';
+        if (axis === 'x' && clip.left < grid.querySelector('thead .row-number').getBoundingClientRect().right - 0.5)
+          return 'column preview covers fixed row header';
+        if (!near(target.getBoundingClientRect().height, rect.height)) return 'preview changes layout';
+        if (grid.querySelector('.drop-before, .drop-after, .drop-row-before, .drop-row-after'))
+          return 'obsolete insertion marker';
+      } finally { pointer(window, 'pointercancel', x, y); }
+      if (document.querySelector('.grid-drag-overlay') || grid.querySelector('.grid-reorder-item, .grid-drag-source'))
+        return 'preview survives cancel';
     }
     return 'pass';
   `);
-  if (!dropMarkers.ok || dropMarkers.value !== 'pass') {
-    throw new Error('drag insertion marker geometry failed: ' + JSON.stringify(dropMarkers));
+  if (!dragPreview.ok || dragPreview.value !== 'pass') {
+    throw new Error('drag preview geometry failed: ' + JSON.stringify(dragPreview));
   }
-  record('drag-insertion-marker-geometry-and-cancel-verified');
+  record('drag-follow-preview-geometry-and-cancel-verified');
 
   await click("//*[@aria-label='Project menu']");
   await click("//*[@role='menuitem' and normalize-space(.)='Project Settings']");

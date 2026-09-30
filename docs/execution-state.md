@@ -1,12 +1,13 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: 4a3746be449bdc6e92aa8a1f47442496c382a269
 Work base: a228d2b15ca1844c3fb9c4aa728c28cdca6bb61d
 
 ## Active work
 
-In progress: GUI-UNIFIED-008 / GUI-GRID-007 drag preview実装。
+Completed: GUI-UNIFIED-008 / GUI-GRID-007 drag preview実装、local check、self-review。
+Remaining: exact Candidateのfresh verification / required remote CI。
 
 ## Blocking findings
 

@@ -1,3 +1,4 @@
+import { installWorkspaceFixture } from "./workspace-fixtures";
 import React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -69,7 +70,7 @@ test("Overview hides a previous Table snapshot while the next Table loads", asyn
   };
   let resolveEnemy!: (value: typeof itemSnapshot) => void;
   const enemyResponse = new Promise<typeof itemSnapshot>((resolve) => { resolveEnemy = resolve; });
-  invoke.mockImplementation((command, args) => command === "table_overview" && args.request.table === "enemy" ? enemyResponse : Promise.resolve(itemSnapshot));
+  installWorkspaceFixture(invoke, (command, args) => command === "table_overview" && args.request.table === "enemy" ? enemyResponse : Promise.resolve(itemSnapshot));
   const props = { active: true, projectRoot: "/project", workspace, dirtySourceCount: 0, dirtyConfig: false, profile: "", onProfileChange: vi.fn(), onNavigate: vi.fn() };
   const { rerender } = render(<ProjectOverviewPanel {...props} table="item" />);
   expect(await screen.findByRole("button", { name: "data.yaml · record 1" })).toBeTruthy();
@@ -84,7 +85,7 @@ test("Settings composes profile and target edits in one file buffer before Save"
   const onRegisterSave = vi.fn();
   const onSaved = vi.fn(async () => true);
   let previewCount = 0;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === "open_project_config") return structuredClone(configSnapshot);
     if (command === "preview_project_config_edit") {
       previewCount += 1;
@@ -171,7 +172,7 @@ test("Settings profile navigation restores the buffered draft instead of the sav
       { name: "staging", include_tags: ["stage"], exclude_tags: [] },
     ],
   };
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === "open_project_config") return snapshot;
     if (command === "preview_project_config_edit") {
       expect(args.request.operation).toBe("update_profile");
@@ -211,7 +212,7 @@ test("Settings profile navigation restores the buffered draft instead of the sav
 
 test("Settings Reload requires explicit discard while a form draft is dirty", async () => {
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === "open_project_config") return structuredClone(configSnapshot);
     throw new Error(`Unexpected command: ${command}`);
   });
@@ -237,7 +238,7 @@ test("Settings Reload requires explicit discard while a form draft is dirty", as
 
 test("Delivery clears an old Build success when the next operation fails", async () => {
   let buildCount = 0;
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === "build") {
       buildCount += 1;
       if (buildCount === 1) {
@@ -271,7 +272,7 @@ test("Delivery clears an old Build success when the next operation fails", async
 });
 
 test("Delivery retains target-level Publish failure results and expires the old confirmation", async () => {
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === "publish_preview") {
       return {
         artifactSetIdentity: "artifact",
@@ -329,7 +330,7 @@ test("Delivery retains target-level Publish failure results and expires the old 
 });
 
 test("Publish transport failure is shown as unknown and cannot reuse the old confirmation", async () => {
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === "publish_preview") {
       return {
         artifactSetIdentity: "artifact",
@@ -366,7 +367,7 @@ test("Publish transport failure is shown as unknown and cannot reuse the old con
 });
 
 test("Recovery-style Build blocking still leaves Publish-only preview eligible", async () => {
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === "publish_preview") {
       return { artifactSetIdentity: "a", configContentIdentity: "c", publishPlanIdentity: "p", targets: [] };
     }
@@ -398,7 +399,7 @@ test("Recovery-style Build blocking still leaves Publish-only preview eligible",
 test("Delivery shares busy state while a Build is unresolved", async () => {
   let resolveBuild!: (value: unknown) => void;
   const onBusyChange = vi.fn();
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === "build") return new Promise((resolve) => { resolveBuild = resolve; });
     throw new Error(`Unexpected command: ${command}`);
   });
@@ -445,7 +446,7 @@ test("Create Project disables cancellation and edits until shared creation finis
   const onCancel = vi.fn();
   const onCreated = vi.fn();
   let finish!: (result: unknown) => void;
-  invoke.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  installWorkspaceFixture(invoke, () => new Promise(resolve => { finish = resolve; }));
   render(<ProjectCreatePanel active onCreated={onCreated} onCancel={onCancel} />);
   fireEvent.change(screen.getByLabelText('Project destination'), { target: { value: '/new' } });
   fireEvent.change(screen.getByLabelText('New project ID'), { target: { value: 'new' } });

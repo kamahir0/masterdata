@@ -15,7 +15,7 @@ beforeEach(()=>{plan=structuredClone(planned);outcome={state:'success',files:['d
   throw Error(command);
 });});
 afterEach(cleanup);
-async function open(dirtyPaths:string[]=[]) {render(<TableEditor projectPath="/project" path="schema.yaml" canWrite dirtyPaths={dirtyPaths} beginApply={beginApply} onResult={onResult} endApply={endApply}/>);await screen.findByText('note',{selector:'.ant-table-cell'});}
+async function open(dirtyPaths:string[]=[]) {render(<TableEditor initialSnapshot={snapshot as any} projectPath="/project" path="schema.yaml" canWrite dirtyPaths={dirtyPaths} beginApply={beginApply} onResult={onResult} endApply={endApply}/>);await screen.findByText('note',{selector:'.ant-table-cell'});}
 async function rename() {fireEvent.click(screen.getByRole('button',{name:'Actions for field note'}));fireEvent.click(screen.getByRole('menuitem',{name:'Rename Field'}));fireEvent.change(screen.getByLabelText('Field name'),{target:{value:'itemId'}});fireEvent.click(screen.getByRole('button',{name:'Plan / Re-plan'}));await screen.findByRole('region',{name:'Migration Plan'});}
 test('input changes invalidate the reviewed plan and Diff uses its captured source',async()=>{
   await open();await rename();expect(screen.getByText('note: before')).toBeTruthy();
@@ -25,7 +25,7 @@ test('input changes invalidate the reviewed plan and Diff uses its captured sour
 });
 test('record header rename opens the target and Enter prepares a Plan',async()=>{
   const consumed=vi.fn();
-  render(<TableEditor projectPath="/project" path="schema.yaml" canWrite dirtyPaths={[]} beginApply={beginApply} onResult={onResult} endApply={endApply}
+  render(<TableEditor initialSnapshot={snapshot as any} projectPath="/project" path="schema.yaml" canWrite dirtyPaths={[]} beginApply={beginApply} onResult={onResult} endApply={endApply}
     schemaAction={{path:'schema.yaml',operation:'rename',field:'note',serial:1}} onSchemaActionConsumed={consumed}/>);
   const input=await screen.findByRole('textbox',{name:'Field name'});
   expect((input as HTMLInputElement).value).toBe('note');

@@ -7,7 +7,7 @@ export function navigationMark(phase: string, path?: string, ms?: number, comman
   window.__navigationTrace?.push({ phase, path, command, ms, at: performance.now() });
 }
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (!window.__navigationTrace || !["authoring_workspace", "open_data_file", "open_table_context", "open_type", "select_source"].includes(command))
+  if (!window.__navigationTrace || !["open_workspace", "select_source"].includes(command))
     return nativeInvoke<T>(command, args);
   const started = performance.now(); const path = args?.relativePath as string | undefined;
   navigationMark("request-start", path, undefined, command);

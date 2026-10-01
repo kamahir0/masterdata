@@ -1,3 +1,4 @@
+import { installWorkspaceFixture } from "./workspace-fixtures";
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -52,7 +53,7 @@ beforeEach(() => {
   openSnapshot = snapshot();
   preview = async () => ({ candidateSource: 'weight: 20', changed: true, validation });
   invoke.mockReset();
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'load_application_user_state') return {};
     if (command === 'set_theme_preference') return {};
     if (command === 'set_recent_projects') return {};
@@ -120,7 +121,7 @@ test('large record grid mounts only nearby rows and navigates after scrolling', 
 }, 20_000);
 
 test('initial Project-not-found is a Welcome state without an Explorer error', async () => {
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === 'authoring_workspace') throw { diagnostic: { code: 'E-PROJECT-NOT-FOUND', message: 'No project here' } };
     throw new Error(`Unexpected command: ${command}`);
   });
@@ -134,7 +135,7 @@ test('initial Project-not-found is a Welcome state without an Explorer error', a
 
 test('Open Project uses the native directory picker and remembers a successful selection', async () => {
   openDialog.mockResolvedValue('/project');
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'load_application_user_state') return {};
     if (command === 'set_theme_preference') return {};
     if (command === 'set_recent_projects') return {};
@@ -157,7 +158,7 @@ test('Open Project uses the native directory picker and remembers a successful s
 });
 
 test('cancelling the native Project picker leaves the Welcome state unchanged', async () => {
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === 'load_application_user_state') return {};
     if (command === 'set_theme_preference') return {};
     if (command === 'set_recent_projects') return {};
@@ -176,7 +177,7 @@ test('cancelling the native Project picker leaves the Welcome state unchanged', 
 
 test('explicit Project open failure stays on Welcome with a persistent diagnostic', async () => {
   openDialog.mockResolvedValue('/broken');
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'load_application_user_state') return {};
     if (command === 'set_theme_preference') return {};
     if (command === 'set_recent_projects') return {};
@@ -198,7 +199,7 @@ test('explicit Project open failure stays on Welcome with a persistent diagnosti
 
 test('Recent Project removal changes only user-local history', async () => {
   let storedRecent: Array<{ root: string; name: string }> = [{ root: '/recent', name: 'Recent Demo' }];
-  invoke.mockImplementation(async (command, args: any) => {
+  installWorkspaceFixture(invoke, async (command, args: any) => {
     if (command === 'load_application_user_state') return { recentProjects: storedRecent };
     if (command === 'set_recent_projects') {
       storedRecent = args.projects;
@@ -231,7 +232,7 @@ test('late pre-save no-op preview cannot discard a new edit after Save resets re
   fireEvent.change(nextInput, { target: { value: '20' } });
   commit(nextInput);
   await act(async () => resolveOld({ changed: false, candidateSource: 'weight: 10', validation }));
-  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
+  expect(await screen.findByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(screen.getByText('1 dirty')).toBeTruthy();
 });
 
@@ -615,7 +616,7 @@ test('filter options stay out of the default grid and retain their draft when re
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Filter & sort' }));
-  expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+  expect((await screen.findByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
   fireEvent.keyDown(screen.getByRole('textbox', { name: 'Data filter value' }), { key: 'Escape' });
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Filter & sort' }));
@@ -623,7 +624,7 @@ test('filter options stay out of the default grid and retain their draft when re
 
 test('search runs from its input without a second toolbar button', async () => {
   const normal = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'query_data_file') return {
       orderedRecordIndices: [0], totalCount: 1, displayedCount: 1, query: args.request.query,
     };
@@ -652,7 +653,7 @@ test('Data query draft survives visiting a Project area and returning to the sam
   expect(await screen.findByRole('heading', { name: 'Build / Publish' })).toBeTruthy();
   openSourceFiles();
   fireEvent.click(navigation().getByRole('treeitem', { name: 'data.yaml', exact: true }));
-  expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+  expect((await screen.findByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
 });
 
 test('Data query drafts remain file-local when switching between Data documents', async () => {
@@ -661,7 +662,7 @@ test('Data query drafts remain file-local when switching between Data documents'
     { path: 'other.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null },
   ] };
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return multiFileWorkspace;
     if (command === 'open_data_file') return { ...structuredClone(openSnapshot), path: args.relativePath };
     return normalInvoke(command, args);
@@ -673,13 +674,13 @@ test('Data query drafts remain file-local when switching between Data documents'
   expect(await screen.findByRole('gridcell', { name: /record 1 weight:/ })).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: 'Data filter value' })).toBeNull();
   fireEvent.click(navigation().getByRole('treeitem', { name: 'data.yaml', exact: true }));
-  expect((screen.getByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
+  expect((await screen.findByRole('textbox', { name: 'Data filter value' }) as HTMLInputElement).value).toBe('rare');
 });
 
 test('Table context opens Data creation with its Table already selected', async () => {
   const contextWorkspace = { ...workspace, files: [{ ...workspace.files[0], table: 'item', typeName: null }] };
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return contextWorkspace;
     if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: ['item'], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
     return normalInvoke(command, args);
@@ -697,7 +698,7 @@ test('Table Overview follows the selected logical Table rather than the previous
     { path: 'enemy-data.yaml', sourceRoot: '.', kind: 'data', table: 'enemy', typeName: null },
   ] };
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return multiTableWorkspace;
     if (command === 'table_overview') return { status: 'complete', table: args.request.table, columns: [], rows: [], totalCount: 0, selectedCount: 0, displayedCount: 0, configContentIdentity: 'config', sources: [], selection: { profile: null, includeTags: [], excludeTags: [], available: true }, diagnostics: [] };
     return normalInvoke(command, args);
@@ -710,7 +711,7 @@ test('Table Overview follows the selected logical Table rather than the previous
 
 test('empty Project offers a contextual Folder action with a folder-safe name', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return { ...workspace, files: [] };
     if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: [], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
     return normalInvoke(command, args);
@@ -728,8 +729,8 @@ test('Ant Design unsaved dialog Cancel preserves edits and does not reload', asy
   reloadProject();
   expect(await screen.findByRole('dialog')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
-  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
-  expect(invoke.mock.calls.filter(([command]) => command === 'authoring_workspace')).toHaveLength(1);
+  expect(await screen.findByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
+  expect(invoke.mock.calls.filter(([command]) => command === 'open_workspace')).toHaveLength(1);
 });
 
 test('dirty Build invokes only saved-source Build and preserves exact 64-bit input', async () => {
@@ -753,7 +754,7 @@ test('current preview updates the Diff after old snapshot responses are rejected
 
 test('Ant Design Save All dialog preserves input when source commit fails', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => command === 'save_data_file'
+  installWorkspaceFixture(invoke, async (command, args) => command === 'save_data_file'
     ? { status: 'failure', snapshot: null, current: null, diagnostic: { code: 'E-IO', message: 'Cannot write source' } }
     : normalInvoke(command, args));
   const input = await open();
@@ -763,14 +764,14 @@ test('Ant Design Save All dialog preserves input when source commit fails', asyn
   fireEvent.click(await screen.findByRole('button', { name: 'Save All', exact: true }));
   await waitFor(() => expect(screen.getByText('Save failed.')).toBeTruthy());
   expect(screen.getByRole('dialog')).toBeTruthy();
-  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
-  expect(invoke.mock.calls.filter(([command]) => command === 'authoring_workspace')).toHaveLength(1);
+  expect(await screen.findByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
+  expect(invoke.mock.calls.filter(([command]) => command === 'open_workspace')).toHaveLength(1);
 });
 
 test('creation refresh selects the new source without discarding an existing dirty buffer', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
   let created = false;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'creation_context') return { roots: [{ index: 0, label: '/project', folders: [''] }], choices: { fieldTypes: ['int'], tables: ['item'], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
     if (command === 'default_creation_proposal') return { identity: 'weapon', request: { sourceRoot: '.', destination: args.intent.destination, artifact: { category: 'table', table: 'weapon', inlineRecords: true, fields: [{ key: 0, name: 'id', type: 'int' }], primaryKey: { fields: ['id'] } } } };
     if (command === 'create_source') { created = true; return { status: 'success', path: 'weapon.yaml', folder: false, diagnostic: null }; }
@@ -787,13 +788,13 @@ test('creation refresh selects the new source without discarding an existing dir
   await waitFor(() => expect(screen.getByRole('treeitem', { name: 'weapon.yaml', exact: true }).getAttribute('aria-selected')).toBe('true'));
   expect(invoke.mock.calls.some(([command, args]) => command === 'create_source' && args.request.artifact.table === 'weapon')).toBe(true);
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
-  expect(screen.getByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
+  expect(await screen.findByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 test('Explorer Escape cancels inline creation without a source mutation', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'creation_context') return { roots: [{ index: 0, label: '.', folders: [''] }], choices: { fieldTypes: ['int'], tables: [], valueObjectUnderlyings: ['int'], enumUnderlyings: ['int'] } };
     if (command === 'default_creation_proposal') return { identity: 'New', request: { sourceRoot: '.', destination: args.intent.destination, artifact: { category: 'value_object', name: 'New', underlying: 'int', conversions: {} } } };
     return normalInvoke(command, args);
@@ -833,7 +834,7 @@ test('Explorer move refreshes selection and the open data editor at the new path
   let moved = false;
   const movedWorkspace = { ...workspace, files: [{ ...workspace.files[0], path: 'moved.yaml' }] };
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return moved ? movedWorkspace : workspace;
     if (command === 'rename_source_file') {
       expect(args.request).toEqual({ sourcePath: 'data.yaml', destinationPath: 'moved.yaml' });
@@ -853,7 +854,7 @@ test('Explorer move refreshes selection and the open data editor at the new path
   fireEvent.click(screen.getAllByRole('button', { name: 'Move', exact: true }).at(-1)!);
   await waitFor(() => expect(screen.getByRole('treeitem', { name: 'moved.yaml', exact: true })).toBeTruthy());
   expect(screen.queryByRole('treeitem', { name: 'data.yaml', exact: true })).toBeNull();
-  expect(invoke.mock.calls.some(([command, args]) => command === 'open_data_file' && args.relativePath === 'moved.yaml')).toBe(true);
+  expect(invoke.mock.calls.some(([command, args]) => command === 'select_source' && args.relativePath === 'moved.yaml')).toBe(true);
 });
 
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
@@ -872,7 +873,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   let saveResponse: any = { status: 'failure', snapshot: null, current: null, diagnostic: { code: 'E-IO', message: 'Cannot write source' } };
   let sourceResponse = { contentIdentity: 'base', source: openSnapshot.baseSource };
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'save_current_table_context') return { files: [{ path: 'data.yaml', status: saveResponse.status, candidateContentIdentity: 'candidate', current: saveResponse.current, diagnostic: saveResponse.diagnostic }] };
     if (command === 'save_data_file') return saveResponse;
     if (command === 'source_content') return sourceResponse;
@@ -919,7 +920,7 @@ const recoveryRequired = { state:'recovery_required',files:['schema.yaml'],diagn
 test('inline Table file opens record grid and its schema editor in one surface', async () => {
   const normal = invoke.getMockImplementation()!;
   const inlineWorkspace = {...workspace, files: [{path:'schema.yaml',sourceRoot:'.',kind:'schema',table:'item',typeName:null,hasInlineRecords:true}]};
-  invoke.mockImplementation(async (command,args) => {
+  installWorkspaceFixture(invoke, async (command,args) => {
     if (command === 'authoring_workspace') return inlineWorkspace;
     if (command === 'open_table') return tableSnapshot;
     if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n', recordSources: [{ path: 'schema.yaml', inline: true }], selectedRecordSource: 'schema.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
@@ -934,7 +935,7 @@ test('inline Table file opens record grid and its schema editor in one surface',
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('split Data file exposes its Table schema without leaving the record grid', async () => {
   const normal = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command,args) => {
+  installWorkspaceFixture(invoke, async (command,args) => {
     if (command === 'authoring_workspace') return tableWorkspace;
     if (command === 'open_table') return tableSnapshot;
     if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n', recordSources: [{ path: 'data.yaml', inline: false }, { path: 'other.yaml', inline: false }], selectedRecordSource: args?.relativePath === 'other.yaml' ? 'other.yaml' : 'data.yaml', schema: { ...tableSnapshot, schema: { ...tableSnapshot.schema, fields: [{ key: 1, name: 'weight', type: 'ulong', nullable: false, array: false }] }, fieldTypes: ['ulong', 'string'] } };
@@ -949,7 +950,7 @@ test('split Data file exposes its Table schema without leaving the record grid',
 test('Column pointer drag changes declaration order and retains keyboard context actions', async () => {
   const normal = invoke.getMockImplementation()!;
   openSnapshot = mutationSnapshot() as any;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'open_table_context') return {
       table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\n',
       recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml',
@@ -994,7 +995,7 @@ test('Column pointer drag changes declaration order and retains keyboard context
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('switching record files restores each file selection without mixing grid state', async () => {
   const normal = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return tableWorkspace;
     if (command === 'open_data_file') return { ...mutationSnapshot(), path: args.relativePath };
     if (command === 'open_table_context') return {
@@ -1021,7 +1022,7 @@ test('mixed Table Save composes dirty inline records with the selected separate 
     { path: 'data.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null, hasInlineRecords: false },
     { path: 'schema.yaml', sourceRoot: '.', kind: 'schema', table: 'item', typeName: null, hasInlineRecords: true },
   ] };
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_workspace') return mixedWorkspace;
     if (command === 'open_table_context') return {
       table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: 'schema-base', schemaSource: 'kind: schema\ntable: item\nrecords:\n  - weight: 10\n',
@@ -1073,7 +1074,7 @@ test('column header commits rename and modifier through one safe intent without 
   const normal = invoke.getMockImplementation()!;
   let field = { key: 0, name: 'weight', type: 'ulong', nullable: false, array: false };
   const intents: any[] = [];
-  invoke.mockImplementation(async (command,args) => {
+  installWorkspaceFixture(invoke, async (command,args) => {
     if (command === 'open_table_context') return { table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: field.name === 'weight' ? 'schema-base' : 'schema-renamed', schemaSource: `kind: schema\ntable: item\n# ${field.name}\n`, recordSources: [{ path: 'data.yaml', inline: false }], selectedRecordSource: 'data.yaml', schema: { path: 'schema.yaml', schema: { table: 'item', fields: [field], primaryKey: { fields: [] }, secondaryKeys: [] }, fieldTypes: ['ulong', 'string'] } };
     if (command === 'apply_table_intent') {
       intents.push(args.input);
@@ -1102,7 +1103,7 @@ test('column header commits rename and modifier through one safe intent without 
 test('schema and record drafts save through one current Table command', async () => {
   const normal = invoke.getMockImplementation()!;
   let saved = false;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'open_table_context') return {
       table: 'item', schemaPath: 'schema.yaml', schemaContentIdentity: saved ? 'schema-new' : 'schema-base',
       schemaSource: saved ? 'kind: schema\ntable: item\n# saved\n' : 'kind: schema\ntable: item\n',
@@ -1143,14 +1144,14 @@ test('schema and record drafts save through one current Table command', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
   await waitFor(() => expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')?.[1].request.schemaDraft.fields[0].nullable).toBe(true));
   expect(invoke.mock.calls.find(([command]) => command === 'save_current_table_context')?.[1].request.recordDraft.mutation.edits).toMatchObject([{ field: 'weight', value: { kind: 'number', value: '20' } }]);
-  await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === 'open_data_file').length).toBeGreaterThan(1));
+  await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === 'select_source').length).toBeGreaterThan(1));
   expect(screen.getByRole('gridcell', { name: /^record 1 weight: 20/ })).toBeTruthy();
   expect(invoke.mock.calls.some(([command]) => command === 'save_schema_draft' || command === 'save_data_file')).toBe(false);
   expect(invoke.mock.calls.some(([command]) => command === 'apply_table_intent')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('partial Table Save reports each source and retains the failed schema draft', async () => {
   const normal = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'save_current_table_context') return { files: [
       { path: 'data.yaml', status: 'success', candidateContentIdentity: 'base', current: { path: 'data.yaml', source: 'weight: 20', contentIdentity: 'base' }, diagnostic: null },
       { path: 'schema.yaml', status: 'failure', candidateContentIdentity: 'schema-candidate', current: { path: 'schema.yaml', source: 'kind: schema\ntable: item\n', contentIdentity: 'schema-base' }, diagnostic: { code: 'E-IO', kind: 'io', message: 'Schema write failed' } },
@@ -1175,7 +1176,7 @@ test('partial Table Save reports each source and retains the failed schema draft
 
 test('schema diagnostic propagation leaves the separate record source clean', async () => {
   const normal = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'preview_schema_draft') return {
       candidateSource: 'kind: schema\ntable: item\n# draft\n',
       candidateContentIdentity: 'schema-candidate',
@@ -1203,7 +1204,7 @@ test('schema diagnostic propagation leaves the separate record source clean', as
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 test('Migration recovery result blocks Create and Build',async()=>{
   const normal=invoke.getMockImplementation()!;
-  invoke.mockImplementation(async(command,args)=>{
+  installWorkspaceFixture(invoke, async(command,args)=>{
     if(command==='authoring_workspace')return tableWorkspace;
     if(command==='open_table')return tableSnapshot;
     if(command==='apply_table_intent')return recoveryRequired;
@@ -1222,7 +1223,7 @@ test('Migration recovery result blocks Create and Build',async()=>{
 test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   const normal=invoke.getMockImplementation()!;
   let recovery:any=recoveryRequired;
-  invoke.mockImplementation(async(command,args)=>{
+  installWorkspaceFixture(invoke, async(command,args)=>{
     if(command==='authoring_workspace')return tableWorkspace;
     if(command==='migration_recovery_status')return recovery;
     if(command==='recheck_migration'){recovery=null;return null;}
@@ -1241,7 +1242,7 @@ test('Recovery Required blocks Save until host recheck succeeds',async()=>{
   expect(invoke.mock.calls.some(([command])=>command==='save_data_file')).toBe(false);
   fireEvent.click(screen.getByRole('button',{name:'Recheck recovered source'}));
   await waitFor(()=>expect(screen.getByRole('menuitem',{name:'Build',exact:true}).getAttribute('aria-disabled')).not.toBe('true'));
-  expect(screen.getByRole('gridcell',{name:/record 1 weight: 10/})).toBeTruthy();
+  expect(await screen.findByRole('gridcell',{name:/record 1 weight: 10/})).toBeTruthy();
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 
 
@@ -1257,7 +1258,7 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
     publishTargets: [],
     diagnostics: [],
   };
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'open_project_config') return structuredClone(config);
     if (command === 'preview_project_config_edit') {
       return {
@@ -1294,7 +1295,7 @@ test('Cmd/Ctrl+S on Settings saves masterdata.toml and never the active YAML edi
 
 test('grid paste applies one shared batch to the local buffer and Undo restores it', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_clipboard_shape') return { rows: 1, columns: 1 };
     if (command === 'preview_data_file_batch') return {
       source: { candidateSource: 'weight: 20', candidateContentIdentity: 'batch', changed: true, validation },
@@ -1317,7 +1318,7 @@ test('grid paste applies one shared batch to the local buffer and Undo restores 
 
 test('single-cell Cmd+C uses shared copy instead of an empty native selection', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'copy_data_file_batch') return { clipboardText: '10', targetCount: 1 };
     return normalInvoke(command, args);
   });
@@ -1346,7 +1347,7 @@ test('2x2 Paste derives a 2x2 target rectangle from the active cell instead of f
   ]);
   const normalInvoke = invoke.getMockImplementation()!;
   let batchArgs: any;
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'authoring_clipboard_shape') return { rows: 2, columns: 2 };
     if (command === 'preview_data_file_batch') {
       batchArgs = args;
@@ -1415,7 +1416,7 @@ test("desktop close Don't Save destroys the window without writing source", asyn
 test.each(['success', 'failure'])('desktop close Save All respects source save %s', async (status) => {
   const normalInvoke = invoke.getMockImplementation()!;
   let finishSave!: (result: unknown) => void;
-  invoke.mockImplementation((command, args) => command === 'save_data_file'
+  installWorkspaceFixture(invoke, (command, args) => command === 'save_data_file'
     ? new Promise(resolve => { finishSave = resolve; }) : normalInvoke(command, args));
   const input = await open();
   fireEvent.change(input, { target: { value: '20' } });

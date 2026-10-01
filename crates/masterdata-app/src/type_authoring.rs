@@ -187,11 +187,6 @@ pub struct TypePlanView {
     pub diagnostics: Vec<Diagnostic>,
 }
 impl TableAuthoringSession {
-    pub fn open_type(&self, root: &Path, path: &str) -> Result<TypeSnapshot> {
-        let project = Project::discover(Some(root), root)?;
-        let docs = project.load_documents()?;
-        type_snapshot(&docs, &project.root().join(path), path)
-    }
     pub fn plan_type(&mut self, root: &Path, input: TypeOperationInput) -> Result<TypePlanView> {
         self.ensure_mutation_allowed(root)?;
         let project = Project::discover(Some(root), root)?;

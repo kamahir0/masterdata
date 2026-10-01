@@ -50,7 +50,8 @@ pub use config_edit::{
 };
 pub use data_authoring::{
     DataEditorAddCapability, DataEditorCell, DataEditorColumn, DataEditorRow, DataFileSnapshot,
-    data_file_snapshot,
+    authoring_tag_candidates, authoring_tag_candidates_complete, data_file_snapshot,
+    data_file_view,
 };
 pub use data_query::{DataFileQueryResult, query_data_file};
 pub use document::{
@@ -82,7 +83,8 @@ pub use project::{
     PublishTargetInfo, initialize_gui_project, initialize_project,
 };
 pub use schema_authoring::{
-    TableSnapshot, TypeMemberView, TypeSnapshot, table_snapshot, type_snapshot,
+    TableSnapshot, TypeMemberView, TypeSnapshot, apply_reference_resolution,
+    table_definition_snapshot, table_snapshot, type_snapshot,
 };
 pub use source_creation::{
     CreationChoices, CreationMember, SourceCreation, SourceCreationPlan, creation_choices,
@@ -105,7 +107,10 @@ pub use type_system::{
     TypeReference, TypeSystem, TypeSystemBuild, build_type_system, csharp_property_name,
     is_csharp_reserved_keyword, resolve_authoring_field_shape, resolve_type_system,
 };
-pub use validation::{ValidationReport, validate_documents, validate_documents_with_selection};
+pub use validation::{
+    AuthoringValidation, ValidationReport, validate_authoring_documents, validate_documents,
+    validate_documents_with_selection,
+};
 
 pub use migration_commit::{SourceCommitCandidate, commit_source_candidate_with_failures};
 

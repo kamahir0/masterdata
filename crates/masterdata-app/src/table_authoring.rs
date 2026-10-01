@@ -188,7 +188,7 @@ impl TableOperationInput {
 }
 pub use masterdata_core::TableSnapshot;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableContext {
     pub table: String,
@@ -274,7 +274,7 @@ pub enum TableContextFileSaveStatus {
     NotAttempted,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableContextFileSaveResult {
     pub path: String,
@@ -284,13 +284,13 @@ pub struct TableContextFileSaveResult {
     pub diagnostic: Option<Diagnostic>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableContextSaveReport {
     pub files: Vec<TableContextFileSaveResult>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableRecordSource {
     pub path: String,
@@ -351,80 +351,73 @@ pub struct TableAuthoringSession {
 fn error(code: &str, message: &str) -> MasterdataError {
     MasterdataError::new(code, ErrorKind::Validation, message)
 }
-impl TableAuthoringSession {
-    pub fn open_context(&self, root: &Path, selected_path: &str) -> Result<TableContext> {
-        let _span = masterdata_core::read_trace::read_span("tableContext");
-        let project = Project::discover(Some(root), root)?;
-        let documents = project.load_documents()?;
-        let selected = documents
-            .files
-            .iter()
-            .find(|file| file.path == project.root().join(selected_path))
-            .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "Selected source not found"))?;
-        let table = selected
-            .document
-            .table_identity()
-            .ok_or_else(|| {
-                error(
-                    "E-TABLE-EDITOR-KIND",
-                    "Selected source is not a Table source",
-                )
-            })?
-            .to_owned();
-        let schemas = documents.files.iter().filter(|file| {
+pub(crate) fn table_context_from_documents(
+    project: &Project,
+    documents: &ProjectDocuments,
+    selected_path: &str,
+) -> Result<TableContext> {
+    let _span = masterdata_core::read_trace::read_span("tableContext");
+    let selected = documents
+        .files
+        .iter()
+        .find(|file| file.path == project.root().join(selected_path))
+        .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "Selected source not found"))?;
+    let table = selected
+        .document
+        .table_identity()
+        .ok_or_else(|| {
+            error(
+                "E-TABLE-EDITOR-KIND",
+                "Selected source is not a Table source",
+            )
+        })?
+        .to_owned();
+    let schemas = documents.files.iter().filter(|file| {
             matches!(&file.document, SourceDocument::Schema(schema) if schema.table == table)
         }).collect::<Vec<_>>();
-        if schemas.len() != 1 {
-            return Err(error(
-                "E-TABLE-DUPLICATE-SCHEMA",
-                "Table must have exactly one schema source",
-            ));
-        }
-        let schema_file = schemas[0];
-        let schema_path = project_relative_string(project.root(), &schema_file.path);
-        let schema = table_snapshot(&documents, &schema_file.path, &schema_path)?;
-        let mut record_sources = documents
-            .files
-            .iter()
-            .filter_map(|file| match &file.document {
-                SourceDocument::Schema(schema)
-                    if schema.table == table && schema.records.is_some() =>
-                {
-                    Some(TableRecordSource {
-                        path: project_relative_string(project.root(), &file.path),
-                        inline: true,
-                    })
-                }
-                SourceDocument::Data(data) if data.table == table => Some(TableRecordSource {
+    if schemas.len() != 1 {
+        return Err(error(
+            "E-TABLE-DUPLICATE-SCHEMA",
+            "Table must have exactly one schema source",
+        ));
+    }
+    let schema_file = schemas[0];
+    let schema_path = project_relative_string(project.root(), &schema_file.path);
+    let schema = table_definition_snapshot(documents, &schema_file.path, &schema_path)?;
+    let mut record_sources = documents
+        .files
+        .iter()
+        .filter_map(|file| match &file.document {
+            SourceDocument::Schema(schema) if schema.table == table && schema.records.is_some() => {
+                Some(TableRecordSource {
                     path: project_relative_string(project.root(), &file.path),
-                    inline: false,
-                }),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        record_sources.sort_by(|a, b| b.inline.cmp(&a.inline).then_with(|| a.path.cmp(&b.path)));
-        let selected_record_source = record_sources
-            .iter()
-            .find(|source| source.path == selected_path)
-            .or_else(|| record_sources.first())
-            .map(|source| source.path.clone());
-        Ok(TableContext {
-            table,
-            schema_path,
-            schema_content_identity: source_content_identity(&schema_file.source),
-            schema_source: schema_file.source.clone(),
-            record_sources,
-            selected_record_source,
-            schema,
+                    inline: true,
+                })
+            }
+            SourceDocument::Data(data) if data.table == table => Some(TableRecordSource {
+                path: project_relative_string(project.root(), &file.path),
+                inline: false,
+            }),
+            _ => None,
         })
-    }
-
-    pub fn open_table(&self, root: &Path, path: &str) -> Result<TableSnapshot> {
-        let project = Project::discover(Some(root), root)?;
-        let documents = project.load_documents()?;
-        table_snapshot(&documents, &project.root().join(path), path)
-    }
-
+        .collect::<Vec<_>>();
+    record_sources.sort_by(|a, b| b.inline.cmp(&a.inline).then_with(|| a.path.cmp(&b.path)));
+    let selected_record_source = record_sources
+        .iter()
+        .find(|source| source.path == selected_path)
+        .or_else(|| record_sources.first())
+        .map(|source| source.path.clone());
+    Ok(TableContext {
+        table,
+        schema_path,
+        schema_content_identity: source_content_identity(&schema_file.source),
+        schema_source: schema_file.source.clone(),
+        record_sources,
+        selected_record_source,
+        schema,
+    })
+}
+impl TableAuthoringSession {
     pub fn preview_schema_draft(
         &self,
         root: &Path,
@@ -450,74 +443,20 @@ impl TableAuthoringSession {
         if let Some(inline) = overrides.iter().rfind(|(path, _)| *path == target) {
             overrides[0] = *inline;
         }
-        let (documents, mut parse_diagnostics) =
+        let (documents, parse_diagnostics) =
             load_authoring_documents_with_overrides(&project, &overrides)?;
-        let schema = documents
-            .files
-            .iter()
-            .find(|file| file.path == target)
-            .and_then(|file| match &file.document {
-                SourceDocument::Schema(schema) => Some(schema),
-                _ => None,
-            })
-            .ok_or_else(|| error("E-FIELD-DECL-SOURCE", "schema draft base is unavailable"))?;
-        if fields.len() != schema.fields.len() {
-            return Err(error(
-                "E-FIELD-DECL-IDENTITY",
-                "schema draft field count changed",
-            ));
+        if let Some(path) = selected_record_path {
+            resolve_source_file(&project, path)?;
         }
-        let declarations = fields
-            .iter()
-            .map(|draft| {
-                let old = schema
-                    .fields
-                    .iter()
-                    .find(|old| old.name == draft.name)
-                    .ok_or_else(|| {
-                        error(
-                            "E-FIELD-DECL-IDENTITY",
-                            "schema draft field identity changed",
-                        )
-                    })?;
-                let mut next = old.clone();
-                next.type_name = draft.type_name.clone();
-                next.nullable = draft.nullable;
-                next.array = draft.array;
-                Ok(next)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let transformed = dry_run_schema_declaration_draft(&documents, &target, &declarations)?;
-        let candidate_source = transformed
-            .files
-            .iter()
-            .find(|file| file.path == target)
-            .expect("schema candidate")
-            .source
-            .clone();
-        let mut validation = validate_documents(&transformed);
-        if !parse_diagnostics.is_empty() {
-            validation.valid = false;
-            validation.diagnostics.append(&mut parse_diagnostics);
-        }
-        let selected_snapshot = selected_record_path
-            .map(|path| {
-                let selected = resolve_source_file(&project, path)?;
-                if !transformed.files.iter().any(|file| file.path == selected) {
-                    return Ok(None);
-                }
-                crate::authoring::data_file_snapshot(&project, &transformed, Vec::new(), &selected)
-                    .map(Some)
-            })
-            .transpose()?
-            .flatten();
-        Ok(SchemaDraftPreview {
-            candidate_content_identity: source_content_identity(&candidate_source),
-            changed: candidate_source != base_source,
-            candidate_source,
-            validation,
-            selected_snapshot,
-        })
+        schema_draft_preview(
+            &project,
+            &documents,
+            parse_diagnostics,
+            &target,
+            base_source,
+            fields,
+            selected_record_path,
+        )
     }
 
     pub fn save_schema_draft(
@@ -640,7 +579,8 @@ impl TableAuthoringSession {
         let project = Project::discover(Some(root), root)?;
         let schema_path = resolve_source_file(&project, &request.schema_path)?;
         let schema_relative = project_relative_string(project.root(), &schema_path);
-        let context = self.open_context(root, &schema_relative)?;
+        let context =
+            table_context_from_documents(&project, &project.load_documents()?, &schema_relative)?;
         if context.schema_path != schema_relative {
             return Err(error(
                 "E-TABLE-SAVE-CONTEXT",
@@ -1209,6 +1149,92 @@ fn recovery_required_error() -> MasterdataError {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn schema_draft_preview(
+    project: &Project,
+    documents: &ProjectDocuments,
+    mut parse_diagnostics: Vec<Diagnostic>,
+    target: &Path,
+    base_source: &str,
+    fields: &[SchemaDraftField],
+    selected_record_path: Option<&str>,
+) -> Result<SchemaDraftPreview> {
+    let schema = documents
+        .files
+        .iter()
+        .find(|file| file.path == target)
+        .and_then(|file| match &file.document {
+            SourceDocument::Schema(schema) => Some(schema),
+            _ => None,
+        })
+        .ok_or_else(|| error("E-FIELD-DECL-SOURCE", "schema draft base is unavailable"))?;
+    if fields.len() != schema.fields.len() {
+        return Err(error(
+            "E-FIELD-DECL-IDENTITY",
+            "schema draft field count changed",
+        ));
+    }
+    let declarations = fields
+        .iter()
+        .map(|draft| {
+            let old = schema
+                .fields
+                .iter()
+                .find(|old| old.name == draft.name)
+                .ok_or_else(|| {
+                    error(
+                        "E-FIELD-DECL-IDENTITY",
+                        "schema draft field identity changed",
+                    )
+                })?;
+            let mut next = old.clone();
+            next.type_name = draft.type_name.clone();
+            next.nullable = draft.nullable;
+            next.array = draft.array;
+            Ok(next)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let transformed = dry_run_schema_declaration_draft(documents, target, &declarations)?;
+    let candidate_source = transformed
+        .files
+        .iter()
+        .find(|file| file.path == target)
+        .expect("schema candidate")
+        .source
+        .clone();
+    let parse_complete = parse_diagnostics.is_empty();
+    let mut validation = validate_documents(&transformed);
+    if !parse_diagnostics.is_empty() {
+        validation.valid = false;
+        validation.diagnostics.append(&mut parse_diagnostics);
+    }
+    let selected_snapshot = selected_record_path
+        .map(|path| {
+            let selected = project.root().join(path);
+            if !transformed.files.iter().any(|file| file.path == selected) {
+                return Ok(None);
+            }
+            data_file_view(
+                project.root(),
+                &transformed,
+                &selected,
+                authoring_tag_candidates(&project.info().profiles, &transformed),
+                authoring_tag_candidates_complete(&validation, parse_complete),
+                validation.clone(),
+            )
+            .map(Some)
+        })
+        .transpose()?
+        .flatten();
+    Ok(SchemaDraftPreview {
+        candidate_content_identity: source_content_identity(&candidate_source),
+        changed: candidate_source != base_source,
+        candidate_source,
+        validation,
+        selected_snapshot,
+    })
+}
+
 #[cfg(test)]
 mod context_save_tests {
     use super::*;
@@ -1234,8 +1260,10 @@ mod context_save_tests {
         )
         .unwrap();
         let session = TableAuthoringSession::default();
-        let context = session
-            .open_context(dir.path(), "sources/data.yaml")
+        let context = crate::WorkspaceAuthoringSession::open(Some(dir.path()), dir.path())
+            .unwrap()
+            .select_source("sources/data.yaml")
+            .map(|view| view.context.unwrap())
             .unwrap();
         let snapshot = crate::NativeApplicationService::new()
             .open_data_file(Some(dir.path()), dir.path(), "sources/data.yaml")

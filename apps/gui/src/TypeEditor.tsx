@@ -8,17 +8,18 @@ import type { AuthoringValue, ResolvedAuthoringType } from "./data-editor-types"
 import { migrationApplyDisabled, migrationBlockedFiles, migrationDestructiveAuthorization } from "./authoring-workflow";
 
 type Field = { key: number; name: string; type: string; nullable: boolean; array: boolean };
-type Snapshot = { path: string; name: string; category: string; underlying: string | null; conversions: { fromUnderlyingImplicit: boolean; toUnderlyingImplicit: boolean } | null; members: { name: string; value: string }[]; fields: Field[]; fieldTypes: string[]; initializerShapes: Record<string, ResolvedAuthoringType> };
+export type TypeEditorSnapshot = { path: string; name: string; category: string; underlying: string | null; conversions: { fromUnderlyingImplicit: boolean; toUnderlyingImplicit: boolean } | null; members: { name: string; value: string }[]; fields: Field[]; fieldTypes: string[]; initializerShapes: Record<string, ResolvedAuthoringType> };
 type Diagnostic = { code: string; message: string; source?: string; schemaPath?: string; schema_path?: string };
 type Plan = { token: string; target: string; operation: string; selector: string; destructive: boolean; affectedOccurrenceCount: number; files: { path: string; before: string; after: string }[]; diagnostics: Diagnostic[] };
 type Operation = "conversions" | "add" | "rename" | "drop";
 const diagnosticText = (d: Diagnostic) => [d.source, d.schemaPath ?? d.schema_path, `${d.code}: ${d.message}`].filter(Boolean).join(" · ");
 const message = (error: unknown) => error && typeof error === "object" && "diagnostic" in error ? diagnosticText((error as { diagnostic: Diagnostic }).diagnostic) : String(error);
-export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, beginApply, onResult, endApply }: {
+export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, beginApply, onResult, endApply, initialSnapshot }: {
+  initialSnapshot: TypeEditorSnapshot;
   projectPath: string; path: string; canWrite: boolean; dirtyPaths: string[];
   beginApply: (paths: string[]) => boolean; onResult: (result: MigrationResult) => Promise<void>; endApply: () => void;
 }) {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<TypeEditorSnapshot | null>(initialSnapshot);
   const [selected, setSelected] = useState("");
   const [operation, setOperation] = useState<Operation | null>(null);
   const [name, setName] = useState("");
@@ -42,13 +43,10 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
   useEffect(() => { if (plan) document.getElementById("type-plan-summary")?.focus(); }, [plan]);
   useEffect(() => {
     mounted.current = true;
-    let disposed = false;
-    setSnapshot(null); setOperation(null); setPlan(null); setResult(null); setError(null);
-    void invoke<Snapshot>("open_type", { projectPath, relativePath: path }).then(next => {
-      if (!disposed) { setSnapshot(next); setSelected(next.members[0]?.name ?? next.fields[0]?.name ?? ""); }
-    }).catch(error => { if (!disposed) setError(message(error)); });
-    return () => { disposed = true; mounted.current = false; revision.current += 1; };
-  }, [projectPath, path]);
+    setOperation(null); setPlan(null); setResult(null); setError(null);
+    setSnapshot(initialSnapshot); setSelected(initialSnapshot.members[0]?.name ?? initialSnapshot.fields[0]?.name ?? "");
+    return () => { mounted.current = false; revision.current += 1; };
+  }, [projectPath, path, initialSnapshot]);
   const change = (fn: () => void) => { revision.current += 1; fn(); setPlan(null); setConfirmed(false); setError(null); setResult(null); };
   const custom = snapshot?.category === "Custom Type";
   const start = (op: Operation, target = selected, origin?: HTMLElement | null) => {
@@ -84,10 +82,7 @@ export default function TypeEditor({ projectPath, path, canWrite, dirtyPaths, be
       if (mounted.current) setResult(outcome);
       await onResult(outcome);
       if (mounted.current && outcome.state === "success") {
-        // Hide the old declaration while loading the committed authority.
-        setSnapshot(null); setPlan(null); setOperation(null);
-        const next = await invoke<Snapshot>("open_type", { projectPath, relativePath: path });
-        if (mounted.current) setSnapshot(next);
+        setPlan(null); setOperation(null);
       }
     } catch (error) { if (mounted.current) setError(message(error)); }
     finally { inFlight.current = false; endApply(); if (mounted.current) setBusy(false); }

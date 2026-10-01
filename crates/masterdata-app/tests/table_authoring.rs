@@ -33,7 +33,7 @@ fn apply_current(
     intent: TableOperationInput,
     dirty_paths: &[String],
 ) -> masterdata_core::Result<TableApplyView> {
-    let context = session.open_context(root, "sources/schema.yaml")?;
+    let context = open_context(root, "sources/schema.yaml")?;
     session.apply_intent(
         root,
         intent,
@@ -91,9 +91,7 @@ fn current_context_saves_separate_dirty_schema_and_selected_record_only() {
     fs::write(&other, "kind: data\ntable: item\nrecords: []\n").unwrap();
     let other_before = fs::read(&other).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let report = session
         .save_current_table_context(
             dir.path(),
@@ -130,9 +128,7 @@ fn current_context_saves_separate_dirty_schema_and_selected_record_only() {
 fn current_context_known_conflict_prevents_every_commit() {
     let dir = project();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let record = record_save_draft(dir.path(), "sources/data.yaml");
     let schema_before = fs::read(dir.path().join("sources/schema.yaml")).unwrap();
     fs::write(
@@ -177,9 +173,7 @@ fn current_context_composes_schema_and_inline_records_into_one_candidate() {
     fs::write(&schema_path, "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n    note: text # preserve\n").unwrap();
     fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     let report = session
         .save_current_table_context(
             dir.path(),
@@ -206,9 +200,7 @@ fn current_context_composes_field_and_inline_record_order_in_one_file() {
     fs::write(&schema_path, "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n    note: first\n  # separator stays here\n  - id: 2\n    note: second\n").unwrap();
     fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     let schema_draft = TableSchemaSaveDraft {
         base_source: context.schema_source.clone(),
         base_content_identity: context.schema_content_identity.clone(),
@@ -275,9 +267,7 @@ fn current_context_mixed_saves_inline_and_selected_separate_but_not_inactive() {
     fs::write(&inactive_path, "kind: data\ntable: item\nrecords: []\n").unwrap();
     let inactive_before = fs::read(&inactive_path).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let report = session
         .save_current_table_context(
             dir.path(),
@@ -312,9 +302,7 @@ fn current_context_mixed_saves_inline_and_selected_separate_but_not_inactive() {
 fn current_context_schema_only_does_not_write_clean_diagnostic_source() {
     let dir = project();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let data_path = dir.path().join("sources/data.yaml");
     let data_before = fs::read(&data_path).unwrap();
     let mut draft = schema_save_draft(&context);
@@ -340,9 +328,7 @@ fn current_context_schema_only_does_not_write_clean_diagnostic_source() {
 fn current_context_record_only_saves_selected_document() {
     let dir = project();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let schema_before = fs::read(dir.path().join("sources/schema.yaml")).unwrap();
     let report = session
         .save_current_table_context(
@@ -377,9 +363,7 @@ fn current_context_inline_row_only_uses_schema_physical_source() {
     .unwrap();
     fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     let report = session
         .save_current_table_context(
             dir.path(),
@@ -407,9 +391,7 @@ fn current_context_without_record_source_saves_schema_only() {
     let dir = project();
     fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     assert!(context.selected_record_source.is_none());
     let report = session
         .save_current_table_context(
@@ -591,9 +573,7 @@ fn reference_authoring_uses_shared_plan_and_refreshes_snapshot() {
         "success"
     );
 
-    let snapshot = session
-        .open_table(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let snapshot = open_table(dir.path(), "sources/schema.yaml").unwrap();
     assert_eq!(snapshot.references.len(), 1);
     assert_eq!(snapshot.references[0].name, "category");
     assert_eq!(
@@ -670,9 +650,7 @@ fn reference_aware_target_rename_surfaces_inbound_schema_in_reviewed_plan() {
 fn table_context_and_direct_intent_cover_separate_record_source() {
     let dir = project();
     let mut session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     assert_eq!(context.table, "item");
     assert_eq!(
         context.selected_record_source.as_deref(),
@@ -732,9 +710,7 @@ fn table_context_prefers_inline_records_and_type_change_checks_dirty_data() {
     let dir = project();
     fs::write(dir.path().join("sources/schema.yaml"), "kind: schema\ntable: item\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: note\n    type: string\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 2\n    note: inline\n").unwrap();
     let mut session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     assert_eq!(
         context.selected_record_source.as_deref(),
         Some("sources/schema.yaml")
@@ -799,13 +775,8 @@ fn table_context_lists_inline_and_multiple_separate_record_sources_without_chang
         "kind: data\ntable: item\nrecords: []\n",
     )
     .unwrap();
-    let session = TableAuthoringSession::default();
-    let inline = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
-    let separate = session
-        .open_context(dir.path(), "sources/other.yaml")
-        .unwrap();
+    let inline = open_context(dir.path(), "sources/schema.yaml").unwrap();
+    let separate = open_context(dir.path(), "sources/other.yaml").unwrap();
     let paths = inline
         .record_sources
         .iter()
@@ -838,10 +809,7 @@ fn table_context_lists_inline_and_multiple_separate_record_sources_without_chang
 fn table_context_without_record_source_retains_the_same_schema_header() {
     let dir = project();
     fs::remove_file(dir.path().join("sources/data.yaml")).unwrap();
-    let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     assert_eq!(context.table, "item");
     assert_eq!(context.schema_path, "sources/schema.yaml");
     assert_eq!(context.schema.schema.fields.len(), 2);
@@ -857,10 +825,8 @@ fn table_context_rejects_ambiguous_schema_authority() {
         fs::read_to_string(dir.path().join("sources/schema.yaml")).unwrap(),
     )
     .unwrap();
-    let session = TableAuthoringSession::default();
     assert_eq!(
-        session
-            .open_context(dir.path(), "sources/data.yaml")
+        open_context(dir.path(), "sources/data.yaml")
             .unwrap_err()
             .diagnostic()
             .code,
@@ -897,9 +863,7 @@ fn default_column_uses_an_available_key_when_the_highest_key_is_occupied() {
 fn direct_intent_rejects_a_schema_changed_since_the_visible_context() {
     let dir = project();
     let mut session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     let schema_path = dir.path().join("sources/schema.yaml");
     let mut source = fs::read_to_string(&schema_path).unwrap();
     source.push_str("# external edit\n");
@@ -923,9 +887,7 @@ fn direct_intent_rejects_a_schema_changed_since_the_visible_context() {
 fn direct_intent_rejects_a_record_source_changed_since_the_visible_grid() {
     let dir = project();
     let mut session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let data_path = dir.path().join("sources/data.yaml");
     let original = fs::read_to_string(&data_path).unwrap();
     let changed = original.replace("note: text", "note: external");
@@ -970,9 +932,7 @@ fn schema_draft_reinterprets_all_record_sources_and_saves_only_schema_bytes() {
     let first = fs::read(&first_path).unwrap();
     let second = fs::read(&second_path).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/data.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/data.yaml").unwrap();
     let fields = |type_name: &str| {
         context
             .schema
@@ -1131,9 +1091,7 @@ fn schema_draft_reinterprets_all_record_sources_and_saves_only_schema_bytes() {
 fn schema_draft_save_rejects_stale_identity_without_overwriting() {
     let dir = project();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     let fields = context
         .schema
         .schema
@@ -1176,9 +1134,7 @@ fn inline_record_draft_composes_for_preview_without_being_saved_with_schema() {
     );
     fs::write(&path, &schema).unwrap();
     let session = TableAuthoringSession::default();
-    let context = session
-        .open_context(dir.path(), "sources/schema.yaml")
-        .unwrap();
+    let context = open_context(dir.path(), "sources/schema.yaml").unwrap();
     let fields = context
         .schema
         .schema
@@ -1229,4 +1185,16 @@ fn inline_record_draft_composes_for_preview_without_being_saved_with_schema() {
     let saved = fs::read_to_string(&path).unwrap();
     assert!(saved.contains("name: note\n    type: int"));
     assert!(saved.contains("note: true # inline"));
+}
+
+fn open_context(root: &Path, path: &str) -> masterdata_core::Result<TableContext> {
+    let workspace = WorkspaceAuthoringSession::open(Some(root), root)?;
+    workspace.validate();
+    Ok(workspace
+        .select_source(path)?
+        .context
+        .expect("Table context"))
+}
+fn open_table(root: &Path, path: &str) -> masterdata_core::Result<TableSnapshot> {
+    Ok(open_context(root, path)?.schema)
 }

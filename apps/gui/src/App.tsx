@@ -52,6 +52,9 @@ import {
   type ResolvedAuthoringField,
 } from "./data-editor-types";
 import { invoke, navigationMark, navigationCommit } from "./navigation-trace";
+import { WorkspaceNavigator, readDataFile, readTableContext, type WorkspaceSelection } from "./workspace-navigation";
+import type { TableEditorSnapshot } from "./TableEditor";
+import type { TypeEditorSnapshot } from "./TypeEditor";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
@@ -118,8 +121,9 @@ type TableContext = {
   schemaSource: string;
   recordSources: { path: string; inline: boolean }[];
   selectedRecordSource: string | null;
-  schema: { schema: { table: string; fields: TableField[]; primaryKey?: { fields: string[] }; secondaryKeys?: { fields: string[] }[] }; fieldTypes: string[] };
+  schema: TableEditorSnapshot;
 };
+type NavigationView = WorkspaceSelection<DataFileSnapshot, TableContext, TypeEditorSnapshot, WorkspaceSourceFile, SourceContentState>;
 type SchemaDraftPreview = {
   candidateSource: string;
   candidateContentIdentity: string;
@@ -697,9 +701,18 @@ function App({
   const [projectPickerBusy, setProjectPickerBusy] = useState(false);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [explorerPath, setExplorerPath] = useState<string | null>(null);
-  const [tableContextState, setTableContextState] = useState<{ root: string; path: string; epoch: number; context: TableContext } | null>(null);
+  const selectionIntent = useRef<string | null>(null);
+  useLayoutEffect(() => { selectionIntent.current = explorerPath; }, [explorerPath]);
+  const [tableContextState, setTableContextState] = useState<{ root: string; path: string; epoch: number; generation: number; validationPending: boolean; context: TableContext } | null>(null);
   const [schemaDrafts, setSchemaDrafts] = useState<Record<string, SchemaDraftState>>({});
   const schemaDraftsRef = useRef(schemaDrafts);
+  const workspaceNavigator = useRef(new WorkspaceNavigator<NavigationView>());
+  const [navigationReady, setNavigationReady] = useState<string | null>(null);
+  const [typeView, setTypeView] = useState<{ path: string; snapshot: TypeEditorSnapshot } | null>(null);
+  const [readGeneration, setReadGeneration] = useState(0);
+  const readGenerationRef = useRef(0);
+  const editorGenerations = useRef(new Map<string, number>());
+  const previewScheduler = useRef<((root: string, path: string, editor: EditorState) => void) | null>(null);
   const [tableContextError, setTableContextError] = useState<ApiDiagnostic | null>(null);
   const [tableSaveFailure, setTableSaveFailure] = useState<TableContextSaveReport | null>(null);
   const pendingColumnFocus = useRef<{ table: string; field: string | "last"; grip?: boolean } | null>(null);
@@ -858,16 +871,18 @@ function App({
   const projectRoot = workspace?.project.project_root ?? null;
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
-  const activeFile = workspace?.files.find((file) => file.path === activePath) ?? null;
+  const activeEditor = activePath ? editors[activePath] ?? null : null;
+  const activeFile = workspace?.files.find((file) => file.path === activePath)
+    ?? (activeEditor ? { path: activePath!, sourceRoot: "", kind: "unavailable", table: activeEditor.snapshot.table, typeName: null, hasInlineRecords: false, diagnostic: null } : null);
   const savedTableContext = tableContextState?.root === projectRoot && tableContextState.path === activePath && tableContextState.epoch === tableEpoch ? tableContextState.context : null;
   const activeSchemaDraft = savedTableContext ? schemaDrafts[savedTableContext.schemaPath] ?? null : null;
-  const tableContext = savedTableContext && activeSchemaDraft
+  const schemaDraftApplies = !!activeSchemaDraft && activeSchemaDraft.baseContentIdentity === savedTableContext?.schemaContentIdentity;
+  const tableContext = activeEditor?.loadError ? null : savedTableContext && schemaDraftApplies
     ? { ...savedTableContext, schema: { ...savedTableContext.schema, schema: { ...savedTableContext.schema.schema, fields: activeSchemaDraft.fields } } }
     : savedTableContext;
-  const activeEditor = activePath ? editors[activePath] ?? null : null;
-  const activeSchemaPreview = activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && activeSchemaDraft.previewState === "current"
+  const activeSchemaPreview = schemaDraftApplies && activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft) && activeSchemaDraft.previewState === "current"
     ? activeSchemaDraft.preview : null;
-  const displayEditor = activeEditor && activeSchemaDraft
+  const displayEditor = activeEditor && schemaDraftApplies && activeSchemaDraft
     ? { ...activeEditor,
         snapshot: { ...activeEditor.snapshot, columns: (() => {
           const columns = activeSchemaPreview?.selectedSnapshot?.columns ?? activeEditor.snapshot.columns;
@@ -878,7 +893,9 @@ function App({
         preview: activeSchemaPreview ? { ...activeEditor.preview, validation: activeSchemaPreview.validation } : activeEditor.preview }
     : activeEditor;
   useLayoutEffect(() => navigationCommit(activePath), [activePath, editors, tableContextState]);
-  const activeLoading = activePath ? loadingPaths.has(activePath) : false;
+  const navigationKey = `${projectRoot}:${explorerPath}:${tableEpoch}`;
+  const activeLoading = !!activePath && (loadingPaths.has(activePath) || navigationReady !== navigationKey);
+
   const activeLoadDiagnostic = activeEditor && editorIsDirty(activeEditor)
     ? null
     : activeEditor?.loadError ?? (activePath ? fileOpenErrors[activePath] ?? null : null);
@@ -915,12 +932,18 @@ function App({
     const root = current?.project.project_root;
     if (!root) return false;
     try {
-      const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
+      const next = await invoke<AuthoringWorkspace>("open_workspace", { projectPath: root });
       if (next.project.project_root !== root) return false;
       const bindingChanged = current.project.project_id !== next.project.project_id
         || current.sourceRoots.length !== next.sourceRoots.length
         || current.sourceRoots.some((sourceRoot, index) => sourceRoot !== next.sourceRoots[index]);
       const dirtySources = Object.values(editorsRef.current).some(editorIsDirty);
+      workspaceGeneration.current += 1;
+      workspaceNavigator.current.cancel();
+      editorGenerations.current.clear();
+      readGenerationRef.current = 0;
+      setReadGeneration(0);
+      setTableEpoch(epoch => epoch + 1);
       setWorkspaceState({ kind: "ready", workspace: next });
       setConfigRevision((revision) => revision + 1);
       setSelectedProfile((selected) => selected && next.project.profiles?.some((item) => item.name === selected) ? selected : "");
@@ -936,65 +959,97 @@ function App({
     }
   }, [showNotice]);
 
-  const openDataFile = useCallback(async (root: string, path: string, force = false) => {
-    const existing = editorsRef.current[path];
-    if (!force && existing && !existing.loadError) {
-      return;
-    }
-    const generation = workspaceGeneration.current;
-    setLoadingPaths((current) => {
-      const next = new Set(current);
-      next.add(path);
-      return next;
-    });
-    try {
-      const snapshot = await invoke<DataFileSnapshot>("open_data_file", {
-        projectPath: root,
-        relativePath: path,
-      });
-      if (workspaceGeneration.current !== generation) return;
-      setFileOpenErrors((current) => {
-        if (!(path in current)) return current;
+  const observeReadGeneration = useCallback((generation: number) => {
+    if (generation <= readGenerationRef.current) return;
+    readGenerationRef.current = generation;
+    setReadGeneration(generation);
+    setManualValidation({ kind: "idle" });
+    setSchemaDrafts(current => Object.fromEntries(Object.entries(current).map(([path, draft]) =>
+      [path, schemaDraftIsDirty(draft) ? { ...draft, previewState: "pending", previewError: null } : draft])));
+  }, []);
+
+  const updateWorkspaceFiles = useCallback((root: string, files: WorkspaceSourceFile[] | undefined) => {
+    if (!files) return;
+    setWorkspaceState(current => current.kind === "ready" && current.workspace.project.project_root === root
+      ? { ...current, workspace: { ...current.workspace, files } } : current);
+  }, []);
+
+  const installReadView = useCallback((view: NavigationView, root: string, discardLocal?: { revision: number; baseIdentity: string }) => {
+    if (view.generation < readGenerationRef.current) return;
+    updateWorkspaceFiles(root, view.files);
+    if (!view.data) {
+      setEditors(current => {
+        const existing = current[view.path];
+        if (!existing) return current;
         const next = { ...current };
-        delete next[path];
+        const mayDiscard = discardLocal?.revision === existing.revision && discardLocal?.baseIdentity === existing.snapshot.baseContentIdentity;
+        if (mayDiscard || !editorIsDirty(existing)) delete next[view.path];
+        else next[view.path] = { ...existing, loadError: asApiError(new Error("The source no longer contains this record set. Local changes are retained; reload to open the current source.")).diagnostic,
+          conflict: view.currentSource ?? existing.conflict, saveStatus: "conflict", previewState: "unavailable" };
         return next;
       });
-      setEditors((current) => ({ ...current, [path]: editorFromSnapshot(snapshot) }));
+      return;
+    }
+    const snapshot = view.data;
+    const path = snapshot.path;
+    const previousGeneration = editorGenerations.current.get(path);
+    if (previousGeneration && view.generation < previousGeneration) return;
+    editorGenerations.current.set(path, view.generation);
+    observeReadGeneration(view.generation);
+    setFileOpenErrors(current => { const next = { ...current }; delete next[path]; return next; });
+    setEditors(current => {
+      const existing = current[path];
+      const mayDiscard = !!discardLocal && discardLocal.revision === existing?.revision && discardLocal.baseIdentity === existing?.snapshot.baseContentIdentity;
+      if (!mayDiscard && existing && editorIsDirty(existing) && existing.snapshot.baseContentIdentity !== snapshot.baseContentIdentity) {
+        return { ...current, [path]: { ...existing, conflict: { path, source: snapshot.baseSource, contentIdentity: snapshot.baseContentIdentity }, saveStatus: "conflict", loadError: existing.snapshot.table === snapshot.table ? null : asApiError(new Error("The source now belongs to a different Table. Local changes are retained until recovery.")).diagnostic, previewState: "pending" } };
+      }
+      const sameBase = !mayDiscard && existing?.snapshot.baseContentIdentity === snapshot.baseContentIdentity;
+      const dirty = !mayDiscard && !!existing && editorIsDirty(existing);
+      const editor = sameBase ? { ...existing, snapshot, loadError: null } : editorFromSnapshot(snapshot);
+      if (!dirty) {
+        editor.preview = { ...editor.preview, validation: snapshot.validation };
+        editor.previewState = view.validationPending ? "pending" : "current";
+        editor.previewError = null;
+      } else if (previousGeneration !== view.generation) {
+        editor.previewState = "pending";
+        previewScheduler.current?.(root, path, editor);
+      }
+      return { ...current, [path]: editor };
+    });
+  }, [observeReadGeneration, updateWorkspaceFiles]);
+
+  // Inactive refreshes update only their authoring buffer, never the navigation target.
+  const openDataFile = useCallback(async (root: string, path: string, discardLocal = false) => {
+    const generation = workspaceGeneration.current;
+    const previous = editorsRef.current[path];
+    const discard = discardLocal && previous ? { revision: previous.revision, baseIdentity: previous.snapshot.baseContentIdentity } : undefined;
+    setLoadingPaths(current => new Set(current).add(path));
+    try {
+      const view = await invoke<NavigationView>("select_source", { projectPath: root, relativePath: path });
+      if (workspaceGeneration.current === generation && view) {
+        const changed = view.generation > readGenerationRef.current;
+        installReadView(view, root, discard);
+        observeReadGeneration(view.generation);
+        if (changed || !view.data) setTableEpoch(epoch => epoch + 1);
+      }
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
       const diagnostic = asApiError(error).diagnostic;
-      setFileOpenErrors((current) => ({ ...current, [path]: diagnostic }));
-      setEditors((current) => {
-        const currentEditor = current[path];
-        if (!currentEditor) return current;
-        if (editorIsDirty(currentEditor)) {
-          return {
-            ...current,
-            [path]: {
-              ...currentEditor,
-              saveDiagnostic: apiDiagnosticToDiagnostic(diagnostic),
-            },
-          };
-        }
-        return {
-          ...current,
-          [path]: { ...currentEditor, loadError: diagnostic },
-        };
-      });
+      setFileOpenErrors(current => ({ ...current, [path]: diagnostic }));
+      setEditors(current => current[path] ? { ...current, [path]: { ...current[path], loadError: diagnostic, previewState: "unavailable", saveDiagnostic: apiDiagnosticToDiagnostic(diagnostic) } } : current);
     } finally {
-      if (workspaceGeneration.current === generation) {
-        setLoadingPaths((current) => {
-          const next = new Set(current);
-          next.delete(path);
-          return next;
-        });
-      }
+      if (workspaceGeneration.current === generation) setLoadingPaths(current => { const next = new Set(current); next.delete(path); return next; });
     }
-  }, []);
+  }, [installReadView, observeReadGeneration]);
 
   const loadWorkspace = useCallback(async (requestedProject: string | null, initialDiscovery = false) => {
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
+    workspaceNavigator.current.cancel();
+    editorGenerations.current.clear();
+    readGenerationRef.current = 0;
+    setReadGeneration(0);
+    setNavigationReady(null);
     setCreationOpen(false);
     setInlineCreation(null);
     setSchemaAction(null);
@@ -1013,7 +1068,7 @@ function App({
     setManualValidation({ kind: "idle" });
     setBuildState({ kind: "idle" });
     try {
-      const next = await invoke<AuthoringWorkspace>("authoring_workspace", {
+      const next = await invoke<AuthoringWorkspace>("open_workspace", {
         projectPath: requestedProject,
       });
       const recovery = await invoke<MigrationResult | null>("migration_recovery_status", { projectPath: next.project.project_root });
@@ -1027,9 +1082,6 @@ function App({
       setActivePath(first?.path ?? null);
       setExplorerPath(first?.path ?? null);
       setSelectedTable(first?.table ?? null);
-      if (first && (first.kind === "data" || first.hasInlineRecords)) {
-        await openDataFile(next.project.project_root, first.path, true);
-      }
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
       const diagnostic = asApiError(error).diagnostic;
@@ -1043,32 +1095,69 @@ function App({
         previous,
       });
     }
-  }, [recordRecovery, openDataFile, rememberProject]);
+  }, [recordRecovery, rememberProject]);
 
   useEffect(() => {
-    if (!projectRoot || !activeFile || (activeFile.kind !== "schema" && activeFile.kind !== "data")) {
-      setTableContextState(null);
-      setTableContextError(null);
-      return;
-    }
+    if (!projectRoot || !explorerPath) return;
+    const target = explorerPath;
+    const generation = workspaceGeneration.current;
+    const key = `${projectRoot}:${target}:${tableEpoch}`;
     let disposed = false;
     setTableContextError(null);
-    void invoke<TableContext>("open_table_context", { projectPath: projectRoot, relativePath: activeFile.path })
-      .then((context) => {
-        if (disposed) return;
-        setTableContextState({ root: projectRoot, path: activeFile.path, epoch: tableEpoch, context });
+    void workspaceNavigator.current.select(projectRoot, target).then(view => {
+      if (disposed || workspaceGeneration.current !== generation || selectionIntent.current !== target || !view) return;
+      if (view.generation < readGenerationRef.current) { setTableEpoch(epoch => epoch + 1); return; }
+      navigationMark("state-update", target);
+      installReadView(view, projectRoot);
+      observeReadGeneration(view.generation);
+      setActivePath(view.path);
+      setTypeView(view.typeSnapshot ? { path: view.path, snapshot: view.typeSnapshot } : null);
+      setTableContextState(view.context ? { root: projectRoot, path: view.path, epoch: tableEpoch, generation: view.generation, validationPending: view.validationPending, context: view.context } : null);
+      if (view.context) {
+        const context = view.context;
         setSchemaDrafts(current => {
           const existing = current[context.schemaPath];
-          if (existing?.root === projectRoot && (existing.baseContentIdentity === context.schemaContentIdentity || schemaDraftIsDirty(existing))) return current;
+          if (existing?.root === projectRoot && existing.baseContentIdentity === context.schemaContentIdentity) return current;
+          if (existing?.root === projectRoot && schemaDraftIsDirty(existing)) {
+            if (existing.saving) return current;
+            return { ...current, [context.schemaPath]: { ...existing, saveStatus: "conflict", saveDiagnostic: { code: "E-FIELD-DECL-CONFLICT", kind: "validation", message: "The schema source changed outside this draft.", source: context.schemaPath } } };
+          }
           return { ...current, [context.schemaPath]: schemaDraftFromContext(projectRoot, context) };
         });
-        if (activeFile.kind === "schema" && !activeFile.hasInlineRecords && context.selectedRecordSource && context.selectedRecordSource !== activeFile.path) {
-          setActivePath(context.selectedRecordSource);
-          void openDataFile(projectRoot, context.selectedRecordSource);
-        }
-      }).catch(error => { if (!disposed) { setTableContextState(null); setTableContextError(asApiError(error).diagnostic); } });
+      }
+      setNavigationReady(key);
+    }).catch(error => {
+      if (disposed || workspaceGeneration.current !== generation || selectionIntent.current !== target) return;
+      const diagnostic = asApiError(error).diagnostic;
+      setTableContextState(null); setTypeView(null); setTableContextError(diagnostic);
+      setFileOpenErrors(current => ({ ...current, [target]: diagnostic }));
+      setEditors(current => current[target] ? { ...current, [target]: { ...current[target], loadError: diagnostic, previewState: "unavailable" } } : current);
+      setNavigationReady(key);
+    });
     return () => { disposed = true; };
-  }, [projectRoot, activeFile?.path, activeFile?.kind, activeFile?.hasInlineRecords, tableEpoch, openDataFile]);
+  }, [projectRoot, explorerPath, tableEpoch, installReadView, observeReadGeneration]);
+
+  useEffect(() => {
+    if (!projectRoot || !readGeneration) return;
+    let disposed = false;
+    void invoke<{ generation: number; validation: ValidationReport; tagCandidatesComplete: boolean; tables: Record<string, TableEditorSnapshot> }>("workspace_validation", { projectPath: projectRoot }).then(result => {
+      if (disposed || result.generation !== readGeneration) return;
+      setTableContextState(current => current?.generation === result.generation && result.tables[current.context.table]
+        ? { ...current, validationPending: false, context: { ...current.context, schema: result.tables[current.context.table] } } : current);
+      setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) => {
+        if (editorGenerations.current.get(path) !== result.generation || editorIsDirty(editor) || editor.loadError) return [path, editor];
+        return [path, { ...editor, previewState: "current", previewError: null,
+          preview: { ...editor.preview, validation: result.validation },
+          snapshot: { ...editor.snapshot, validation: result.validation, tagCandidatesComplete: result.tagCandidatesComplete } }];
+      })));
+    }).catch(error => {
+      if (disposed) return;
+      setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) =>
+        editorGenerations.current.get(path) === readGeneration && !editorIsDirty(editor)
+          ? [path, { ...editor, previewState: "unavailable", previewError: asApiError(error).diagnostic }] : [path, editor])));
+    });
+    return () => { disposed = true; };
+  }, [projectRoot, readGeneration]);
 
   const recordDraftSignature = savedTableContext?.recordSources.map(source => {
     const editor = editors[source.path];
@@ -1079,7 +1168,7 @@ function App({
   useEffect(() => {
     const context = savedTableContext;
     const draft = context ? schemaDrafts[context.schemaPath] : null;
-    if (!projectRoot || !context || !draft || !schemaDraftIsDirty(draft)) return;
+    if (!projectRoot || !context || !draft || !schemaDraftIsDirty(draft) || draft.baseContentIdentity !== context.schemaContentIdentity) return;
     const dirtyEditors = context.recordSources.map(source => ({ path: source.path, editor: editors[source.path] }))
       .filter(({ editor }) => editor && editorIsDirty(editor)) as { path: string; editor: EditorState }[];
     if (dirtyEditors.some(({ editor }) => editor.previewState !== "current")) return;
@@ -1108,7 +1197,7 @@ function App({
       });
     }, 100);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [projectRoot, savedTableContext?.schemaPath, savedTableContext?.schemaContentIdentity, activePath, activeSchemaDraft?.revision, recordDraftSignature]);
+  }, [projectRoot, savedTableContext?.schemaPath, savedTableContext?.schemaContentIdentity, activePath, activeSchemaDraft?.revision, recordDraftSignature, readGeneration]);
 
 
   useEffect(() => {
@@ -1165,6 +1254,14 @@ function App({
     }, previewDelayMs);
     previewTimers.current.set(path, timer);
   }, [previewDelayMs]);
+
+  useLayoutEffect(() => { previewScheduler.current = schedulePreview; }, [schedulePreview]);
+  useEffect(() => {
+    if (!projectRoot) return;
+    for (const [path, editor] of Object.entries(editorsRef.current)) {
+      if (editorIsDirty(editor) && editor.previewState === "pending" && !editor.loadError) schedulePreview(projectRoot, path, editor);
+    }
+  }, [projectRoot, readGeneration, schedulePreview]);
 
   const updateCell = useCallback((path: string, recordIndex: number, field: string, value: AuthoringValue, operation = false) => {
     if (!projectRoot) return;
@@ -1559,7 +1656,7 @@ function App({
       .map(([path]) => path);
     const refreshed = await Promise.all(dirtyPaths.map(async path => {
       try {
-        return { path, snapshot: await invoke<DataFileSnapshot>("open_data_file", { projectPath: draft.root, relativePath: path }), error: null };
+        return { path, snapshot: await readDataFile<DataFileSnapshot>(draft.root, path), error: null };
       } catch (cause) {
         return { path, snapshot: null, error: apiDiagnosticToDiagnostic(asApiError(cause).diagnostic) };
       }
@@ -1592,7 +1689,7 @@ function App({
     setTableEpoch(epoch => epoch + 1);
     await Promise.all(Object.entries(nextEditors)
       .filter(([, editor]) => editor.snapshot.table === draft.table && !editorIsDirty(editor))
-      .map(([path]) => openDataFile(draft.root, path, true)));
+      .map(([path]) => openDataFile(draft.root, path)));
     if (notify) showNotice(`${sourceName(schemaPath)} saved`);
   }, [openDataFile, schedulePreview, showNotice]);
 
@@ -1673,7 +1770,7 @@ function App({
       if (recordResult) {
         if (recordResult.status === "success" || recordResult.status === "unchanged") {
           try {
-            const snapshot = await invoke<DataFileSnapshot>("open_data_file", { projectPath: root, relativePath: path });
+            const snapshot = await readDataFile<DataFileSnapshot>(root, path);
             if (workspaceGeneration.current !== generation) return false;
             if (snapshot.baseContentIdentity !== recordResult.candidateContentIdentity) {
               const conflict = { path, source: snapshot.baseSource, contentIdentity: snapshot.baseContentIdentity };
@@ -1779,7 +1876,7 @@ function App({
     const draft = schemaDraftsRef.current[schemaPath];
     if (!draft) return;
     try {
-      const context = await invoke<TableContext>("open_table_context", { projectPath: draft.root, relativePath: schemaPath });
+      const context = await readTableContext<TableContext>(draft.root, schemaPath);
       setSchemaDrafts(current => ({ ...current, [schemaPath]: schemaDraftFromContext(draft.root, context) }));
       setTableEpoch(epoch => epoch + 1);
     } catch (cause) { showNotice(asApiError(cause).diagnostic.message); }
@@ -1795,7 +1892,7 @@ function App({
       if (inlineDirty) {
         handledInline.add(path);
         try {
-          const context = await invoke<TableContext>("open_table_context", { projectPath: draft.root, relativePath: path });
+          const context = await readTableContext<TableContext>(draft.root, path);
           if (!(await saveCurrentTableContext(context, path))) allSaved = false;
         } catch (cause) {
           showNotice(asApiError(cause).diagnostic.message);
@@ -1903,13 +2000,31 @@ function App({
 
   useEffect(() => {
     if (sourcePollingIntervalMs == null) return;
+    let inventoryPending = false;
+    const sourcePending = new Set<string>();
     const timer = window.setInterval(() => {
       const state = workspaceStateRef.current;
       const root = state.kind === "ready" ? state.workspace.project.project_root : null;
       if (!root) return;
       const generation = workspaceGeneration.current;
+      if (!inventoryPending) {
+        inventoryPending = true;
+        void invoke<{ generation: number; workspace: AuthoringWorkspace }>("workspace_status", { projectPath: root }).then(status => {
+          if (workspaceGeneration.current !== generation || status.generation < readGenerationRef.current) return;
+          updateWorkspaceFiles(root, status.workspace?.files);
+          if (status.generation === readGenerationRef.current) return;
+          observeReadGeneration(status.generation);
+          setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) => [path, { ...editor, previewState: "pending" }])));
+          setTableEpoch(epoch => epoch + 1);
+        }).catch(error => {
+          if (workspaceGeneration.current !== generation) return;
+          const diagnostic = asApiError(error).diagnostic;
+          setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) => [path, { ...editor, loadError: diagnostic, previewState: "unavailable" }])));
+        }).finally(() => { inventoryPending = false; });
+      }
       for (const [path, editor] of Object.entries(editorsRef.current)) {
-        if (editor.saving) continue;
+        if (editor.saving || sourcePending.has(path)) continue;
+        sourcePending.add(path);
         void invoke<SourceContentState>("source_content", {
           projectPath: root,
           relativePath: path,
@@ -1946,15 +2061,16 @@ function App({
               ? { ...all, [path]: { ...all[path], conflict: current, saveStatus: "conflict", loadError: null } }
               : all);
           } else {
-            void openDataFile(root, path, true);
+            void openDataFile(root, path);
           }
-        }).catch(() => {
-          // A transient polling failure must not discard an editor buffer.
-        });
+        }).catch(error => {
+          if (workspaceGeneration.current !== generation) return;
+          setEditors(all => all[path] ? { ...all, [path]: { ...all[path], loadError: asApiError(error).diagnostic, previewState: "unavailable" } } : all);
+        }).finally(() => { sourcePending.delete(path); });
       }
     }, sourcePollingIntervalMs);
     return () => window.clearInterval(timer);
-  }, [openDataFile, sourcePollingIntervalMs]);
+  }, [openDataFile, sourcePollingIntervalMs, observeReadGeneration, updateWorkspaceFiles]);
 
   const validateDisk = useCallback(async () => {
     if (!workspace || !projectRoot) return;
@@ -1997,16 +2113,14 @@ function App({
 
   const selectFile = useCallback((file: WorkspaceSourceFile) => {
     navigationMark("selection", file.path);
+    selectionIntent.current = file.path;
     setActivePath(file.path);
     setExplorerPath(file.path);
     if (file.table) setSelectedTable(file.table);
     setSurface("editor");
     const relative = file.sourceRoot && file.path.startsWith(`${file.sourceRoot}/`) ? file.path.slice(file.sourceRoot.length + 1) : file.path;
     setCreationTarget({ root: file.sourceRoot, folder: relative.split("/").slice(0, -1).join("/") });
-    if ((file.kind === "data" || file.hasInlineRecords) && projectRoot) {
-      void openDataFile(projectRoot, file.path);
-    }
-  }, [openDataFile, projectRoot]);
+  }, []);
 
   const openPathMutation = useCallback((requested?: WorkspaceSourceFile) => {
     const target = requested ?? activeFile;
@@ -2079,12 +2193,12 @@ function App({
         setExplorerPath(destinationPath);
         setRevealCreated({ path: destinationPath, root: sourceRoot });
         try {
-          const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
+          const next = await invoke<AuthoringWorkspace>("refresh_workspace", { projectPath: root });
           setWorkspaceState({ kind: "ready", workspace: next });
           const destinationFile = next.files.find((file) => file.path === destinationPath);
           const destinationRoot = destinationFile?.sourceRoot ?? sourceRoot;
           setRevealCreated({ path: destinationPath, root: destinationRoot });
-          if (destinationFile && (destinationFile.kind === "data" || destinationFile.hasInlineRecords)) await openDataFile(root, destinationPath, true);
+
           showNotice(`${sourceName(sourcePath)} moved to ${destinationPath}`);
         } catch (error) {
           // The mutation report is authoritative even if the post-success
@@ -2270,7 +2384,7 @@ function App({
   const refreshAfterCreation = useCallback(async (report: CreationReport) => {
     if (!projectRoot) return;
     const generation = workspaceGeneration.current;
-    const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: projectRoot });
+    const next = await invoke<AuthoringWorkspace>("refresh_workspace", { projectPath: projectRoot });
     if (workspaceGeneration.current !== generation) return;
     // Creation refresh is navigation, not Project Reload: retain every dirty buffer.
     // EVIDENCE: GUI-CREATE-INT-008, GUI-CREATE-INT-009.
@@ -2283,7 +2397,7 @@ function App({
     setRevealCreated({ path: report.path, root: root ?? "" });
     setCreationOpen(false);
     const file = next.files.find(file => file.path === report.path);
-    if (file && (file.kind === "data" || file.hasInlineRecords)) await openDataFile(projectRoot, file.path);
+
     showNotice(`${sourceName(report.path)} created`);
   }, [projectRoot, openDataFile, showNotice]);
 
@@ -2300,10 +2414,10 @@ function App({
     );
     editorsRef.current = retained; setEditors(retained);
     setTableEpoch(epoch => epoch + 1);
-    const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: root });
+    const next = await invoke<AuthoringWorkspace>("refresh_workspace", { projectPath: root });
     if (workspaceGeneration.current !== generation) return;
     setWorkspaceState({ kind: "ready", workspace: next });
-    await Promise.all(reload.filter(path => next.files.some(file => file.path === path && (file.kind === "data" || file.hasInlineRecords))).map(path => openDataFile(root, path, true)));
+    await Promise.all(reload.filter(path => next.files.some(file => file.path === path && (file.kind === "data" || file.hasInlineRecords))).map(path => openDataFile(root, path)));
   }, [openDataFile]);
   const migrationResult = useCallback(async (root: string, result: MigrationResult) => {
     if (result.state === "recovery_required") recordRecovery(root, result);
@@ -2402,13 +2516,14 @@ function App({
     setInlineCreation({ root, folder, category: "data", table });
   };
   const overviewTable = selectedTable ?? activeFile?.table ?? workspace?.files.find((file) => file.table)?.table ?? null;
-  const recordFileActive = activeFile?.kind === "data" || !!activeFile?.hasInlineRecords;
+  const localRecordRecovery = !!activeEditor && editorIsDirty(activeEditor) && !!activeEditor.loadError;
+  const recordFileActive = !!activeFile && (activeFile.kind === "data" || !!activeFile.hasInlineRecords || !!activeEditor);
   const activeTableName = activeFile?.table ?? null;
   const activeSchema = activeFile?.kind === "schema"
     ? activeFile
     : workspace?.files.find(file => file.kind === "schema" && file.table === activeTableName);
-  const tableEditor = activeSchema && projectRoot && activeTableName ? <TableEditor key={`${projectRoot}:${activeSchema.path}:${tableEpoch}`}
-    projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded schemaAction={schemaAction} onSchemaActionConsumed={() => setSchemaAction(null)}
+  const tableEditor = activeSchema && projectRoot && activeTableName && savedTableContext ? <TableEditor key={`${projectRoot}:${activeSchema.path}:${tableEpoch}`}
+    initialSnapshot={savedTableContext.schema} referencesPending={!!tableContextState?.validationPending} projectPath={projectRoot} path={activeSchema.path} canWrite={!mutationBlocked} embedded schemaAction={schemaAction} onSchemaActionConsumed={() => setSchemaAction(null)}
     onOverview={() => { setSelectedTable(activeTableName); setSurface("overview"); }}
     onCreateData={() => openDataCreation(activeTableName)}
     dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
@@ -2422,7 +2537,7 @@ function App({
   const refreshExplorer = async () => {
     if (!projectRoot) return;
     try {
-      const next = await invoke<AuthoringWorkspace>("authoring_workspace", { projectPath: projectRoot });
+      const next = await invoke<AuthoringWorkspace>("refresh_workspace", { projectPath: projectRoot });
       if (next.project.project_root === projectRoot) setWorkspaceState({ kind: "ready", workspace: next });
     } catch (error) {
       showNotice(asApiError(error).diagnostic.message);
@@ -2668,15 +2783,15 @@ function App({
             <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(tableContextError)} />
           )}
           {activeFile?.kind === "schema" && !activeFile.hasInlineRecords && tableContext && !tableContext.selectedRecordSource && (
-            <EmptyTableSurface context={tableContext} disabled={mutationBlocked || !!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"} onIntent={applyColumnIntent}
+            <EmptyTableSurface context={tableContext} disabled={mutationBlocked || !!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown" || (!!activeSchemaDraft && !schemaDraftApplies)} onIntent={applyColumnIntent}
               schemaDraftActions={schemaDraftActions}
               onUndoSchema={redo => undoSchemaDraft(tableContext.schemaPath, redo)}
               onCreateData={() => openDataCreation(tableContext.table)} details={tableEditor}
               saveEnabled={!!activeSchemaDraft && schemaDraftIsDirty(activeSchemaDraft)}
               onSave={() => void saveCurrentTableContext(tableContext, null)} />
           )}
-          {activeFile?.kind === "type" && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
-            projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
+          {activeFile?.kind === "type" && !localRecordRecovery && !activeLoading && typeView?.path === activeFile.path && projectRoot && <TypeEditor key={`${projectRoot}:${activeFile.path}:${tableEpoch}`}
+            initialSnapshot={typeView.snapshot} projectPath={projectRoot} path={activeFile.path} canWrite={!mutationBlocked}
             dirtyPaths={Object.entries(editors).filter(([,editor]) => editorIsDirty(editor) || editor.saving).map(([path]) => path)}
             beginApply={paths => {
               if (sourceMutationBlocked(projectRoot) || paths.some(path => editorsRef.current[path] && (editorIsDirty(editorsRef.current[path]) || editorsRef.current[path].saving))) return false;
@@ -2684,9 +2799,11 @@ function App({
             }}
             endApply={() => { if (migrationBusyRef.current === projectRoot) { migrationBusyRef.current = null; setMigrationBusyRoot(null); } }}
             onResult={result => migrationResult(projectRoot, result)} />}
-          {activeFile && activeFile.kind !== "data" && activeFile.kind !== "schema" && activeFile.kind !== "type" && (
+          {activeFile && !recordFileActive && activeFile.kind !== "data" && activeFile.kind !== "schema" && activeFile.kind !== "type" && (
             <SourcePlaceholder file={activeFile} />
           )}
+          {activeFile?.kind === "type" && activeLoading && <EmptyEditor title={`Opening ${sourceName(activeFile.path)}…`} copy="Loading Type context." />}
+          {activeFile?.kind === "type" && !activeLoading && tableContextError && <DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(tableContextError)} />}
           {recordFileActive && activeLoading && (
             <EmptyEditor title={`Loading ${sourceName(activeFile.path)}…`} copy="Refreshing records through the shared application service." />
           )}
@@ -2707,14 +2824,14 @@ function App({
                 || (!!tableContext?.recordSources.some(source => source.path === tableContext.schemaPath && source.inline)
                   && !!editors[tableContext.schemaPath] && editorIsDirty(editors[tableContext.schemaPath]))}
               contextSaving={!!activeSchemaDraft?.saving || !!editors[tableContext?.schemaPath ?? ""]?.saving}
-              mutationBlocked={mutationBlocked}
-              schemaDraftBlocked={!!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown"}
+              mutationBlocked={mutationBlocked || !!activeEditor.loadError}
+              schemaDraftBlocked={!!activeSchemaDraft?.saving || activeSchemaDraft?.saveStatus === "outcome_unknown" || (!!activeSchemaDraft && !schemaDraftApplies)}
               file={activeFile}
               projectRoot={projectRoot!}
               editor={displayEditor!}
               schemaEditor={tableEditor}
               tableContext={tableContext}
-              onRecordSourceSelect={path => { setActivePath(path); setExplorerPath(path); if (projectRoot) void openDataFile(projectRoot, path); }}
+              onRecordSourceSelect={path => { selectionIntent.current = path; navigationMark("selection", path); setActivePath(path); setExplorerPath(path); }}
               onColumnIntent={applyColumnIntent}
               onUndoSchema={redo => { if (tableContext) undoSchemaDraft(tableContext.schemaPath, redo); }}
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
@@ -3992,6 +4109,8 @@ function DataEditor({
         </div>
       )}
 
+      {editor.loadError && <div className="conflict-strip" role="alert"><div><strong>Source unavailable — local changes retained.</strong><span>Editing is paused until the current source can be loaded safely.</span><DiagnosticBanner diagnostic={apiDiagnosticToDiagnostic(editor.loadError)} /></div></div>}
+
       {editor.conflict && (
         <div className="conflict-strip">
           <div>
@@ -4115,6 +4234,7 @@ function DataEditor({
                             ? (selectedRange.endRow === gridRowIndex && selectedRange.endColumn === columnIndex ? 0 : -1)
                             : (gridRowIndex === 0 && columnIndex === 0 ? 0 : -1)}
                           role="gridcell"
+                          aria-readonly={!editable}
                           aria-label={`${label}: ${authoringValueSummary(value)}${readOnlyReason ? `, ${readOnlyReason}` : ""}`}
                           onMouseDown={(event) => {
                             if (event.button !== 0) return;

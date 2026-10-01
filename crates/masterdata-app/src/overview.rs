@@ -117,197 +117,213 @@ impl NativeApplicationService {
         let project = masterdata_core::Project::discover(explicit_project, current_dir)?;
         let source_paths = project.source_files()?;
         let before_sources = source_identities(&project, &source_paths)?;
-        let config_identity = project.config_content_identity();
-        let selection = match project.build_selection(request.profile.as_deref()) {
-            Ok(selection) => selection,
-            Err(error) => {
-                return Ok(incomplete_snapshot(
-                    &project,
-                    request,
-                    config_identity,
-                    Vec::new(),
-                    vec![error.diagnostic().clone()],
-                    OverviewStatus::Unavailable,
-                ));
-            }
-        };
         let (documents, parse_diagnostics) = load_authoring_documents(&project, None)?;
-        let mut diagnostics = parse_diagnostics;
-        let schemas = documents
-            .schemas()
-            .filter(|(_, schema)| schema.table == request.table)
-            .collect::<Vec<_>>();
-        let schema = match schemas.as_slice() {
-            [(_, schema)] => *schema,
-            [] => {
-                diagnostics.push(overview_error(
-                    "E-AUTHORING-OVERVIEW-TABLE-NOT-FOUND",
-                    format!("table `{}` has no parseable schema", request.table),
-                ));
-                return Ok(incomplete_snapshot(
-                    &project,
-                    request,
-                    config_identity,
-                    Vec::new(),
-                    diagnostics,
-                    OverviewStatus::Unavailable,
-                ));
-            }
-            _ => {
-                diagnostics.push(overview_error(
-                    "E-AUTHORING-OVERVIEW-TABLE-AMBIGUOUS",
-                    format!("table `{}` has multiple schema documents", request.table),
-                ));
-                return Ok(incomplete_snapshot(
-                    &project,
-                    request,
-                    config_identity,
-                    Vec::new(),
-                    diagnostics,
-                    OverviewStatus::Unavailable,
-                ));
-            }
-        };
-        let key_fields = schema
-            .primary_key
-            .as_ref()
-            .map(|key| key.fields.iter().cloned().collect::<BTreeSet<_>>())
-            .unwrap_or_default();
-        let base_columns = schema
-            .fields
-            .iter()
-            .map(|field| OverviewColumn {
-                name: field.name.clone(),
-                type_name: field.type_name.clone(),
-                key_field: key_fields.contains(&field.name),
-                shape: resolve_authoring_field_shape(&documents, field),
-            })
-            .collect::<Vec<_>>();
-        let columns = base_columns;
-        let query_shape_indices = query_shapes(&columns, &request.query)?;
-        let mut rows = Vec::new();
-        for (path, _, records) in documents
-            .record_sources()
-            .filter(|(_, table, _)| *table == request.table)
-        {
-            let absolute_path = path.clone();
-            let path = project_relative_string(project.root(), &absolute_path);
-            for (record_index, record) in records.iter().enumerate() {
-                let tags = record_tags(record, &absolute_path, record_index, &mut diagnostics);
-                let values = columns
-                    .iter()
-                    .map(|column| {
-                        record
-                            .get(&column.name)
-                            .and_then(|value| {
-                                column
-                                    .shape
-                                    .as_ref()
-                                    .and_then(|shape| project_typed_source_value(shape, value).ok())
-                                    .or_else(|| project_source_value(value).ok())
-                            })
-                            .unwrap_or(AuthoringValue::Null)
-                    })
-                    .collect::<Vec<_>>();
-                let query_values = query_shape_indices
-                    .iter()
-                    .map(|(_, column_index)| values[*column_index].clone())
-                    .collect::<Vec<_>>();
-                rows.push(OverviewRowBuffer {
-                    path: path.clone(),
-                    record_index,
-                    values,
-                    query_values,
-                    tags,
-                });
-            }
-        }
-        let query_shapes = query_shape_indices
-            .iter()
-            .map(|(shape, _)| shape.clone())
-            .collect::<Vec<_>>();
-        let query_rows = rows
-            .iter()
-            .enumerate()
-            .map(|(source_order, row)| QueryRow {
-                source_order,
-                values: row.query_values.clone(),
-            })
-            .collect::<Vec<_>>();
-        let query_positions = apply_authoring_query(&query_shapes, &query_rows, &request.query)?;
-        let total_count = rows.len();
-        let mut selection_view = selection_view(&selection, &rows);
-        selection_view.metadata.profile = request.profile.clone();
-        let selected_count = selection_view.available.then(|| {
-            rows.iter()
-                .filter(|row| {
-                    row.tags
-                        .as_ref()
-                        .is_some_and(|tags| selection.is_selected(tags))
-                })
-                .count()
-        });
-        let rows = query_positions
-            .into_iter()
-            .filter_map(|position| {
-                let row = &rows[position];
-                let (selected, include, exclude, reason) =
-                    selection_row(&selection, row.tags.as_ref());
-                if request.selected_only && selected != Some(true) {
-                    return None;
-                }
-                Some(TableOverviewRow {
-                    table: request.table.clone(),
-                    source_path: row.path.clone(),
-                    record_index: row.record_index,
-                    values: row.values.clone(),
-                    selected,
-                    matched_include_tags: include,
-                    matched_exclude_tags: exclude,
-                    selection_reason: reason,
-                })
-            })
-            .collect::<Vec<_>>();
+        let validation = validate_documents(&documents);
+        overview_from_documents(
+            &project,
+            request,
+            &documents,
+            parse_diagnostics,
+            before_sources,
+            validation,
+        )
+    }
+}
 
-        let after_paths = project.source_files()?;
-        let after_sources = source_identities(&project, &after_paths)?;
-        let config_changed =
-            masterdata_core::Project::from_config_path(project.config_path().to_path_buf())
-                .ok()
-                .is_none_or(|current| current.config_content_identity() != config_identity);
-        if before_sources != after_sources || config_changed {
-            return Ok(stale_snapshot(
-                &project,
+pub(crate) fn overview_from_documents(
+    project: &masterdata_core::Project,
+    request: &TableOverviewRequest,
+    documents: &ProjectDocuments,
+    parse_diagnostics: Vec<Diagnostic>,
+    before_sources: Vec<OverviewSourceSnapshot>,
+    validation: masterdata_core::ValidationReport,
+) -> Result<TableOverviewSnapshot> {
+    let config_identity = project.config_content_identity();
+    let selection = match project.build_selection(request.profile.as_deref()) {
+        Ok(selection) => selection,
+        Err(error) => {
+            return Ok(incomplete_snapshot(
+                project,
                 request,
                 config_identity,
-                after_sources,
-                diagnostics,
+                Vec::new(),
+                vec![error.diagnostic().clone()],
+                OverviewStatus::Unavailable,
             ));
         }
-        let status = if diagnostics.is_empty() {
-            OverviewStatus::Complete
-        } else {
-            OverviewStatus::Partial
-        };
-        let result_identity =
-            overview_identity(&config_identity, &after_sources, request, &selection);
-        Ok(TableOverviewSnapshot {
-            status,
-            table: request.table.clone(),
-            result_identity,
-            config_content_identity: config_identity,
-            sources: after_sources,
-            columns,
-            total_count,
-            selected_count,
-            displayed_count: rows.len(),
-            selection: selection_view.metadata,
-            rows,
-            query: request.query.clone(),
-            validation: validate_documents(&documents),
-            diagnostics,
+    };
+    let mut diagnostics = parse_diagnostics;
+    let schemas = documents
+        .schemas()
+        .filter(|(_, schema)| schema.table == request.table)
+        .collect::<Vec<_>>();
+    let schema = match schemas.as_slice() {
+        [(_, schema)] => *schema,
+        [] => {
+            diagnostics.push(overview_error(
+                "E-AUTHORING-OVERVIEW-TABLE-NOT-FOUND",
+                format!("table `{}` has no parseable schema", request.table),
+            ));
+            return Ok(incomplete_snapshot(
+                project,
+                request,
+                config_identity,
+                Vec::new(),
+                diagnostics,
+                OverviewStatus::Unavailable,
+            ));
+        }
+        _ => {
+            diagnostics.push(overview_error(
+                "E-AUTHORING-OVERVIEW-TABLE-AMBIGUOUS",
+                format!("table `{}` has multiple schema documents", request.table),
+            ));
+            return Ok(incomplete_snapshot(
+                project,
+                request,
+                config_identity,
+                Vec::new(),
+                diagnostics,
+                OverviewStatus::Unavailable,
+            ));
+        }
+    };
+    let key_fields = schema
+        .primary_key
+        .as_ref()
+        .map(|key| key.fields.iter().cloned().collect::<BTreeSet<_>>())
+        .unwrap_or_default();
+    let base_columns = schema
+        .fields
+        .iter()
+        .map(|field| OverviewColumn {
+            name: field.name.clone(),
+            type_name: field.type_name.clone(),
+            key_field: key_fields.contains(&field.name),
+            shape: resolve_authoring_field_shape(documents, field),
         })
+        .collect::<Vec<_>>();
+    let columns = base_columns;
+    let query_shape_indices = query_shapes(&columns, &request.query)?;
+    let mut rows = Vec::new();
+    for (path, _, records) in documents
+        .record_sources()
+        .filter(|(_, table, _)| *table == request.table)
+    {
+        let absolute_path = path.clone();
+        let path = project_relative_string(project.root(), &absolute_path);
+        for (record_index, record) in records.iter().enumerate() {
+            let tags = record_tags(record, &absolute_path, record_index, &mut diagnostics);
+            let values = columns
+                .iter()
+                .map(|column| {
+                    record
+                        .get(&column.name)
+                        .and_then(|value| {
+                            column
+                                .shape
+                                .as_ref()
+                                .and_then(|shape| project_typed_source_value(shape, value).ok())
+                                .or_else(|| project_source_value(value).ok())
+                        })
+                        .unwrap_or(AuthoringValue::Null)
+                })
+                .collect::<Vec<_>>();
+            let query_values = query_shape_indices
+                .iter()
+                .map(|(_, column_index)| values[*column_index].clone())
+                .collect::<Vec<_>>();
+            rows.push(OverviewRowBuffer {
+                path: path.clone(),
+                record_index,
+                values,
+                query_values,
+                tags,
+            });
+        }
     }
+    let query_shapes = query_shape_indices
+        .iter()
+        .map(|(shape, _)| shape.clone())
+        .collect::<Vec<_>>();
+    let query_rows = rows
+        .iter()
+        .enumerate()
+        .map(|(source_order, row)| QueryRow {
+            source_order,
+            values: row.query_values.clone(),
+        })
+        .collect::<Vec<_>>();
+    let query_positions = apply_authoring_query(&query_shapes, &query_rows, &request.query)?;
+    let total_count = rows.len();
+    let mut selection_view = selection_view(&selection, &rows);
+    selection_view.metadata.profile = request.profile.clone();
+    let selected_count = selection_view.available.then(|| {
+        rows.iter()
+            .filter(|row| {
+                row.tags
+                    .as_ref()
+                    .is_some_and(|tags| selection.is_selected(tags))
+            })
+            .count()
+    });
+    let rows = query_positions
+        .into_iter()
+        .filter_map(|position| {
+            let row = &rows[position];
+            let (selected, include, exclude, reason) = selection_row(&selection, row.tags.as_ref());
+            if request.selected_only && selected != Some(true) {
+                return None;
+            }
+            Some(TableOverviewRow {
+                table: request.table.clone(),
+                source_path: row.path.clone(),
+                record_index: row.record_index,
+                values: row.values.clone(),
+                selected,
+                matched_include_tags: include,
+                matched_exclude_tags: exclude,
+                selection_reason: reason,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let after_paths = project.source_files()?;
+    let after_sources = source_identities(project, &after_paths)?;
+    let config_changed = fs::read_to_string(project.config_path())
+        .ok()
+        .is_none_or(|source| source_content_identity(&source) != config_identity);
+    if before_sources != after_sources || config_changed {
+        return Ok(stale_snapshot(
+            project,
+            request,
+            config_identity,
+            after_sources,
+            diagnostics,
+        ));
+    }
+    let status = if diagnostics.is_empty() {
+        OverviewStatus::Complete
+    } else {
+        OverviewStatus::Partial
+    };
+    let result_identity = overview_identity(&config_identity, &after_sources, request, &selection);
+    Ok(TableOverviewSnapshot {
+        status,
+        table: request.table.clone(),
+        result_identity,
+        config_content_identity: config_identity,
+        sources: after_sources,
+        columns,
+        total_count,
+        selected_count,
+        displayed_count: rows.len(),
+        selection: selection_view.metadata,
+        rows,
+        query: request.query.clone(),
+        validation,
+        diagnostics,
+    })
 }
 
 struct SelectionView {
@@ -391,7 +407,7 @@ fn query_shapes(
     Ok(shapes)
 }
 
-fn source_identities(
+pub(crate) fn source_identities(
     project: &masterdata_core::Project,
     paths: &[PathBuf],
 ) -> Result<Vec<OverviewSourceSnapshot>> {

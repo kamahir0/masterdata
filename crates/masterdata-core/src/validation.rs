@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::Diagnostic;
 use crate::document::{ProjectDocuments, SourceDocument};
@@ -27,13 +27,31 @@ pub fn validate_documents(documents: &ProjectDocuments) -> ValidationReport {
     validate_documents_with_selection(documents, &BuildSelection::unfiltered())
 }
 
-/// Validate project documents using an already resolved Build Selection.
-/// Selection-aware dataset constraints are evaluated by `resolve_tables` only
-/// after profile-independent type and source structure checks have succeeded.
+/// Shared validation report plus resolved Reference metadata for authoring views.
+pub struct AuthoringValidation {
+    pub report: ValidationReport,
+    pub references: BTreeMap<String, Vec<crate::ResolvedReference>>,
+    pub reference_diagnostics: Vec<Diagnostic>,
+}
+
+pub fn validate_authoring_documents(documents: &ProjectDocuments) -> AuthoringValidation {
+    validation_model(documents, &BuildSelection::unfiltered())
+}
+
+/// Selection-aware constraints follow the profile-independent structure checks.
 pub fn validate_documents_with_selection(
     documents: &ProjectDocuments,
     selection: &BuildSelection,
 ) -> ValidationReport {
+    validation_model(documents, selection).report
+}
+
+fn validation_model(
+    documents: &ProjectDocuments,
+    selection: &BuildSelection,
+) -> AuthoringValidation {
+    let mut references = BTreeMap::new();
+    let mut reference_diagnostics = Vec::new();
     let mut diagnostics = Vec::new();
     let _read_span = crate::read_trace::read_span("validation");
     let type_build = build_type_system(documents);
@@ -57,7 +75,15 @@ pub fn validate_documents_with_selection(
 
     if let Some(type_system) = type_build.model.as_ref() {
         let table_build = resolve_tables(documents, type_system, selection);
-        diagnostics.extend(table_build.diagnostics);
+        reference_diagnostics = table_build.diagnostics;
+        diagnostics.extend(reference_diagnostics.iter().cloned());
+        if let Some(model) = table_build.model {
+            references.extend(
+                model
+                    .into_iter()
+                    .map(|table| (table.identity, table.references)),
+            );
+        }
     }
 
     if documents.files.is_empty() {
@@ -69,7 +95,7 @@ pub fn validate_documents_with_selection(
     }
 
     let valid = diagnostics.is_empty();
-    ValidationReport {
+    let report = ValidationReport {
         valid,
         files_scanned: documents.files.len(),
         schema_documents: documents.schemas().count(),
@@ -78,5 +104,10 @@ pub fn validate_documents_with_selection(
         tables: tables.into_iter().collect(),
         types: type_names.into_iter().collect(),
         diagnostics,
+    };
+    AuthoringValidation {
+        report,
+        references,
+        reference_diagnostics,
     }
 }

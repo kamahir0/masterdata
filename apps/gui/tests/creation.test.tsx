@@ -1,3 +1,4 @@
+import { installWorkspaceFixture } from "./workspace-fixtures";
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -11,7 +12,7 @@ const onCancel = vi.fn();
 beforeEach(() => {
   result = { status: 'success', path: 'sources/new.yaml', folder: false, diagnostic: null };
   onCreated.mockClear(); onCancel.mockClear(); invoke.mockReset();
-  invoke.mockImplementation(async (command) => {
+  installWorkspaceFixture(invoke, async (command) => {
     if (command === 'creation_context') return context;
     if (command === 'create_source') return result;
     if (command === 'recheck_creation') return { exists: true, folder: false, source: 'actual source' };
@@ -79,7 +80,7 @@ test('missing write capability prevents creation', async () => {
 
 test('Create prevents double submit while the exclusive operation is pending', async () => {
   let finish!: (value: any) => void;
-  invoke.mockImplementation(async command => {
+  installWorkspaceFixture(invoke, async command => {
     if (command === 'creation_context') return context;
     if (command === 'create_source') return new Promise(resolve => { finish = resolve; });
   });

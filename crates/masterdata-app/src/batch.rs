@@ -127,27 +127,20 @@ impl NativeApplicationService {
         let target = super::authoring::resolve_source_file(&project, relative_path)?;
         let (documents, parse_diagnostics) =
             load_authoring_documents(&project, Some((&target, base_source)))?;
-        let snapshot =
-            super::authoring::data_file_snapshot(&project, &documents, parse_diagnostics, &target)?;
-        let (mut mutation, changes) = build_batch_mutation(&snapshot, current_mutation, request)?;
-        let preview = self.preview_data_file_mutation(
-            Some(project.root()),
-            project.root(),
-            relative_path,
-            base_source,
-            &mutation,
+        let snapshot = super::authoring::data_file_snapshot(
+            &project,
+            &documents,
+            parse_diagnostics.clone(),
+            &target,
         )?;
-        mutation.edits.shrink_to_fit();
-        let changed_cell_count = changes
-            .iter()
-            .filter(|change| change.before != change.after)
-            .count();
-        Ok(AuthoringBatchPreview {
-            source: preview,
-            target_count: request.targets.len(),
-            changed_cell_count,
-            changes,
-        })
+        batch_preview(
+            &snapshot,
+            &documents,
+            parse_diagnostics,
+            &target,
+            current_mutation,
+            request,
+        )
     }
 
     /// Copy a rectangular range through the same shared scalar validation and
@@ -195,75 +188,104 @@ impl NativeApplicationService {
         };
         let snapshot =
             super::authoring::data_file_snapshot(&project, &documents, parse_diagnostics, &target)?;
-        let _ = validate_target_layout(
-            &snapshot,
-            &AuthoringBatchRequest {
-                targets: request.targets.clone(),
-                clipboard_text: String::new(),
-                fill: false,
-            },
-            base_record_count,
-        )?;
-
-        let mut rows = Vec::<Vec<String>>::new();
-        let mut current_row = None;
-        for batch_target in &request.targets {
-            let (row_index, column_index) =
-                target_position(&snapshot, batch_target, base_record_count)?;
-            if request
-                .current_mutation
-                .deleted_record_indices
-                .contains(&row_index)
-            {
-                return Err(batch_error(
-                    "E-AUTHORING-BATCH-COPY-INVALID",
-                    format!("record[{row_index}] is pending delete and cannot be copied"),
-                ));
-            }
-            if current_row != Some(row_index) {
-                current_row = Some(row_index);
-                rows.push(Vec::new());
-            }
-            let column = snapshot.columns.get(column_index).ok_or_else(|| {
-                batch_error(
-                    "E-AUTHORING-BATCH-COPY-FIELD",
-                    "copy target column is outside the captured snapshot",
-                )
-            })?;
-            let value = snapshot
-                .rows
-                .iter()
-                .find(|row| row.record_index == row_index)
-                .and_then(|row| row.cells.get(column_index))
-                .map(|cell| &cell.value)
-                .ok_or_else(|| {
-                    batch_error(
-                        "E-AUTHORING-BATCH-COPY-TARGETS",
-                        format!("record[{row_index}] target does not exist"),
-                    )
-                })?;
-            let text = authoring_value_to_clipboard(
-                column.shape.as_ref().ok_or_else(|| {
-                    batch_error(
-                        "E-AUTHORING-BATCH-COPY-UNSUPPORTED",
-                        format!("field `{}` has no resolved scalar shape", column.name),
-                    )
-                })?,
-                value,
-            )
-            .map_err(|error| {
-                batch_error(
-                    "E-AUTHORING-BATCH-COPY-INVALID",
-                    error.diagnostic().message.clone(),
-                )
-            })?;
-            rows.last_mut().expect("row created above").push(text);
-        }
-        Ok(AuthoringBatchCopyResult {
-            clipboard_text: encode_clipboard_tsv(&rows)?,
-            target_count: request.targets.len(),
-        })
+        batch_copy(&snapshot, base_record_count, request)
     }
+}
+
+pub(crate) fn batch_preview(
+    snapshot: &DataFileSnapshot,
+    documents: &masterdata_core::ProjectDocuments,
+    parse_diagnostics: Vec<masterdata_core::Diagnostic>,
+    target: &Path,
+    current_mutation: &AuthoringRecordMutation,
+    request: &AuthoringBatchRequest,
+) -> Result<AuthoringBatchPreview> {
+    let (mutation, changes) = build_batch_mutation(snapshot, current_mutation, request)?;
+    let preview =
+        crate::authoring::preview_records(documents, parse_diagnostics, target, &mutation)?;
+    let changed_cell_count = changes
+        .iter()
+        .filter(|change| change.before != change.after)
+        .count();
+    Ok(AuthoringBatchPreview {
+        source: preview,
+        target_count: request.targets.len(),
+        changed_cell_count,
+        changes,
+    })
+}
+pub(crate) fn batch_copy(
+    snapshot: &DataFileSnapshot,
+    base_record_count: usize,
+    request: &AuthoringBatchCopyRequest,
+) -> Result<AuthoringBatchCopyResult> {
+    let _ = validate_target_layout(
+        snapshot,
+        &AuthoringBatchRequest {
+            targets: request.targets.clone(),
+            clipboard_text: String::new(),
+            fill: false,
+        },
+        base_record_count,
+    )?;
+
+    let mut rows = Vec::<Vec<String>>::new();
+    let mut current_row = None;
+    for batch_target in &request.targets {
+        let (row_index, column_index) = target_position(snapshot, batch_target, base_record_count)?;
+        if request
+            .current_mutation
+            .deleted_record_indices
+            .contains(&row_index)
+        {
+            return Err(batch_error(
+                "E-AUTHORING-BATCH-COPY-INVALID",
+                format!("record[{row_index}] is pending delete and cannot be copied"),
+            ));
+        }
+        if current_row != Some(row_index) {
+            current_row = Some(row_index);
+            rows.push(Vec::new());
+        }
+        let column = snapshot.columns.get(column_index).ok_or_else(|| {
+            batch_error(
+                "E-AUTHORING-BATCH-COPY-FIELD",
+                "copy target column is outside the captured snapshot",
+            )
+        })?;
+        let value = snapshot
+            .rows
+            .iter()
+            .find(|row| row.record_index == row_index)
+            .and_then(|row| row.cells.get(column_index))
+            .map(|cell| &cell.value)
+            .ok_or_else(|| {
+                batch_error(
+                    "E-AUTHORING-BATCH-COPY-TARGETS",
+                    format!("record[{row_index}] target does not exist"),
+                )
+            })?;
+        let text = authoring_value_to_clipboard(
+            column.shape.as_ref().ok_or_else(|| {
+                batch_error(
+                    "E-AUTHORING-BATCH-COPY-UNSUPPORTED",
+                    format!("field `{}` has no resolved scalar shape", column.name),
+                )
+            })?,
+            value,
+        )
+        .map_err(|error| {
+            batch_error(
+                "E-AUTHORING-BATCH-COPY-INVALID",
+                error.diagnostic().message.clone(),
+            )
+        })?;
+        rows.last_mut().expect("row created above").push(text);
+    }
+    Ok(AuthoringBatchCopyResult {
+        clipboard_text: encode_clipboard_tsv(&rows)?,
+        target_count: request.targets.len(),
+    })
 }
 
 fn build_batch_mutation(
@@ -565,7 +587,7 @@ fn replace_existing_edit(
     }
 }
 
-fn batch_error(code: &str, message: impl Into<String>) -> MasterdataError {
+pub(crate) fn batch_error(code: &str, message: impl Into<String>) -> MasterdataError {
     MasterdataError::new(code, masterdata_core::ErrorKind::Validation, message)
         .with_related_requirement("AUTHORING-BATCH-001")
 }

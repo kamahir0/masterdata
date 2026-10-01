@@ -73,7 +73,62 @@ pub fn data_file_snapshot(
     mut parse_diagnostics: Vec<Diagnostic>,
     target: &Path,
 ) -> crate::Result<DataFileSnapshot> {
-    let _read_span = crate::read_trace::read_span("dataProjection");
+    let tags = authoring_tag_candidates(profiles, documents);
+    let mut validation = validate_documents(documents);
+    let complete = authoring_tag_candidates_complete(&validation, parse_diagnostics.is_empty());
+    merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
+    data_file_view(project_root, documents, target, tags, complete, validation)
+}
+
+pub fn authoring_tag_candidates(
+    profiles: &[BuildProfileInfo],
+    documents: &ProjectDocuments,
+) -> Vec<String> {
+    let _span = crate::read_trace::read_span("tagScan");
+    profiles
+        .iter()
+        .flat_map(|profile| profile.include_tags.iter().chain(&profile.exclude_tags))
+        .cloned()
+        .chain(documents.record_sources().flat_map(|(_, _, records)| {
+            records.iter().flat_map(|record| {
+                record
+                    .get("$tags")
+                    .and_then(serde_yaml::Value::as_sequence)
+                    .into_iter()
+                    .flat_map(|items| {
+                        items
+                            .iter()
+                            .filter_map(serde_yaml::Value::as_str)
+                            .map(str::to_owned)
+                    })
+            })
+        }))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+pub fn authoring_tag_candidates_complete(
+    validation: &ValidationReport,
+    parse_complete: bool,
+) -> bool {
+    parse_complete
+        && !validation
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code.starts_with("E-BUILD-RECORD-TAGS"))
+}
+
+/// Local authoring projection from captured documents. Diagnostics have their own
+/// generation/lifetime in the interactive Application read session.
+pub fn data_file_view(
+    project_root: &Path,
+    documents: &ProjectDocuments,
+    target: &Path,
+    tag_candidates: Vec<String>,
+    tag_candidates_complete: bool,
+    validation: ValidationReport,
+) -> crate::Result<DataFileSnapshot> {
+    let _span = crate::read_trace::read_span("dataProjection");
     let loaded = documents
         .files
         .iter()
@@ -197,33 +252,6 @@ pub fn data_file_snapshot(
         })
         .collect();
     let add_row = data_editor_add_capability(documents, schema);
-    let tag_candidates = profiles
-        .iter()
-        .flat_map(|profile| profile.include_tags.iter().chain(&profile.exclude_tags))
-        .cloned()
-        .chain(documents.record_sources().flat_map(|(_, _, records)| {
-            records.iter().flat_map(|record| {
-                record
-                    .get("$tags")
-                    .and_then(serde_yaml::Value::as_sequence)
-                    .into_iter()
-                    .flat_map(|items| {
-                        items
-                            .iter()
-                            .filter_map(serde_yaml::Value::as_str)
-                            .map(str::to_owned)
-                    })
-            })
-        }))
-        .collect::<BTreeSet<_>>();
-    let parse_complete = parse_diagnostics.is_empty();
-    let mut validation = validate_documents(documents);
-    let tag_candidates_complete = parse_complete
-        && !validation
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code.starts_with("E-BUILD-RECORD-TAGS"));
-    merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
     Ok(DataFileSnapshot {
         path: relative_string(project_root, target),
         table: data.table.clone(),
@@ -231,7 +259,7 @@ pub fn data_file_snapshot(
         base_content_identity: source_content_identity(&loaded.source),
         columns,
         rows,
-        tag_candidates: tag_candidates.into_iter().collect(),
+        tag_candidates,
         tag_candidates_complete,
         add_row,
         validation,

@@ -8,7 +8,7 @@ import { migrationApplyDisabled, migrationBlockedFiles, migrationDestructiveAuth
 
 type Field = { key:number; name:string; type:string; nullable:boolean; array:boolean };
 type Reference = { name:string; csharpName?:string|null; effectiveCsharpName?:string; sourceFields:string[]; targetTable:string; targetFields:string[]; targetKeyKind?:"primary"|"secondary"; cardinality?:"single"|"many"; optionality?:"required"|"nullable" };
-type Snapshot = { path:string; schema:{ table:string; fields:Field[]; primaryKey:{fields:string[]}; secondaryKeys:{fields:string[];nonUnique:boolean}[]; references?:Reference[] }; fieldTypes:string[]; initializerShapes:Record<string,ResolvedAuthoringType>; references?:Reference[]; referenceDiagnostics?:{code:string;message:string;source?:string;schemaPath?:string;valuePath?:string;recordIdentity?:string}[] };
+export type TableEditorSnapshot = { path:string; schema:{ table:string; fields:Field[]; primaryKey:{fields:string[]}; secondaryKeys:{fields:string[];nonUnique:boolean}[]; references?:Reference[] }; fieldTypes:string[]; initializerShapes:Record<string,ResolvedAuthoringType>; references?:Reference[]; referenceDiagnostics?:{code:string;message:string;source?:string;schemaPath?:string;valuePath?:string;recordIdentity?:string}[] };
 type Plan = { token:string; table:string; operation:string; field:string; destructive:boolean; affectedRecordCount:number; files:{path:string;before:string;after:string}[]; diagnostics:{code:string;message:string}[] };
 export type MigrationResult = { state:string; files:string[]; fileStates?:{path:string;state:string}[]; diagnostic?:{code:string;message:string}|null; recoveryWorkspace?:string|null };
 const message = (error:unknown):string => {
@@ -16,7 +16,8 @@ const message = (error:unknown):string => {
   const diagnostic = (error as {diagnostic:{code:string;message:string;source?:string;schemaPath?:string;schema_path?:string}}).diagnostic;
   return [diagnostic.source, diagnostic.schemaPath ?? diagnostic.schema_path, `${diagnostic.code}: ${diagnostic.message}`].filter(Boolean).join(" · ");
 };
-export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false,schemaAction,onSchemaActionConsumed}: {
+export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginApply,onResult,endApply,onOverview,onCreateData,embedded=false,schemaAction,onSchemaActionConsumed,initialSnapshot,referencesPending=false}: {
+  initialSnapshot:TableEditorSnapshot; referencesPending?:boolean;
   projectPath:string; path:string; canWrite:boolean; dirtyPaths:string[];
   beginApply:(paths:string[])=>boolean; onResult:(result:MigrationResult)=>Promise<void>; endApply:()=>void;
   onOverview?:()=>void;
@@ -25,7 +26,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
   schemaAction?: { path:string; operation:"add"|"rename"; field:string; serial:number } | null;
   onSchemaActionConsumed?:()=>void;
 }) {
-  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
+  const [snapshot,setSnapshot]=useState<TableEditorSnapshot|null>(initialSnapshot);
   const [selected,setSelected]=useState("");
   const [operation,setOperation]=useState<"add"|"rename"|"drop"|null>(null);
   const [referenceOperation,setReferenceOperation]=useState<"add_reference"|"edit_reference"|"remove_reference"|null>(null);
@@ -38,10 +39,9 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
   const revision=useRef(0);const inFlight=useRef(false);const mounted=useRef(true);
   const actionOrigin=useRef<HTMLElement|null>(null);
   useEffect(()=>{if(plan)document.getElementById("migration-plan-summary")?.focus();},[plan]);
-  useEffect(()=>{ mounted.current=true; let disposed=false;
-    void invoke<Snapshot>("open_table",{projectPath,relativePath:path}).then(value=>{if(!disposed){setSnapshot(value);setSelected(value.schema.fields[0]?.name??"");}}).catch(error=>{if(!disposed)setError(message(error));});
-    return ()=>{disposed=true;mounted.current=false;revision.current+=1;};
-  },[projectPath,path]);
+  useEffect(()=>{ mounted.current=true; setSnapshot(initialSnapshot);setSelected(current=>initialSnapshot.schema.fields.some(field=>field.name===current)?current:initialSnapshot.schema.fields[0]?.name??"");
+    return ()=>{mounted.current=false;revision.current+=1;};
+  },[projectPath,path,initialSnapshot]);
   const change=(fn:()=>void)=>{revision.current+=1;fn();setPlan(null);setConfirmed(false);setError(null);setResult(null);};
   const start=(value:"add"|"rename"|"drop", target=selected, origin?:HTMLElement|null)=>{actionOrigin.current=origin??document.activeElement as HTMLElement;change(()=>{setSelected(target);setOperation(value);setReferenceOperation(null);setName(value==="rename"?target:"");setKey(snapshot?.schema.fields.length?Math.max(...snapshot.schema.fields.map(field=>field.key))+1:0);if(value==="add"){setHasInitializer(false);setInitializer(resetInitializer());}});window.requestAnimationFrame(()=>document.getElementById(value==="drop"?"migration-plan":"migration-name")?.focus());};
   const lastSchemaAction=useRef(0);
@@ -76,8 +76,7 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
       if(mounted.current)setResult(outcome);
       await onResult(outcome);
       if(mounted.current&&outcome.state==="success"){
-        const next=await invoke<Snapshot>("open_table",{projectPath,relativePath:path});
-        if(mounted.current){setSnapshot(next);setOperation(null);setReferenceOperation(null);setPlan(null);}
+        if(mounted.current){setOperation(null);setReferenceOperation(null);setPlan(null);}
       }
     }catch(error){if(mounted.current)setError(message(error));}
     finally{inFlight.current=false;endApply();if(mounted.current)setBusy(false);}
@@ -101,13 +100,14 @@ export default function TableEditor({projectPath,path,canWrite,dirtyPaths,beginA
       {snapshot.schema.secondaryKeys?.map((key,index)=><p key={index}>Secondary {index+1}: {key.fields.join(" → ")} {key.nonUnique?"(non-unique)":"(unique)"}</p>)}
       <section aria-label="References" className="table-references">
         <h3>References</h3>
+        {referencesPending && <p role="status">Checking references…</p>}
         {(snapshot.references ?? snapshot.schema.references ?? []).map(reference=><div key={reference.name} className="table-reference">
           <strong>{reference.name}</strong>
           <span> · {reference.sourceFields.join(" → ")} → {reference.targetTable}.{reference.targetFields.join(" → ")}</span>
-          <Tag>{reference.targetKeyKind ?? "unresolved target"}</Tag>
+          {!referencesPending && <><Tag>{reference.targetKeyKind ?? "unresolved target"}</Tag>
           <Tag>{reference.cardinality ?? "unresolved cardinality"}</Tag>
           <Tag>{reference.optionality ?? "unresolved optionality"}</Tag>
-          <Tag>{reference.effectiveCsharpName ?? "unresolved helper name"}</Tag>
+          <Tag>{reference.effectiveCsharpName ?? "unresolved helper name"}</Tag></>}
           <Button size="small" disabled={!canWrite||busy} onClick={()=>startReference("edit_reference",reference)}>Edit</Button>
           <Button size="small" danger disabled={!canWrite||busy} onClick={()=>startReference("remove_reference",reference)}>Remove</Button>
         </div>)}

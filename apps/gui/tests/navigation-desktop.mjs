@@ -39,12 +39,24 @@ try {
     if(metrics.active!==expected || metrics.selected!==path || metrics.rows>100 || metrics.focused!=='gridcell') throw new Error('navigation identity/focus/bounded rendering failed: '+JSON.stringify(metrics));
     evidence.samples.push({label,path,gridMs,usableMs:Date.now()-started,...metrics});
   }
-  await execute(`window.__navigationTrace=[]; for(const path of ['sources/a-2.yaml','sources/b-schema.yaml','sources/c-2.yaml','sources/a-1.yaml']) document.querySelector('[data-tree-path="'+path+'"]').click();`);
-  await waitFor(`return document.querySelector('.editor-area[data-active-source="sources/a-1.yaml"] [role=gridcell]') && document.querySelector('[data-tree-path="sources/a-1.yaml"][aria-selected=true]')`);
+  // Dirty navigation must stay responsive while Core validates the local overlay.
+  const cell=await element("//section[contains(@class,'editor-area')]//*[@role='gridcell'][1]");
+  await request('POST',`/session/${session}/element/${cell}/value`,{text:'\uE007',value:['\uE007']});
+  const input=await element("//input[@aria-label='record 1 id']");
+  await request('POST',`/session/${session}/element/${input}/value`,{text:'\uE009a\uE000',value:['\uE009','a','\uE000']});
+  await request('POST',`/session/${session}/element/${input}/value`,{text:'999999',value:[...'999999']});
+  await request('POST',`/session/${session}/element/${input}/value`,{text:'\uE007',value:['\uE007']});
+  await waitFor("return document.querySelector('[data-tree-path=\"sources/a-1.yaml\"]').getAttribute('aria-label').includes('unsaved')");
+  await execute(`window.__navigationTrace=[];window.__navigationHeartbeat.timer=[];window.__navigationHeartbeat.frames=[];window.__rapidComplete=false;
+    const paths=['sources/a-2.yaml','sources/b-schema.yaml','sources/c-2.yaml','sources/a-1.yaml'];let index=0;
+    function step(){document.querySelector('[data-tree-path="'+paths[index%4]+'"]').click();if(++index<40)setTimeout(step,10);else window.__rapidComplete=true}step();`);
+  await waitFor(`return window.__rapidComplete && document.querySelector('.editor-area[data-active-source="sources/a-1.yaml"] [role=gridcell]')?.textContent.includes('999999') && document.querySelector('[data-tree-path="sources/a-1.yaml"][aria-selected=true]')`);
   // Wait for all requests to settle: obsolete completion must not roll selection back.
   await waitFor("return window.__navigationTrace.filter(x=>x.phase==='request-start').length===window.__navigationTrace.filter(x=>x.phase==='ipc-return').length",120000);
-  evidence.rapid=await execute("return {active:document.querySelector('.editor-area').dataset.activeSource,trace:window.__navigationTrace}");
-  if(evidence.rapid.active!=='sources/a-1.yaml') throw new Error('rapid navigation rolled back');
+  evidence.rapid=await execute("return {selections:40,active:document.querySelector('.editor-area').dataset.activeSource,dirty:document.querySelector('[data-tree-path=\"sources/a-1.yaml\"]').getAttribute('aria-label'),trace:window.__navigationTrace,timerGapMs:Math.max(0,...window.__navigationHeartbeat.timer),frameGapMs:Math.max(0,...window.__navigationHeartbeat.frames)}");
+  if(evidence.rapid.active!=='sources/a-1.yaml' || !evidence.rapid.dirty.includes('unsaved')) throw new Error('rapid navigation lost target or dirty buffer');
+  const reads=evidence.rapid.trace.filter(event=>event.phase==='request-start').length;
+  if(reads>40) throw new Error('rapid selections caused duplicate read requests');
   await execute('clearInterval(window.__navigationTimer);cancelAnimationFrame(window.__navigationFrame)');
   console.log(JSON.stringify(evidence,null,2));
 } finally {

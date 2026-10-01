@@ -1,5 +1,5 @@
 //! Reproducible navigation input; Desktop uses the same generated files.
-use masterdata_app::{NativeApplicationService, TableAuthoringSession};
+use masterdata_app::WorkspaceAuthoringSession;
 use masterdata_core::read_trace::{measure_read, read_span};
 use std::{fmt::Write as _, fs, path::Path, time::Instant};
 
@@ -12,33 +12,26 @@ fn main() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
     write_fixture(root);
-    let service = NativeApplicationService::new();
-    sample("A-cold-project", || {
-        service.authoring_workspace(Some(root), root).unwrap()
-    });
-    let session = TableAuthoringSession::default();
-    let navigate = |path: &str, data: bool| {
-        if data {
-            let snapshot = service.open_data_file(Some(root), root, path).unwrap();
-            let _span = read_span("serialization");
-            serde_json::to_vec(&snapshot).unwrap();
-        }
-        let context = session.open_context(root, path).unwrap();
+    let started = Instant::now();
+    let (session, metrics) =
+        measure_read(|| WorkspaceAuthoringSession::open(Some(root), root).unwrap());
+    println!(
+        "{}",
+        serde_json::json!({"label":"A-cold-project","wallMs":started.elapsed().as_secs_f64()*1000.0,"metrics":metrics})
+    );
+    let navigate = |path: &str| {
+        let view = session.select_source(path).unwrap();
         let _span = read_span("serialization");
-        serde_json::to_vec(&context).unwrap();
+        serde_json::to_vec(&view).unwrap();
     };
-    sample("B-first-source", || navigate("sources/a-1.yaml", true));
-    sample("C-revisit-frontend-buffer", || {
-        navigate("sources/a-1.yaml", false)
-    });
+    sample("B-first-source", || navigate("sources/a-1.yaml"));
+    sample("validation-background", || session.validate());
+    sample("C-revisit-frontend-buffer", || navigate("sources/a-1.yaml"));
     sample("D-same-table-record-source", || {
-        navigate("sources/a-2.yaml", true)
+        navigate("sources/a-2.yaml")
     });
-    sample("E-cross-table", || navigate("sources/b-schema.yaml", true));
-    sample("F-schema-redirect", || {
-        session.open_context(root, "sources/c-schema.yaml").unwrap();
-        navigate("sources/c-1.yaml", true);
-    });
+    sample("E-cross-table", || navigate("sources/b-schema.yaml"));
+    sample("F-schema-redirect", || navigate("sources/c-schema.yaml"));
     sample("G-rapid-four", || {
         for path in [
             "sources/a-1.yaml",
@@ -46,7 +39,7 @@ fn main() {
             "sources/b-schema.yaml",
             "sources/c-1.yaml",
         ] {
-            navigate(path, true);
+            navigate(path);
         }
     });
 }

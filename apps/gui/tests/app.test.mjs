@@ -8,8 +8,8 @@ const editorState = await readFile(new URL("../src/editor-state.ts", import.meta
 const capability = JSON.parse(await readFile(new URL("../src-tauri/capabilities/default.json", import.meta.url), "utf8"));
 
 test("GUI keeps filesystem and YAML semantics behind Tauri commands", () => {
-  assert.match(source, /invoke<AuthoringWorkspace>\("authoring_workspace"/);
-  assert.match(source, /invoke<DataFileSnapshot>\("open_data_file"/);
+  assert.match(source, /invoke<AuthoringWorkspace>\("open_workspace"/);
+  assert.match(source, /invoke<NavigationView>\("select_source"/);
   assert.match(source, /invoke<SourceEditPreview>\("preview_data_file"/);
   assert.match(source, /invoke<SourceSaveReport>\("save_data_file"/);
   assert.match(source, /invoke<SourceContentState>\("source_content"/);

@@ -13,7 +13,7 @@
 
 ## Canonical requirements
 
-- [Explorer](gui/explorer/spec.md) `GUI-EXPLORER-002`, `GUI-EXPLORER-STATE-003`, `GUI-EXPLORER-INT-001`
+- [Explorer](gui/explorer/spec.md) `GUI-EXPLORER-002`, `GUI-EXPLORER-STATE-003`, `GUI-EXPLORER-INT-001`, `GUI-EXPLORER-NAV-001`
 - [Data Editor](gui/data-editor/spec.md) `GUI-DATA-STATE-004`, `GUI-DATA-STATE-005`, `GUI-DATA-VAL-005`
 - [Unified Table](gui/table-editor/spec.md) `GUI-UNIFIED-003`, `GUI-UNIFIED-004`, `GUI-UNIFIED-005`
 - [Source Edit](specs/source-edit.md) `SOURCE-EDIT-008`, `SOURCE-EDIT-009`, `SOURCE-EDIT-011`

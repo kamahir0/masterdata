@@ -198,7 +198,7 @@ Problems panelはdiagnosticsを一覧表示し、cellまたはnested value path�
 
 ### GUI-DATA-VAL-005
 
-buffer変更後にvalidationが未完了の場合、直前のdiagnosticsを現在bufferの確定結果であるかのように表示してはならない（MUST NOT）。pending / staleであることを識別できる状態を持ち、最新結果だけをProblemsとcell markerへ適用しなければならない（MUST）。
+buffer変更後にvalidationが未完了の場合、直前のdiagnosticsを現在bufferの確定結果であるかのように表示してはならない（MUST NOT）。pending / staleであることを識別できる状態を持ち、最新結果だけをProblemsとcell markerへ適用しなければならない（MUST）。 source viewのauthoring capabilityとproject diagnostics completionは分離してよい。diagnosticsはworkspace / source generationへ対応づけ、checking / unavailable / currentを区別し、古いgenerationをcurrentとして表示してはならない（MUST NOT）。
 
 ### GUI-DATA-VAL-006
 

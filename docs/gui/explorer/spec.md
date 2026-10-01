@@ -52,6 +52,10 @@ file selectionは対応するtyped editorを開かなければならない（MUS
 
 Explorer文脈からNew artifact / New folder、Refresh、Collapse、source Rename / Moveへ到達できなければならない（MUST）。生成とpath mutation、folder inventoryはshared application authorityへ委譲する。treeのArrow Up / Down / Left / Right、Home / End、Enter、Rename / Move shortcutはkeyboardで操作でき、選択fileから編集領域へfocusを移せなければならない（MUST）。
 
+### GUI-EXPLORER-NAV-001
+
+同一Project内のselectionは、backend completionを待たずExplorerのselected stateとmain surfaceのnew targetを反映する。fresh view待ちではnew targetとpending / unavailableを識別し、old source contentをnew targetのcurrent contentとして表示してはならない（MUST NOT）。rapid selectionではlatest targetだけをactiveにし、obsolete responseで巻き戻してはならない（MUST NOT）。selectionだけでdirty buffer、history、query state、schema draftを破棄してはならない（MUST NOT）。cached viewのediting capabilityを有効にする前にshared Applicationがrelevant sourceのfreshnessとcurrent projectionを確認する。
+
 ### GUI-EXPLORER-INT-002
 
 folderはexpand / collapseできなければならず（MUST）、file / folder selectionとexpand stateを区別しなければならない（MUST）。通常のfile switchingだけを理由にdirty bufferのSave確認を出してはならない（MUST NOT）。

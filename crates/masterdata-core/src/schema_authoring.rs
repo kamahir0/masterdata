@@ -10,7 +10,7 @@ use crate::{
     resolve_authoring_field_shape, resolve_tables,
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableSnapshot {
     pub path: String,
@@ -21,7 +21,7 @@ pub struct TableSnapshot {
     pub reference_diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceSnapshot {
     pub name: String,
@@ -35,7 +35,7 @@ pub struct ReferenceSnapshot {
     pub optionality: Option<ReferenceOptionality>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeSnapshot {
     pub path: String,
@@ -49,7 +49,7 @@ pub struct TypeSnapshot {
     pub initializer_shapes: BTreeMap<String, ResolvedAuthoringType>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TypeMemberView {
     pub name: String,
     pub value: String,
@@ -80,6 +80,49 @@ pub fn table_snapshot(
     path: &Path,
     display_path: &str,
 ) -> Result<TableSnapshot> {
+    // Snapshot reads the selected schema document itself. The migration
+    // closure helper intentionally narrows validation to a field-mutation
+    // dependency set; using it here would make a read-only editor snapshot
+    // reject a valid cross-table Reference whose target is outside that
+    // mutation closure.
+    let mut snapshot = table_definition_snapshot(documents, path, display_path)?;
+    if let Some(type_system) = build_type_system(documents).model {
+        let build = resolve_tables(documents, &type_system, &BuildSelection::unfiltered());
+        snapshot.reference_diagnostics = build.diagnostics;
+        if let Some(tables) = build.model {
+            if let Some(table) = tables
+                .iter()
+                .find(|table| table.identity == snapshot.schema.table)
+            {
+                apply_reference_resolution(&mut snapshot, &table.references);
+            }
+        }
+    }
+    Ok(snapshot)
+}
+
+pub fn apply_reference_resolution(
+    snapshot: &mut TableSnapshot,
+    references: &[crate::ResolvedReference],
+) {
+    for view in &mut snapshot.references {
+        if let Some(resolved) = references
+            .iter()
+            .find(|reference| reference.name == view.name)
+        {
+            view.target_key_kind = Some(resolved.target_key_kind);
+            view.cardinality = Some(resolved.cardinality);
+            view.optionality = Some(resolved.optionality);
+        }
+    }
+}
+
+/// Local declarations and editing shapes are usable before project-wide validation.
+pub fn table_definition_snapshot(
+    documents: &ProjectDocuments,
+    path: &Path,
+    display_path: &str,
+) -> Result<TableSnapshot> {
     let file = documents
         .files
         .iter()
@@ -92,13 +135,8 @@ pub fn table_snapshot(
         ));
     };
     let field_types = creation_choices(documents).field_types;
-    // Snapshot reads the selected schema document itself. The migration
-    // closure helper intentionally narrows validation to a field-mutation
-    // dependency set; using it here would make a read-only editor snapshot
-    // reject a valid cross-table Reference whose target is outside that
-    // mutation closure.
     let schema = schema.clone();
-    let mut references = schema
+    let references = schema
         .references
         .iter()
         .map(|reference| ReferenceSnapshot {
@@ -116,33 +154,13 @@ pub fn table_snapshot(
             optionality: None,
         })
         .collect::<Vec<_>>();
-    let mut reference_diagnostics = Vec::new();
-    if let Some(type_system) = build_type_system(documents).model {
-        let build = resolve_tables(documents, &type_system, &BuildSelection::unfiltered());
-        reference_diagnostics.extend(build.diagnostics);
-        if let Some(tables) = build.model {
-            if let Some(table) = tables.iter().find(|table| table.identity == schema.table) {
-                for view in &mut references {
-                    if let Some(resolved) = table
-                        .references
-                        .iter()
-                        .find(|reference| reference.name == view.name)
-                    {
-                        view.target_key_kind = Some(resolved.target_key_kind);
-                        view.cardinality = Some(resolved.cardinality);
-                        view.optionality = Some(resolved.optionality);
-                    }
-                }
-            }
-        }
-    }
     Ok(TableSnapshot {
         path: display_path.into(),
         schema,
         initializer_shapes: initializer_shapes(documents, &field_types),
         field_types,
         references,
-        reference_diagnostics,
+        reference_diagnostics: vec![],
     })
 }
 

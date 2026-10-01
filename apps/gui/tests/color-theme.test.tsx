@@ -1,3 +1,4 @@
+import { installWorkspaceFixture } from "./workspace-fixtures";
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -92,7 +93,7 @@ beforeEach(() => {
   openDialog.mockReset();
   openDialog.mockResolvedValue(null);
   invoke.mockReset();
-  invoke.mockImplementation(async (command, args: any) => {
+  installWorkspaceFixture(invoke, async (command, args: any) => {
     if (command === 'load_application_user_state') return structuredClone(currentNativeUserState);
     if (command === 'set_theme_preference') {
       currentNativeUserState.themePreference = args.preference;
@@ -286,7 +287,7 @@ test('GUI-THEME-002: Project switching retains user theme preference', async () 
     sourceRoots: ['.'],
     files: [{ path: 'data.yaml', sourceRoot: '.', kind: 'data', table: 'item', typeName: null, hasInlineRecords: false, diagnostic: null }],
   };
-  invoke.mockImplementation(async (command, args) => {
+  installWorkspaceFixture(invoke, async (command, args) => {
     if (command === 'load_application_user_state') return structuredClone(currentNativeUserState);
     if (command === 'authoring_workspace') return otherWorkspace;
     if (command === 'migration_recovery_status') return null;

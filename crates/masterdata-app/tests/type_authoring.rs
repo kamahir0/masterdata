@@ -46,7 +46,7 @@ fn type_plan_is_read_only_and_lossless_and_apply_refreshes_authority() {
     let dir = project();
     let mut session = TableAuthoringSession::default();
     let root = dir.path();
-    let snapshot = session.open_type(root, "sources/type.yaml").unwrap();
+    let snapshot = open_type(root, "sources/type.yaml").unwrap();
     assert_eq!(snapshot.category, "Enum");
     assert_eq!(snapshot.members[0].value, "18446744073709551615");
     let plan = session.plan_type(root, rename()).unwrap();
@@ -60,11 +60,7 @@ fn type_plan_is_read_only_and_lossless_and_apply_refreshes_authority() {
         "success"
     );
     assert_eq!(
-        session
-            .open_type(root, "sources/type.yaml")
-            .unwrap()
-            .members[0]
-            .name,
+        open_type(root, "sources/type.yaml").unwrap().members[0].name,
         "Epic"
     );
     assert!(!root.join(".masterdata/output").exists());
@@ -209,4 +205,11 @@ fn complex_initializer_preserves_nested_scalar_and_rejects_duplicate_keys() {
             .plan_type(root, command("{\"amount\":1,\"amount\":2}"))
             .is_err()
     );
+}
+
+fn open_type(root: &std::path::Path, path: &str) -> masterdata_core::Result<TypeSnapshot> {
+    Ok(WorkspaceAuthoringSession::open(Some(root), root)?
+        .select_source(path)?
+        .type_snapshot
+        .expect("Type snapshot"))
 }

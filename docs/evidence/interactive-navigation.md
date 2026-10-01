@@ -24,4 +24,14 @@ Command: `cargo run --release -p masterdata-app --example navigation_performance
 
 [Navigation Desktop harness](../../apps/gui/tests/navigation-desktop.mjs)は実Tauri/WebKitでpointer / keyboard、React commit、paint opportunity、first usable interaction、timer / frame gap、rapid selectionを記録する。Rust traceはopt-inの`MASTERDATA_READ_TRACE`でcommand threadとphase countを記録する。実GPU paintの完了時刻をJSだけで断言せず、rAFはpaint opportunityとして扱う。
 
-Baseline / afterのexact CI evidenceとUI blocking診断は測定完了後に記載する。
+Baseline: [Desktop Evidence run 36790153897](https://github.com/kamahir0/masterdata/actions/runs/36790153897)、Candidate input `16d8077e620beb8ff2218f8d0c467f31922e8fdc`。Linux / WebKit / release。cold openは7,408ms。通常初回のgrid到達4,731ms、再訪2,534ms、同Table切替2,540ms、別Table4,738ms、schema selection6,919ms。first usable操作を含むW3C往復はgrid到達後に約250msを加えるため、product latencyの判定ではfrontend traceも併記する。
+
+同期Rust commandのthreadは`ThreadId(1)`。初回切替ではrAF間隔に4,289ms、schema選択では2秒以上の空白が出た。JS timerの最大間隔は約300msで、WebKit側のJS event loopとnative windowのrepaint停止は同一ではない。重複parseによるprocessingの遅さとnative UI threadのblockingが併存する。
+
+## Session導入後のnative measurement（途中checkpoint）
+
+同じmacOS / release / fixed input。rustc 1.96.0、Node 25.9.0。cold loadは2,415ms / 8 parseのまま。B初回29.5ms、C再訪26.6ms、D同Table26.2ms、E別Table30.2ms、F schema28.8ms。すべてnavigation中のdiscovery / enumeration / YAML parse / validationは0回。4 selectionのsequential native sampleは106.6ms（Desktop rapid-click latencyとは区別する）。
+
+約11msがselected-sourceのData projection、約6msがserialization、残りがexact source identity確認とDTO準備。Project validation約93msはcaptured generationのbackground operationへ移した。Table contextはlocal declarationから導出し、Reference resolutionのcompletionは同じgenerationのvalidation結果から合成する。
+
+改修後の実Desktop trace、stress / authoring evidenceは同じharnessで取得して追記する。

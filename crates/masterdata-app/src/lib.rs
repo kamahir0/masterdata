@@ -35,6 +35,8 @@ pub use overview::*;
 mod delivery;
 pub use delivery::*;
 mod authoring;
+mod workspace_session;
+pub use workspace_session::*;
 mod creation;
 pub use creation::*;
 mod source_path;

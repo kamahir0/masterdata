@@ -193,91 +193,7 @@ impl NativeApplicationService {
         explicit_project: Option<&Path>,
         current_dir: &Path,
     ) -> masterdata_core::Result<AuthoringWorkspace> {
-        let project = Project::discover(explicit_project, current_dir)?;
-        let info = project.info();
-        let files = project.source_files()?;
-        let source_roots = info
-            .source_roots
-            .iter()
-            .map(|root| project_relative_string(project.root(), root))
-            .collect::<Vec<_>>();
-        let mut entries = Vec::with_capacity(files.len());
-        for path in files {
-            let relative = project_relative_string(project.root(), &path);
-            let source_root = info
-                .source_roots
-                .iter()
-                .find(|root| path.starts_with(root))
-                .map(|root| project_relative_string(project.root(), root))
-                .unwrap_or_else(|| ".".to_owned());
-            match { let _span = masterdata_core::read_trace::read_span("fileIo"); fs::read_to_string(&path) } {
-                Ok(source) => match parse_yaml_document(path.clone(), &source) {
-                    Ok(loaded) => entries.push(WorkspaceSourceFile {
-                        path: relative,
-                        source_root,
-                        kind: loaded.document.kind().to_owned(),
-                        table: loaded.document.table_identity().map(str::to_owned),
-                        type_name: loaded.document.type_name().map(str::to_owned),
-                        has_inline_records: matches!(&loaded.document, masterdata_core::SourceDocument::Schema(schema) if schema.records.is_some()),
-                        diagnostic: None,
-                    }),
-                    Err(error) => entries.push(WorkspaceSourceFile {
-                        path: relative,
-                        source_root,
-                        kind: "invalid".to_owned(),
-                        table: None,
-                        type_name: None,
-                        has_inline_records: false,
-                        diagnostic: Some(error.diagnostic().clone()),
-                    }),
-                },
-                Err(error) => entries.push(WorkspaceSourceFile {
-                    path: relative,
-                    source_root,
-                    kind: "unavailable".to_owned(),
-                    table: None,
-                    type_name: None,
-                    has_inline_records: false,
-                    diagnostic: Some(
-                        MasterdataError::new(
-                            "E-IO-ACCESS",
-                            ErrorKind::Io,
-                            format!("could not read source file: {error}"),
-                        )
-                        .with_source(path.clone())
-                        .diagnostic()
-                        .clone(),
-                    ),
-                }),
-            }
-        }
-        let mut folders = Vec::new();
-        for root in &info.source_roots {
-            // Folder enumeration must preserve the existing read/discovery policy.
-            // Creation applies its stricter no-symlink mutation gate separately.
-            if !root.is_dir() {
-                continue;
-            }
-            let dir = cap_std::fs::Dir::open_ambient_dir(root, cap_std::ambient_authority())
-                .map_err(|error| io_authoring_error(root, error.to_string()))?;
-            let mut paths = Vec::new();
-            crate::creation::collect_folders(&dir, "", &mut paths)
-                .map_err(|error| io_authoring_error(root, error.to_string()))?;
-            for path in paths {
-                folders.push(WorkspaceFolder {
-                    path: project_relative_string(project.root(), &root.join(path)),
-                    source_root: project_relative_string(project.root(), root),
-                });
-            }
-        }
-        folders.sort_by(|a, b| a.path.cmp(&b.path));
-        entries.sort_by(|left, right| left.path.cmp(&right.path));
-        Ok(AuthoringWorkspace {
-            project: info,
-            source_roots,
-            files: entries,
-            folders,
-        })
+        crate::WorkspaceAuthoringSession::open(explicit_project, current_dir)?.workspace()
     }
 
     pub fn open_data_file(
@@ -322,18 +238,9 @@ impl NativeApplicationService {
     ) -> masterdata_core::Result<SourceEditPreview> {
         let project = Project::discover(explicit_project, current_dir)?;
         let target = resolve_source_file(&project, relative_path)?;
-        let (documents, mut parse_diagnostics) =
+        let (documents, parse_diagnostics) =
             load_authoring_documents(&project, Some((&target, base_source)))?;
-        let mutation = SourceRecordMutation::from(mutation);
-        let dry_run = dry_run_source_record_mutation(&documents, &target, &mutation)?;
-        let mut validation = validate_documents(&dry_run.transformed_documents);
-        merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
-        Ok(SourceEditPreview {
-            candidate_source: dry_run.plan.candidate_source,
-            candidate_content_identity: dry_run.plan.candidate_content_identity,
-            changed: dry_run.plan.changed,
-            validation,
-        })
+        preview_records(&documents, parse_diagnostics, &target, mutation)
     }
 
     pub fn source_content(
@@ -554,10 +461,11 @@ pub(super) fn load_authoring_documents_with_overrides(
         {
             (*source).to_owned()
         } else {
-            match {
+            let read = {
                 let _span = masterdata_core::read_trace::read_span("fileIo");
                 fs::read_to_string(&path)
-            } {
+            };
+            match read {
                 Ok(source) => source,
                 Err(error) => {
                     diagnostics.push(
@@ -859,6 +767,24 @@ fn authoring_error(
         .related_requirements
         .push(requirement.to_owned());
     error
+}
+
+pub(crate) fn preview_records(
+    documents: &ProjectDocuments,
+    mut parse_diagnostics: Vec<Diagnostic>,
+    target: &Path,
+    mutation: &AuthoringRecordMutation,
+) -> masterdata_core::Result<SourceEditPreview> {
+    let mutation = SourceRecordMutation::from(mutation);
+    let dry_run = dry_run_source_record_mutation(documents, target, &mutation)?;
+    let mut validation = validate_documents(&dry_run.transformed_documents);
+    merge_parse_diagnostics(&mut validation, &mut parse_diagnostics);
+    Ok(SourceEditPreview {
+        candidate_source: dry_run.plan.candidate_source,
+        candidate_content_identity: dry_run.plan.candidate_content_identity,
+        changed: dry_run.plan.changed,
+        validation,
+    })
 }
 
 #[cfg(test)]

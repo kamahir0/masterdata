@@ -44,6 +44,9 @@ try {
     const current=await execute("return document.querySelector('[data-tree-path][aria-selected=true]').dataset.treePath");
     const id=await element(`//*[@data-tree-path='${current}']`);
     await request('POST',`/session/${session}/element/${id}/value`,{text:key,value:[key]});
+    await waitFor(`return document.activeElement?.dataset.treePath==='${path}'`);
+    const target=await element(`//*[@data-tree-path='${path}']`);
+    await request('POST',`/session/${session}/element/${target}/value`,{text:'\uE007',value:['\uE007']});
     await waitFor(`return document.querySelector('[data-tree-path="${path}"][aria-selected=true]') && document.querySelector('.editor-area[data-active-source="${path}"] [role=gridcell]')`);
     evidence.keyboard.push({path,selected:await execute("return document.querySelector('[data-tree-path][aria-selected=true]').dataset.treePath")});
   }

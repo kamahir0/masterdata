@@ -721,6 +721,7 @@ function App({
   const [tableSaveFailure, setTableSaveFailure] = useState<TableContextSaveReport | null>(null);
   const pendingColumnFocus = useRef<{ table: string; field: string | "last"; grip?: boolean } | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const editorViewportHeight = useRef(640);
   const dataEditorUi = useRef(new Map<string, DataEditorUiState>());
   const [editors, setEditors] = useState<Record<string, EditorState>>({});
   const [manualValidation, setManualValidation] = useState<OperationState<ValidationReport>>({ kind: "idle" });
@@ -873,6 +874,7 @@ function App({
       ? workspaceState.previous
       : null;
   const projectRoot = workspace?.project.project_root ?? null;
+  const authoringGeneration = workspaceGeneration.current;
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot)
     || (workspaceState.kind === "error" && workspaceState.diagnostic.code === "E-WORKSPACE-BINDING-CHANGED");
@@ -942,7 +944,7 @@ function App({
       const bindingChanged = current.project.project_id !== next.project.project_id
         || current.sourceRoots.length !== next.sourceRoots.length
         || current.sourceRoots.some((sourceRoot, index) => sourceRoot !== next.sourceRoots[index]);
-      const dirtySources = Object.values(editorsRef.current).some(editorIsDirty);
+      const dirtySources = Object.values(editorsRef.current).some(editorIsDirty) || Object.values(schemaDraftsRef.current).some(schemaDraftIsDirty);
       workspaceGeneration.current += 1;
       workspaceNavigator.current.cancel();
       editorGenerations.current.clear();
@@ -1020,7 +1022,7 @@ function App({
       }
       const sameBase = !mayDiscard && existing?.snapshot.baseContentIdentity === snapshot.baseContentIdentity;
       const dirty = !mayDiscard && !!existing && editorIsDirty(existing);
-      const editor = sameBase ? { ...existing, snapshot, loadError: null } : editorFromSnapshot(snapshot);
+      const editor = sameBase ? { ...existing, snapshot, loadError: null, queryResult: previousGeneration === view.generation ? existing.queryResult : null } : editorFromSnapshot(snapshot);
       if (!dirty) {
         editor.preview = { ...editor.preview, validation: snapshot.validation };
         editor.previewState = view.validationPending ? "pending" : "current";
@@ -1192,19 +1194,21 @@ function App({
     const recordDrafts = dirtyEditors.map(({ path, editor }) => ({ path, candidateSource: editor.preview.candidateSource }));
     let cancelled = false;
     const timer = window.setTimeout(() => {
+      const readRevision = readGenerationRef.current;
+      const workspaceRevision = workspaceGeneration.current;
       void invoke<SchemaDraftPreview>("preview_schema_draft", {
         projectPath: projectRoot, schemaPath: context.schemaPath, baseSource: draft.baseSource,
         fields: draft.fields.map(({ name, type, nullable, array }) => ({ name, type, nullable, array })),
         recordDrafts, selectedRecordPath: activePath && context.recordSources.some(source => source.path === activePath) ? activePath : null,
       }).then(preview => {
-        if (cancelled) return;
+        if (cancelled || readGenerationRef.current !== readRevision || workspaceGeneration.current !== workspaceRevision) return;
         setSchemaDrafts(current => {
           const latest = current[context.schemaPath];
           if (!latest || latest.revision !== draft.revision || latest.baseContentIdentity !== draft.baseContentIdentity) return current;
           return { ...current, [context.schemaPath]: { ...latest, preview, previewState: "current", previewError: null } };
         });
       }).catch(cause => {
-        if (cancelled) return;
+        if (cancelled || readGenerationRef.current !== readRevision || workspaceGeneration.current !== workspaceRevision) return;
         const diagnostic = apiDiagnosticToDiagnostic(asApiError(cause).diagnostic);
         setSchemaDrafts(current => {
           const latest = current[context.schemaPath];
@@ -1232,6 +1236,7 @@ function App({
     const generation = workspaceGeneration.current;
     const timer = window.setTimeout(async () => {
       previewTimers.current.delete(path);
+      const readRevision = readGenerationRef.current;
       try {
         const preview = await invoke<SourceEditPreview>("preview_data_file", {
           projectPath: root,
@@ -1239,10 +1244,10 @@ function App({
           baseSource: editor.snapshot.baseSource,
           ...mutationForEditor(editor),
         });
-        if (workspaceGeneration.current !== generation) return;
+        if (workspaceGeneration.current !== generation || readGenerationRef.current !== readRevision) return;
         setEditors((current) => {
           const latest = current[path];
-          if (!latest || latest.revision !== revision || latest.snapshot !== editor.snapshot) {
+          if (readGenerationRef.current !== readRevision || !latest || latest.revision !== revision || latest.snapshot !== editor.snapshot) {
             return current;
           }
           return {
@@ -1251,11 +1256,11 @@ function App({
           };
         });
       } catch (error) {
-        if (workspaceGeneration.current !== generation) return;
+        if (workspaceGeneration.current !== generation || readGenerationRef.current !== readRevision) return;
         const diagnostic = asApiError(error).diagnostic;
         setEditors((current) => {
           const latest = current[path];
-          if (!latest || latest.revision !== revision || latest.snapshot !== editor.snapshot) {
+          if (readGenerationRef.current !== readRevision || !latest || latest.revision !== revision || latest.snapshot !== editor.snapshot) {
             return current;
           }
           return {
@@ -2083,7 +2088,9 @@ function App({
           }
         }).catch(error => {
           if (workspaceGeneration.current !== generation) return;
-          setEditors(all => all[path] ? { ...all, [path]: { ...all[path], loadError: asApiError(error).diagnostic, previewState: "unavailable" } } : all);
+          const diagnostic = asApiError(error).diagnostic;
+          recordBindingChange(root, diagnostic);
+          setEditors(all => all[path] ? { ...all, [path]: { ...all[path], loadError: diagnostic, previewState: "unavailable" } } : all);
         }).finally(() => { sourcePending.delete(path); });
       }
     }, sourcePollingIntervalMs);
@@ -2855,13 +2862,15 @@ function App({
               onOverview={activeFile.table ? () => { setSelectedTable(activeFile.table); setSurface("overview"); } : undefined}
               onCreateData={activeFile.table ? () => openDataCreation(activeFile.table!) : undefined}
               uiCache={dataEditorUi}
+              viewportHeight={editorViewportHeight}
+              readGeneration={readGeneration}
               onCellChange={(recordIndex, field, value, operation) => updateCell(activeFile.path, recordIndex, field, value, operation)}
               onDraftCellChange={(draftId, field, value, operation) => updateDraftCell(activeFile.path, draftId, field, value, operation)}
               onCellFocus={(key) => { historyEditKey.current = key; }}
               onTagsChange={(recordIndex, tags) => updateExistingTags(activeFile.path, recordIndex, tags)}
               onDraftTagsChange={(draftId, tags) => updateDraftTags(activeFile.path, draftId, tags)}
-              onBatchApplied={(batch, expectedRevision) => applyBatchPreview(activeFile.path, batch, expectedRevision)}
-              onQueryResult={(result) => updateQueryResult(activeFile.path, result)}
+              onBatchApplied={(batch, expectedRevision) => { if (workspaceGeneration.current === authoringGeneration && readGenerationRef.current === readGeneration) applyBatchPreview(activeFile.path, batch, expectedRevision); }}
+              onQueryResult={(result) => { if (workspaceGeneration.current === authoringGeneration && readGenerationRef.current === readGeneration) updateQueryResult(activeFile.path, result); }}
               onUndo={() => undoBuffer(activeFile.path)}
               onRedo={() => redoBuffer(activeFile.path)}
               onAddRow={() => addRow(activeFile.path)}
@@ -3341,6 +3350,7 @@ const GRID_ROW_HEIGHT = 32;
 const GRID_OVERSCAN = 12;
 
 type DataEditorUiState = {
+  appliedQuery: AuthoringQuery | null;
   selectedRange: GridRange | null;
   batchText: string;
   querySearch: string;
@@ -3476,6 +3486,8 @@ function DataEditor({
   onOverview,
   onCreateData,
   uiCache,
+  viewportHeight,
+  readGeneration,
   onCellChange,
   onDraftCellChange,
   onCellFocus,
@@ -3513,6 +3525,8 @@ function DataEditor({
   onOverview?: () => void;
   onCreateData?: () => void;
   uiCache: React.MutableRefObject<Map<string, DataEditorUiState>>;
+  viewportHeight: React.MutableRefObject<number>;
+  readGeneration: number;
   onCellChange: (recordIndex: number, field: string, value: AuthoringValue, operation?: boolean) => void;
   onDraftCellChange: (draftId: string, field: string, value: AuthoringValue, operation?: boolean) => void;
   onCellFocus: (key: string) => void;
@@ -3579,7 +3593,7 @@ function DataEditor({
   const [queryField, setQueryField] = useState(rememberedUi?.queryField ?? "");
   const [queryValue, setQueryValue] = useState(rememberedUi?.queryValue ?? "");
   const [querySortField, setQuerySortField] = useState(rememberedUi?.querySortField ?? "");
-  const [queryBusy, setQueryBusy] = useState(false);
+  const [queryBusy, setQueryBusy] = useState(Boolean(rememberedUi?.appliedQuery && !editor.queryResult));
   const [queryError, setQueryError] = useState<ApiDiagnostic | null>(null);
   const [queryNotice, setQueryNotice] = useState<string | null>(null);
   const [queryOperator, setQueryOperator] = useState(rememberedUi?.queryOperator ?? "contains");
@@ -3591,12 +3605,13 @@ function DataEditor({
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
   const [gridScrollTop, setGridScrollTop] = useState(0);
-  const [gridViewportHeight, setGridViewportHeight] = useState(640);
+  const [gridViewportHeight, setGridViewportHeight] = useState(viewportHeight.current);
   useEffect(() => {
     // Query and batch drafts are file-local UI state; switching sources must not
     // leave an applied query showing controls that belong to another file.
-    uiCache.current.set(uiKey, { selectedRange, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen });
-  }, [uiCache, uiKey, selectedRange, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen]);
+    uiCache.current.set(uiKey, { selectedRange, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen,
+      appliedQuery: editor.queryResult?.query ?? uiCache.current.get(uiKey)?.appliedQuery ?? null });
+  }, [uiCache, uiKey, selectedRange, batchText, querySearch, queryField, queryValue, querySortField, queryOperator, querySortDirection, queryAdvancedOpen, batchToolsOpen, editor.queryResult]);
   const queryRequestSequence = useRef(0);
   const previousAddedCount = useRef(editor.addedRecords.length);
   const [batchContext, setBatchContext] = useState<{ revision: number; selectionKey: string } | null>(null);
@@ -3640,7 +3655,13 @@ function DataEditor({
   useLayoutEffect(() => {
     const element = gridScrollRef.current;
     if (!element) return;
-    const measure = () => setGridViewportHeight(element.clientHeight || 640);
+    // The viewport belongs to the editor surface, not the selected file. Reusing
+    // its measured height avoids a second full grid commit on every navigation.
+    // EVIDENCE: docs/evidence/interactive-navigation.md
+    const measure = () => {
+      viewportHeight.current = element.clientHeight || 640;
+      setGridViewportHeight(viewportHeight.current);
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
@@ -3943,9 +3964,9 @@ function DataEditor({
     }
   };
 
-  const runQuery = useCallback(async () => {
+  const runQuery = useCallback(async (restoredQuery?: AuthoringQuery) => {
     const requestId = ++queryRequestSequence.current;
-    if (queryField && queryOperator !== "is-null" && queryOperator !== "is-invalid" && queryValue.length === 0) {
+    if (!restoredQuery && queryField && queryOperator !== "is-null" && queryOperator !== "is-invalid" && queryValue.length === 0) {
       setQueryBusy(false);
       setQueryError({
         code: "E-AUTHORING-QUERY-INPUT",
@@ -3962,7 +3983,9 @@ function DataEditor({
       });
       return;
     }
-    if (!querySearch && !queryField && !querySortField) {
+    if (!restoredQuery && !querySearch && !queryField && !querySortField) {
+      const cached = uiCache.current.get(uiKey);
+      if (cached) uiCache.current.set(uiKey, { ...cached, appliedQuery: null });
       setQueryBusy(false);
       onQueryResult(null);
       setBatchPreview(null);
@@ -3982,7 +4005,7 @@ function DataEditor({
           relativePath: file.path,
           baseSource: editor.snapshot.baseSource,
           mutation: mutationForEditor(editor),
-          query: {
+          query: restoredQuery ?? {
             search: querySearch,
             filters: queryField && (queryValue.length > 0 || queryOperator === "is-null" || queryOperator === "is-invalid")
               ? [{ field: queryField, operator: queryOperator, ...(queryOperator === "is-null" || queryOperator === "is-invalid" ? {} : { value: queryInputValue(editor.snapshot.columns.find((column) => column.name === queryField), queryValue) }) }]
@@ -4004,6 +4027,14 @@ function DataEditor({
       if (requestId === queryRequestSequence.current) setQueryBusy(false);
     }
   }, [editor, file.path, onQueryResult, projectRoot, queryField, queryOperator, querySearch, querySortDirection, querySortField, queryValue]);
+
+  useEffect(() => {
+    const query = uiCache.current.get(uiKey)?.appliedQuery;
+    if (query && !editor.queryResult) void runQuery(query);
+    // A fresh read invalidates the old projection, while unsubmitted controls
+    // remain drafts. Restore only the query that was actually applied.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor.snapshot.baseContentIdentity, readGeneration]);
 
   useEffect(() => {
     const previous = previousAddedCount.current;

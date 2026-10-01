@@ -154,3 +154,47 @@ test("a changed Project binding pauses authoring and keyboard Save while retaini
   fireEvent.keyDown(window, { key: "s", metaKey: true });
   expect(invoke.mock.calls.some(([command]) => /^(save_|apply_)/.test(command))).toBe(false);
 });
+
+test("old dirty-preview diagnostics cannot become current after a workspace generation changes", async () => {
+  const original = invoke.getMockImplementation()!;
+  let finishOld!: (value: unknown) => void;
+  let previews = 0;
+  invoke.mockImplementation((command, args) => command === "preview_data_file"
+    ? new Promise(resolve => { if (++previews === 1) finishOld = resolve; }) : original(command, args));
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  fireEvent.keyDown(cell, { key: "Enter" });
+  const input = await screen.findByRole("textbox", { name: "record 1 id" });
+  fireEvent.change(input, { target: { value: "42" } }); fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(finishOld).toBeTypeOf("function"));
+  read = async path => ({ ...view(path), generation: 2 });
+  select("b.yaml"); await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  await waitFor(() => expect(previews).toBeGreaterThan(1));
+  await act(async () => finishOld({ candidateSource: "id: 42", changed: true, validation: { valid: false,
+    diagnostics: [{ code: "E-OLD", kind: "validation", message: "obsolete validation", source: "/project/a.yaml" }] } }));
+  read = () => new Promise(() => {});
+  fireEvent.click(screen.getByRole("treeitem", { name: "a.yaml, unsaved changes", exact: true }));
+  await screen.findByRole("heading", { name: "Loading a.yaml…" });
+  expect(screen.getByRole("button", { name: /PROBLEMS 0/ })).toBeTruthy();
+});
+
+test("a fresh generation restores the applied query while preserving unsubmitted search text", async () => {
+  const original = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => command === "query_data_file"
+    ? { orderedRecordIndices: [0], totalCount: 1, displayedCount: 1, query: args.request.query } : original(command, args));
+  render(<App sourcePollingIntervalMs={null} />);
+  const search = await screen.findByRole("searchbox", { name: "Data search" });
+  fireEvent.change(search, { target: { value: "10" } });
+  fireEvent.keyDown(search, { key: "Enter", code: "Enter" });
+  await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === "query_data_file")).toHaveLength(1));
+  await waitFor(() => expect(document.querySelector(".ant-input-search .ant-btn-loading")).toBeNull());
+  fireEvent.change(search, { target: { value: "unsubmitted" } });
+  read = async path => ({ ...view(path), generation: 2 });
+  select("b.yaml");
+  await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  select("a.yaml");
+  await waitFor(() => expect(invoke.mock.calls.filter(([command]) => command === "query_data_file")).toHaveLength(2));
+  expect(invoke.mock.calls.filter(([command]) => command === "query_data_file").at(-1)?.[1].request.query.search).toBe("10");
+  expect((screen.getByRole("searchbox", { name: "Data search" }) as HTMLInputElement).value).toBe("unsubmitted");
+  await waitFor(() => expect(document.querySelector(".ant-input-search .ant-btn-loading")).toBeNull());
+});

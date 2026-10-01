@@ -354,13 +354,13 @@ fn error(code: &str, message: &str) -> MasterdataError {
 pub(crate) fn table_context_from_documents(
     project: &Project,
     documents: &ProjectDocuments,
-    selected_path: &str,
+    selected_path: &Path,
 ) -> Result<TableContext> {
     let _span = masterdata_core::read_trace::read_span("tableContext");
     let selected = documents
         .files
         .iter()
-        .find(|file| file.path == project.root().join(selected_path))
+        .find(|file| file.path == selected_path)
         .ok_or_else(|| error("E-TABLE-EDITOR-SOURCE", "Selected source not found"))?;
     let table = selected
         .document
@@ -402,9 +402,10 @@ pub(crate) fn table_context_from_documents(
         })
         .collect::<Vec<_>>();
     record_sources.sort_by(|a, b| b.inline.cmp(&a.inline).then_with(|| a.path.cmp(&b.path)));
+    let selected_relative = project_relative_string(project.root(), selected_path);
     let selected_record_source = record_sources
         .iter()
-        .find(|source| source.path == selected_path)
+        .find(|source| source.path == selected_relative)
         .or_else(|| record_sources.first())
         .map(|source| source.path.clone());
     Ok(TableContext {
@@ -445,9 +446,9 @@ impl TableAuthoringSession {
         }
         let (documents, parse_diagnostics) =
             load_authoring_documents_with_overrides(&project, &overrides)?;
-        if let Some(path) = selected_record_path {
-            resolve_source_file(&project, path)?;
-        }
+        let selected = selected_record_path
+            .map(|path| resolve_source_file(&project, path))
+            .transpose()?;
         schema_draft_preview(
             &project,
             &documents,
@@ -455,7 +456,7 @@ impl TableAuthoringSession {
             &target,
             base_source,
             fields,
-            selected_record_path,
+            selected.as_deref(),
         )
     }
 
@@ -580,7 +581,7 @@ impl TableAuthoringSession {
         let schema_path = resolve_source_file(&project, &request.schema_path)?;
         let schema_relative = project_relative_string(project.root(), &schema_path);
         let context =
-            table_context_from_documents(&project, &project.load_documents()?, &schema_relative)?;
+            table_context_from_documents(&project, &project.load_documents()?, &schema_path)?;
         if context.schema_path != schema_relative {
             return Err(error(
                 "E-TABLE-SAVE-CONTEXT",
@@ -1157,7 +1158,7 @@ pub(crate) fn schema_draft_preview(
     target: &Path,
     base_source: &str,
     fields: &[SchemaDraftField],
-    selected_record_path: Option<&str>,
+    selected_record_path: Option<&Path>,
 ) -> Result<SchemaDraftPreview> {
     let schema = documents
         .files
@@ -1209,15 +1210,14 @@ pub(crate) fn schema_draft_preview(
         validation.diagnostics.append(&mut parse_diagnostics);
     }
     let selected_snapshot = selected_record_path
-        .map(|path| {
-            let selected = project.root().join(path);
+        .map(|selected| {
             if !transformed.files.iter().any(|file| file.path == selected) {
                 return Ok(None);
             }
             data_file_view(
                 project.root(),
                 &transformed,
-                &selected,
+                selected,
                 authoring_tag_candidates(&project.info().profiles, &transformed),
                 authoring_tag_candidates_complete(&validation, parse_complete),
                 validation.clone(),

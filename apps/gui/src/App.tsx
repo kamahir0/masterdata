@@ -105,6 +105,7 @@ type ApiError = { diagnostic: ApiDiagnostic };
 
 type WorkspaceSourceFile = {
   path: string;
+  physicalPath?: string;
   sourceRoot: string;
   kind: string;
   table: string | null;
@@ -877,7 +878,7 @@ function App({
   const authoringGeneration = workspaceGeneration.current;
   const recovery = projectRoot ? recoveries[projectRoot] : null;
   const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot)
-    || (workspaceState.kind === "error" && workspaceState.diagnostic.code === "E-WORKSPACE-BINDING-CHANGED");
+    || workspaceState.kind === "error";
   const activeEditor = activePath ? editors[activePath] ?? null : null;
   const activeFile = workspace?.files.find((file) => file.path === activePath)
     ?? (activeEditor ? { path: activePath!, sourceRoot: "", kind: "unavailable", table: activeEditor.snapshot.table, typeName: null, hasInlineRecords: false, diagnostic: null } : null);
@@ -1027,7 +1028,7 @@ function App({
         editor.preview = { ...editor.preview, validation: snapshot.validation };
         editor.previewState = view.validationPending ? "pending" : "current";
         editor.previewError = null;
-      } else if (previousGeneration !== view.generation) {
+      } else if (previousGeneration !== view.generation || existing?.loadError) {
         editor.previewState = "pending";
         previewScheduler.current?.(root, path, editor);
       }
@@ -1157,10 +1158,11 @@ function App({
   }, [projectRoot, explorerPath, tableEpoch, installReadView, observeReadGeneration, recordBindingChange]);
 
   useEffect(() => {
-    if (!projectRoot || !readGeneration) return;
+    if (!projectRoot || !readGeneration || workspaceState.kind !== "ready") return;
     let disposed = false;
+    const workspaceRevision = workspaceGeneration.current;
     void invoke<{ generation: number; validation: ValidationReport; tagCandidatesComplete: boolean; tables: Record<string, TableEditorSnapshot> }>("workspace_validation", { projectPath: projectRoot }).then(result => {
-      if (disposed || result.generation !== readGeneration) return;
+      if (disposed || workspaceGeneration.current !== workspaceRevision || result.generation !== readGeneration) return;
       setTableContextState(current => current?.generation === result.generation && result.tables[current.context.table]
         ? { ...current, validationPending: false, context: { ...current.context, schema: result.tables[current.context.table] } } : current);
       setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) => {
@@ -1170,13 +1172,13 @@ function App({
           snapshot: { ...editor.snapshot, validation: result.validation, tagCandidatesComplete: result.tagCandidatesComplete } }];
       })));
     }).catch(error => {
-      if (disposed) return;
+      if (disposed || workspaceGeneration.current !== workspaceRevision) return;
       setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) =>
         editorGenerations.current.get(path) === readGeneration && !editorIsDirty(editor)
           ? [path, { ...editor, previewState: "unavailable", previewError: asApiError(error).diagnostic }] : [path, editor])));
     });
     return () => { disposed = true; };
-  }, [projectRoot, readGeneration]);
+  }, [projectRoot, readGeneration, workspaceState.kind]);
 
   const recordDraftSignature = savedTableContext?.recordSources.map(source => {
     const editor = editors[source.path];
@@ -2026,13 +2028,21 @@ function App({
     const sourcePending = new Set<string>();
     const timer = window.setInterval(() => {
       const state = workspaceStateRef.current;
-      const root = state.kind === "ready" ? state.workspace.project.project_root : null;
+      const root = state.kind === "ready" ? state.workspace.project.project_root
+        : state.kind === "error" && state.diagnostic.code !== "E-WORKSPACE-BINDING-CHANGED"
+          ? state.previous?.project.project_root : null;
       if (!root) return;
       const generation = workspaceGeneration.current;
       if (!inventoryPending) {
         inventoryPending = true;
         void invoke<{ generation: number; workspace: AuthoringWorkspace }>("workspace_status", { projectPath: root }).then(status => {
           if (workspaceGeneration.current !== generation || status.generation < readGenerationRef.current) return;
+          if (workspaceStateRef.current.kind === "error") {
+            const ready = { kind: "ready" as const, workspace: status.workspace };
+            workspaceStateRef.current = ready;
+            setWorkspaceState(ready);
+            setTableEpoch(epoch => epoch + 1);
+          }
           updateWorkspaceFiles(root, status.workspace?.files);
           if (status.generation === readGenerationRef.current) return;
           observeReadGeneration(status.generation);
@@ -2042,6 +2052,17 @@ function App({
           if (workspaceGeneration.current !== generation) return;
           const diagnostic = asApiError(error).diagnostic;
           recordBindingChange(root, diagnostic);
+          if (workspaceStateRef.current.kind === "ready") {
+            const failed = { kind: "error" as const, diagnostic, previous: workspaceStateRef.current.workspace };
+            workspaceGeneration.current += 1;
+            workspaceStateRef.current = failed;
+            setWorkspaceState(failed);
+            setManualValidation({ kind: "idle" });
+            setTypeView(null);
+            setTableContextState(null);
+            setTableContextError(diagnostic);
+            setTableEpoch(epoch => epoch + 1);
+          }
           setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) => [path, { ...editor, loadError: diagnostic, previewState: "unavailable" }])));
         }).finally(() => { inventoryPending = false; });
       }
@@ -2377,7 +2398,7 @@ function App({
     if (!workspace) return;
     const source = diagnostic.source ? normalizePath(diagnostic.source) : null;
     const file = source
-      ? workspace.files.find((candidate) => source === normalizePath(`${workspace.project.project_root}/${candidate.path}`))
+      ? workspace.files.find((candidate) => source === normalizePath(candidate.physicalPath ?? `${workspace.project.project_root}/${candidate.path}`))
       : null;
     if (!file) return;
     const record = diagnosticRecordIndex(diagnostic);
@@ -3554,7 +3575,7 @@ function DataEditor({
     if (editor.previewState !== "current" || editor.preview.validation.diagnostics.length === 0) return result;
     const pending = new Set(editor.pendingDeletes);
     const sourceOrder = (editor.rowOrder ?? defaultRowOrder(editor)).filter(row => row.kind === "added" || !pending.has(row.recordIndex));
-    const source = normalizePath(`${projectRoot}/${file.path}`);
+    const source = normalizePath(file.physicalPath ?? `${projectRoot}/${file.path}`);
     for (const diagnostic of editor.preview.validation.diagnostics) {
       if (!diagnostic.source || normalizePath(diagnostic.source) !== source) continue;
       const field = diagnosticField(diagnostic);
@@ -3568,7 +3589,7 @@ function DataEditor({
       result.set(key, cellDiagnostics);
     }
     return result;
-  }, [editor.previewState, editor.preview.validation.diagnostics, editor.pendingDeletes, editor.snapshot.rows, editor.addedRecords, editor.rowOrder, projectRoot, file.path]);
+  }, [editor.previewState, editor.preview.validation.diagnostics, editor.pendingDeletes, editor.snapshot.rows, editor.addedRecords, editor.rowOrder, projectRoot, file.path, file.physicalPath]);
   const uiKey = `${projectRoot}:${file.path}`;
   const rememberedUi = uiCache.current.get(uiKey);
   const lastFocusedCell = useRef<string | null>(null);

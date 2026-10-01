@@ -155,19 +155,38 @@ async function click(xpath, timeoutMs = 20_000) {
 
 async function fill(xpath, value, timeoutMs) {
   const id = await waitElement(xpath, timeoutMs);
+  await execute(`const input=arguments[0]; input.__desktopKeyEvents=[];
+    if(!input.__desktopKeyTraceInstalled){input.__desktopKeyTraceInstalled=true;
+      for(const type of ['keydown','keyup','input','blur']) input.addEventListener(type,event=>{
+        input.__desktopKeyEvents.push({type,key:event.key,ctrl:event.ctrlKey,meta:event.metaKey,value:input.value});
+        if(input.__desktopKeyEvents.length>32)input.__desktopKeyEvents.shift();
+      });}`, [{ [ELEMENT_KEY]: id }]);
+  const committedInput = async () => {
+    const result = await request("POST", `/session/${sessionId}/execute/async`, {
+      script: "const input=arguments[0], done=arguments[arguments.length-1]; requestAnimationFrame(()=>requestAnimationFrame(()=>done({value:input.value, focused:document.activeElement===input, connected:input.isConnected, events:input.__desktopKeyEvents})));",
+      args: [{ [ELEMENT_KEY]: id }],
+    });
+    return result.payload?.value;
+  };
   // WebKitWebDriver's clear does not notify controlled Ant inputs of the new
   // value. Replace through real key events so React observes the edit.
   await request("POST", `/session/${sessionId}/element/${id}/value`, {
     text: "\uE009a\uE000",
     value: ["\uE009", "a", "\uE000"],
   });
-  // Send each real key in its own protocol round trip. A batched WebKit key
-  // sequence can outrun controlled-input commits and leave only its first key.
+  await committedInput();
+  // A WebDriver round trip alone is not a controlled-input commit boundary.
+  // Observe each key after React's paint opportunity; never retry a lost key.
+  let prefix = "";
   for (const character of value) {
     await request("POST", `/session/${sessionId}/element/${id}/value`, {
       text: character,
       value: [character],
     });
+    prefix += character;
+    const typed = await committedInput();
+    if (typed?.value !== prefix || !typed?.focused || !typed?.connected)
+      throw new Error(`input did not commit real key: ${xpath}; expected=${JSON.stringify(prefix)}; actual=${JSON.stringify(typed)}`);
   }
   const typed = await request("GET", `/session/${sessionId}/element/${id}/property/value`);
   if (typed.payload?.value !== value) throw new Error(`input did not retain typed value: ${xpath}; actual=${JSON.stringify(typed.payload?.value)}`);

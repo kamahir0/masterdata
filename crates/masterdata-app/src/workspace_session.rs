@@ -2,7 +2,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
     sync::{Arc, Mutex, OnceLock, RwLock},
     time::SystemTime,
 };
@@ -16,7 +16,7 @@ use masterdata_core::{
 };
 use serde::Serialize;
 
-use crate::authoring::project_relative_string;
+use crate::authoring::{project_relative_string, source_inventory};
 use crate::table_authoring::table_context_from_documents;
 use crate::{
     AuthoringWorkspace, SourceContentState, TableContext, WorkspaceFolder, WorkspaceSourceFile,
@@ -34,11 +34,13 @@ fn stamp(path: &Path) -> Option<FileStamp> {
     })
 }
 struct CapturedSource {
+    path: PathBuf,
     source: Result<String>,
     stamp: Option<FileStamp>,
 }
 #[derive(Clone)]
 struct SourceEntry {
+    path: PathBuf,
     identity: Option<String>,
     stamp: Option<FileStamp>,
     diagnostic: Option<Diagnostic>,
@@ -61,6 +63,7 @@ pub struct WorkspaceAuthoringSession {
     project: Project,
     current: RwLock<Arc<ReadGeneration>>,
     update: Mutex<()>,
+    inventory_error: Mutex<Option<MasterdataError>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -97,9 +100,8 @@ impl WorkspaceAuthoringSession {
         let project = Project::discover(explicit_project, current_dir)?;
         let mut documents = ProjectDocuments::default();
         let mut sources = BTreeMap::new();
-        for path in project.source_files()? {
-            let relative = project_relative_string(project.root(), &path);
-            let (entry, loaded) = read_entry(project.root(), &path);
+        for (relative, path) in source_inventory(&project)? {
+            let (entry, loaded) = read_entry(&project, &path);
             sources.insert(relative, entry);
             if let Some(loaded) = loaded {
                 documents.files.push(loaded);
@@ -110,6 +112,7 @@ impl WorkspaceAuthoringSession {
             project,
             current: RwLock::new(current),
             update: Mutex::new(()),
+            inventory_error: Mutex::new(None),
         })
     }
 
@@ -135,11 +138,23 @@ impl WorkspaceAuthoringSession {
         }
         Ok(())
     }
+    fn check_inventory(&self) -> Result<()> {
+        match self
+            .inventory_error
+            .lock()
+            .expect("workspace inventory lock poisoned")
+            .clone()
+        {
+            Some(cause) => Err(cause),
+            None => Ok(()),
+        }
+    }
 
     /// Exact bytes, not filesystem timestamps, authorize reuse of an editable read view.
     /// Writes independently repeat their authoritative identity/patch preflight.
     pub fn select_source(&self, path: &str) -> Result<WorkspaceSelection> {
         self.check_binding()?;
+        self.check_inventory()?;
         self.check_path(path)?;
         let mut captured = self.refresh_exact(path)?;
         let mut context = context_for(&self.project, &captured, path)?;
@@ -154,7 +169,7 @@ impl WorkspaceAuthoringSession {
             }
             captured = refreshed;
         }
-        let target = self.project.root().join(&resolved);
+        let target = physical_path(&captured, &resolved)?;
         ensure_available(&captured, &resolved)?;
         let validation = captured.validation.get().map(|model| model.report.clone());
         let pending = validation.is_none();
@@ -177,7 +192,7 @@ impl WorkspaceAuthoringSession {
                 data_file_view(
                     self.project.root(),
                     &captured.documents,
-                    &target,
+                    target,
                     captured.tags.clone(),
                     complete,
                     validation.unwrap_or_else(pending_validation),
@@ -190,7 +205,7 @@ impl WorkspaceAuthoringSession {
             .iter()
             .find(|file| file.path == target)
             .filter(|file| matches!(file.document, SourceDocument::Type(_)))
-            .map(|_| type_snapshot(&captured.documents, &target, &resolved))
+            .map(|_| type_snapshot(&captured.documents, target, &resolved))
             .transpose()?;
         let current_source = if data.is_none() {
             captured
@@ -206,6 +221,7 @@ impl WorkspaceAuthoringSession {
         } else {
             None
         };
+        self.check_inventory()?;
         Ok(WorkspaceSelection {
             requested_path: path.to_owned(),
             path: resolved,
@@ -222,7 +238,7 @@ impl WorkspaceAuthoringSession {
     pub fn source_content(&self, path: &str) -> Result<SourceContentState> {
         self.check_binding()?;
         self.check_path(path)?;
-        let source = read_text(self.project.root(), &self.project.root().join(path))?;
+        let source = read_source(&self.project, &self.source_path(path)?)?;
         Ok(SourceContentState {
             path: path.to_owned(),
             content_identity: source_content_identity(&source),
@@ -235,6 +251,7 @@ impl WorkspaceAuthoringSession {
         overrides: &[(&str, &str)],
     ) -> Result<(ProjectDocuments, Vec<Diagnostic>)> {
         self.check_binding()?;
+        self.check_inventory()?;
         let mut captured = self.captured();
         for (path, _) in overrides {
             self.check_path(path)?;
@@ -248,7 +265,7 @@ impl WorkspaceAuthoringSession {
             .filter_map(|(_, entry)| entry.diagnostic.clone())
             .collect::<Vec<_>>();
         for (path, text) in overrides {
-            let target = self.project.root().join(path);
+            let target = physical_path(&captured, path)?.to_path_buf();
             if documents
                 .files
                 .iter()
@@ -275,7 +292,7 @@ impl WorkspaceAuthoringSession {
         crate::authoring::preview_records(
             &documents,
             diagnostics,
-            &self.project.root().join(path),
+            &self.source_path(path)?,
             mutation,
         )
     }
@@ -290,7 +307,7 @@ impl WorkspaceAuthoringSession {
             &self.project.info().profiles,
             &documents,
             diagnostics,
-            &self.project.root().join(&request.relative_path),
+            &self.source_path(&request.relative_path)?,
             &masterdata_core::SourceRecordMutation::from(&request.mutation),
             &request.query,
         )
@@ -309,7 +326,7 @@ impl WorkspaceAuthoringSession {
             ));
         }
         let (documents, diagnostics) = self.overlay_documents(&[(path, base_source)])?;
-        let target = self.project.root().join(path);
+        let target = self.source_path(path)?;
         let snapshot = data_file_view(
             self.project.root(),
             &documents,
@@ -340,7 +357,7 @@ impl WorkspaceAuthoringSession {
             ));
         }
         let (documents, _) = self.overlay_documents(&[(path, base_source)])?;
-        let target = self.project.root().join(path);
+        let target = self.source_path(path)?;
         let snapshot = data_file_view(
             self.project.root(),
             &documents,
@@ -415,14 +432,17 @@ impl WorkspaceAuthoringSession {
             overrides[0] = *inline;
         }
         let (documents, diagnostics) = self.overlay_documents(&overrides)?;
+        let selected = selected_record_path
+            .map(|path| self.source_path(path))
+            .transpose()?;
         crate::table_authoring::schema_draft_preview(
             &self.project,
             &documents,
             diagnostics,
-            &self.project.root().join(schema_path),
+            &self.source_path(schema_path)?,
             base_source,
             fields,
-            selected_record_path,
+            selected.as_deref(),
         )
     }
 
@@ -440,6 +460,11 @@ impl WorkspaceAuthoringSession {
         Ok(())
     }
 
+    fn source_path(&self, path: &str) -> Result<PathBuf> {
+        self.check_path(path)?;
+        Ok(physical_path(&self.captured(), path)?.to_path_buf())
+    }
+
     fn refresh_exact(&self, target: &str) -> Result<Arc<ReadGeneration>> {
         self.refresh_paths(BTreeSet::from([target.to_owned()]))
     }
@@ -449,8 +474,7 @@ impl WorkspaceAuthoringSession {
         checked_paths.extend(paths);
         let mut changed = BTreeMap::new();
         for path in checked_paths {
-            let physical = self.project.root().join(&path);
-            let source = capture_source(self.project.root(), &physical);
+            let source = capture_source(&self.project, physical_path(&before, &path)?);
             let identity = source
                 .source
                 .as_ref()
@@ -473,10 +497,10 @@ impl WorkspaceAuthoringSession {
         let changes = changed
             .into_keys()
             .map(|path| {
-                let result = capture_source(self.project.root(), &self.project.root().join(&path));
-                (path, result)
+                let result = capture_source(&self.project, physical_path(&current, &path)?);
+                Ok((path, result))
             })
-            .collect();
+            .collect::<Result<_>>()?;
         Ok(self.publish_changes(&current, changes, None))
     }
 
@@ -495,9 +519,9 @@ impl WorkspaceAuthoringSession {
             });
         }
         for (path, source) in changes {
-            let physical = self.project.root().join(&path);
+            let physical = source.path.clone();
             documents.files.retain(|file| file.path != physical);
-            let (entry, loaded) = entry_from_source(&physical, source);
+            let (entry, loaded) = entry_from_source(source);
             sources.insert(path, entry);
             if let Some(loaded) = loaded {
                 documents.files.push(loaded);
@@ -520,37 +544,54 @@ impl WorkspaceAuthoringSession {
     /// Inventory polling is separate from selection. Metadata is only an invalidation hint;
     /// navigation and Save never use it as content identity or commit authorization.
     pub fn refresh_inventory(&self) -> Result<WorkspaceReadStatus> {
-        self.check_binding()?;
         let _update = self.update.lock().expect("workspace update lock poisoned");
+        let result = self.reconcile_inventory();
+        *self
+            .inventory_error
+            .lock()
+            .expect("workspace inventory lock poisoned") = result.as_ref().err().cloned();
+        result
+    }
+
+    fn reconcile_inventory(&self) -> Result<WorkspaceReadStatus> {
+        self.check_binding()?;
+        // An unavailable configured root makes the inventory unknown. Recovery must
+        // compare actual bytes even when metadata survived an offline replacement.
+        // Regression: known_inventory_failure_pauses_views_until_fresh_reconciliation
+        let recovering = self.check_inventory().is_err();
         let before = self.captured();
-        let inventory = self
-            .project
-            .source_files()?
-            .iter()
-            .map(|path| project_relative_string(self.project.root(), path))
-            .collect::<BTreeSet<_>>();
+        let inventory = source_inventory(&self.project)?;
         let changes = inventory
             .iter()
-            .filter(|path| {
-                before
-                    .sources
-                    .get(*path)
-                    .is_none_or(|entry| entry.stamp != stamp(&self.project.root().join(path)))
+            .filter(|(path, physical)| {
+                recovering
+                    || before.sources.get(*path).is_none_or(|entry| {
+                        entry.path != **physical
+                            || entry.stamp != stamp(physical)
+                            || entry.identity.is_none()
+                    })
             })
-            .map(|path| {
-                (
-                    path.clone(),
-                    capture_source(self.project.root(), &self.project.root().join(path)),
-                )
+            .map(|(path, physical)| (path.clone(), capture_source(&self.project, physical)))
+            .filter(|(path, source)| {
+                !recovering
+                    || before.sources.get(path).is_none_or(|entry| {
+                        entry.path != source.path
+                            || entry.identity
+                                != source
+                                    .source
+                                    .as_ref()
+                                    .ok()
+                                    .map(|text| source_content_identity(text))
+                    })
             })
             .collect::<BTreeMap<_, _>>();
         let captured = if !changes.is_empty()
             || inventory.len() != before.sources.len()
             || inventory
-                .iter()
+                .keys()
                 .any(|path| !before.sources.contains_key(path))
         {
-            self.publish_changes(&before, changes, Some(inventory))
+            self.publish_changes(&before, changes, Some(inventory.into_keys().collect()))
         } else {
             before
         };
@@ -599,9 +640,9 @@ impl WorkspaceAuthoringSession {
     fn files_from(&self, captured: &ReadGeneration) -> Vec<WorkspaceSourceFile> {
         let info = self.project.info();
         captured.sources.iter().map(|(relative, entry)| {
-            let physical = self.project.root().join(relative);
-            let loaded = captured.documents.files.iter().find(|file| file.path == physical);
-            WorkspaceSourceFile { path: relative.clone(), source_root: info.source_roots.iter().find(|root| physical.starts_with(root)).map(|root| project_relative_string(self.project.root(), root)).unwrap_or_else(|| ".".into()),
+            let physical = &entry.path;
+            let loaded = captured.documents.files.iter().find(|file| file.path == *physical);
+            WorkspaceSourceFile { path: relative.clone(), physical_path: physical.clone(), source_root: info.source_roots.iter().find(|root| physical.starts_with(root)).map(|root| project_relative_string(self.project.root(), root)).unwrap_or_else(|| ".".into()),
                 kind: loaded.map(|file| file.document.kind()).unwrap_or(if entry.identity.is_some() { "invalid" } else { "unavailable" }).into(),
                 table: loaded.and_then(|file| file.document.table_identity()).map(str::to_owned),
                 type_name: loaded.and_then(|file| file.document.type_name()).map(str::to_owned),
@@ -613,6 +654,16 @@ impl WorkspaceAuthoringSession {
     /// Computes once per immutable generation, outside publication and migration locks.
     pub fn validate(&self) -> WorkspaceValidation {
         let captured = self.captured();
+        if let Err(cause) = self.check_inventory() {
+            let mut validation = pending_validation();
+            validation.diagnostics.push(cause.diagnostic().clone());
+            return WorkspaceValidation {
+                generation: captured.number,
+                tag_candidates_complete: false,
+                tables: BTreeMap::new(),
+                validation,
+            };
+        }
         let model = validation_for(&captured);
         let tables = captured
             .documents
@@ -696,7 +747,7 @@ fn read_text(root: &Path, path: &Path) -> Result<String> {
     let _span = masterdata_core::read_trace::read_span("fileIo");
     let relative = path
         .strip_prefix(root)
-        .map_err(|_| error("E-WORKSPACE-SOURCE", "Source is outside the bound Project"))?;
+        .map_err(|_| error("E-WORKSPACE-SOURCE", "Source is outside the read boundary"))?;
     let dir = cap_std::fs::Dir::open_ambient_dir(root, cap_std::ambient_authority())
         .map_err(|cause| io_error(root, cause))?;
     let mut checked = std::path::PathBuf::new();
@@ -718,11 +769,40 @@ fn read_text(root: &Path, path: &Path) -> Result<String> {
     dir.read_to_string(relative)
         .map_err(|cause| io_error(path, cause))
 }
-fn read_entry(root: &Path, path: &Path) -> (SourceEntry, Option<masterdata_core::LoadedDocument>) {
-    entry_from_source(path, capture_source(root, path))
+// Logical GUI paths are not filesystem paths: configured roots can be outside
+// the Project. Retain discovery's physical identity instead of joining it again.
+// Regression: configured_external_sources_keep_their_physical_identity_in_shared_views
+fn physical_path<'a>(captured: &'a ReadGeneration, path: &str) -> Result<&'a Path> {
+    captured
+        .sources
+        .get(path)
+        .map(|entry| entry.path.as_path())
+        .ok_or_else(|| error("E-GUI-SOURCE-PATH", "Selected source no longer exists"))
+}
+fn read_source(project: &Project, path: &Path) -> Result<String> {
+    let info = project.info();
+    let root = info
+        .source_roots
+        .iter()
+        .filter(|root| path.starts_with(root))
+        .max_by_key(|root| root.components().count())
+        .ok_or_else(|| error("E-WORKSPACE-SOURCE", "Source is outside configured roots"))?;
+    // Preserve Core discovery for explicitly configured directory/file roots.
+    // Cached nested entries still use the no-symlink guard, just as discovery does.
+    // Regression: configured_root_reads_preserve_existing_discovery_behavior
+    if root == path {
+        let _span = masterdata_core::read_trace::read_span("fileIo");
+        return fs::read_to_string(path).map_err(|cause| io_error(path, cause));
+    }
+    read_text(root, path)
+}
+fn read_entry(
+    project: &Project,
+    path: &Path,
+) -> (SourceEntry, Option<masterdata_core::LoadedDocument>) {
+    entry_from_source(capture_source(project, path))
 }
 fn entry_from_source(
-    path: &Path,
     captured: CapturedSource,
 ) -> (SourceEntry, Option<masterdata_core::LoadedDocument>) {
     let identity = captured
@@ -732,13 +812,14 @@ fn entry_from_source(
         .map(|text| source_content_identity(text));
     let loaded = captured
         .source
-        .and_then(|text| parse_yaml_document(path.to_path_buf(), &text));
+        .and_then(|text| parse_yaml_document(captured.path.clone(), &text));
     let diagnostic = loaded
         .as_ref()
         .err()
         .map(|cause| cause.diagnostic().clone());
     (
         SourceEntry {
+            path: captured.path,
             identity,
             stamp: captured.stamp,
             diagnostic,
@@ -756,7 +837,7 @@ fn context_for(
         .documents
         .files
         .iter()
-        .find(|file| file.path == project.root().join(path))
+        .find(|file| file.path == captured.sources[path].path)
         .expect("available parsed source");
     let Some(table) = file.document.table_identity() else {
         return Ok(None);
@@ -770,7 +851,7 @@ fn context_for(
     let base = if let Some(context) = cached {
         context
     } else {
-        let mut context = table_context_from_documents(project, &captured.documents, path)?;
+        let mut context = table_context_from_documents(project, &captured.documents, &file.path)?;
         context.schema.schema.records = None;
         let context = Arc::new(context);
         captured
@@ -833,12 +914,13 @@ fn io_error(path: &Path, cause: impl std::fmt::Display) -> MasterdataError {
     .with_source(path)
 }
 
-fn capture_source(root: &Path, path: &Path) -> CapturedSource {
+fn capture_source(project: &Project, path: &Path) -> CapturedSource {
     // Capture the invalidation hint before reading/parsing. A concurrent later
     // change must not lend its metadata to older captured bytes.
     let stamp = stamp(path);
     CapturedSource {
-        source: read_text(root, path),
+        path: path.to_path_buf(),
+        source: read_source(project, path),
         stamp,
     }
 }

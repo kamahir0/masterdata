@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -17,6 +18,7 @@ use crate::NativeApplicationService;
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSourceFile {
     pub path: String,
+    pub physical_path: PathBuf,
     pub source_root: String,
     pub kind: String,
     pub table: Option<String>,
@@ -504,10 +506,8 @@ pub(super) fn resolve_source_file(
             "SOURCE-EDIT-008",
         )
     })?;
-    project
-        .source_files()?
-        .into_iter()
-        .find(|path| project_relative_string(project.root(), path) == requested)
+    source_inventory(project)?
+        .remove(&requested)
         .ok_or_else(|| {
             authoring_error(
                 "E-GUI-SOURCE-NOT-FOUND",
@@ -516,6 +516,29 @@ pub(super) fn resolve_source_file(
                 "GUI-EXPLORER-001",
             )
         })
+}
+
+// GUI logical paths must never alias two physical configured sources, including
+// when a new alias appears after a session captured its editable view.
+// Regression: a_new_logical_alias_cannot_redirect_a_cached_source_save
+pub(super) fn source_inventory(
+    project: &Project,
+) -> masterdata_core::Result<BTreeMap<String, PathBuf>> {
+    let mut inventory = BTreeMap::new();
+    for path in project.source_files()? {
+        let logical = project_relative_string(project.root(), &path);
+        if let Some(previous) = inventory.insert(logical, path.clone())
+            && previous != path
+        {
+            return Err(authoring_error(
+                "E-GUI-SOURCE-PATH-AMBIGUOUS",
+                "Configured sources have ambiguous logical paths",
+                Some(path),
+                "GUI-EXPLORER-001",
+            ));
+        }
+    }
+    Ok(inventory)
 }
 
 fn normalized_logical_path(path: &str) -> Option<String> {

@@ -32,6 +32,292 @@ fn open(root: &Path) -> WorkspaceAuthoringSession {
 }
 
 #[test]
+fn known_inventory_failure_pauses_views_until_fresh_reconciliation() {
+    let dir = project();
+    let aux = dir.path().join("aux");
+    fs::create_dir(&aux).unwrap();
+    let source = "kind: data\ntable: item\nrecords:\n  - id: 4\n";
+    fs::write(aux.join("data.yaml"), source).unwrap();
+    let config = dir.path().join("masterdata.toml");
+    let text = fs::read_to_string(&config).unwrap();
+    fs::write(
+        config,
+        text.replace("roots = [\"sources\"]", "roots = [\"sources\", \"aux\"]"),
+    )
+    .unwrap();
+    let session = open(dir.path());
+    let base = session
+        .select_source("sources/a.yaml")
+        .unwrap()
+        .data
+        .unwrap();
+    let modified = fs::metadata(aux.join("data.yaml"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    let offline = dir.path().join("offline");
+    fs::rename(&aux, &offline).unwrap();
+    assert!(session.refresh_inventory().is_err());
+    assert!(session.select_source("sources/a.yaml").is_err());
+    assert!(
+        session
+            .preview_data_file("sources/a.yaml", &base.base_source, &Default::default())
+            .is_err()
+    );
+    assert!(!session.validate().validation.valid);
+    fs::write(offline.join("data.yaml"), source.replace("id: 4", "id: 8")).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(offline.join("data.yaml"))
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(modified))
+        .unwrap();
+    fs::rename(&offline, &aux).unwrap();
+    let (_, trace) = measure_read(|| session.refresh_inventory().unwrap());
+    assert_eq!(trace.phases.get("yamlParse").unwrap().calls, 1);
+    assert_eq!(
+        session
+            .select_source("aux/data.yaml")
+            .unwrap()
+            .data
+            .unwrap()
+            .rows[0]
+            .cells[0]
+            .text,
+        "8"
+    );
+    assert!(
+        session
+            .select_source("sources/a.yaml")
+            .unwrap()
+            .data
+            .unwrap()
+            .columns[0]
+            .editable
+    );
+}
+
+#[test]
+fn configured_external_sources_keep_their_physical_identity_in_shared_views() {
+    let dir = project();
+    let external = tempfile::tempdir().unwrap();
+    for name in ["schema.yaml", "a.yaml"] {
+        fs::rename(
+            dir.path().join("sources").join(name),
+            external.path().join(name),
+        )
+        .unwrap();
+    }
+    let config = dir.path().join("masterdata.toml");
+    let source = fs::read_to_string(&config).unwrap();
+    let roots = format!(
+        "roots = [\"sources\", {:?}]",
+        external.path().to_str().unwrap()
+    );
+    assert!(source.contains("roots = [\"sources\"]"));
+    fs::write(config, source.replace("roots = [\"sources\"]", &roots)).unwrap();
+    let native = NativeApplicationService::new()
+        .open_data_file(Some(dir.path()), dir.path(), "sources/b.yaml")
+        .unwrap();
+    assert!(native.columns[0].editable);
+    let session = open(dir.path());
+    let local = session.select_source("sources/b.yaml").unwrap();
+    assert!(local.data.unwrap().columns[0].editable);
+    let workspace = session.workspace().unwrap();
+    let path = workspace
+        .files
+        .iter()
+        .find(|file| file.path.ends_with("/a.yaml"))
+        .unwrap()
+        .path
+        .clone();
+    let (view, trace) = measure_read(|| session.select_source(&path).unwrap());
+    let snapshot = view.data.unwrap();
+    assert_eq!(snapshot.rows[0].cells[0].text, "2");
+    assert!(snapshot.columns[0].editable);
+    let context = view.context.unwrap();
+    assert_eq!(context.record_sources.len(), 3);
+    assert!(!trace.phases.contains_key("yamlParse"));
+    assert_eq!(
+        session.source_content(&path).unwrap().source,
+        snapshot.base_source
+    );
+    let mutation = AuthoringRecordMutation {
+        edits: vec![AuthoringEdit {
+            record_index: 0,
+            field: "id".into(),
+            value: AuthoringValue::Number { value: "4".into() },
+        }],
+        ..Default::default()
+    };
+    let shared = session
+        .preview_data_file(&path, &snapshot.base_source, &mutation)
+        .unwrap();
+    let native = NativeApplicationService::new()
+        .preview_data_file_mutation(
+            Some(dir.path()),
+            dir.path(),
+            &path,
+            &snapshot.base_source,
+            &mutation,
+        )
+        .unwrap();
+    assert_eq!(shared.candidate_source, native.candidate_source);
+    let fields = [SchemaDraftField {
+        name: "id".into(),
+        type_name: "long".into(),
+        nullable: false,
+        array: false,
+    }];
+    let draft = session
+        .preview_schema_draft(
+            &context.schema_path,
+            &context.schema_source,
+            &fields,
+            &[],
+            Some(&path),
+        )
+        .unwrap();
+    assert_eq!(
+        draft.selected_snapshot.unwrap().columns[0].type_name,
+        "long"
+    );
+    let target = external.path().join("a.yaml");
+    let changed = snapshot.base_source.replace("id: 2", "id: 7");
+    fs::write(&target, &changed).unwrap();
+    assert_eq!(
+        session.select_source(&path).unwrap().data.unwrap().rows[0].cells[0].text,
+        "7"
+    );
+    let saved = NativeApplicationService::new()
+        .save_data_file_mutation(
+            Some(dir.path()),
+            dir.path(),
+            &path,
+            &snapshot.base_source,
+            &snapshot.base_content_identity,
+            &mutation,
+            None,
+        )
+        .unwrap();
+    assert_eq!(saved.status, SourceSaveStatus::Conflict);
+    assert_eq!(fs::read_to_string(&target).unwrap(), changed);
+    fs::remove_file(target).unwrap();
+    assert!(
+        !session
+            .refresh_inventory()
+            .unwrap()
+            .workspace
+            .files
+            .iter()
+            .any(|file| file.path == path)
+    );
+    assert!(
+        session
+            .select_source("sources/b.yaml")
+            .unwrap()
+            .data
+            .unwrap()
+            .columns[0]
+            .editable
+    );
+}
+
+#[test]
+fn a_new_logical_alias_cannot_redirect_a_cached_source_save() {
+    let dir = project();
+    let external = tempfile::tempdir().unwrap();
+    let source = "kind: data\ntable: item\nrecords:\n  - id: 4\n";
+    let target = external.path().join("external.yaml");
+    fs::write(&target, source).unwrap();
+    let logical = target
+        .components()
+        .filter_map(|part| match part {
+            std::path::Component::Normal(value) => Some(value.to_str().unwrap()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    let alias_root = logical.split('/').next().unwrap();
+    fs::create_dir(dir.path().join(alias_root)).unwrap();
+    let config = dir.path().join("masterdata.toml");
+    let text = fs::read_to_string(&config).unwrap();
+    fs::write(
+        config,
+        text.replace(
+            "roots = [\"sources\"]",
+            &format!(
+                "roots = [\"sources\", {alias_root:?}, {:?}]",
+                external.path().to_str().unwrap()
+            ),
+        ),
+    )
+    .unwrap();
+    let session = open(dir.path());
+    let snapshot = session.select_source(&logical).unwrap().data.unwrap();
+    let alias = dir.path().join(&logical);
+    fs::create_dir_all(alias.parent().unwrap()).unwrap();
+    fs::write(&alias, source).unwrap();
+    let mutation = AuthoringRecordMutation {
+        edits: vec![AuthoringEdit {
+            record_index: 0,
+            field: "id".into(),
+            value: AuthoringValue::Number { value: "9".into() },
+        }],
+        ..Default::default()
+    };
+    let error = NativeApplicationService::new()
+        .save_data_file_mutation(
+            Some(dir.path()),
+            dir.path(),
+            &snapshot.path,
+            &snapshot.base_source,
+            &snapshot.base_content_identity,
+            &mutation,
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(error.diagnostic().code, "E-GUI-SOURCE-PATH-AMBIGUOUS");
+    assert!(session.refresh_inventory().is_err());
+    assert_eq!(fs::read_to_string(target).unwrap(), source);
+    assert_eq!(fs::read_to_string(alias).unwrap(), source);
+}
+
+#[cfg(unix)]
+#[test]
+fn configured_root_reads_preserve_existing_discovery_behavior() {
+    let dir = project();
+    let external = tempfile::tempdir().unwrap();
+    let target = external.path().join("external.yaml");
+    fs::write(&target, "kind: data\ntable: item\nrecords:\n  - id: 4\n").unwrap();
+    std::os::unix::fs::symlink(external.path(), dir.path().join("linked")).unwrap();
+    std::os::unix::fs::symlink(&target, dir.path().join("explicit.yaml")).unwrap();
+    let config = dir.path().join("masterdata.toml");
+    let original = fs::read_to_string(&config).unwrap();
+    for (root, path) in [
+        ("linked", "linked/external.yaml"),
+        ("explicit.yaml", "explicit.yaml"),
+    ] {
+        fs::write(
+            &config,
+            original.replace(
+                "roots = [\"sources\"]",
+                &format!("roots = [\"sources\", {root:?}]"),
+            ),
+        )
+        .unwrap();
+        let native = NativeApplicationService::new()
+            .open_data_file(Some(dir.path()), dir.path(), path)
+            .unwrap();
+        let session = open(dir.path());
+        let shared = session.select_source(path).unwrap().data.unwrap();
+        assert_eq!(shared.base_content_identity, native.base_content_identity);
+        assert_eq!(shared.rows[0].cells[0].text, native.rows[0].cells[0].text);
+        assert_eq!(shared.columns[0].editable, native.columns[0].editable);
+    }
+}
+
+#[test]
 fn many_views_share_one_parse_and_do_not_validate_on_selection() {
     let dir = project();
     let (session, metrics) = measure_read(|| open(dir.path()));

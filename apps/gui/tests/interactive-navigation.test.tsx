@@ -216,6 +216,33 @@ test("an explicit disk validation cannot restore diagnostics from an older read 
   expect(screen.getByRole("button", { name: /PROBLEMS 0/ })).toBeTruthy();
 });
 
+test("inventory failure retains dirty records and revalidates them after same-generation recovery", async () => {
+  const original = invoke.getMockImplementation()!;
+  let unavailable = false;
+  const failure = { diagnostic: { code: "E-IO-ACCESS", kind: "io", message: "configured source root unavailable" } };
+  invoke.mockImplementation(async (command, args) => {
+    if (command === "workspace_status") { if (unavailable) throw failure; return { generation: 1, workspace }; }
+    if (command === "source_content") return { path: args.relativePath, source: view(args.relativePath).data.baseSource, contentIdentity: args.relativePath };
+    return original(command, args);
+  });
+  read = async path => { if (unavailable) throw failure; return view(path); };
+  render(<App sourcePollingIntervalMs={50} previewDelayMs={0} />);
+  const cell = await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  fireEvent.keyDown(cell, { key: "Enter" });
+  const input = await screen.findByRole("textbox", { name: "record 1 id" });
+  fireEvent.change(input, { target: { value: "42" } }); fireEvent.keyDown(input, { key: "Enter" });
+  const previews = () => invoke.mock.calls.filter(([command]) => command === "preview_data_file").length;
+  await waitFor(() => expect(previews()).toBeGreaterThan(0));
+  const previousPreviews = previews();
+  unavailable = true;
+  await waitFor(() => expect(screen.getByRole("gridcell", { name: /record 1 id: 42/ }).getAttribute("aria-readonly")).toBe("true"));
+  expect((screen.getByRole("button", { name: "Save", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+  unavailable = false;
+  await waitFor(() => expect(screen.getByRole("gridcell", { name: /record 1 id: 42/ }).getAttribute("aria-readonly")).toBe("false"));
+  await waitFor(() => expect(previews()).toBeGreaterThan(previousPreviews));
+  expect(invoke.mock.calls.some(([command]) => /^(save_|apply_)/.test(command))).toBe(false);
+});
+
 test("source identity polling cannot restore edit permission while shared dependency reads fail", async () => {
   const original = invoke.getMockImplementation()!;
   let external = false;
@@ -279,4 +306,29 @@ test("delayed Add Row focus cannot close a cell the user has already started edi
     fireEvent.keyDown(input, { key: "Enter" });
     await screen.findByRole("gridcell", { name: /new record id: 1234/ });
   } finally { raf.mockRestore(); }
+});
+
+test("Problems routes a physical diagnostic through the workspace source index", async () => {
+  const files = workspace.files.map(file => ({ ...file, physicalPath: file.path === "a.yaml" ? "/external/a.yaml" : `/project/${file.path}` }));
+  const validation = { valid: false, diagnostics: [{ code: "E-TABLE-INVALID-RECORD-VALUE", source: "/external/a.yaml", record_identity: "record[0]", message: "field `id` is invalid" }] };
+  const original = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === "open_workspace") return { ...workspace, files };
+    if (command === "workspace_validation") return { generation: 1, validation, tagCandidatesComplete: true, tables: {} };
+    return original(command, args);
+  });
+  read = async path => {
+    const next = view(path);
+    return { ...next, files, data: { ...next.data, validation } } as ReturnType<typeof view>;
+  };
+  render(<App sourcePollingIntervalMs={null} />);
+  const first = await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  expect(first.closest("td")?.classList.contains("invalid")).toBe(true);
+  select("b.yaml");
+  await waitFor(() => expect(document.querySelector(".editor-area")?.getAttribute("data-active-source")).toBe("b.yaml"));
+  expect(screen.getByRole("gridcell", { name: /record 1 id: 10/ }).closest("td")?.classList.contains("invalid")).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: /PROBLEMS 1/ }));
+  fireEvent.click(screen.getByText("field `id` is invalid"));
+  await waitFor(() => expect(document.querySelector(".editor-area")?.getAttribute("data-active-source")).toBe("a.yaml"));
+  expect(screen.getByRole("treeitem", { name: "a.yaml", exact: true }).getAttribute("aria-selected")).toBe("true");
 });

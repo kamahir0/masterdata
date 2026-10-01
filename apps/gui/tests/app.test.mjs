@@ -78,7 +78,7 @@ test("background clean-file reload does not steal Explorer selection", () => {
   const end = source.indexOf("const loadWorkspace = useCallback", start);
   const openDataFile = source.slice(start, end);
   assert.doesNotMatch(openDataFile, /setActivePath\(/);
-  assert.match(source, /void openDataFile\(root, path\)/);
+  assert.match(source, /return openDataFile\(root, path\)/);
 });
 
 test("shared preview collapses semantic no-op edits back to clean", () => {

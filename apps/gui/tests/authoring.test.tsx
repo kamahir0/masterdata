@@ -81,6 +81,9 @@ afterEach(() => {
 async function open(label = 'record 1 weight') { render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />); const cell = await screen.findByRole('gridcell', { name: new RegExp(`^${label}:`) }); fireEvent.keyDown(cell, { key: 'Enter' }); return await screen.findByRole('textbox', { name: label }); }
 function commit(input: HTMLElement) { fireEvent.keyDown(input, { key: 'Enter' }); }
 async function edit(label: string) { const cell = await screen.findByRole('gridcell', { name: new RegExp(`^${label}:`) }); fireEvent.keyDown(cell, { key: 'Enter' }); return await screen.findByRole('textbox', { name: label }); }
+// Await the async workspace/selection boundary before querying row controls.
+// The integration hang guard is separate from navigation-desktop latency evidence.
+async function recordsSurface() { return screen.findByRole('grid', {}, { timeout: APP_INTEGRATION_TEST_TIMEOUT_MS }); }
 function navigation() { return within(screen.getByRole('complementary', { name: 'Explorer' })); }
 function openProjectCommands() {
   fireEvent.click(within(document.querySelector('.titlebar')!).getByRole('button', { name: 'Project menu' }));
@@ -423,6 +426,7 @@ test('Row context move and positional insert preserve source occurrence order in
     { recordIndex: 2, cells: [{ field: 'id', text: '3', editable: true }, { field: 'weight', text: '30', editable: true }, { field: 'note', text: 'C', editable: true }] },
   ]) as any;
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await recordsSurface();
   fireEvent.click(await screen.findByRole('button', { name: 'Actions for record 3' }));
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Move row up' }));
   await waitFor(() => expect(invoke.mock.calls.some(([command, args]) => command === 'preview_data_file' && args.recordOrder?.[1]?.index === 2)).toBe(true));
@@ -442,6 +446,7 @@ test('Row pointer drag uses the same source occurrence operation and keyboard co
     { recordIndex: 2, cells: [{ field: 'id', text: '3', editable: true }, { field: 'weight', text: '30', editable: true }, { field: 'note', text: 'C', editable: true }] },
   ]) as any;
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await recordsSurface();
   const lastGrab = await screen.findByRole('button', { name: 'Drag row 3 to reorder' });
   const firstRow = screen.getByRole('button', { name: 'Drag row 1 to reorder' }).closest('tr') as HTMLElement;
   const secondRow = screen.getByRole('button', { name: 'Drag row 2 to reorder' }).closest('tr') as HTMLElement;
@@ -860,6 +865,7 @@ test('Explorer move refreshes selection and the open data editor at the new path
 test('complex table scope disables Add Row with a reason but keeps existing Delete available', async () => {
   openSnapshot = { ...mutationSnapshot(), addRow: { supported: false, reason: 'Nullable fields are outside the initial Add Row scope.' } };
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await recordsSurface();
   const add = await screen.findByRole('button', { name: /Add Row/ });
   expect((add as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText('Nullable fields are outside the initial Add Row scope.')).toBeTruthy();
@@ -881,6 +887,7 @@ test('structural mutation state survives Failure, Conflict, and Outcome Unknown 
   });
 
   render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await recordsSurface();
   fireEvent.click(await screen.findByRole('button', { name: /Add Row/ }));
   expect(screen.queryByText('Query cleared after Add Row.')).toBeNull();
   const draftId = await edit('new record id') as HTMLInputElement;

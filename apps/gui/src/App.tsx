@@ -2058,7 +2058,7 @@ function App({
           if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
             // Unchanged record bytes do not prove that its schema/type dependencies
             // recovered. Only a successful shared read may restore edit permission.
-            if (latest.loadError) { void openDataFile(root, path); return; }
+            if (latest.loadError) return openDataFile(root, path);
             if (latest.conflict || latest.saveStatus === "conflict") {
               setEditors((all) => all[path]
                 ? {
@@ -2076,10 +2076,11 @@ function App({
           }
           if (editorIsDirty(latest)) {
             setEditors((all) => all[path]
-              ? { ...all, [path]: { ...all[path], conflict: current, saveStatus: "conflict", loadError: null } }
+              ? { ...all, [path]: { ...all[path], conflict: current, saveStatus: "conflict" } }
               : all);
+            if (latest.loadError) return openDataFile(root, path);
           } else {
-            void openDataFile(root, path);
+            return openDataFile(root, path);
           }
         }).catch(error => {
           if (workspaceGeneration.current !== generation) return;
@@ -3730,6 +3731,7 @@ function DataEditor({
     const row = gridRows[rowIndex];
     const column = editor.snapshot.columns[columnIndex];
     if (!row || !column) return;
+    pendingGridFocus.current = null;
     // A query may reorder visible rows while a cell is open. Commit to its source identity.
     const target = row.kind === "existing" ? { kind: "existing" as const, recordIndex: row.recordIndex, field: column.name }
       : { kind: "added" as const, draftId: row.draft.draftId, field: column.name };
@@ -4045,9 +4047,11 @@ function DataEditor({
           const key = draftCellKey(newest!.draftId, field);
           pendingGridFocus.current = key;
           window.requestAnimationFrame(() => {
+            if (pendingGridFocus.current !== key) return;
             // Let the new virtual row extend the scrollable height before revealing it.
             revealGridRow(rowIndex);
             window.requestAnimationFrame(() => {
+              if (pendingGridFocus.current !== key) return;
               const target = document.querySelector<HTMLElement>(`[data-cell="${CSS.escape(key)}"]`);
               if (target) { target.focus({ preventScroll: true }); pendingGridFocus.current = null; }
             });

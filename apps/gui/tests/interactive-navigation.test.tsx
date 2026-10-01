@@ -216,11 +216,16 @@ test("an explicit disk validation cannot restore diagnostics from an older read 
   expect(screen.getByRole("button", { name: /PROBLEMS 0/ })).toBeTruthy();
 });
 
-test("unchanged record bytes cannot restore edit permission while shared dependency reads fail", async () => {
+test("source identity polling cannot restore edit permission while shared dependency reads fail", async () => {
   const original = invoke.getMockImplementation()!;
+  let external = false;
+  let externalPolls = 0;
   invoke.mockImplementation(async (command, args) => {
     if (command === "workspace_status") return { generation: 1, workspace };
-    if (command === "source_content") return { path: args.relativePath, source: view(args.relativePath).data.baseSource, contentIdentity: args.relativePath };
+    if (command === "source_content") {
+      if (external && args.relativePath === "a.yaml") { externalPolls++; return { path: "a.yaml", source: "external records", contentIdentity: "external" }; }
+      return { path: args.relativePath, source: view(args.relativePath).data.baseSource, contentIdentity: args.relativePath };
+    }
     return original(command, args);
   });
   render(<App sourcePollingIntervalMs={50} previewDelayMs={0} />);
@@ -234,7 +239,44 @@ test("unchanged record bytes cannot restore edit permission while shared depende
   const retained = await screen.findByRole("gridcell", { name: /record 1 id: 42/ });
   await waitFor(() => expect(invoke.mock.calls.filter(([command, args]) => command === "select_source" && args.relativePath === "a.yaml").length).toBeGreaterThan(2));
   expect(retained.getAttribute("aria-readonly")).toBe("true");
-  read = async path => view(path);
+  external = true;
+  await waitFor(() => expect(externalPolls).toBeGreaterThan(0));
+  expect(screen.getByRole("gridcell", { name: /record 1 id: 42/ }).getAttribute("aria-readonly")).toBe("true");
+  const recovered = (path: string) => path === "a.yaml" ? { ...view(path), generation: 2, data: { ...view(path).data, baseContentIdentity: "external", baseSource: "external records" } } : view(path);
+  let finishRead!: (value: ReturnType<typeof view>) => void;
+  read = path => path === "a.yaml" ? new Promise(resolve => { finishRead = resolve; }) : Promise.resolve(view(path));
+  await waitFor(() => expect(finishRead).toBeTypeOf("function"));
+  const polls = (path: string) => invoke.mock.calls.filter(([command, args]) => command === "source_content" && args.relativePath === path).length;
+  const pendingPolls = polls("a.yaml");
+  const otherPolls = polls("b.yaml");
+  await waitFor(() => expect(polls("b.yaml")).toBeGreaterThan(otherPolls + 2));
+  expect(polls("a.yaml")).toBe(pendingPolls);
+  read = async path => recovered(path);
+  await act(async () => finishRead(recovered("a.yaml")));
   await waitFor(() => expect(screen.getByRole("gridcell", { name: /record 1 id: 42/ }).getAttribute("aria-readonly")).toBe("false"));
   expect(invoke.mock.calls.some(([command]) => /^(save_|apply_)/.test(command))).toBe(false);
+});
+
+test("delayed Add Row focus cannot close a cell the user has already started editing", async () => {
+  read = async path => {
+    const next = view(path);
+    return { ...next, data: { ...next.data, addRow: { supported: true, reason: null } } };
+  };
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.push(callback); return frames.length; });
+  try {
+    fireEvent.click(screen.getByRole("button", { name: /Add Row/ }));
+    const cell = await screen.findByRole("gridcell", { name: /new record id:/ });
+    fireEvent.keyDown(cell, { key: "Enter" });
+    const input = await screen.findByRole("textbox", { name: "new record id" });
+    fireEvent.change(input, { target: { value: "1234" } });
+    expect(frames.length).toBeGreaterThan(0);
+    await act(async () => { while (frames.length) frames.shift()!(performance.now()); });
+    expect(document.activeElement).toBe(input);
+    expect((input as HTMLInputElement).value).toBe("1234");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("gridcell", { name: /new record id: 1234/ });
+  } finally { raf.mockRestore(); }
 });

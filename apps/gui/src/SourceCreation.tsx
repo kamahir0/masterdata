@@ -101,7 +101,9 @@ export default function SourceCreation({ projectPath, initialRootIndex, initialF
     void invoke<Context>("creation_context", { projectPath }).then(value => {
       if (disposed) return;
       setContext(value); setRoot((value.roots.find(root => root.index === initialRootIndex) ?? value.roots[0])?.label ?? "");
-      window.requestAnimationFrame(() => document.getElementById("creation-category")?.focus());
+      window.requestAnimationFrame(() => {
+        if (!document.activeElement?.closest(".creation-form")) document.getElementById("creation-category")?.focus();
+      });
     }).catch(error => { if (!disposed) setError(diagnosticOf(error)); });
     return () => { disposed = true; };
   }, [projectPath, initialRootIndex]);

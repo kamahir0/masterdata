@@ -1,7 +1,7 @@
 import { installWorkspaceFixture } from "./workspace-fixtures";
 import React from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SourceCreation from '../src/SourceCreation';
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -25,6 +25,21 @@ async function open(canWrite = true) {
   await screen.findByLabelText('Table identity');
 }
 const createCalls = () => invoke.mock.calls.filter(([command]) => command === 'create_source');
+
+test('initial creation focus does not steal a filename edit that started before its frame', async () => {
+  const frames: FrameRequestCallback[] = [];
+  const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+  try {
+    await open();
+    const input = screen.getByLabelText('Filename (.yaml / .yml)') as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: 'items.yaml' } });
+    expect(frames.length).toBeGreaterThan(0);
+    await act(async () => { while (frames.length) frames.shift()!(performance.now()); });
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('items.yaml');
+  } finally { raf.mockRestore(); }
+});
 
 test('new Table defaults to records in the same YAML file', async () => {
   await open();

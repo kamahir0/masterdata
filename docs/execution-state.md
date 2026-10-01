@@ -1,18 +1,13 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: 78dd617f6e5557a481324972d295322999670983
 Work base: 1194a59f9d7493b186a92cc418efbeeac449443d
 
 ## Active work
 
-Completed: baseline instrumentationとnative latency / duplicate work診断。
-Completed: navigation specとworkspace read ownership decision。
-Completed: shared workspace read session、unified navigation、generation別validationとdirty overlay read。
-Completed: Desktop rapid-switch / ordinary workflow / fixed 100k evidenceとinvalidation回帰。
-Completed: measured grid render overhead、旧世代preview/queryとdependency回復時のedit permission保護。
-Completed: focused regressionとcargo xtask check-all。
-Remaining: Candidate / required Desktop・3 platform CI / fresh verification。
+Completed: GUI-EXPLORER-NAV-001の実装、latency / invalidation / authoring回帰とlocal checks。
+In progress: exact Candidateのfresh reviewとrequired Desktop・3 platform CI。
 
 ## Blocking findings
 

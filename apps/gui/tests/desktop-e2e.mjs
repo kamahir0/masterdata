@@ -163,7 +163,7 @@ async function fill(xpath, value, timeoutMs) {
       });}`, [{ [ELEMENT_KEY]: id }]);
   const committedInput = async () => {
     const result = await request("POST", `/session/${sessionId}/execute/async`, {
-      script: "const input=arguments[0], done=arguments[arguments.length-1]; requestAnimationFrame(()=>requestAnimationFrame(()=>done({value:input.value, focused:document.activeElement===input, connected:input.isConnected, events:input.__desktopKeyEvents})));",
+      script: "const input=arguments[0], done=arguments[arguments.length-1]; requestAnimationFrame(()=>requestAnimationFrame(()=>done({value:input.value, focused:document.activeElement===input, connected:input.isConnected, activeRole:document.activeElement?.getAttribute('role'), activeLabel:document.activeElement?.getAttribute('aria-label'), events:input.__desktopKeyEvents})));",
       args: [{ [ELEMENT_KEY]: id }],
     });
     return result.payload?.value;
@@ -174,7 +174,9 @@ async function fill(xpath, value, timeoutMs) {
     text: "\uE009a\uE000",
     value: ["\uE009", "a", "\uE000"],
   });
-  await committedInput();
+  const prepared = await committedInput();
+  if (!prepared?.focused || !prepared?.connected)
+    throw new Error(`input lost focus before typing: ${xpath}; actual=${JSON.stringify(prepared)}`);
   // A WebDriver round trip alone is not a controlled-input commit boundary.
   // Observe each key after React's paint opportunity; never retry a lost key.
   let prefix = "";

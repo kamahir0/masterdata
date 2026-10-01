@@ -773,7 +773,7 @@ test('Ant Design Save All dialog preserves input when source commit fails', asyn
   expect(invoke.mock.calls.filter(([command]) => command === 'open_workspace')).toHaveLength(1);
 });
 
-test('creation refresh selects the new source without discarding an existing dirty buffer', async () => {
+test('creation refresh retains dirty buffers and background inventory cannot replay its focus request', async () => {
   const normalInvoke = invoke.getMockImplementation()!;
   let created = false;
   installWorkspaceFixture(invoke, async (command, args) => {
@@ -783,7 +783,8 @@ test('creation refresh selects the new source without discarding an existing dir
     if (command === 'authoring_workspace' && created) return { ...workspace, files: [...workspace.files, { path: 'weapon.yaml', sourceRoot: '.', kind: 'schema' }] };
     return normalInvoke(command, args);
   });
-  const input = await open(); fireEvent.change(input, { target: { value: '20' } }); commit(input);
+  render(<App sourcePollingIntervalMs={50} previewDelayMs={0} />);
+  const input = await edit('record 1 weight'); fireEvent.change(input, { target: { value: '20' } }); commit(input);
   openSourceFiles();
   fireEvent.click(screen.getByRole('button', { name: 'New source artifact' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Table' }));
@@ -794,6 +795,13 @@ test('creation refresh selects the new source without discarding an existing dir
   expect(invoke.mock.calls.some(([command, args]) => command === 'create_source' && args.request.artifact.table === 'weapon')).toBe(true);
   fireEvent.click(screen.getByRole('treeitem', { name: 'data.yaml, unsaved changes', exact: true }));
   expect(await screen.findByRole('gridcell', { name: /record 1 weight: 20/ })).toBeTruthy();
+  const retainedInput = await edit('record 1 weight');
+  retainedInput.focus();
+  const polls = () => invoke.mock.calls.filter(([command]) => command === 'workspace_status').length;
+  const before = polls();
+  await waitFor(() => expect(polls()).toBeGreaterThan(before + 2));
+  expect(document.activeElement).toBe(retainedInput);
+  expect((screen.getByRole('textbox', { name: 'record 1 weight' }) as HTMLInputElement).value).toBe('20');
   expect(invoke.mock.calls.some(([command]) => command === 'save_data_file')).toBe(false);
 }, APP_INTEGRATION_TEST_TIMEOUT_MS);
 

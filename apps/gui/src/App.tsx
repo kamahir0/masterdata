@@ -3115,6 +3115,7 @@ function SourceTree({
   inlineCreation: { root: string; folder: string; category: Category; node: React.ReactNode } | null;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const consumedReveal = useRef<typeof revealCreated>(null);
   const groups = useMemo(() => workspace.sourceRoots.map((root) => {
     const children: SourceTreeNode[] = [];
     const emptyFolders = (workspace.folders ?? []).filter(folder => folder.sourceRoot === root);
@@ -3175,9 +3176,18 @@ function SourceTree({
   }, [collapseSignal]);
 
   useEffect(() => {
-    if (!revealCreated) return;
+    if (!revealCreated || consumedReveal.current === revealCreated) return;
     setCollapsed(current => new Set([...current].filter(key => key !== revealCreated.path && !revealCreated.path.startsWith(`${key}/`))));
-    const frame = window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(revealCreated.path)}"]`)?.focus());
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(revealCreated.path)}"]`);
+      if (!target) return;
+      // Inventory publication is not a new focus intent. Replaying creation focus
+      // would blur and close a cell the user started editing in the meantime.
+      // EVIDENCE: GUI-EXPLORER-NAV-001; tests/authoring.test.tsx
+      consumedReveal.current = revealCreated;
+      if (document.activeElement?.closest(".editor-area")) return;
+      target.focus();
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [revealCreated, workspace]);
 

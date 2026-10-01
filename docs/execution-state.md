@@ -12,4 +12,4 @@ Remaining: required evidenceのreconciliationとObjective completion。
 
 ## Blocking findings
 
-Blocking: None.
+None.

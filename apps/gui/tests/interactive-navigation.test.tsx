@@ -137,3 +137,20 @@ test("explicit Conflict Reload installs the external records and clears the old 
   expect(screen.getByRole("treeitem", { name: "a.yaml", exact: true })).toBeTruthy();
   confirm.mockRestore();
 });
+
+test("a changed Project binding pauses authoring and keyboard Save while retaining local changes", async () => {
+  render(<App sourcePollingIntervalMs={null} previewDelayMs={0} />);
+  const cell = await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  fireEvent.keyDown(cell, { key: "Enter" });
+  const input = await screen.findByRole("textbox", { name: "record 1 id" });
+  fireEvent.change(input, { target: { value: "42" } }); fireEvent.keyDown(input, { key: "Enter" });
+  await screen.findByRole("gridcell", { name: /record 1 id: 42/ });
+  select("b.yaml"); await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  read = async () => { throw { diagnostic: { code: "E-WORKSPACE-BINDING-CHANGED", kind: "validation", message: "Reload the Project", source: null } }; };
+  fireEvent.click(screen.getByRole("treeitem", { name: "a.yaml, unsaved changes", exact: true }));
+  const retained = await screen.findByRole("gridcell", { name: /record 1 id: 42/ });
+  expect(retained.getAttribute("aria-readonly")).toBe("true");
+  expect((screen.getByRole("button", { name: "Save", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  expect(invoke.mock.calls.some(([command]) => /^(save_|apply_)/.test(command))).toBe(false);
+});

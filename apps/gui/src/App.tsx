@@ -671,7 +671,11 @@ function App({
   const schemaActionSerial = useRef(0);
   const [migrationBusyRoot, setMigrationBusyRoot] = useState<string | null>(null);
   const migrationBusyRef = useRef<string | null>(null);
-  const sourceMutationBlocked = useCallback((root: string) => !!recoveryRef.current[root] || migrationBusyRef.current === root, []);
+  const sourceMutationBlocked = useCallback((root: string) => {
+    const state = workspaceStateRef.current;
+    const bindingChanged = state.kind === "error" && state.diagnostic.code === "E-WORKSPACE-BINDING-CHANGED" && state.previous?.project.project_root === root;
+    return !!recoveryRef.current[root] || migrationBusyRef.current === root || bindingChanged;
+  }, []);
   const recordRecovery = useCallback((root: string, result: MigrationResult | null) => {
     const next = { ...recoveryRef.current };
     if (result?.state === "recovery_required") next[root] = result; else delete next[root];
@@ -870,7 +874,8 @@ function App({
       : null;
   const projectRoot = workspace?.project.project_root ?? null;
   const recovery = projectRoot ? recoveries[projectRoot] : null;
-  const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot);
+  const mutationBlocked = !!recovery || (!!projectRoot && migrationBusyRoot === projectRoot)
+    || (workspaceState.kind === "error" && workspaceState.diagnostic.code === "E-WORKSPACE-BINDING-CHANGED");
   const activeEditor = activePath ? editors[activePath] ?? null : null;
   const activeFile = workspace?.files.find((file) => file.path === activePath)
     ?? (activeEditor ? { path: activePath!, sourceRoot: "", kind: "unavailable", table: activeEditor.snapshot.table, typeName: null, hasInlineRecords: false, diagnostic: null } : null);
@@ -968,6 +973,16 @@ function App({
       [path, schemaDraftIsDirty(draft) ? { ...draft, previewState: "pending", previewError: null } : draft])));
   }, []);
 
+  const recordBindingChange = useCallback((root: string, diagnostic: ApiDiagnostic) => {
+    if (diagnostic.code !== "E-WORKSPACE-BINDING-CHANGED") return;
+    const state = workspaceStateRef.current;
+    const previous = state.kind === "ready" ? state.workspace : state.previous;
+    if (previous?.project.project_root !== root) return;
+    const next: WorkspaceState = { kind: "error", diagnostic, previous };
+    workspaceStateRef.current = next;
+    setWorkspaceState(next);
+  }, []);
+
   const updateWorkspaceFiles = useCallback((root: string, files: WorkspaceSourceFile[] | undefined) => {
     if (!files) return;
     setWorkspaceState(current => current.kind === "ready" && current.workspace.project.project_root === root
@@ -1035,12 +1050,13 @@ function App({
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
       const diagnostic = asApiError(error).diagnostic;
+      recordBindingChange(root, diagnostic);
       setFileOpenErrors(current => ({ ...current, [path]: diagnostic }));
       setEditors(current => current[path] ? { ...current, [path]: { ...current[path], loadError: diagnostic, previewState: "unavailable", saveDiagnostic: apiDiagnosticToDiagnostic(diagnostic) } } : current);
     } finally {
       if (workspaceGeneration.current === generation) setLoadingPaths(current => { const next = new Set(current); next.delete(path); return next; });
     }
-  }, [installReadView, observeReadGeneration]);
+  }, [installReadView, observeReadGeneration, recordBindingChange]);
 
   const loadWorkspace = useCallback(async (requestedProject: string | null, initialDiscovery = false) => {
     const generation = workspaceGeneration.current + 1;
@@ -1129,13 +1145,14 @@ function App({
     }).catch(error => {
       if (disposed || workspaceGeneration.current !== generation || selectionIntent.current !== target) return;
       const diagnostic = asApiError(error).diagnostic;
+      recordBindingChange(projectRoot, diagnostic);
       setTableContextState(null); setTypeView(null); setTableContextError(diagnostic);
       setFileOpenErrors(current => ({ ...current, [target]: diagnostic }));
       setEditors(current => current[target] ? { ...current, [target]: { ...current[target], loadError: diagnostic, previewState: "unavailable" } } : current);
       setNavigationReady(key);
     });
     return () => { disposed = true; };
-  }, [projectRoot, explorerPath, tableEpoch, installReadView, observeReadGeneration]);
+  }, [projectRoot, explorerPath, tableEpoch, installReadView, observeReadGeneration, recordBindingChange]);
 
   useEffect(() => {
     if (!projectRoot || !readGeneration) return;
@@ -2019,6 +2036,7 @@ function App({
         }).catch(error => {
           if (workspaceGeneration.current !== generation) return;
           const diagnostic = asApiError(error).diagnostic;
+          recordBindingChange(root, diagnostic);
           setEditors(current => Object.fromEntries(Object.entries(current).map(([path, editor]) => [path, { ...editor, loadError: diagnostic, previewState: "unavailable" }])));
         }).finally(() => { inventoryPending = false; });
       }
@@ -2070,7 +2088,7 @@ function App({
       }
     }, sourcePollingIntervalMs);
     return () => window.clearInterval(timer);
-  }, [openDataFile, sourcePollingIntervalMs, observeReadGeneration, updateWorkspaceFiles]);
+  }, [openDataFile, sourcePollingIntervalMs, observeReadGeneration, updateWorkspaceFiles, recordBindingChange]);
 
   const validateDisk = useCallback(async () => {
     if (!workspace || !projectRoot) return;
@@ -3516,6 +3534,8 @@ function DataEditor({
   onReloadConflict: () => void;
   onOverwriteConflict: () => void;
 }) {
+  navigationMark("grid-render-start", file.path);
+  useLayoutEffect(() => { navigationMark("grid-render-commit", file.path); });
   const dirty = editorIsDirty(editor);
   const diagnostics = editor.previewState === "current" ? editor.preview.validation.diagnostics : [];
   const diagnosticsByCell = useMemo(() => {
@@ -4212,20 +4232,10 @@ function DataEditor({
                     const complex = column.shape?.modifier === "array" || column.shape?.shape.kind === "custom" || column.shape?.shape.kind === "flags";
                     const isEditing = editingCell?.key === key;
                     const label = `${gridRow.kind === "added" ? "new record" : `record ${gridRow.recordIndex + 1}`} ${column.name}`;
-                    return (
-                      <td key={column.name} data-column-index={columnIndex} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
-                        <Popover open={Boolean(isEditing && complex)} trigger={["click"]} onOpenChange={(open) => { if (!open && isEditing) finishCellEdit(false, undefined, undefined, false); }}
-                          afterOpenChange={(open) => {
-                            if (!open || !isEditing) return;
-                            const container = document.querySelector<HTMLElement>(`[data-edit-cell="${CSS.escape(key)}"]`);
-                            if (container?.contains(document.activeElement)) return;
-                            focusElement(container);
-                          }} placement="bottomLeft" overlayClassName="complex-cell-popover"
-                          content={isEditing && column.shape ? <div data-edit-cell={key} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); event.stopPropagation(); commitAndSave(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finishCellEdit(false); } }}>
-                            <ValueEditor field={column.shape} value={value} label={label} cellKey={key} editable={editable} invalidPaths={invalidPaths}
-                              bufferedText onChange={(next) => commitComplexOperation(key, next)} />
-                            <div className="complex-cell-actions"><Button size="small" onClick={() => finishCellEdit(false)}>Close</Button></div>
-                          </div> : null}>
+                    // Scalar cells have no popup. Thousands of closed Ant Design Popovers
+                    // delayed the measured grid commit after the session read had completed.
+                    // EVIDENCE: docs/evidence/interactive-navigation.md
+                    const cell = (
                         <div
                           className="cell-wrap"
                           data-cell={key}
@@ -4319,7 +4329,25 @@ function DataEditor({
                           )}
                           {hasDiagnostic && <span className="cell-error" title="Validation diagnostic">!</span>}
                         </div>
+                    );
+                    return (
+                      <td key={column.name} data-column-index={columnIndex} className={`${changed ? "changed" : ""} ${hasDiagnostic ? "invalid" : ""} ${isSelected ? "selected" : ""}`}>
+                        {complex ? (
+                        <Popover open={Boolean(isEditing && complex)} trigger={["click"]} onOpenChange={(open) => { if (!open && isEditing) finishCellEdit(false, undefined, undefined, false); }}
+                          afterOpenChange={(open) => {
+                            if (!open || !isEditing) return;
+                            const container = document.querySelector<HTMLElement>(`[data-edit-cell="${CSS.escape(key)}"]`);
+                            if (container?.contains(document.activeElement)) return;
+                            focusElement(container);
+                          }} placement="bottomLeft" overlayClassName="complex-cell-popover"
+                          content={isEditing && column.shape ? <div data-edit-cell={key} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); event.stopPropagation(); commitAndSave(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finishCellEdit(false); } }}>
+                            <ValueEditor field={column.shape} value={value} label={label} cellKey={key} editable={editable} invalidPaths={invalidPaths}
+                              bufferedText onChange={(next) => commitComplexOperation(key, next)} />
+                            <div className="complex-cell-actions"><Button size="small" onClick={() => finishCellEdit(false)}>Close</Button></div>
+                          </div> : null}>
+                          {cell}
                         </Popover>
+                        ) : cell}
                       </td>
                     );
                   })}

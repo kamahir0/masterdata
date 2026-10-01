@@ -39,6 +39,14 @@ try {
     if(metrics.active!==expected || metrics.selected!==path || metrics.rows>100 || metrics.focused!=='gridcell') throw new Error('navigation identity/focus/bounded rendering failed: '+JSON.stringify(metrics));
     evidence.samples.push({label,path,gridMs,usableMs:Date.now()-started,...metrics});
   }
+  evidence.keyboard=[];
+  for(const [key,path] of [['\uE015','sources/a-2.yaml'],['\uE013','sources/a-1.yaml']]) {
+    const current=await execute("return document.querySelector('[data-tree-path][aria-selected=true]').dataset.treePath");
+    const id=await element(`//*[@data-tree-path='${current}']`);
+    await request('POST',`/session/${session}/element/${id}/value`,{text:key,value:[key]});
+    await waitFor(`return document.querySelector('[data-tree-path="${path}"][aria-selected=true]') && document.querySelector('.editor-area[data-active-source="${path}"] [role=gridcell]')`);
+    evidence.keyboard.push({path,selected:await execute("return document.querySelector('[data-tree-path][aria-selected=true]').dataset.treePath")});
+  }
   // Dirty navigation must stay responsive while Core validates the local overlay.
   const cell=await element("//section[contains(@class,'editor-area')]//*[@role='gridcell'][1]");
   await request('POST',`/session/${session}/element/${cell}/value`,{text:'\uE007',value:['\uE007']});

@@ -34,4 +34,10 @@ Baseline: [Desktop Evidence run 36790153897](https://github.com/kamahir0/masterd
 
 約11msがselected-sourceのData projection、約6msがserialization、残りがexact source identity確認とDTO準備。Project validation約93msはcaptured generationのbackground operationへ移した。Table contextはlocal declarationから導出し、Reference resolutionのcompletionは同じgenerationのvalidation結果から合成する。
 
-改修後の実Desktop trace、stress / authoring evidenceは同じharnessで取得して追記する。
+## Session checkpointのDesktop measurement
+
+[run 36798464348](https://github.com/kamahir0/masterdata/actions/runs/36798464348)、input `7b2b3cbefd29d98f177c7f35d118f96bab8d872e`。Linux / WebKit / release、rustc 1.98.1、Node 22.23.2。cold 3,736ms、通常grid到達491–736ms。selectionのReact commitは21–29ms、IPC return約104–119ms、grid paint opportunityは445–554ms（対象path・selection以降のeventだけを比較）。旧generationのscheduled rAFを新selectionのpaintとして数えない。
+
+readは`ThreadId(9–11)`へ移り、約45–59ms、navigation parse / discovery / enumeration / validationは0回。40 selectionは18 readへcoalesceし、last target、dirty value、bounded DOMとkeyboard grid focusを保持した。ordinary Desktop workflowも成功。native UIの数秒blockingは解消したが、React commit約200–250ms + layout/paint約110–150msが残る。primitive cellにも閉じたPopoverを生成していたため、Complex columnだけに限定して次のcheckpointで再測定する。
+
+固定100,000 records / 10 files / 20 columns / 10,000 paste cellsのharnessも成功。baselineのEPYC 9V74に対し改修後runnerはEPYC 7763であり、同一hardwareの速度比較とは扱わない。load / query / validationは約69秒→76–80秒、paste previewは約146秒→90秒、peak RSS約2.4GB→1.8GB。入力と出力契約を保持し、batch previewのduplicate project loadを除いた。

@@ -161,10 +161,16 @@ async function fill(xpath, value, timeoutMs) {
     text: "\uE009a\uE000",
     value: ["\uE009", "a", "\uE000"],
   });
-  await request("POST", `/session/${sessionId}/element/${id}/value`, {
-    text: value,
-    value: [...value],
-  });
+  // Send each real key in its own protocol round trip. A batched WebKit key
+  // sequence can outrun controlled-input commits and leave only its first key.
+  for (const character of value) {
+    await request("POST", `/session/${sessionId}/element/${id}/value`, {
+      text: character,
+      value: [character],
+    });
+  }
+  const typed = await request("GET", `/session/${sessionId}/element/${id}/property/value`);
+  if (typed.payload?.value !== value) throw new Error(`input did not retain typed value: ${xpath}; actual=${JSON.stringify(typed.payload?.value)}`);
   return id;
 }
 

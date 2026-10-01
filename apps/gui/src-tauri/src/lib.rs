@@ -831,12 +831,15 @@ fn save_data_file(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-fn validate(project_path: Option<String>) -> std::result::Result<ValidationReport, ApiError> {
-    let current_dir = current_directory()?;
-    let configured_path = configured_project_path(project_path);
-    NativeApplicationService::new()
-        .validate(configured_path.as_deref().map(Path::new), &current_dir)
-        .map_err(ApiError::from)
+async fn validate(project_path: Option<String>) -> std::result::Result<ValidationReport, ApiError> {
+    background(move || {
+        let current_dir = current_directory()?;
+        let configured_path = configured_project_path(project_path);
+        NativeApplicationService::new()
+            .validate(configured_path.as_deref().map(Path::new), &current_dir)
+            .map_err(ApiError::from)
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -1220,8 +1223,10 @@ mod tests {
     #[test]
     fn validate_command_uses_shared_validation_service() {
         let project = minimal_project();
-        let report = super::validate(Some(project.to_string_lossy().into_owned()))
-            .expect("validation command succeeds");
+        let report = tauri::async_runtime::block_on(super::validate(Some(
+            project.to_string_lossy().into_owned(),
+        )))
+        .expect("validation command succeeds");
         assert!(report.valid, "{report:?}");
         assert!(report.tables.iter().any(|table| table == "item"));
     }

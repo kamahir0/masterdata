@@ -41,3 +41,9 @@ Baseline: [Desktop Evidence run 36790153897](https://github.com/kamahir0/masterd
 readは`ThreadId(9–11)`へ移り、約45–59ms、navigation parse / discovery / enumeration / validationは0回。40 selectionは18 readへcoalesceし、last target、dirty value、bounded DOMとkeyboard grid focusを保持した。ordinary Desktop workflowも成功。native UIの数秒blockingは解消したが、React commit約200–250ms + layout/paint約110–150msが残る。primitive cellにも閉じたPopoverを生成していたため、Complex columnだけに限定して次のcheckpointで再測定する。
 
 固定100,000 records / 10 files / 20 columns / 10,000 paste cellsのharnessも成功。baselineのEPYC 9V74に対し改修後runnerはEPYC 7763であり、同一hardwareの速度比較とは扱わない。load / query / validationは約69秒→76–80秒、paste previewは約146秒→90秒、peak RSS約2.4GB→1.8GB。入力と出力契約を保持し、batch previewのduplicate project loadを除いた。
+
+## Grid render measurement
+
+[run 36799719390](https://github.com/kamahir0/masterdata/actions/runs/36799719390)、input `d811361807fb6d0c8b7b541ac512d09ebdc32355`。Complex columnだけにPopoverを生成する変更後、6 navigationの対象grid paint opportunityは276–378msへ短縮した。native read / IPCは約100ms、初回grid commitは約190–263ms。その後viewportの640px初期値を実寸へ補正するsecond commitがあり、paintは約276–378msまで待っていた。viewportはfileごとではなくeditor面に属するため、実測サイズをsource切替で再利用する根拠となった。
+
+このrunのkeyboard stressは、Arrow移動だけでfile openを期待したharnessが既存のEnter-open仕様に合わず失敗した。上記6 sample以外を成功evidenceに含めない。修正後の最終product treeはexact Candidateを指定したDesktop Evidence artifactでpointer / keyboard / 40 selectionとfirst usable interactionを再検証する。W3C操作往復を含むwall timeとfrontend paint opportunityを区別し、cold openをwarm navigationの改善と混同しない。

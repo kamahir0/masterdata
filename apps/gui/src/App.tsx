@@ -1047,7 +1047,7 @@ function App({
         const changed = view.generation > readGenerationRef.current;
         installReadView(view, root, discard);
         observeReadGeneration(view.generation);
-        if (changed || !view.data) setTableEpoch(epoch => epoch + 1);
+        if (changed || !view.data || previous?.loadError) setTableEpoch(epoch => epoch + 1);
       }
     } catch (error) {
       if (workspaceGeneration.current !== generation) return;
@@ -2056,15 +2056,10 @@ function App({
           const latest = editorsRef.current[path];
           if (!latest || latest.saving) return;
           if (current.contentIdentity === latest.snapshot.baseContentIdentity) {
-            if (latest.conflict || latest.loadError || latest.saveStatus === "conflict") {
-              if (latest.loadError) {
-                setFileOpenErrors((all) => {
-                  if (!(path in all)) return all;
-                  const next = { ...all };
-                  delete next[path];
-                  return next;
-                });
-              }
+            // Unchanged record bytes do not prove that its schema/type dependencies
+            // recovered. Only a successful shared read may restore edit permission.
+            if (latest.loadError) { void openDataFile(root, path); return; }
+            if (latest.conflict || latest.saveStatus === "conflict") {
               setEditors((all) => all[path]
                 ? {
                     ...all,
@@ -2098,18 +2093,19 @@ function App({
   }, [openDataFile, sourcePollingIntervalMs, observeReadGeneration, updateWorkspaceFiles, recordBindingChange]);
 
   const validateDisk = useCallback(async () => {
-    if (!workspace || !projectRoot) return;
+    if (!workspace || !projectRoot || manualValidation.kind === "loading") return;
     const generation = workspaceGeneration.current;
+    const readRevision = readGenerationRef.current;
     setManualValidation({ kind: "loading" });
     try {
       const report = await invoke<ValidationReport>("validate", { projectPath: projectRoot });
-      if (workspaceGeneration.current !== generation) return;
+      if (workspaceGeneration.current !== generation || readGenerationRef.current !== readRevision) return;
       setManualValidation({ kind: "done", value: report });
     } catch (error) {
-      if (workspaceGeneration.current !== generation) return;
+      if (workspaceGeneration.current !== generation || readGenerationRef.current !== readRevision) return;
       setManualValidation({ kind: "error", diagnostic: asApiError(error).diagnostic });
     }
-  }, [projectRoot, workspace]);
+  }, [manualValidation.kind, projectRoot, workspace]);
 
   const runBuild = useCallback(async () => {
     if (!workspace || !projectRoot || sourceMutationBlocked(projectRoot) || buildState.kind === "loading" || deliveryBusy) return;
@@ -2619,7 +2615,7 @@ function App({
             ...(workspace ? [
               { key: "settings", label: "Project Settings", onClick: () => setSurface("settings") },
               { key: "delivery", label: "Build & Publish", onClick: () => setSurface("delivery") },
-              { key: "validate", label: "Validate", onClick: () => { setSurface("editor"); void validateDisk(); } },
+              { key: "validate", label: "Validate", disabled: manualValidation.kind === "loading", onClick: () => { setSurface("editor"); void validateDisk(); } },
               { key: "build", label: "Build", disabled: mutationBlocked || deliveryBusy, onClick: () => { setSurface("editor"); void runBuild(); } },
             ] : []),
             { type: "divider" },

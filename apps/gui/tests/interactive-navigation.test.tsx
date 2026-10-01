@@ -198,3 +198,43 @@ test("a fresh generation restores the applied query while preserving unsubmitted
   expect((screen.getByRole("searchbox", { name: "Data search" }) as HTMLInputElement).value).toBe("unsubmitted");
   await waitFor(() => expect(document.querySelector(".ant-input-search .ant-btn-loading")).toBeNull());
 });
+
+test("an explicit disk validation cannot restore diagnostics from an older read generation", async () => {
+  const original = invoke.getMockImplementation()!;
+  let finish!: (value: unknown) => void;
+  invoke.mockImplementation((command, args) => command === "validate"
+    ? new Promise(resolve => { finish = resolve; }) : original(command, args));
+  render(<App sourcePollingIntervalMs={null} />);
+  await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  fireEvent.click(screen.getByRole("button", { name: "Project menu" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Validate", exact: true }));
+  await waitFor(() => expect(finish).toBeTypeOf("function"));
+  read = async path => ({ ...view(path), generation: 2 });
+  select("b.yaml");
+  await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  await act(async () => finish({ valid: false, diagnostics: [{ code: "E-OLD", kind: "validation", message: "obsolete disk validation" }] }));
+  expect(screen.getByRole("button", { name: /PROBLEMS 0/ })).toBeTruthy();
+});
+
+test("unchanged record bytes cannot restore edit permission while shared dependency reads fail", async () => {
+  const original = invoke.getMockImplementation()!;
+  invoke.mockImplementation(async (command, args) => {
+    if (command === "workspace_status") return { generation: 1, workspace };
+    if (command === "source_content") return { path: args.relativePath, source: view(args.relativePath).data.baseSource, contentIdentity: args.relativePath };
+    return original(command, args);
+  });
+  render(<App sourcePollingIntervalMs={50} previewDelayMs={0} />);
+  const cell = await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  fireEvent.keyDown(cell, { key: "Enter" });
+  const input = await screen.findByRole("textbox", { name: "record 1 id" });
+  fireEvent.change(input, { target: { value: "42" } }); fireEvent.keyDown(input, { key: "Enter" });
+  select("b.yaml"); await screen.findByRole("gridcell", { name: /record 1 id: 10/ });
+  read = async path => { if (path === "a.yaml") throw { diagnostic: { code: "E-DEPENDENCY", kind: "validation", message: "schema is unavailable" } }; return view(path); };
+  fireEvent.click(screen.getByRole("treeitem", { name: "a.yaml, unsaved changes", exact: true }));
+  const retained = await screen.findByRole("gridcell", { name: /record 1 id: 42/ });
+  await waitFor(() => expect(invoke.mock.calls.filter(([command, args]) => command === "select_source" && args.relativePath === "a.yaml").length).toBeGreaterThan(2));
+  expect(retained.getAttribute("aria-readonly")).toBe("true");
+  read = async path => view(path);
+  await waitFor(() => expect(screen.getByRole("gridcell", { name: /record 1 id: 42/ }).getAttribute("aria-readonly")).toBe("false"));
+  expect(invoke.mock.calls.some(([command]) => /^(save_|apply_)/.test(command))).toBe(false);
+});

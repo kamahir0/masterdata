@@ -12,4 +12,4 @@ Remaining: evidence reconciliation、check-all / required CI、Ready / Not Ready
 
 ## Blocking findings
 
-Readiness: actual generated consumerのnested Value Objectが2001→0。不一致を期待値へ取り込まない。未接続failure oracle / Tier1 evidenceは[finalization report](rewrite-preparation/finalization-report.md)に集約。
+None.

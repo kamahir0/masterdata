@@ -2,24 +2,21 @@
 
 ## Objective
 
-**同一Project内のExplorer selectionをinteractiveなnavigationへする。critical pathを計測し、重複するdiscovery / enumeration / read / parse / validation / derivationを除去する。必要なread/session architectureを再設計し、authoritative writeのfresh preflightを維持する。**
+**Rewrite Input Purification。既存spec / test / fixture / evidence / Git historyを再審査し、production codeをarchitecture templateにしなくても再実装できる、contractとacceptance corpusのDraftを精製する。**
 
 ## Completion slices
 
-- cold / first visit / revisit / same Table / cross Table / schema / rapid selectionのbaseline traceとUI blocking診断。
-- shared Applicationのreusable workspace read model、navigation critical pathとvalidationの分離、freshness / invalidation。
-- immediate target feedback、latest-selection-wins、dirty / history / query / schema draft保持。
-- Desktop rapid / long / wide evidence、外部変更とwrite preflightの回帰、固定100k/10k性能、focused / repository check / required CI / fresh review。
+- fresh recoveryとrepository-wide provenance audit。重要項目のKEEP / REFINE / DEMOTE TO HISTORY / DELETE候補 / HUMAN DECISION NEEDED分類。
+- Product / Desktop UX / Non-goals / Domain・Safety / Performance constitution、acceptance matrix、compatibility corpus、test purification proposal。
+- superseded decisionとimplementation拘束の特定、materialなHuman decision queueの集約。
+- Archaeology / Product critic / Rewrite architect / Adversarial reviewerの4 pass、rewrite readiness assessment、doc/state checks、required CI、fresh review。
 
-## Canonical requirements
+## Authority / output routing
 
-- [Explorer](gui/explorer/spec.md) `GUI-EXPLORER-002`, `GUI-EXPLORER-STATE-003`, `GUI-EXPLORER-INT-001`, `GUI-EXPLORER-NAV-001`
-- [Data Editor](gui/data-editor/spec.md) `GUI-DATA-STATE-004`, `GUI-DATA-STATE-005`, `GUI-DATA-VAL-005`
-- [Unified Table](gui/table-editor/spec.md) `GUI-UNIFIED-003`, `GUI-UNIFIED-004`, `GUI-UNIFIED-005`
-- [Source Edit](specs/source-edit.md) `SOURCE-EDIT-008`, `SOURCE-EDIT-009`, `SOURCE-EDIT-011`
+現行authorityは[Product Vision](product/vision.md)、[canonical specs](specs/README.md)、[GUI specs](gui/README.md)。今回はこれら自体が監査対象であり、Approvedを自動KEEPしない。
 
-Measurement evidence: [interactive-navigation](evidence/interactive-navigation.md)。
+Draft成果物は `docs/rewrite-preparation/` に置く。current canonical authorityを置換せず、Human decision前の削除・互換性変更を適用しない。
 
 ## Explicit non-scope
 
-Search / Filter / Sort、Diff、Batch、Explorer visual、Save scope、Undo semantics、YAML syntax、Migration semantics、Build / Publish、plugin、general incremental compilerの再設計。
+production implementationのrewrite / refactor / cleanup、canonical spec / test / fixtureの削除・大規模移動、framework / dependency replacement、rewrite着手。

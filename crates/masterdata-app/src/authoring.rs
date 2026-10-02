@@ -573,6 +573,16 @@ pub(super) fn read_source_state(
     project: &Project,
     target: &Path,
 ) -> masterdata_core::Result<SourceContentState> {
+    // Test-only fault after replacement proves Unknown is not Success and a
+    // stale base cannot authorize a retry. Normal builds have no extra branch.
+    // EVIDENCE: SOURCE-EDIT-011; Regression: portable_unknown_confirmation_keeps_candidate_and_rejects_stale_retry.
+    #[cfg(feature = "authoring-test-faults")]
+    if crate::oracle_faults::source_observation_fails(target) {
+        return Err(io_authoring_error(
+            target,
+            "test source observation failure",
+        ));
+    }
     let metadata = fs::symlink_metadata(target).map_err(|error| {
         io_authoring_error(target, format!("could not inspect source file: {error}"))
     })?;

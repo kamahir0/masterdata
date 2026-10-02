@@ -10,7 +10,7 @@ build = "build.rs"
 
 [features]
 # Opt-in measurement adapter only; absent from normal production builds.
-navigation-evidence = ["tauri/custom-protocol"]
+navigation-evidence = []
 
 [lib]
 name = "masterdata_gui_lib"

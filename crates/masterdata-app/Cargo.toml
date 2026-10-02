@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Shared application workflows for the masterdata CLI and GUI"
 
+[features]
+# Measurement/fault adapter only; absent from normal CLI/Desktop builds.
+authoring-test-faults = []
+
 [dependencies]
 cap-fs-ext = "4"
 cap-std = "4"

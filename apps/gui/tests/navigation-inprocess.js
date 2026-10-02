@@ -1,5 +1,10 @@
 // Legacy adapter: synthetic DOM input in a real native Tauri WebView.
 // rAF is a paint opportunity, never proof of completed GPU presentation.
+// Standalone build: tauri build --features navigation-evidence,tauri/custom-protocol
+// --bundles app --config tests/navigation-tauri-config.json (from apps/gui).
+// Launch the disposable bundle with MASTERDATA_PROJECT_PATH and
+// MASTERDATA_NAVIGATION_EVIDENCE_OUTPUT; dirty runs also set MODE=dirty-rapid
+// under the MASTERDATA_NAVIGATION_EVIDENCE_ prefix. Keep the window foreground.
 void (async () => {
   if (window.__navigationEvidenceStarted) return;
   window.__navigationEvidenceStarted = true;

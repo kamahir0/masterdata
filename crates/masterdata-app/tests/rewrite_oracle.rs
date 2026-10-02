@@ -386,3 +386,79 @@ fn portable_precommit_failure_keeps_exact_disk_bytes() {
         );
     }
 }
+
+#[cfg(feature = "authoring-test-faults")]
+#[test]
+fn portable_unknown_confirmation_keeps_candidate_and_rejects_stale_retry() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/rewrite-oracle/v1");
+    let faults: Value =
+        serde_json::from_slice(&fs::read(root.join("faults.json")).unwrap()).unwrap();
+    let case = &faults["scenarios"][1];
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir(temp.path().join("sources")).unwrap();
+    let input = root.join(case["input"].as_str().unwrap());
+    fs::copy(
+        input.join("masterdata.toml"),
+        temp.path().join("masterdata.toml"),
+    )
+    .unwrap();
+    for entry in fs::read_dir(input.join("sources")).unwrap() {
+        let entry = entry.unwrap();
+        fs::copy(
+            entry.path(),
+            temp.path().join("sources").join(entry.file_name()),
+        )
+        .unwrap();
+    }
+    let service = NativeApplicationService::new();
+    let base = service
+        .open_data_file(Some(temp.path()), temp.path(), "sources/data.yaml")
+        .unwrap();
+    let scenario: Value =
+        serde_json::from_slice(&fs::read(root.join("save-record/scenario.json")).unwrap()).unwrap();
+    let draft = &scenario["operation"]["recordDraft"];
+    let mutation = AuthoringRecordMutation {
+        edits: vec![AuthoringEdit {
+            record_index: draft["occurrence"].as_u64().unwrap() as usize - 1,
+            field: draft["field"].as_str().unwrap().into(),
+            value: AuthoringValue::String {
+                value: draft["value"]["text"].as_str().unwrap().into(),
+            },
+        }],
+        ..Default::default()
+    };
+    let expected = fs::read(
+        root.join(case["candidate"].as_str().unwrap())
+            .join("sources/data.yaml"),
+    )
+    .unwrap();
+    let save = || {
+        service
+            .save_data_file_mutation(
+                Some(temp.path()),
+                temp.path(),
+                &base.path,
+                &base.base_source,
+                &base.base_content_identity,
+                &mutation,
+                None,
+            )
+            .unwrap()
+    };
+    let guard =
+        oracle_faults::fail_source_observation_after_reads(&temp.path().join(&base.path), 1);
+    let report = save();
+    drop(guard);
+    assert_eq!(report.status, SourceSaveStatus::OutcomeUnknown);
+    assert!(report.snapshot.is_none());
+    assert!(report.current.is_none());
+    assert_eq!(fs::read(temp.path().join(&base.path)).unwrap(), expected);
+    // A subsequent request with the stale base cannot silently commit again.
+    assert_eq!(save().status, SourceSaveStatus::Conflict);
+    assert_eq!(fs::read(temp.path().join(&base.path)).unwrap(), expected);
+    let observed = service
+        .source_content(Some(temp.path()), temp.path(), &base.path)
+        .unwrap();
+    assert_eq!(observed.source.as_bytes(), expected);
+    assert_ne!(observed.content_identity, base.base_content_identity);
+}

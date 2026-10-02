@@ -35,6 +35,8 @@ pub use overview::*;
 mod delivery;
 pub use delivery::*;
 mod authoring;
+#[cfg(feature = "authoring-test-faults")]
+pub mod oracle_faults;
 mod workspace_session;
 pub use workspace_session::*;
 mod creation;

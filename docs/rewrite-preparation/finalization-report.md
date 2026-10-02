@@ -18,7 +18,7 @@ KEEP: compare safety、Search、lossless paste、physical composition / Build in
 - Structural3: Rename / Add / Dropのmulti-source candidate exact bytes、Plan input不変、destructive分類がpass。
 - Paste4: rectangular long / ulong boundary、text null、source-safe semantic invalidity、ragged / PK unsafe all-or-noneをcandidate exact bytesとno implicit Saveで検証しpass。one UndoのUI確認はworkflow oracleへ分離。
 - Empty Table: schemaのみcontext、record source未作成、input bytes保持をpass。
-- Fault3: migration Recovery Requiredのexact mixed disk、write gate、read navigationがpass。Unix single-source precommit Failureもexact OLD disk保持をpass。UnknownとUI draft/historyは未接続。
+- Fault3: migration Recovery Requiredのexact mixed disk、write gate、read navigationがpass。Unix single-source precommit Failureもexact OLD disk保持をpass。Unknownの確認readだけを失敗させ、candidate disk保持、stale retry拒否、fresh observationもpass。UI draft/historyはnative adapterだけでは証明しない。
 - Workflow23: UI / source lifetime / faults / migration / deliveryのportable event-state期待値。全caseの自動adapterが接続済みという主張ではない。
 - capacity.json: 100k / 10files / 20columns / 10k pasteの数学的expected result。2026-10-03 isolated release runで全assertions pass。load85969 / query85964 / paste preview95861 / validation85814ms、process peak RSS2,407,645,184bytes、wall354.44s。compile時間を含めない。source0の全200,000 candidate cellsを期待式と比較し、non-target保持、10k targets、query0matches、diagnostics0、implicit Saveなしを検証。DOM / transport boundednessはこのnative one-shot測定だけでは証明しない。[raw capacity](../evidence/rewrite-finalization/macos-capacity.txt)。
 - Consumer.cs: generated public API / actual binary load、PK / SK / reference / 64bit / nested valueを検証。static regexではない。
@@ -52,8 +52,8 @@ Windows x64 / macOS arm64 CI nativeは [Tier1 run](https://github.com/kamahir0/m
 
 1. actual consumerのnested Value Object値が不一致。期待値と現public build/loadの差を解消または十分に同定する必要がある。今回production修正はしない。
 2. Tier1 UIのstable distributionは未完。Windows nativeは取得済みだがactual Desktop first accepted interactionは未取得。macOS UIはforeground interruptionを含むpartial evidence。
-3. faults.jsonのRecovery Requiredは接続・pass。single-source Outcome Unknownのdeterministic fault adapterとUI state oracle実行が未完。現write boundaryに該当fault seamが公開されていないため、production architecture変更を行わず未実行とする。declarative期待値をcomplete Tier1 oracleと呼ばない。
-4. exact Candidate verificationは[Development State](../execution-state.md)を参照する。CI pendingをReady evidenceに数えない。
+Evidence limit: actual Unity runtimeは今回環境に存在せず未実行。Human promptが許容する代替.NET compile/loadで証明するmanaged consumerと、Unity Editor / player / packageの実証範囲を分ける。この環境上の未実施だけを独立したproduct Blockingにはしない。faults.jsonの3 native timelineは実行passだが、UI draft/historyまでをnative proofへ含めない。
+Verification: exact Candidate verificationは[Development State](../execution-state.md)を参照する。CI pendingをReady evidenceに数えない。
 
 正式contractの採用とReady verdictを分離する。新implementationは旧code無しに目標を理解できるが、現時点で全Tier1 conformance evidenceが揃ったという回答はNo。rewriteは開始しない。
 
@@ -71,12 +71,12 @@ Windows x64 / macOS arm64 CI nativeは [Tier1 run](https://github.com/kamahir0/m
 | Performance:機能完成後のtuningへ戻れないか | 最初のvertical sliceに4 work counts=0、bounded work/render、target-filtered paint / accepted interactionとp95を置く。single sample / native / rAF / WebDriverを分離 |
 | Consumer: compile / regexだけを互換性と呼んでいないか | actual MasterMemory loadとpublic PK / SK / reference / 64-bitを実行。nested mismatchを隠さず、actual Unityなしも別記録 |
 
-Scope review: production semantics / React / CSS / dependenciesを変更していない。Tauriに追加したものはdefault無効のopt-in measurement adapterと専用identifier / permissionだけ。旧testsは削除していない。rationaleはmeasurementのforeground / native callback boundaryとknown gap追跡に限定し、production architectureの指定にしない。
+Scope review: production semantics / React / CSS / dependenciesを変更していない。Tauriに追加したものはdefault無効のopt-in measurement adapterと専用identifier / permissionだけ。Applicationにもdefault無効のpath-specific / thread-local observation faultをtest-onlyで追加し、fresh write preflightと通常readは変更していない。旧testsは削除していない。rationaleはmeasurementのforeground / native callback boundaryとknown gap追跡に限定し、production architectureの指定にしない。
 
-**Rewrite inputのmerge review: Blockingなし。Rewrite readiness: 上記consumer・Tier1 UI・fault executionのEvidence GapがBlocking。** contractを読んで異なるarchitectureを設計することは可能だが、要求された全証拠が閉じたという判定はしない。Ready gateの阻害要因を解決するためのproduction変更・Unity環境追加は今回行っていない。
+**Rewrite inputのmerge review: Blockingなし。Rewrite readiness: 上記consumer・Tier1 UIのEvidence GapがBlocking。** contractを読んで異なるarchitectureを設計することは可能だが、要求された全証拠が閉じたという判定はしない。Ready gateの阻害要因を解決するためのproduction変更・Unity環境追加は今回行っていない。
 
 ## Verification routing
 
-focused core 3 tests（byte16 + target gap1、interpretation9、structural3）とapp 5 tests（Save7、Paste4、empty Table、Recovery、Unix precommit Failure）を実行した。known-gap testをD6 conformance passに数えない。corpus全JSON parse、input / expected存在、旧internal API名非依存、JavaScript syntaxとdiff whitespaceを確認した。
+focused core 3 tests（byte16 + target gap1、interpretation9、structural3）とapp 6 tests（Save7、Paste4、empty Table、Recovery、Unix precommit Failure、feature-gated Unknown）を実行した。known-gap testをD6 conformance passに数えない。corpus全JSON parse、input / expected存在、旧internal API名非依存、JavaScript syntaxとdiff whitespaceを確認した。
 
-spec / rationale / state integrity、workspace format / Clippy / tests、GUI build、required exact Candidate CIの結果はverification checkpointとGit / CIが所有する。本reportのhistorical measurementsを新Candidateの再測定結果へ置換したようには表示しない。最終verdictは **Not Ready — consumer nested value mismatch / stable Tier1 Desktop distribution不足 / single-source fault実行不足**。rewrite開始は別Human-selected Objective。
+spec / rationale / state integrity、workspace format / Clippy / tests、GUI build、required exact Candidate CIの結果はverification checkpointとGit / CIが所有する。本reportのhistorical measurementsを新Candidateの再測定結果へ置換したようには表示しない。最終verdictは **Not Ready — consumer nested value mismatch / stable Tier1 Desktop distribution不足**。rewrite開始は別Human-selected Objective。

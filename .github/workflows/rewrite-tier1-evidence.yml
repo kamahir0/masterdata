@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Run portable safety adapter with test-only observation fault
+        run: cargo test -p masterdata-app --features authoring-test-faults --test rewrite_oracle
       - name: Collect native distributions (not Desktop paint)
         shell: bash
         run: |

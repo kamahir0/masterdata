@@ -46,9 +46,9 @@ D1〜D6は [Human decision record](human-decisions.md) でResolved。legacy test
 | schema-directed null / number / string | interpretation.json、workflows schema-reinterpretation | 解釈・validity、record bytes無変更 |
 | flow mapping compatibility | flow-parse / flow-unrelated / flow-local / flow-unsafe / new-mapping-block | D6の5条件、writer gapを免除しない |
 | inline / separate / mixed / Save / cached identity Conflict | manifest saveScenarios | 全physical output bytes、committed paths、inactive除外 |
-| no-record-source / schema / Complex / history / reorder / sticky / focus | workflows.json | visible event/state、pixel / component固定なし |
-| Search / ordinary paste / Problems / Save All / external change / recovery | workflows.json | observable result、dirty / no mutation / outcome。fault seam別adapterが必要 |
-| rapid navigation | workflows rapid-navigation | 50 selections、controlled obsolete response、last target、bounded work / parse0 |
+| no-record-source / schema / Complex / history / reorder / sticky / focus | empty-table / workflows.json | visible event/state、pixel / component固定なし |
+| Search / ordinary paste / Problems / Save All / external change / recovery | manifest pasteScenarios / workflows.json / faults.json | observable result、dirty / no mutation / exact disk outcome。fault seam別adapterが必要 |
+| rapid navigation | navigation.json / workflows rapid-navigation | 50 selections、controlled obsolete response、last target、bounded work / parse0 |
 | Migration | manifest structuralScenarios / workflows migration-stale-plan | Rename / Add / Dropのexact multi-source byte、closure identity・authorization・no mutation on stale |
 | Build / Publish / public consumer | consumer/scenario.json、Consumer.cs、workflows build-publish | canonical fixture + reference input、compile / actual load / PK / SK / nested値 |
 | large dataset | capacity.json | 100k row式、query result、10k paste全target / 非target、diagnostics、RSS / bounded viewport |

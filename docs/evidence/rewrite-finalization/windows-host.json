@@ -1,0 +1,15 @@
+{
+  "sha": "2e5b6c1619161328fd23345ce0c5e037b23f5270",
+  "platform": "win32",
+  "arch": "x64",
+  "release": "10.0.26100",
+  "cpus": [
+    "INTEL(R) XEON(R) PLATINUM 8573C",
+    "INTEL(R) XEON(R) PLATINUM 8573C",
+    "INTEL(R) XEON(R) PLATINUM 8573C",
+    "INTEL(R) XEON(R) PLATINUM 8573C"
+  ],
+  "memoryBytes": 17174360064,
+  "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-pc-windows-msvc\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "node": "v22.23.3"
+}

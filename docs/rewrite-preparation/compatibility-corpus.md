@@ -34,4 +34,4 @@ Status: Approved
 
 public contract（source syntax、config、documented CLI、generated C#、MasterMemory / Unity consumer）とinternal protocol（GUI adapter、Application DTO、builder request/report）を分ける。public outputでもformatting全文を固定する必要はなく、syntax/API・loaded semantics・determinismをoracleにする場合を明記する。
 
-独立 [v1 corpus](../../fixtures/rewrite-oracle/v1/README.md) はbyteScenarios17、Save7、interpretation9、workflow23、capacity / consumer expectationsを持つ。current adapterのpass、known gap、未接続workflow、Tier1 / consumer不足は [finalization report](finalization-report.md) のreadinessへ反映する。既存fixture・legacy testsは削除していない。
+独立 [v1 corpus](../../fixtures/rewrite-oracle/v1/README.md) はbyteScenarios17、Save7、Structural3、Paste4、empty Table、interpretation9、workflow23、fault timeline3、navigation / capacity / consumer expectationsを持つ。current adapterのpass、known gap、未接続workflow、Tier1 / consumer不足は [finalization report](finalization-report.md) のreadinessへ反映する。既存fixture・legacy testsは削除していない。

@@ -33,5 +33,11 @@
     "migration-rename",
     "migration-drop",
     "migration-add"
+  ],
+  "pasteScenarios": [
+    "paste-lossless",
+    "paste-invalid-safe",
+    "paste-ragged",
+    "paste-pk-unsafe"
   ]
 }

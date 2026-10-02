@@ -1,0 +1,203 @@
+{
+  "format": 1,
+  "input": {
+    "tables": [
+      "a",
+      "b",
+      "c"
+    ],
+    "columns": [
+      {
+        "name": "id",
+        "key": 0,
+        "type": "int"
+      },
+      {
+        "name": "field01",
+        "key": 1,
+        "type": "int"
+      },
+      {
+        "name": "field02",
+        "key": 2,
+        "type": "int"
+      },
+      {
+        "name": "field03",
+        "key": 3,
+        "type": "int"
+      },
+      {
+        "name": "field04",
+        "key": 4,
+        "type": "int"
+      },
+      {
+        "name": "field05",
+        "key": 5,
+        "type": "int"
+      },
+      {
+        "name": "field06",
+        "key": 6,
+        "type": "int"
+      },
+      {
+        "name": "field07",
+        "key": 7,
+        "type": "int"
+      },
+      {
+        "name": "field08",
+        "key": 8,
+        "type": "int"
+      },
+      {
+        "name": "field09",
+        "key": 9,
+        "type": "int"
+      },
+      {
+        "name": "field10",
+        "key": 10,
+        "type": "int"
+      },
+      {
+        "name": "field11",
+        "key": 11,
+        "type": "int"
+      },
+      {
+        "name": "field12",
+        "key": 12,
+        "type": "int"
+      },
+      {
+        "name": "field13",
+        "key": 13,
+        "type": "int"
+      },
+      {
+        "name": "field14",
+        "key": 14,
+        "type": "int"
+      },
+      {
+        "name": "field15",
+        "key": 15,
+        "type": "int"
+      },
+      {
+        "name": "field16",
+        "key": 16,
+        "type": "int"
+      },
+      {
+        "name": "field17",
+        "key": 17,
+        "type": "int"
+      },
+      {
+        "name": "field18",
+        "key": 18,
+        "type": "int"
+      },
+      {
+        "name": "field19",
+        "key": 19,
+        "type": "int"
+      }
+    ],
+    "primaryKey": [
+      "id"
+    ],
+    "sources": [
+      {
+        "path": "sources/a-schema.yaml",
+        "kind": "schema",
+        "table": "a",
+        "recordOffset": null
+      },
+      {
+        "path": "sources/b-schema.yaml",
+        "kind": "schema",
+        "table": "b",
+        "recordOffset": 0
+      },
+      {
+        "path": "sources/c-schema.yaml",
+        "kind": "schema",
+        "table": "c",
+        "recordOffset": null
+      },
+      {
+        "path": "sources/a-1.yaml",
+        "kind": "data",
+        "table": "a",
+        "recordOffset": 2000
+      },
+      {
+        "path": "sources/a-2.yaml",
+        "kind": "data",
+        "table": "a",
+        "recordOffset": 4000
+      },
+      {
+        "path": "sources/b-2.yaml",
+        "kind": "data",
+        "table": "b",
+        "recordOffset": 4000
+      },
+      {
+        "path": "sources/c-1.yaml",
+        "kind": "data",
+        "table": "c",
+        "recordOffset": 2000
+      },
+      {
+        "path": "sources/c-2.yaml",
+        "kind": "data",
+        "table": "c",
+        "recordOffset": 4000
+      }
+    ],
+    "rowsPerRecordSource": 2000,
+    "recordId": "recordOffset + zeroBasedRowIndex",
+    "fieldValue": "recordId + zeroBasedColumnIndex",
+    "config": "save-record/input/masterdata.toml"
+  },
+  "expected": {
+    "tables": 3,
+    "physicalSources": 8,
+    "totalRecords": 12000,
+    "selectedSourceRows": 2000,
+    "selectedSourceColumns": 20
+  },
+  "measurementCases": {
+    "firstSource": "sources/a-1.yaml",
+    "revisit": "sources/a-1.yaml",
+    "sameTable": "sources/a-2.yaml",
+    "crossTable": "sources/b-schema.yaml",
+    "schemaSelection": {
+      "selected": "sources/c-schema.yaml",
+      "recordSource": "sources/c-1.yaml"
+    },
+    "dirtyRevisit": {
+      "source": "sources/a-1.yaml",
+      "occurrence": 1,
+      "field": "id",
+      "newIntegerDecimal": "999999"
+    },
+    "rapid": {
+      "targets": [
+        "sources/a-1.yaml",
+        "sources/a-2.yaml",
+        "sources/b-schema.yaml",
+        "sources/c-2.yaml"
+      ],
+      "final": "sources/c-2.yaml",
+      "selections": 50
+    }
+  },
+  "rationale": "Data generation formula is independent of any request/session API; schema-only a, inline-plus-separate b, separate c preserve topology and fixed capacity."
+}

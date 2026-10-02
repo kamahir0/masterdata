@@ -1,0 +1,11 @@
+{
+  "input": "input",
+  "intent": "select Table schema without any record source",
+  "expected": {
+    "schemaEditable": true,
+    "recordSources": [],
+    "recordCount": 0,
+    "implicitPhysicalSourceCreation": false,
+    "implicitDirty": false
+  }
+}

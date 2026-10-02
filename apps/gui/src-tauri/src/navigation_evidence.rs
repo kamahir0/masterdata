@@ -18,9 +18,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .on_page_load(|webview, payload| {
             eprintln!("navigation evidence page: {:?}", payload.event());
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let mode = std::env::var("MASTERDATA_NAVIGATION_EVIDENCE_MODE").unwrap_or_default();
                 webview
-                    .eval(&format!(
-                        "setTimeout(function() {{ {} }}, 0);",
+                    .eval(format!(
+                        "window.__navigationEvidenceMode = {}; setTimeout(function() {{ {} }}, 0);",
+                        serde_json::to_string(&mode).unwrap(),
                         include_str!("../../tests/navigation-inprocess.js")
                     ))
                     .unwrap();

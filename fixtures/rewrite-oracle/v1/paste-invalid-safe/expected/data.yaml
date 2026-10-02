@@ -1,0 +1,11 @@
+kind: data
+table: item
+records:
+  - id: 1 # first occurrence
+    signed: bad
+    unsigned: 0
+    note: old
+  - id: 2
+    signed: 0
+    unsigned: 0
+    note: keep

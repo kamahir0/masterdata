@@ -3,7 +3,12 @@
   "scenarios": [
     {
       "id": "one-table",
-      "input": "save-both/input",
+      "input": [
+        "save-both/input",
+        "save-inline/input",
+        "save-mixed/input",
+        "empty-table/input"
+      ],
       "intent": "edit schema and selected records in one context",
       "events": [
         "select separate schema",
@@ -20,7 +25,7 @@
     },
     {
       "id": "complex-direct",
-      "input": "save-both/input",
+      "input": "fixtures/full (repository-relative portable source asset)",
       "intent": "edit nested values directly",
       "events": [
         "change nested scalar",
@@ -36,7 +41,15 @@
         "closeDiscardsCommittedOperations": false,
         "UndoRestoresLastOperationOnly": true
       },
-      "authority": "GUI-DATA complex / GUI-GRID-004 / 0045"
+      "authority": "GUI-DATA complex / GUI-GRID-004 / 0045",
+      "target": {
+        "Table": "item",
+        "recordPK": 1001,
+        "physicalOccurrence": "locate source occurrence with initial id 1001; PK is lookup intent, never persistent mutation identity",
+        "field": "reward",
+        "nestedLeaf": "note",
+        "newText": "changed"
+      }
     },
     {
       "id": "stable-spatial-context",
@@ -82,7 +95,7 @@
     },
     {
       "id": "array-reorder",
-      "input": "save-both/input",
+      "input": "fixtures/full (repository-relative portable source asset)",
       "intent": "reorder equal-valued array occurrences",
       "events": [
         "drag second equal item ahead of first",
@@ -95,7 +108,15 @@
         "UndoRestoresOrder": true,
         "cancelMutations": 0
       },
-      "authority": "SOURCE-EDIT-017 / GUI-GRID"
+      "authority": "SOURCE-EDIT-017 / GUI-GRID",
+      "arrangement": {
+        "Table": "item",
+        "recordPK": 1001,
+        "field": "numbers",
+        "beforeSourceValue": "[1, \"1\", -2]",
+        "afterDropSourceValue": "[\"1\", 1, -2]",
+        "afterUndoSourceValue": "[1, \"1\", -2]"
+      }
     },
     {
       "id": "history-navigation",
@@ -139,7 +160,7 @@
     },
     {
       "id": "rapid-navigation",
-      "input": "save-both/input",
+      "input": "navigation.json",
       "intent": "select final target while backend is blocked",
       "events": [
         "pause backend response A",
@@ -161,7 +182,13 @@
           0
         ]
       },
-      "authority": "GUI-EXPLORER-NAV-001 / GUI-PERF-001..004"
+      "authority": "GUI-EXPLORER-NAV-001 / GUI-PERF-001..004",
+      "targetAliases": {
+        "A": "sources/a-1.yaml",
+        "B": "sources/a-2.yaml",
+        "C": "sources/b-schema.yaml",
+        "D": "sources/c-2.yaml"
+      }
     },
     {
       "id": "search",
@@ -183,7 +210,12 @@
     },
     {
       "id": "paste",
-      "input": "save-both/input",
+      "input": [
+        "paste-lossless/input",
+        "paste-invalid-safe/input",
+        "paste-ragged/input",
+        "paste-pk-unsafe/input"
+      ],
       "intent": "paste rectangular typed clipboard",
       "events": [
         "copy values including long min and ulong max",
@@ -405,7 +437,7 @@
     },
     {
       "id": "build-publish",
-      "input": "save-both/input",
+      "input": "fixtures/full (repository-relative portable source asset)",
       "intent": "build deterministically then distribute eligible set",
       "events": [
         "Build twice same source and config",
@@ -425,7 +457,7 @@
     },
     {
       "id": "large-viewport",
-      "input": "save-both/input",
+      "input": "capacity.json",
       "intent": "edit large and wide data",
       "events": [
         "load capacity input",
@@ -442,5 +474,6 @@
       },
       "authority": "GUI-DATA-VIRTUAL-001 / GUI-PERF-005"
     }
-  ]
+  ],
+  "inputResolution": "corpus-relative by default; fixtures/full is repository-relative source/config data, never production code. Mutation occurrence is captured from input at base generation, independent from PK."
 }

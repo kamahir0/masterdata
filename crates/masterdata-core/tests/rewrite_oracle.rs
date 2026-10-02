@@ -132,6 +132,25 @@ fn portable_schema_directed_interpretation_oracle() {
             case["valid"].as_bool().unwrap(),
             "{case}"
         );
+        let view = masterdata_core::data_file_snapshot(
+            Path::new("."),
+            &[],
+            &documents,
+            vec![],
+            Path::new("data.yaml"),
+        )
+        .unwrap();
+        let cell = &view.rows[0].cells[1];
+        if let Some(text) = case["expectedText"].as_str() {
+            assert_eq!(cell.text, text, "{case}: lexical text");
+        }
+        if let Some(is_null) = case["isNull"].as_bool() {
+            assert_eq!(
+                matches!(cell.value, AuthoringValue::Null),
+                is_null,
+                "{case}: null meaning"
+            );
+        }
     }
 }
 

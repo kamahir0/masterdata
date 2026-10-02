@@ -1,0 +1,11 @@
+kind: data
+table: item
+records:
+  - id: 1 # first occurrence
+    signed: 9223372036854775807
+    unsigned: 18446744073709551615
+    note: "null"
+  - id: 2
+    signed: -9223372036854775808
+    unsigned: 0
+    note: "line: value"

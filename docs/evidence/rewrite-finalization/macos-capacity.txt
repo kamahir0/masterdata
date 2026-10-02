@@ -1,0 +1,25 @@
+2026-10-03; Apple M1 arm64 / RAM16GiB / macOS26.6.2; release standalone example, compiler excluded; code basis 2e5b6c1
+records=100000 split_files=10 columns=20 paste_cells=10000 paste_columns=10
+load_ms=85969.229
+query_ms=85964.230
+preview_ms=95860.756
+validation_ms=85814.277
+oracle=rows-query-all-paste-cells-untargeted-cells-diagnostics-no-implicit-save-pass
+      354.44 real       349.92 user         1.97 sys
+          2407645184  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              403573  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  42  voluntary context switches
+               81914  involuntary context switches
+       3520876823341  instructions retired
+       1116848637092  cycles elapsed
+          1964889856  peak memory footprint

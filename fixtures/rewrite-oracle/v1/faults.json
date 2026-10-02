@@ -1,0 +1,79 @@
+{
+  "format": 1,
+  "faultVocabulary": "semantic commit boundaries, not private function names; adapter arranges the observable event sequence",
+  "scenarios": [
+    {
+      "id": "save-precommit-failure",
+      "input": "save-record/input",
+      "candidate": "save-record/expected",
+      "intent": "save selected record draft",
+      "timeline": [
+        "capture base",
+        "prepare note change",
+        "fresh source identity matches",
+        "source replacement fails before changing disk"
+      ],
+      "expected": {
+        "outcome": "Failure",
+        "diskBytes": "save-record/input",
+        "draftRetained": true,
+        "historyRetained": true,
+        "automaticRetry": false
+      }
+    },
+    {
+      "id": "save-acknowledgement-unknown",
+      "input": "save-record/input",
+      "candidate": "save-record/expected",
+      "intent": "save selected record draft",
+      "timeline": [
+        "capture base",
+        "prepare note change",
+        "fresh identity matches",
+        "source replacement completes",
+        "confirmation read fails",
+        "attempt another Save",
+        "fresh observation confirms candidate bytes"
+      ],
+      "expected": {
+        "initialOutcome": "Outcome Unknown",
+        "diskBytesAfterReplacement": "save-record/expected",
+        "draftRetainedUntilObservation": true,
+        "historyRetainedUntilObservation": true,
+        "secondWriteBeforeObservation": false,
+        "automaticRetry": false,
+        "resumeRequiresFreshActualIdentity": true
+      }
+    },
+    {
+      "id": "migration-recovery-required",
+      "input": "migration-add/input",
+      "reviewedCandidate": "migration-add/expected",
+      "intent": "authorize Add rank field after reviewing all affected sources",
+      "timeline": [
+        "review Plan",
+        "explicit authorization",
+        "fresh closure matches",
+        "one.yaml replacement completes",
+        "schema replacement completes",
+        "two.yaml replacement fails",
+        "rollback of schema succeeds",
+        "rollback of one.yaml fails",
+        "attempt ordinary write and Build"
+      ],
+      "expected": {
+        "outcome": "Recovery Required",
+        "disk": {
+          "schema.yaml": "migration-add/input/schema.yaml",
+          "one.yaml": "migration-add/expected/one.yaml",
+          "two.yaml": "migration-add/input/two.yaml"
+        },
+        "ordinaryWriteAllowed": false,
+        "BuildAllowed": false,
+        "readNavigationAllowed": true,
+        "closingDialogClearsGate": false,
+        "automaticRepair": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "coldFromHarnessInjectionMs": 3480,
+  "error": "Error: paint opportunity unavailable for 5s; check foreground/occlusion",
+  "method": "real-tauri-webview-synthetic-dom-input",
+  "phase": "first-projection",
+  "runs": 3,
+  "samples": [],
+  "samplesPerCasePerRun": 100,
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+}

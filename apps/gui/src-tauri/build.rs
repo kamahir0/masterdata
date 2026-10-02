@@ -6,7 +6,6 @@ fn main() {
             tauri_build::InlinedPlugin::new().commands(&["report"]),
         ))
         .unwrap();
-        return;
     }
     #[cfg(not(feature = "navigation-evidence"))]
     tauri_build::build();

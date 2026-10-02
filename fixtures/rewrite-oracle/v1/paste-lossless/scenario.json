@@ -1,0 +1,25 @@
+{
+  "id": "paste-lossless",
+  "operation": {
+    "intent": "paste-rectangle",
+    "source": "sources/data.yaml",
+    "occurrences": [
+      1,
+      2
+    ],
+    "fields": [
+      "signed",
+      "unsigned",
+      "note"
+    ],
+    "clipboard": "clipboard.tsv"
+  },
+  "expected": {
+    "outcome": "candidate",
+    "semanticValid": true,
+    "candidateBytes": "expected/data.yaml",
+    "diskUnchanged": true,
+    "undoUnitsOnAcceptedPaste": 1
+  },
+  "rationale": "Typed clipboard is lossless; literal null is text, unsafe localization is all-or-none, domain invalidity is distinct from source safety. PK batch restriction does not restrict direct single-cell PK edits."
+}

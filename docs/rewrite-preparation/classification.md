@@ -526,7 +526,7 @@ Classification: **HUMAN DECISION NEEDED**
 - Artifact / Current owner / Current status: GUI-SHELL-LAYOUT / GUI-DATA-DIFF; Approved。
 - Provenance: P1 package + latest quiet/Git direction。Protects / Why it exists: unsaved candidate理解とview入口。
 - Reason: capabilityとpersistent surfaceを区別するproduct choice。Risk if retained: 不要な常設tab。Risk if removed: 比較発見性・Save理解低下。
-- Proposed rewrite contract: [D1](human-decisions.md#d1--独立diff-view)。Acceptance evidence to retain: unsaved/Conflict/Migration compare evidence。Human decision required: Yes: D1。
+- Proposed rewrite contract: [D1](human-decisions.md)。Acceptance evidence to retain: unsaved/Conflict/Migration compare evidence。Human decision required: Yes: D1。
 
 ## A59 — Typed Filter scope
 
@@ -535,7 +535,7 @@ Classification: **HUMAN DECISION NEEDED**
 - Artifact / Current owner / Current status: authoring-query / GUI query; Approved。
 - Provenance: 0016/0017 package Human承認、個別daily価値provenance限定。Protects / Why it exists: read-only subsetによるtargeting。
 - Reason: Searchと別product価値で判断。Risk if retained: operator UI / subset mode creep。Risk if removed: 長いTableのtargeted authoring低下。
-- Proposed rewrite contract: [D2](human-decisions.md#d2--typed-filter)。Acceptance evidence to retain: typed predicates/no mutation/query state。Human decision required: Yes: D2。
+- Proposed rewrite contract: [D2](human-decisions.md)。Acceptance evidence to retain: typed predicates/no mutation/query state。Human decision required: Yes: D2。
 
 ## A60 — View Sort scope
 
@@ -544,7 +544,7 @@ Classification: **HUMAN DECISION NEEDED**
 - Artifact / Current owner / Current status: authoring-query / GUI query; Approved。
 - Provenance: package承認、typed ordering Agent refinement。Protects / Why it exists: 値の探索とstable read-only順序。
 - Reason: Filterやsource reorderと独立に選ぶ。Risk if retained: sort mode / source-order friction。Risk if removed: 比較・探索効率低下。
-- Proposed rewrite contract: [D3](human-decisions.md#d3--view-sort)。Acceptance evidence to retain: invalid/null/stable ties/no bytes mutation。Human decision required: Yes: D3。
+- Proposed rewrite contract: [D3](human-decisions.md)。Acceptance evidence to retain: invalid/null/stable ties/no bytes mutation。Human decision required: Yes: D3。
 
 ## A61 — Advanced Batch / preview surface
 
@@ -553,7 +553,7 @@ Classification: **HUMAN DECISION NEEDED**
 - Artifact / Current owner / Current status: authoring-batch / grid authoring; Approved。
 - Provenance: P1 package、0040 direct paste Human direction。Protects / Why it exists: 反復入力を減らす高度range操作。
 - Reason: direct clipboard基盤と高度UIを分離。Risk if retained: preview/Fill control creep。Risk if removed: 反復修正が高コスト。
-- Proposed rewrite contract: [D4](human-decisions.md#d4--advanced-batch)。Acceptance evidence to retain: all-or-none/typed codec/one Undo/10k paste KEEP。Human decision required: Yes: D4。
+- Proposed rewrite contract: [D4](human-decisions.md)。Acceptance evidence to retain: all-or-none/typed codec/one Undo/10k paste KEEP。Human decision required: Yes: D4。
 
 ## A62 — Saved Overview GUI capability
 
@@ -562,7 +562,7 @@ Classification: **HUMAN DECISION NEEDED**
 - Artifact / Current owner / Current status: Table Overview / build selection; Approved。
 - Provenance: P2 package Human approval、current One Table direction。Protects / Why it exists: saved cross-source / profile理解。
 - Reason: Build semanticsと独立GUI surfaceを分離。Risk if retained: dual saved/dirty UI complexity。Risk if removed: profile inclusion / cross-source理解低下。
-- Proposed rewrite contract: [D5](human-decisions.md#d5--saved-table-overview)。Acceptance evidence to retain: saved snapshot/no dirty mutation/profile oracle。Human decision required: Yes: D5。
+- Proposed rewrite contract: [D5](human-decisions.md)。Acceptance evidence to retain: saved snapshot/no dirty mutation/profile oracle。Human decision required: Yes: D5。
 
 ## A63 — Flow mapping spec/runtime discrepancy
 
@@ -571,7 +571,7 @@ Classification: **HUMAN DECISION NEEDED**
 - Artifact / Current owner / Current status: YAML-SUBSET-007 Approved vs source_edit inline current test。
 - Provenance: fee882c / bc0a28c implementation。明示Human syntax permissionはUnknown。Protects / Why it exists: 現在受理・source preservationとsubset禁止が衝突。
 - Reason: test passをformat approvalにしない。Risk if retained: 未承認syntax拡張を継承。Risk if removed: 既存受理sourceをrejectする互換性risk。
-- Proposed rewrite contract: [D6](human-decisions.md#d6--yaml-flow-mapping)。Acceptance evidence to retain: audit focused test pass、before/after flow bytes。Human decision required: Yes: D6。
+- Proposed rewrite contract: [D6](human-decisions.md)。Acceptance evidence to retain: audit focused test pass、before/after flow bytes。Human decision required: Yes: D6。
 
 ## 件数
 

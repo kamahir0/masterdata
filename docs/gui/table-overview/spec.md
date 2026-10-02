@@ -1,8 +1,10 @@
 # GUI仕様: Table Overview
 
-Status: Approved
+Status: Deprecated
 
-Table Overviewは分割されたlogical Tableを保存済みsnapshotで横断表示し、Profile selection、query、source navigationをread-onlyで提供する。dataset semanticsは[Authoring Query](../../specs/authoring-query.md)、Profile semanticsは[Build Selection](../../specs/build-selection.md)が所有する。適用記録は[仕様変更0017](../../spec-changes/0017-desktop-workspace-settings.md)を参照する。
+このdocumentのGUI-OVERVIEW requirementsはlegacy implementation regressionだけに適用する。standalone surface / typed filter / sortはrewrite baselineのgateではない。source composition / saved-vs-dirty / inclusionのcurrent ownerは[Authoring Query](../../specs/authoring-query.md)、[Build Selection](../../specs/build-selection.md)、[Rewrite baseline](../rewrite-baseline.md)。0051のHuman D5による。
+
+歴史的Table Overviewは分割されたlogical Tableを保存済みsnapshotで横断表示し、Profile selection、query、source navigationをread-onlyで提供する。dataset semanticsは[Authoring Query](../../specs/authoring-query.md)、Profile semanticsは[Build Selection](../../specs/build-selection.md)が所有する。適用記録は[仕様変更0017](../../spec-changes/0017-desktop-workspace-settings.md)を参照する。
 
 ## 規範要件
 

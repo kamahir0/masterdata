@@ -1,0 +1,5 @@
+kind: data
+table: probe
+records:
+  - id: 1
+    parentId: 1001

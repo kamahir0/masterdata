@@ -1,0 +1,43 @@
+{
+  "id": "nested-ulong-lossless",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "profile",
+    "value": {
+      "meaning": "mapping",
+      "members": [
+        {
+          "name": "credits",
+          "value": {
+            "meaning": "integer",
+            "decimal": "0"
+          }
+        },
+        {
+          "name": "label",
+          "value": {
+            "meaning": "text",
+            "text": "old"
+          }
+        },
+        {
+          "name": "alias",
+          "value": {
+            "meaning": "null"
+          }
+        }
+      ]
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "SOURCE-EDIT-005: unrelated bytesを変更しない"
+}

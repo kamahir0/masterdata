@@ -1,0 +1,446 @@
+{
+  "format": 1,
+  "scenarios": [
+    {
+      "id": "one-table",
+      "input": "save-both/input",
+      "intent": "edit schema and selected records in one context",
+      "events": [
+        "select separate schema",
+        "select inline schema",
+        "select mixed schema"
+      ],
+      "expected": {
+        "schemaAndRecordsInOneContext": true,
+        "physicalSourceSelectorWhenMultiple": true,
+        "emptyTableEditableSchema": true,
+        "implicitDataFileCreation": false
+      },
+      "authority": "GUI-UNIFIED-001..008"
+    },
+    {
+      "id": "complex-direct",
+      "input": "save-both/input",
+      "intent": "edit nested values directly",
+      "events": [
+        "change nested scalar",
+        "toggle nullable",
+        "add array element",
+        "remove array element",
+        "close complex editor",
+        "Undo"
+      ],
+      "expected": {
+        "eachCommittedOperationUndoUnits": 1,
+        "footerApplyRequired": false,
+        "closeDiscardsCommittedOperations": false,
+        "UndoRestoresLastOperationOnly": true
+      },
+      "authority": "GUI-DATA complex / GUI-GRID-004 / 0045"
+    },
+    {
+      "id": "stable-spatial-context",
+      "input": "save-both/input",
+      "intent": "continue editing under pointer",
+      "events": [
+        "produce diagnostics",
+        "open Problems",
+        "finish background validation",
+        "horizontal scroll",
+        "vertical scroll"
+      ],
+      "expected": {
+        "gridTopEdgeMovesForRoutineState": false,
+        "ProblemsAutomaticallyOpensAndShiftsGrid": false,
+        "columnHeaderRemainsVisible": true,
+        "rowIdentityRemainsVisible": true,
+        "outerTopLeftOverscrollGap": false
+      },
+      "authority": "GUI-UNIFIED / 0046 / 0049"
+    },
+    {
+      "id": "drag-preview",
+      "input": "save-both/input",
+      "intent": "reorder a column and physical record row",
+      "events": [
+        "start drag",
+        "move pointer past neighbours",
+        "cancel",
+        "repeat drag and drop"
+      ],
+      "expected": {
+        "draggedColumnOrRowFollowsPointer": true,
+        "neighboursPreviewNewOrder": true,
+        "insertionLineRequired": false,
+        "headerPreviewClippedToStickyRegion": true,
+        "fieldNameHandleActionsOverlap": false,
+        "cancelMutations": 0,
+        "dropUndoUnits": 1,
+        "otherPhysicalSourcesMutated": false
+      },
+      "authority": "GUI-GRID reorder / 0048 / 0049"
+    },
+    {
+      "id": "array-reorder",
+      "input": "save-both/input",
+      "intent": "reorder equal-valued array occurrences",
+      "events": [
+        "drag second equal item ahead of first",
+        "Undo",
+        "start drag then Escape"
+      ],
+      "expected": {
+        "occurrencesDistinctFromValue": true,
+        "originalSourceSpellingFollowsOccurrence": true,
+        "UndoRestoresOrder": true,
+        "cancelMutations": 0
+      },
+      "authority": "SOURCE-EDIT-017 / GUI-GRID"
+    },
+    {
+      "id": "history-navigation",
+      "input": "save-both/input",
+      "intent": "continue dirty authoring across sources",
+      "events": [
+        "edit A",
+        "Add row A",
+        "Delete existing row A",
+        "set Search A",
+        "select B",
+        "edit B",
+        "return A",
+        "Undo A"
+      ],
+      "expected": {
+        "dirtyAAndBIndependent": true,
+        "addedDraftAndPendingDeletePreserved": true,
+        "sourceLocalSearchAndSelectionPreserved": true,
+        "UndoAChangesB": false,
+        "navigationImplicitSaveOrDiscard": false
+      },
+      "authority": "GUI-GRID-004..006 / GUI-EXPLORER-NAV-001"
+    },
+    {
+      "id": "delayed-focus",
+      "input": "save-both/input",
+      "intent": "keep user focus after background work",
+      "events": [
+        "create source",
+        "move focus to other target",
+        "deliver creation result again",
+        "deliver stale diagnostics"
+      ],
+      "expected": {
+        "creationFocusIntentConsumedOnce": true,
+        "delayedResultStealsFocus": false,
+        "staleDiagnosticsShownAsCurrent": false
+      },
+      "authority": "GUI-EXPLORER / 0050"
+    },
+    {
+      "id": "rapid-navigation",
+      "input": "save-both/input",
+      "intent": "select final target while backend is blocked",
+      "events": [
+        "pause backend response A",
+        "select A B C D repeatedly 50 times ending D",
+        "resume responses out of order"
+      ],
+      "expected": {
+        "selectedTargetImmediately": "D",
+        "activeContentAfterDrain": "D",
+        "oldContentIdentifiedAsNew": false,
+        "obsoleteResponseOrFocusWins": false,
+        "dirtyAndHistoryRetained": true,
+        "pendingWorkBounded": true,
+        "queuedObsoleteRequestsDrainedAfterD": false,
+        "warmProjectWideDiscoveryEnumerationParseValidationCounts": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "authority": "GUI-EXPLORER-NAV-001 / GUI-PERF-001..004"
+    },
+    {
+      "id": "search",
+      "input": "save-both/input",
+      "intent": "find a value in a large Table",
+      "events": [
+        "search matching scalar text",
+        "move to matching occurrence",
+        "clear Search"
+      ],
+      "expected": {
+        "matchAddressUsesOccurrence": true,
+        "sourceBytesChanged": false,
+        "dirtyChanged": false,
+        "sourceOrderAfterClearPreserved": true,
+        "TypedFilterOrSortBuilderRequired": false
+      },
+      "authority": "GUI-BASELINE-004 / AUTHORING-QUERY-001"
+    },
+    {
+      "id": "paste",
+      "input": "save-both/input",
+      "intent": "paste rectangular typed clipboard",
+      "events": [
+        "copy values including long min and ulong max",
+        "paste rectangular range",
+        "Undo",
+        "paste range containing unsafe target"
+      ],
+      "expected": {
+        "integerDecimalTokensLossless": true,
+        "textNullDistinctFromNull": true,
+        "noImplicitRowAddition": true,
+        "noHiddenRowMutation": true,
+        "unsafeFailurePartialChanges": 0,
+        "sourceSafeDomainInvalidAllowedWithDiagnostics": true,
+        "oneLogicalPasteUndoUnits": 1,
+        "implicitSaveBuildMigration": false,
+        "existingPKBatchRestrictionNotDirectEditRestriction": true,
+        "FillOrPermanentPreviewRequired": false
+      },
+      "authority": "AUTHORING-BATCH-001..004 / GUI-GRID-002"
+    },
+    {
+      "id": "compare-context",
+      "input": "save-both/input",
+      "intent": "understand candidate before committing",
+      "events": [
+        "inspect unsaved candidate",
+        "inspect disk versus local on Conflict",
+        "inspect affected files before Migration"
+      ],
+      "expected": {
+        "beforeAfterAndScopeIdentifiable": true,
+        "dirtyOrHistoryLost": false,
+        "standaloneDiffDestinationRequired": false,
+        "GitHistoryClientRequired": false
+      },
+      "authority": "GUI-BASELINE-002 / SOURCE-EDIT-009 / MIGRATION"
+    },
+    {
+      "id": "build-context",
+      "input": "save-both/input",
+      "intent": "understand saved inclusion",
+      "events": [
+        "inspect current Table sources",
+        "inspect selected Build Profile and tags",
+        "edit source without Save",
+        "inspect inclusion"
+      ],
+      "expected": {
+        "savedVsDirtyClearlyIdentified": true,
+        "excludedRecordsAndReasonsDiscoverable": true,
+        "missingProfileFallsBackSilently": false,
+        "standaloneOverviewRequired": false,
+        "inspectionMutatesSourceOrBuilds": false
+      },
+      "authority": "GUI-BASELINE-003 / BUILD-SELECTION / AUTHORING-OVERVIEW"
+    },
+    {
+      "id": "external-clean",
+      "input": "save-both/input",
+      "intent": "refresh changed clean source",
+      "events": [
+        "capture base",
+        "external edit source",
+        "navigate or freshness poll"
+      ],
+      "expected": {
+        "freshSourceBecomesCurrent": true,
+        "staleSnapshotEditableWithoutCheck": false,
+        "unrelatedDirtySourcesRetained": true
+      },
+      "authority": "SOURCE-EDIT-010 / GUI-EXPLORER"
+    },
+    {
+      "id": "external-dirty",
+      "input": "save-both/input",
+      "intent": "keep local edits on external change",
+      "events": [
+        "capture base",
+        "local edit",
+        "external edit same source",
+        "refresh",
+        "Save"
+      ],
+      "expected": {
+        "Conflict": true,
+        "localBufferAndHistoryRetained": true,
+        "actualDiskOverwritten": false
+      },
+      "authority": "SOURCE-EDIT-008..011"
+    },
+    {
+      "id": "overwrite-recheck",
+      "input": "save-both/input",
+      "intent": "overwrite only explicitly approved disk identity",
+      "events": [
+        "Conflict disk X",
+        "authorize Overwrite X",
+        "external edit disk Y before commit",
+        "Overwrite"
+      ],
+      "expected": {
+        "Conflict": true,
+        "diskYRetained": true,
+        "automaticRetry": false
+      },
+      "authority": "SOURCE-EDIT-009"
+    },
+    {
+      "id": "outcome-unknown",
+      "input": "save-both/input",
+      "intent": "recover uncertain write result",
+      "events": [
+        "local edit",
+        "inject failure after install before verification",
+        "request Save again"
+      ],
+      "expected": {
+        "outcome": "Outcome Unknown",
+        "localBufferRetained": true,
+        "automaticStaleRetryOrOverwrite": false,
+        "freshActualSourceRecheckBeforeMutation": true
+      },
+      "authority": "SOURCE-EDIT-011"
+    },
+    {
+      "id": "recovery-required",
+      "input": "save-both/input",
+      "intent": "recover incomplete multi-source transaction",
+      "events": [
+        "authorize migration",
+        "inject commit and rollback failure",
+        "attempt Save and Build",
+        "inspect sources and eligible Publish"
+      ],
+      "expected": {
+        "outcome": "Recovery Required",
+        "normalSourceMutationAndBuildBlocked": true,
+        "readInspectionPermitted": true,
+        "eligiblePreviouslyBuiltPublishIndependent": true,
+        "frontendFlagAloneClearsRecovery": false
+      },
+      "authority": "MIGRATION-010 / GUI-SHELL-CAPABILITY-001"
+    },
+    {
+      "id": "invalid-yaml",
+      "input": "save-both/input",
+      "intent": "retain source discovery on malformed source",
+      "events": [
+        "external malformed YAML",
+        "select source",
+        "Save unrelated clean source"
+      ],
+      "expected": {
+        "invalidSourceRemainsDiscoverable": true,
+        "staleGridEditable": false,
+        "diagnosticHasSourceLocation": true,
+        "unrelatedDirtyStateLost": false
+      },
+      "authority": "YAML-SUBSET / GUI-EXPLORER-ERR"
+    },
+    {
+      "id": "schema-reinterpretation",
+      "input": "save-both/input",
+      "intent": "change field type without rewriting record bytes",
+      "events": [
+        "draft string to int type",
+        "draft Nullable and Array shape",
+        "Undo draft"
+      ],
+      "expected": {
+        "recordBytesRewrittenBySchemaDraft": false,
+        "currentResolvedShapeOwnsInterpretation": true,
+        "semanticInvalidityCanBeSavedSafely": true,
+        "baseAndDraftDistinct": true
+      },
+      "authority": "YAML-SUBSET-018 / GUI-UNIFIED"
+    },
+    {
+      "id": "save-all",
+      "input": "save-both/input",
+      "intent": "save all dirty physical sources explicitly",
+      "events": [
+        "dirty schema A and source A1 and inactive A2 and B",
+        "ordinary Save A1",
+        "Save All"
+      ],
+      "expected": {
+        "ordinaryScope": [
+          "schema A",
+          "source A1"
+        ],
+        "SaveAllSeparateExplicitScope": [
+          "inactive A2",
+          "B"
+        ],
+        "diagnosticOnlyCleanDependencyIncluded": false,
+        "knownConflictPreventsAvoidablePartialWrite": true
+      },
+      "authority": "GUI-UNIFIED-004 / SOURCE-EDIT-007"
+    },
+    {
+      "id": "migration-stale-plan",
+      "input": "save-both/input",
+      "intent": "reject unauthorized or stale structural change",
+      "events": [
+        "Plan Rename with affected files",
+        "external edit dependency",
+        "Apply stale Plan",
+        "Plan Drop without destructive authorization"
+      ],
+      "expected": {
+        "staleApplyChanges": 0,
+        "unauthorizedDropChanges": 0,
+        "beforeAfterAndAffectedFilesAvailable": true,
+        "migrationChangesPresentationOnly": false
+      },
+      "authority": "MIGRATION / TYPE-MIGRATION"
+    },
+    {
+      "id": "build-publish",
+      "input": "save-both/input",
+      "intent": "build deterministically then distribute eligible set",
+      "events": [
+        "Build twice same source and config",
+        "change dirty buffer",
+        "standalone Publish eligible receipt",
+        "Build --publish with Build failure"
+      ],
+      "expected": {
+        "semanticBinaryAndCanonicalCSDeterministic": true,
+        "BuildPublishesImplicitly": false,
+        "PublishReadsCurrentDirtyYAML": false,
+        "PublishRejectsInvalidReceiptOrUnsafeTargets": true,
+        "BuildFailureStartsPublish": false,
+        "UnityMetaManagedByPublisher": false
+      },
+      "authority": "BUILD-PIPELINE / UNITY-DELIVERY"
+    },
+    {
+      "id": "large-viewport",
+      "input": "save-both/input",
+      "intent": "edit large and wide data",
+      "events": [
+        "load capacity input",
+        "scroll to last record and wide field",
+        "edit",
+        "navigate Problems to offscreen record"
+      ],
+      "expected": {
+        "viewportRenderBounded": true,
+        "offscreenHeavyControlsMounted": false,
+        "selectionOrDirtyLostOnUnmount": false,
+        "semanticDatasetEqualsUIProjectionRequired": false,
+        "performanceTuningDeferredUntilFeatureComplete": false
+      },
+      "authority": "GUI-DATA-VIRTUAL-001 / GUI-PERF-005"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+kind: data
+table: item
+records:
+  - id: 9
+    note: inactive

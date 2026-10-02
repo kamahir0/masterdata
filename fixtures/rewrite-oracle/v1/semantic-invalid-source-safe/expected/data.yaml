@@ -1,0 +1,11 @@
+kind: data
+table: item
+records:
+  # row identity is occurrence
+  - id: wrong
+    note: 'old' # keep this
+    profile: null
+
+  - id: 1
+    note: "other"
+    profile: null

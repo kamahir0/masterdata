@@ -2,21 +2,21 @@
 
 ## Objective
 
-**Rewrite Input Purification。既存spec / test / fixture / evidence / Git historyを再審査し、production codeをarchitecture templateにしなくても再実装できる、contractとacceptance corpusのDraftを精製する。**
+**Rewrite Contract Finalization。Human確定D1〜D6をcanonicalへ適用し、現行内部API非依存のCompatibility / Acceptance Oracle、Tier1 p95とconsumer evidence、正式rewrite inputを完成させる。production rewriteは開始しない。**
 
 ## Completion slices
 
-- fresh recoveryとrepository-wide provenance audit。重要項目のKEEP / REFINE / DEMOTE TO HISTORY / DELETE候補 / HUMAN DECISION NEEDED分類。
-- Product / Desktop UX / Non-goals / Domain・Safety / Performance constitution、acceptance matrix、compatibility corpus、test purification proposal。
-- superseded decisionとimplementation拘束の特定、materialなHuman decision queueの集約。
-- Archaeology / Product critic / Rewrite architect / Adversarial reviewerの4 pass、rewrite readiness assessment、doc/state checks、required CI、fresh review。
+- D1〜D6のcanonical application、stale / superseded proseとowner conflict解消。
+- 独立source / safety / topology / paste / UI / Build / Publish / consumer oracle、legacy-only test分離。
+- Tier1 warm p95、cold / first usable / rapid evidence、100k correctness/capacity oracle、performance contract確定。
+- adversarial / code-blind review、focused tests / check-all / required CI、Ready / Not Ready判定。
 
 ## Authority / output routing
 
-現行authorityは[Product Vision](product/vision.md)、[canonical specs](specs/README.md)、[GUI specs](gui/README.md)。今回はこれら自体が監査対象であり、Approvedを自動KEEPしない。
+authorityは[Product Vision](product/vision.md)、[canonical specs](specs/README.md)、[GUI specs](gui/README.md)。D1〜D6のHuman decisionはspec-changeのapproval recordから各ownerへ適用する。
 
-Draft成果物は `docs/rewrite-preparation/` に置く。current canonical authorityを置換せず、Human decision前の削除・互換性変更を適用しない。
+rewrite inputは[rewrite preparation](rewrite-preparation/README.md)、executable inputは独立corpusへrouteする。現行legacy capabilityを直ちに削除する要件へ変換しない。
 
 ## Explicit non-scope
 
-production implementationのrewrite / refactor / cleanup、canonical spec / test / fixtureの削除・大規模移動、framework / dependency replacement、rewrite着手。
+production architecture / UI / CSS rewrite・refactor、current runtime性能最適化、framework / dependency replacement、新機能、clean-room implementation着手。

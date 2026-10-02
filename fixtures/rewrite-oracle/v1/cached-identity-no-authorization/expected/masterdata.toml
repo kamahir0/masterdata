@@ -1,0 +1,9 @@
+[project]
+id = "rewrite.oracle"
+name = "Rewrite Oracle"
+version = "0.1.0"
+[sources]
+roots = ["sources"]
+[build]
+artifact_dir = ".masterdata/output"
+cache = ".masterdata/cache"

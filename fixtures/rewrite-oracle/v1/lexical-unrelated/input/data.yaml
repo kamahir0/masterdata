@@ -1,0 +1,6 @@
+kind: data
+table: item
+records:
+  - id: 00123 # semantic-invalid integer is source-safe
+    note: 'old'
+    profile: null

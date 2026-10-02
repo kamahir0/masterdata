@@ -138,6 +138,10 @@ key value editによってcurrent candidateがPrimary Key uniqueness、unique Se
 
 本requirementはMessagePack field `key`、`primaryKey.fields`、`secondaryKeys` declarationのschema mutationを許可しない（MUST NOT）。
 
+### SOURCE-EDIT-018
+
+既存flow mappingへのunrelated editは既存bytes / styleを保持する（MUST）。安全に局所化できる場合、既存flow mapping内部のeditを許可する。安全なrangeを確定できない場合はfail closedでsource / bufferを変更しない。MasterDataが新しくmappingを作成・materializeする場合、default writerはblock mappingを使用する（MUST）。既存flowを新規生成のpreferred syntaxへ昇格させない。
+
 ## 検証ルール
 
 少なくとも次をfocused unit / integration / GUI workflow evidenceで検証する。

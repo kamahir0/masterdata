@@ -1,0 +1,42 @@
+{
+  "id": "flow-unsafe",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "profile",
+    "value": {
+      "meaning": "mapping",
+      "members": [
+        {
+          "name": "credits",
+          "value": {
+            "meaning": "integer",
+            "decimal": "18446744073709551615"
+          }
+        },
+        {
+          "name": "label",
+          "value": {
+            "meaning": "text",
+            "text": "old"
+          }
+        },
+        {
+          "name": "alias",
+          "value": {
+            "meaning": "text",
+            "text": "new"
+          }
+        }
+      ]
+    }
+  },
+  "expected": {
+    "outcome": "unsafe-localization",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [],
+    "implicitSave": false
+  },
+  "rationale": "D6 commentを含むflowへの新member挿入を安全に局所化できないならfail closed。broad reserializeしない。"
+}

@@ -1,0 +1,16 @@
+kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 1
+    name: note
+    type: string
+    nullable: true
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+records:
+  - id: 2
+    note: inline

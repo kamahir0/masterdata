@@ -1,0 +1,22 @@
+{
+  "id": "lexical-unrelated",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "note",
+    "value": {
+      "meaning": "text",
+      "text": "new"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "Unrelated scalar spelling / folded bytes preserve exactly; semantic invalidity does not authorize broad rewrite."
+}

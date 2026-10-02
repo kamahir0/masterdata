@@ -2,6 +2,8 @@
 
 Status: Approved
 
+Scope transition（0051 Human D4）: lossless copy/pasteとshared preflightがrewrite baseline。Fill / range Set Null専用workflow / persistent Batch previewの存在は要求しない。existing keyのbatch制約はordinary single-cell direct PK editへ適用しない。legacy capabilityの保持は許容する。
+
 Domain: Source Editing
 
 この仕様は、Desktop制作v1における1 file内のscalar一括編集とclipboard codecを定義する。適用記録は[仕様変更0016](../spec-changes/0016-desktop-daily-editing.md)を参照する。通常のsource edit、record mutation、Type System、GUI interactionの既存契約はそれぞれのownerを維持する。

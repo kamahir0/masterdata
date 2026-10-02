@@ -31,13 +31,16 @@ fn main() {
     let base_source = fs::read_to_string(project.path().join(relative_path)).expect("base source");
 
     let started = Instant::now();
-    service
+    let snapshot = service
         .open_data_file(Some(project.path()), current_dir, relative_path)
         .expect("load snapshot");
     let load_ms = started.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(snapshot.rows.len(), RECORDS_PER_FILE);
+    assert_eq!(snapshot.columns.len(), COLUMNS);
+    assert!(snapshot.validation.valid);
 
     let started = Instant::now();
-    service
+    let query = service
         .query_data_file(
             Some(project.path()),
             current_dir,
@@ -53,6 +56,9 @@ fn main() {
         )
         .expect("query snapshot");
     let query_ms = started.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(query.total_count, RECORDS_PER_FILE);
+    assert_eq!(query.displayed_count, 0);
+    assert!(query.ordered_record_indices.is_empty());
 
     let targets = (0..PASTE_ROWS)
         .flat_map(|record_index| {
@@ -72,7 +78,7 @@ fn main() {
         .collect::<Vec<_>>();
     let clipboard_text = encode_clipboard_tsv(&clipboard_rows).expect("clipboard");
     let started = Instant::now();
-    service
+    let preview = service
         .preview_data_file_batch(
             Some(project.path()),
             current_dir,
@@ -87,12 +93,37 @@ fn main() {
         )
         .expect("batch preview");
     let preview_ms = started.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(preview.target_count, PASTE_CELLS);
+    assert_eq!(preview.changed_cell_count, PASTE_CELLS);
+    assert!(preview.source.validation.valid);
+    // Portable capacity oracle: inspect every candidate cell, including untargeted
+    // rows/columns. Success alone cannot prove paste landed on the right targets.
+    let candidate: serde_yaml::Value =
+        serde_yaml::from_str(&preview.source.candidate_source).unwrap();
+    let records = candidate["records"].as_sequence().unwrap();
+    assert_eq!(records.len(), RECORDS_PER_FILE);
+    for (row, record) in records.iter().enumerate() {
+        for column in 0..COLUMNS {
+            let expected = if row < PASTE_ROWS && (1..=PASTE_COLUMNS).contains(&column) {
+                1_000_000 + row * PASTE_COLUMNS + column - 1
+            } else {
+                row + column
+            };
+            assert_eq!(record[field_name(column)].as_u64(), Some(expected as u64));
+        }
+    }
+    assert_eq!(
+        fs::read_to_string(project.path().join(relative_path)).unwrap(),
+        base_source
+    );
 
     let started = Instant::now();
-    service
+    let validation = service
         .validate(Some(project.path()), current_dir)
         .expect("validation");
     let validation_ms = started.elapsed().as_secs_f64() * 1000.0;
+    assert!(validation.valid);
+    assert!(validation.diagnostics.is_empty());
 
     println!(
         "records={RECORD_COUNT} split_files={FILE_COUNT} columns={COLUMNS} paste_cells={PASTE_CELLS} paste_columns={PASTE_COLUMNS}"
@@ -101,6 +132,9 @@ fn main() {
     println!("query_ms={query_ms:.3}");
     println!("preview_ms={preview_ms:.3}");
     println!("validation_ms={validation_ms:.3}");
+    println!(
+        "oracle=rows-query-all-paste-cells-untargeted-cells-diagnostics-no-implicit-save-pass"
+    );
 }
 
 fn write_project(root: &std::path::Path) {

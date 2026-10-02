@@ -1,6 +1,8 @@
 # Classification Registry
 
-Status: Draft
+この文書はPurification監査時点の分類・provenance。D1〜D6の未決定表現は0051でsuperseded。current owner / readinessは [finalization report](finalization-report.md) を参照する。
+
+Status: Historical Evidence
 
 重要なcontract / decision / test群63項目の監査。current ownerのStatusは基準HEAD時点。`DELETE`はfuture rewrite inputから除外する候補で、今のfile/testを削除する指示ではない。[適用境界](README.md) に従う。Human由来は明示記録がある場合だけ使用し、Agent commitのauthor名から推定しない。package approvalは全widgetの個別Human要求を意味しない。
 

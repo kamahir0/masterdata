@@ -1,0 +1,14 @@
+{
+  "id": "flow-parse",
+  "operation": {
+    "intent": "read-source",
+    "source": "data.yaml"
+  },
+  "expected": {
+    "outcome": "read",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [],
+    "implicitSave": false
+  },
+  "rationale": "D6 existing flow syntax accept、unsigned maxをlosslessに保持。"
+}

@@ -12,9 +12,11 @@ Excelやopaque binaryを中心としたmaster-data authoringから、YAML、Git 
 
 ## Product direction
 
+DesktopはOpen → Find → Edit directly → Understand problems → Saveのinteractive authoring productとし、CLIはautomation / CI / scripting surfaceとする。shared semanticsはshared lifecycle / transport / request granularity / UI topologyを要求しない。
+
 CLIとDesktopの制作workflowを、共有Rust semantics、source-preserving authoring / migration、明示的なrollback / recovery、再現可能なBuild / Publishを中心に発展させる。YAMLのsource authorityとGit上のreview可能性を保ち、schema-aware editing、project layout、settings UXを改善する。具体的なpublic command、config key、file formatは各canonical specificationが所有する。
 
-未承認のauthoring設計案は[Authoring system v1 RFC](../rfcs/0008-authoring-system-v1.md)を参照する。RFCの提案をApproved behaviorとは扱わない。
+historical authoring設計案は[Authoring system v1 RFC](../rfcs/0008-authoring-system-v1.md)を参照する。RFCの提案をApproved behaviorとは扱わない。
 
 ## Scope discipline / 何を作らないか
 

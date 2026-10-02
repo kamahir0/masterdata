@@ -17,7 +17,7 @@ AddCustomField initializerへGUI-TABLE-INT-008と同じshared editor / unsetとn
 
 ## 既存Editor contractへの適用
 
-`GUI-TABLE-INT-001`および`GUI-TYPE-INT-003`が要求するinitializer inputを本仕様のtyped editorで具体化する。Migration semantics、destructive authorization、Plan / Diff / stale-plan safetyは変更しない。
+[Unified Table Editor](table-editor/spec.md)のstructural migration contractおよび`GUI-TYPE-INT-003`が要求するinitializer inputを本仕様のtyped editorで具体化する。Migration semantics、destructive authorization、Plan / Diff / stale-plan safetyは変更しない。
 
 ## 受け入れ証拠
 

@@ -1,0 +1,22 @@
+{
+  "id": "semantic-invalid-source-safe",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "id",
+    "value": {
+      "meaning": "text",
+      "text": "wrong"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "saveability != semantic validity。source-safe candidateとdiagnosticを両立する。"
+}

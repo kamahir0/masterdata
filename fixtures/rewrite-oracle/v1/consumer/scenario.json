@@ -1,0 +1,7 @@
+{
+  "input": "fixtures/full",
+  "operation": "canonical Build, compile generated public API, load actual binary, execute consumer queries",
+  "expected": {"records": 2, "PK": [1001, 1002], "long": ["-9223372036854775808", "9223372036854775807"], "ulongMax": "18446744073709551615", "nonUniqueCodeCount": 2, "binaryRepeatDeterministic": true},
+  "oracle": "Consumer.cs",
+  "rationale": "generated public contract and actual MasterMemory binary are compatibility assets; codegen private functions and formatting are not"
+}

@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "cases": [
+    {
+      "source": "00123",
+      "target": "string",
+      "expectedText": "00123",
+      "valid": true
+    },
+    {
+      "source": "\"00123\"",
+      "target": "int",
+      "expectedText": "00123",
+      "valid": false
+    },
+    {
+      "source": "\"123\"",
+      "target": "int",
+      "expectedText": "123",
+      "valid": true
+    },
+    {
+      "source": "\"true\"",
+      "target": "bool",
+      "expectedText": "true",
+      "valid": true
+    },
+    {
+      "source": "null",
+      "target": "string",
+      "nullable": true,
+      "isNull": true,
+      "valid": true
+    },
+    {
+      "source": "\"null\"",
+      "target": "string",
+      "nullable": true,
+      "expectedText": "null",
+      "isNull": false,
+      "valid": true
+    },
+    {
+      "source": "\"null\"",
+      "target": "long",
+      "nullable": true,
+      "expectedText": "null",
+      "isNull": false,
+      "valid": false
+    },
+    {
+      "source": "1",
+      "target": "float",
+      "valid": false
+    },
+    {
+      "source": "1.0",
+      "target": "int",
+      "valid": false
+    }
+  ]
+}

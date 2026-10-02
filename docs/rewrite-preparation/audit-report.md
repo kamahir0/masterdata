@@ -1,6 +1,8 @@
 # Rewrite Input Purification — Audit Report
 
-Status: Draft
+この文書はPurification監査時点の分類・provenance。D1〜D6の未決定表現は0051でsuperseded。current owner / readinessは [finalization report](finalization-report.md) を参照する。
+
+Status: Historical Evidence
 
 ## Diagnosis
 

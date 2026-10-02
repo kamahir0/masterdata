@@ -1,0 +1,28 @@
+{
+  "id": "save-record",
+  "operation": {
+    "intent": "save-current-table",
+    "schemaSource": "sources/schema.yaml",
+    "selectedRecordSource": "sources/data.yaml",
+    "schemaDraft": null,
+    "recordDraft": {
+      "occurrence": 1,
+      "field": "note",
+      "value": {
+        "meaning": "text",
+        "text": "changed"
+      }
+    },
+    "externalChangeAfterBaseCapture": null
+  },
+  "expected": {
+    "outcome": "success",
+    "committedPhysicalSources": [
+      "sources/data.yaml"
+    ],
+    "allDiskFiles": "expected",
+    "retainLocalDrafts": false,
+    "inactiveSourceUnchanged": true
+  },
+  "rationale": "GUI-UNIFIED-004 / SOURCE-EDIT-007: actual dirty schema + selected records、inline一physical source、inactiveは通常Save対象外。fresh actual identityはcached identityと別。"
+}

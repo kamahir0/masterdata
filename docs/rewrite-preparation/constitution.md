@@ -1,8 +1,8 @@
-# Product / Desktop Constitution案
+# Product / Desktop Constitution
 
-Status: Draft
+Status: Approved
 
-これはrewrite用の精製案。[適用境界](README.md) に従う。各判断の根拠とriskは [registry](classification.md)、materialな未決定は [queue](human-decisions.md) が所有する。
+これは0051で適用したrewrite targetのconstitution。[適用境界](README.md) に従う。各判断の根拠とriskは [registry](classification.md)、Human decisionのprovenanceは [record](human-decisions.md) が所有する。
 
 ## What MasterData is
 
@@ -12,7 +12,7 @@ MasterDataは、human-readable YAMLをcanonical sourceにする、MasterMemory /
 
 MasterDataが所有するのはschema/type-aware authoring、semantic validation、source-preserving mutation、migration、deterministic buildと明確なpublish boundaryである。YAMLはsource authority、shared Rust semanticsは意味論のauthorityである。frontendは編集表現を所有し、YAML解釈・型解決・lost-update判定を複製しない。
 
-この方向は [Vision](../product/vision.md)、[0040 direct authoring](../spec-changes/0040-desktop-direct-authoring.md)、[0041 unified Table](../spec-changes/0041-unified-table-editor.md)、[0050 interactive navigation](../spec-changes/0050-interactive-navigation.md) と今回のHuman promptに基づく。Visionのcore構成・extension段階はproductの意味と区別して再記述する候補であり、既存crate構成を継承する指示ではない。
+この方向は [Vision](../product/vision.md)、[0040 direct authoring](../spec-changes/0040-desktop-direct-authoring.md)、[0041 unified Table](../spec-changes/0041-unified-table-editor.md)、[0050 interactive navigation](../spec-changes/0050-interactive-navigation.md) と今回のHuman promptに基づく。Visionのcore構成・extension段階はhistorical architecture evidenceであり、既存crate構成を継承する指示ではない。
 
 ## Desktop UX Principles
 
@@ -26,6 +26,7 @@ MasterDataが所有するのはschema/type-aware authoring、semantic validation
 | Stable editing surface | routine status、diagnostics、query stateでgridやpointer下の対象を移動させない | 特定CSSやDOM順序 |
 | One Table surface | schemaとrecordsを同じTableの編集contextで理解する | inline/separateを異なる日常UIに分けること |
 | Independent physical source lifecycles | sourceごとのdirty/history/query、選択を混同しない | 現行state variable / store topology |
+| Shared semantics do not imply shared lifecycle | Desktopのread ownership・request granularityはCLI one-shotに従属しない | exact session / request / transport |
 | Shared semantic feedback | 解釈・validation・mutationはshared layerの判断を表示する | CLI transportとの共通化 |
 | Capability does not imply persistent UI | engineが持つ機能を全部常設しない | 既存command数とcontrol数の一致 |
 | Persistence topology does not dictate interaction topology | inline / separate / mixedでも一貫したauthoringを行う | physical sourceの安全な所有単位を隠すこと |
@@ -38,7 +39,7 @@ MasterDataが所有するのはschema/type-aware authoring、semantic validation
 
 20px grip / 40px toolbar等のtest calibrationをHumanのexact pixel要件へ昇格しない。0047の「正しい挿入線」は0048のpreviewに置換されているため、現行presentationとして両立を要求しない。keyboard / focus / reduced motion / context lossの安全な操作は失わない。
 
-## Product Non-goals案
+## Product Non-goals
 
 concreteなHuman-selected needなしに、次をcore / persistent UIへ追加しない。
 
@@ -48,6 +49,6 @@ concreteなHuman-selected needなしに、次をcore / persistent UIへ追加し
 - plugin frameworkやgeneral incremental compilerをrewriteの前提にすること。
 - retired Web hosts、Released Compatibility、Computed View v1の再導入。
 
-これは既存のcontextual compare、clipboard paste、reference semantics、Build profile selectionを削除する決定ではない。独立Diff view / Filter / Sort / advanced Batch / Overviewは [Human queue](human-decisions.md) で個別に評価する。Gitが提供するhistoryと、未保存candidate / Conflict / Migrationの理解に必要なcompareは責務が異なる。
+これは既存のcontextual compare、clipboard paste、reference semantics、Build profile selectionを削除する決定ではない。独立Diff / Typed Filter / View Sort / Advanced Batch / standalone Overviewは [baseline](../gui/rewrite-baseline.md)に従ってbaselineから外す。Gitが提供するhistoryと、未保存candidate / Conflict / Migrationの理解に必要なcompareは責務が異なる。
 
 non-goalの根拠はVision、[0022 Web retirement](../spec-changes/0022-retire-web-product-hosts.md)、[0029 rejected Git expansion](../spec-changes/0029-git-native-collaboration-automation.md)、[0030](../spec-changes/0030-retire-released-compatibility.md)、[0031](../spec-changes/0031-retire-computed-view-v1.md)。将来の具体的要求を永久に禁止するものではない。

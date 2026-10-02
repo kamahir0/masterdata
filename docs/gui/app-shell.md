@@ -4,7 +4,7 @@ Status: Approved
 
 ## 目的
 
-Tauri v2 applicationをthin desktop adapterとして保ち、Project open、Workspace Explorer、typed editor、validation、Buildをshared application/domain semanticsへ接続する。
+Desktop hostをthin adapterとして保ち、Project open、Workspace Explorer、typed editor、validation、Buildをshared application/domain semanticsへ接続する。
 
 ## レイアウト（Layout）
 
@@ -12,7 +12,7 @@ Tauri v2 applicationをthin desktop adapterとして保ち、Project open、Work
 
 Desktop authoring画面は、左のworkbench navigation内に開閉可能な[Workspace Explorer](explorer/spec.md)と中央のtyped editor areaを主要surfaceとして持たなければならない（MUST）。record data YAMLを選択した場合、中央は[Data Editor](data-editor/spec.md)を表示する。
 
-validation diagnosticsはData Editorが定義する下部`Problems` panelへ表示できなければならず（MUST）、source diffはfile単位の独立`Diff` viewとして開けなければならない（MUST）。常設right inspectorを初期sliceの必須要件にはしない。
+validation diagnosticsはData Editorが定義する下部`Problems` panelへ表示できなければならず（MUST）、unsaved candidate / Conflict / Migrationのcompareへ必要文脈から到達できなければならない（MUST）。常設right inspectorを初期sliceの必須要件にはしない。
 
 ### GUI-SHELL-LAYOUT-002
 
@@ -22,7 +22,7 @@ Save、Validate、Build、Project Reload等の主要commandは、現在のselect
 
 Projectが開いている間、DesktopはProject名とcurrent selectionを識別可能にしなければならない（MUST）。左ペインの常設navigationはconfigured source rootとそのfile / folder hierarchyだけで構成し、Table / Type / Project areaの並列groupを置いてはならない（MUST NOT）。metadataがinvalid / unavailableなfileもsource treeから失ってはならない（MUST NOT）。
 
-Project Settings / Delivery / Build等のProject areaは上部Project command surfaceから、Table Overviewは選択中のTable schema / Data文脈から到達できなければならない（MUST）。Build、Validate、Project Reload、Saveへの到達を失ってはならない（MUST NOT）。file / area間の移動だけでdirty bufferを保存・破棄・確認してはならない（MUST NOT）。navigationとcommandはkeyboardで到達・実行でき、選択対象と展開状態をassistive technologyから識別できなければならない（MUST）。
+Project Settings / Delivery / Build等のProject areaは上部Project command surfaceから、Tableのsource構成 / Build inclusionは関連Table / Build文脈から理解できなければならない（MUST）。Build、Validate、Project Reload、Saveへの到達を失ってはならない（MUST NOT）。file / area間の移動だけでdirty bufferを保存・破棄・確認してはならない（MUST NOT）。navigationとcommandはkeyboardで到達・実行でき、選択対象と展開状態をassistive technologyから識別できなければならない（MUST）。
 
 ## Project open / reload
 
@@ -50,9 +50,9 @@ OSの通常のアプリ終了（macOSのQuit menu / Cmd+Qを含む）にも`GUI-
 
 ### GUI-SHELL-ARCH-001
 
-React frontendはfilesystemを直接inspect / mutateせず、YAML semanticsをparse / validateせず、domain処理のためにCLIをspawnしてはならない（MUST NOT）。Tauri commandはshared `masterdata-app` serviceを呼び、domain workを`masterdata-core`へ委譲しなければならない（MUST）。
+frontendはfilesystemを直接inspect / mutateせず、YAML semanticsをparse / validateせず、domain処理のためにCLIをspawnしてはならない（MUST NOT）。Desktop adapterはshared Rust application boundaryを呼び、domain workをshared semantic layerへ委譲しなければならない（MUST）。
 
-Tauri adapterはserialization / host boundaryであり、Table、Type System、validation、source-edit、Build semanticsのauthorityになってはならない（MUST NOT）。
+Desktop adapterはserialization / host boundaryであり、Table、Type System、validation、source-edit、Build semanticsのauthorityになってはならない（MUST NOT）。
 
 ## Commands
 
@@ -64,7 +64,7 @@ frontend独自validatorを正本として使用してはならない（MUST NOT�
 
 ### GUI-SHELL-BUILD-001
 
-full canonical Build actionはshared Native Application Servicesの既存Build operationを使用しなければならない（MUST）。Buildはexternal publish targetを更新してはならず（MUST NOT）、dirty bufferを暗黙Saveしてはならない（MUST NOT）。dirty中の表示とsaved-source-only behaviorはData Editor specificationに従う。
+full canonical Build actionはshared Rust applicationのcanonical Build operationを使用しなければならない（MUST）。Buildはexternal publish targetを更新してはならず（MUST NOT）、dirty bufferを暗黙Saveしてはならない（MUST NOT）。dirty中の表示とsaved-source-only behaviorはData Editor specificationに従う。
 
 ### GUI-SHELL-CAPABILITY-001
 
@@ -100,9 +100,11 @@ Migrationのsource-set stateとrollback semanticsは[Schema Migration v1](../spe
 
 ## 将来のtyped editor
 
-Explorerからfolder、Table、record data、Value Object、Enum等のsource artifactを作成し、document kindごとのtyped editorを増やせる構造を維持する。ただし各create operationと専用editor semanticsは対応するcanonical specificationが整った時点で追加する。現在のrecord editing Objectiveでは新規artifact作成はscope外である。
+Explorerからfolder、Table、record data、Value Object、Enum等のsource artifactを作成し、document kindごとのtyped editorを増やせる構造を維持する。ただし各create operationと専用editor semanticsは対応するcanonical specificationが整った時点で追加する。creationのcurrent ownerは[Source Creation](source-creation/spec.md)。この初期sliceの経緯からcurrent non-goalを導出しない。
 
 ## 未解決事項（Open Questions）
 
 None identified for the initial Desktop existing-record authoring shell. window layout persistence、right inspector、command palette等は将来UXとして別途扱う。表示テーマは[Color Theme](color-theme/spec.md)が所有する。
 
+
+[Rewrite baseline](rewrite-baseline.md)はlegacy surfaceのtransitionを所有する。

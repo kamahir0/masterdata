@@ -1,8 +1,8 @@
 # Test Purification Proposal
 
-Status: Draft
+Status: Approved
 
-testはexecutable evidenceであり、存在だけでproduct contractにならない。意味の分類は [registry](classification.md)、input/oracleは [corpus](compatibility-corpus.md)、workflowは [matrix](acceptance-matrix.md)。今回はtestをmove/delete/rewireしない。
+testはexecutable evidenceであり、存在だけでproduct contractにならない。意味の分類は [registry](classification.md)、input/oracleは [corpus](compatibility-corpus.md)、workflowは [matrix](acceptance-matrix.md)。旧testはcurrent regressionとして保持し、rewrite gateは独立corpusへのconformanceで切る。
 
 ## 6つの役割
 
@@ -34,7 +34,7 @@ testはexecutable evidenceであり、存在だけでproduct contractになら�
 | `workspace-fixtures.ts` | mock入力・期待値の補助資料 | legacy `openDataFile` / `openTableContext` adapterの再現は不要 |
 | `desktop-e2e.mjs` | Actual Desktop: focus、geometry、creation、Settings、Build / stale/fresh Publish wiring | geometry calibrationとWebDriver往復をproduct latencyにしない |
 | `navigation-desktop.mjs` | Actual Desktop/Performance: selected state、old-content防止、rapid・dirty・keyboard・bounded DOM | synthetic clickを全てOS pointer入力と呼ばない。`reads <= clicks`だけをcoalescing proofにしない |
-| core integration（15 files）+ inline tests | Domain/Compatibility/Safety: Tables/types/reference、source patch、migration、parse、config | parser/AST型、helper API、flow mapping oracleはD6保留 |
+| core integration（15 files）+ inline tests | Domain/Compatibility/Safety: Tables/types/reference、source patch、migration、parse、config | parser/AST型、helper API、D6はportable flow byte casesで保護 |
 | app integration（8 files）+ inline tests | Shared application/Safety: Save / context / receipt / .NET / Publish / workspace | exact stateless service / session type / command split |
 | CLI integration（2 files） | Public automation / delivery boundary | internal reportの全JSONfieldの永久固定。変更前にpublic/undocumentedを確認 |
 | codegen integration（1 file）+ .NET tests | Consumer Compatibility: generated code / binary compile-load、selection、canonical order | formatting snapshotやinternal bridge requestをsemantic contractと混同しない |
@@ -55,3 +55,15 @@ phase instrumentationのcounterはarchitectureを検証できる有用なseam。
 acceptance、compatibility、safety、performanceを意味ごとに識別し、同じsource bytes caseを共有できる。directory名やtest frameworkは拘束しない。core semanticsは最小boundaryでdeterministicに試し、actual Desktopはgeometry / focus / native-thread / IPC / first usable interactionに集中する。
 
 port順序は、source/config/consumer corpus → fresh write safety → daily authoring → navigation / bounded renderを最初のvertical sliceで同時に検証する。全機能後にperformance suiteを追加する順序にはしない。
+
+## Rewrite gate manifest
+
+| Gate class | 対象 |扱い |
+| --- | --- | --- |
+| Rewrite acceptance | fixtures/rewrite-oracle/v1 のinput / intent / expected、canonical domain / GUI contract | 新adapterで同じ意味を検証。legacy helper不要 |
+| Current implementation regression | 現Rust / GUI / Tauri / .NET test、source-text app.test.mjs、exact DTO mock、transform calibration | 現製品維持に実行する。新architectureのAPI / topologyを要求しない |
+| Historical / obsolete | 0047 insertion line、0044 revoked Save案、旧Complex footer、retired Web / Computed / Released、D1〜D5 legacy surface test | future rewrite gate外。現testに残るならhistorical / legacy guardとして読む |
+
+core/appのrewrite_oracle.rsとconsumer scriptはcurrent implementation adapterでありoracleそのものではない。known gapをassertしてgreenにする現adapter testはconformance passではなくgap固定・期待値保全のregression。rewrite implementationではgap exemptionを認めない。
+
+source regexで偶然守られていたdirty / lossless / stale / focus boundaryはworkflows.json、byte / Save scenarios、performance work-countへ移した。GUI mocked testだけでactual Desktop interactionを証明しない。

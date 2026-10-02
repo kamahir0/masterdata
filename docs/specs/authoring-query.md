@@ -2,6 +2,8 @@
 
 Status: Approved
 
+Scope transition（0051 Human D2 / D3 / D5）: Search / Find、source provenance / cross-source composition、saved sourceとdirty bufferの区別、Build inclusionはcurrent domain contract。`AUTHORING-QUERY-002` / `AUTHORING-QUERY-003`のtyped filter / sortはlegacy capabilityに限り、rewrite baselineのrequired behaviorではない。`AUTHORING-OVERVIEW-*`はdataset意味論を保護し、standalone GUI destinationを要求しない。
+
 Domain: Authoring
 
 この仕様は、Desktop制作v1のData Editor / Table Overviewで使用するread-only search、filter、sortと保存済みOverview datasetを定義する。適用記録は[仕様変更0016](../spec-changes/0016-desktop-daily-editing.md)および[0017](../spec-changes/0017-desktop-workspace-settings.md)を参照する。
@@ -15,6 +17,8 @@ filter / search / sortはshared layerがtyped snapshotから導出し、source b
 検索は全top-level valid non-null scalarの表示textに対するcase-sensitive部分一致のORとする。literal string/Enum symbol、bool小文字、数値はAUTHORING-BATCH-004のcopy textを使用する。query emptyは検索制約なし。complex、invalid、nullのtextを検索一致と推測しない（MUST NOT）。
 
 ### AUTHORING-QUERY-002
+
+Deprecated baseline / legacy regression.
 
 column filterは複数条件のANDとし、以下のoperatorだけをv1で提供しなければならない（MUST）。operator/input不正はquery failureで、旧結果をcurrentとして表示してはならない（MUST NOT）。query stateはproject source/configへ保存しない。
 
@@ -30,6 +34,8 @@ column filterは複数条件のANDとし、以下のoperatorだけをv1で提供
 float/doubleの数値filterとFlags / Array / Customの構造queryはv1外とし、数値comparison capabilityを暗黙追加しない。
 
 ### AUTHORING-QUERY-003
+
+Deprecated baseline / legacy regression.
 
 表示sortは単一columnのascending / descending / noneとし、比較可能なint / uint / long / ulong / string / Value Objectだけに提供しなければならない（MUST）。comparisonはApproved Primitive / Value Object ownerに従う。valid値、null、その他invalidの順を両方向で保ち、descendingはvalid値内だけを反転する。同値と各非valid群は入力source順でstableとする（MUST）。
 Enum / bool / float / double / complexのsortはv1外。schema column順をview独自順に変えない。

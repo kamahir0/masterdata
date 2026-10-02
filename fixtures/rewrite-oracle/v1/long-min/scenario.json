@@ -1,0 +1,22 @@
+{
+  "id": "long-min",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "id",
+    "value": {
+      "meaning": "integer",
+      "decimal": "-9223372036854775808"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "SOURCE-EDIT-005: unrelated bytesを変更しない"
+}

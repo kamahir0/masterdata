@@ -1,0 +1,22 @@
+{
+  "id": "flow-unrelated",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "note",
+    "value": {
+      "meaning": "text",
+      "text": "new"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "D6 existing flow subtreeのunrelated bytes/style preservation。"
+}

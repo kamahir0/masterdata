@@ -1,0 +1,43 @@
+{
+  "id": "flow-local",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "profile",
+    "value": {
+      "meaning": "mapping",
+      "members": [
+        {
+          "name": "credits",
+          "value": {
+            "meaning": "integer",
+            "decimal": "18446744073709551615"
+          }
+        },
+        {
+          "name": "label",
+          "value": {
+            "meaning": "text",
+            "text": "new"
+          }
+        },
+        {
+          "name": "alias",
+          "value": {
+            "meaning": "null"
+          }
+        }
+      ]
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "D6 safe local editで既存flow styleとsibling lexical bytesを保持。"
+}

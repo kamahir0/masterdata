@@ -1,0 +1,22 @@
+{
+  "id": "literal-separator",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "note",
+    "value": {
+      "meaning": "text",
+      "text": "new\n"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "bare literal clipのseparator blank lineは編集対象に含めない。folded / modifierはYAML-SUBSET-015でunsupported。"
+}

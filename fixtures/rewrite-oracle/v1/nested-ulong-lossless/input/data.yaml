@@ -1,0 +1,9 @@
+kind: data
+table: item
+records:
+  - id: 1
+    note: old
+    profile:
+      credits: 18446744073709551615 # precise
+      label: 'old'
+      alias: null

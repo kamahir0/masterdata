@@ -1,13 +1,15 @@
 # Development State
 
-Stage: objective-complete
-Candidate: c5feb37a3088208bb4c5737d073473e2cf7aeb31
-Work base: eb2acd00af4bdd3c9751fab134ba7e46300f7e59
+Stage: designing
+Candidate: none
+Work base: 0ea1d7103f6842bbd5266c23f7579f825df53d15
 
 ## Active work
 
-None.
+Completed: fresh recovery / D1〜D6 canonical application / portable bytes・Save・structural oracle。
+In progress: Tier1 Desktop・native / capacity・consumer evidence、code-blind review。
+Remaining: evidence reconciliation、check-all / required CI、Ready / Not Ready verdict。
 
 ## Blocking findings
 
-None.
+Readiness: actual generated consumerのnested Value Objectが2001→0。不一致を期待値へ取り込まない。未接続failure oracle / Tier1 evidenceは[finalization report](rewrite-preparation/finalization-report.md)に集約。

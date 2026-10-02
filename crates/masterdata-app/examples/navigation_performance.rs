@@ -5,6 +5,10 @@ use std::{fmt::Write as _, fs, path::Path, time::Instant};
 
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
+    if args.get(1).is_some_and(|arg| arg == "--distribution") {
+        distribution();
+        return;
+    }
     if args.get(1).is_some_and(|arg| arg == "--write-fixture") {
         write_fixture(Path::new(args.get(2).expect("destination")));
         return;
@@ -42,6 +46,59 @@ fn main() {
             navigate(path);
         }
     });
+}
+fn distribution() {
+    // Distribution is native + serialization, not IPC/paint/usable editor.
+    for run in 1..=3 {
+        let temp = tempfile::tempdir().unwrap();
+        write_fixture(temp.path());
+        let started = Instant::now();
+        let (session, cold) = measure_read(|| {
+            WorkspaceAuthoringSession::open(Some(temp.path()), temp.path()).unwrap()
+        });
+        println!(
+            "{}",
+            serde_json::json!({"run":run,"case":"cold","samples":1,"wallMs":started.elapsed().as_secs_f64()*1000.0,"metrics":cold})
+        );
+        let navigate = |path: &str| {
+            let view = session.select_source(path).unwrap();
+            let _span = read_span("serialization");
+            serde_json::to_vec(&view).unwrap();
+        };
+        sample("first-projection-single-sample", || {
+            navigate("sources/a-1.yaml")
+        });
+        for (label, target, alternate) in [
+            ("revisit", "sources/a-1.yaml", "sources/c-2.yaml"),
+            ("same-table", "sources/a-2.yaml", "sources/a-1.yaml"),
+            ("cross-table", "sources/b-schema.yaml", "sources/a-1.yaml"),
+            (
+                "schema-selection",
+                "sources/c-schema.yaml",
+                "sources/a-1.yaml",
+            ),
+        ] {
+            let mut times = Vec::new();
+            let mut counts = std::collections::BTreeMap::new();
+            for _ in 0..100 {
+                navigate(alternate);
+                let started = Instant::now();
+                let (_, metrics) = measure_read(|| navigate(target));
+                times.push(started.elapsed().as_secs_f64() * 1000.0);
+                for (phase, metric) in metrics.phases {
+                    *counts.entry(phase).or_insert(0u64) += metric.calls;
+                }
+            }
+            for phase in ["discovery", "enumeration", "yamlParse", "validation"] {
+                assert_eq!(counts.get(phase).copied().unwrap_or(0), 0, "warm {phase}");
+            }
+            times.sort_by(f64::total_cmp);
+            println!(
+                "{}",
+                serde_json::json!({"run":run,"case":label,"boundary":"native-including-serialization","samples":100,"medianMs":(times[49]+times[50])/2.0,"p95Ms":times[94],"maxMs":times[99],"workCounts":counts,"rawMs":times})
+            );
+        }
+    }
 }
 fn sample<T>(label: &str, operation: impl FnOnce() -> T) {
     let started = Instant::now();

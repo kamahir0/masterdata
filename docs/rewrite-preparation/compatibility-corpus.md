@@ -1,14 +1,14 @@
-# Compatibility Corpus Inventory / 移植案
+# Compatibility Corpus Inventory / Independent Oracle
 
-Status: Draft
+Status: Approved
 
-固定inputはrewriteの資産であり、既存production codeと同じ内部APIを呼べることは互換性ではない。これはinventory / 提案であり、独立したexecutable corpusの抽出完了ではない。[適用境界](README.md) に従う。
+固定inputはrewriteの資産であり、既存production codeと同じ内部APIを呼べることは互換性ではない。独立corpusのinput / expectedと現adapterの接続範囲を分ける。[適用境界](README.md) に従う。
 
 | Asset / 現在の場所 | なぜcompatibility assetか | 残すinput / oracle | 精製上の注意 |
 | --- | --- | --- | --- |
 | [minimal](../../fixtures/minimal) / [full](../../fixtures/full) / [showcase](../../fixtures/showcase) | project layout、type declaration、profile、実MasterMemory deliveryの例を持つ | source/config bytes、declared kind/name/key、expected schema / records / generated public API / loaded binary | demoが全仕様oracleではない。fullをspaces付きtemp pathへcopyするtestも維持 |
 | [invalid](../../fixtures/invalid) | malformed YAML、unknown/missing kind、duplicate schema/field key、invalid identifier / configを保持 | 各入力にexpected phase / diagnostic category / no mutation / no stale editor | config invalidが他source errorを隠すcombined fixture。isolated caseへ抽出する後続作業が必要 |
-| [source preservation integration](../../crates/masterdata-core/tests/source_edit_preservation.rs) と [source edit inline tests](../../crates/masterdata-core/src/source_edit.rs) | comments / whitespace / quotes / exact integers / CRLF / block scalar / occurrenceのbug knowledge | before bytes、edit intent、after bytes、unchanged span、reversion / no-op bytes | helper名・AST構造をoracleにしない。flow mapping caseはD6保留 |
+| [source preservation integration](../../crates/masterdata-core/tests/source_edit_preservation.rs) と [source edit inline tests](../../crates/masterdata-core/src/source_edit.rs) | comments / whitespace / quotes / exact integers / CRLF / block scalar / occurrenceのbug knowledge | before bytes、edit intent、after bytes、unchanged span、reversion / no-op bytes | helper名・AST構造をoracleにしない。flow mappingはD6の独立5caseへ抽出済み |
 | [config patch tests](../../crates/masterdata-core/src/config_edit.rs) | multiline TOML、quoted keys、inline comments、decoy headerを誤編集しない | before/after bytes、project identity、binding / path resolution、no-op | parser libraryやtext scanner loopは自由。user UI stateをproject TOMLへ移さない |
 | [inline records](../../crates/masterdata-core/tests/inline_records.rs) / [Table saves](../../crates/masterdata-app/tests/table_authoring.rs) | inline / separate / mixedの同値意味と異なるphysical ownership | 同一semantic dataset、composition後bytes、selected / inactive source scope | source topologyを単一方式へ変換するrewriteではない |
 | [primitives / modifiers / enums / custom types](../specs/type-system/README.md) と [type tests](../../crates/masterdata-core/tests/type_system.rs) | int64/uint64境界、nominal identity、nullable/Array/Flags、cycle・invalidityがdomainを定める | exact values、valid/invalid matrix、unknown値保持、C# compile/consumer expectations | `AuthoringValue`のvariant名やstring wire shapeは内部手段 |
@@ -28,10 +28,10 @@ Status: Draft
 | [navigation fixture / harness](../../crates/masterdata-app/examples/navigation_performance.rs) / [Desktop](../../apps/gui/tests/navigation-desktop.mjs) | 12k corpus、2k×20 view、rapid switchの実用latencyを捉える | 固定dimensions、inline/separate/mixed、phase/work counts、selected targetとdirty / keyboard | protocolは [performance](performance.md)。exact session APIをport条件にしない |
 | [100k / 10k harness](../../crates/masterdata-app/examples/desktop_v1_performance.rs) | capacity・wide/long input・paste costのregression input | source/config / dimension生成条件、typed paste、RSSとstage latency、追加のexpected output | `.expect`成功だけでsemantic output correctnessを証明しない |
 
-## 後続applicationで抽出する形式
+## Portable oracleとcoverage
 
 各caseは **input bytes / config / user intent / expected semantic result or exact output / allowed unchanged regions / failure outcome / provenance** を持つ。旧constructorやTauri invokeを使わずにoracleを読めること。安全性caseにはexternal mutation / fault injectionのtimelineを添える。
 
 public contract（source syntax、config、documented CLI、generated C#、MasterMemory / Unity consumer）とinternal protocol（GUI adapter、Application DTO、builder request/report）を分ける。public outputでもformatting全文を固定する必要はなく、syntax/API・loaded semantics・determinismをoracleにする場合を明記する。
 
-このObjectiveではtestのmove/deleteやfixture書換えを行っていない。未抽出のinline oracle、D6、Tier1 p95、Unity actual runtimeのgapは [audit report](audit-report.md) のreadinessに反映する。
+独立 [v1 corpus](../../fixtures/rewrite-oracle/v1/README.md) はbyteScenarios17、Save7、interpretation9、workflow23、capacity / consumer expectationsを持つ。current adapterのpass、known gap、未接続workflow、Tier1 / consumer不足は [finalization report](finalization-report.md) のreadinessへ反映する。既存fixture・legacy testsは削除していない。

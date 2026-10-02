@@ -1,0 +1,17 @@
+kind: schema
+table: probe
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 1
+    name: parentId
+    type: int
+primaryKey:
+  fields: [id]
+references:
+  - name: parent
+    fields: [parentId]
+    target:
+      table: item
+      fields: [id]

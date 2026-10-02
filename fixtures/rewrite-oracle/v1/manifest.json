@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "byteScenarios": [
+    "comments-quotes-order",
+    "crlf",
+    "duplicate-pk-occurrence",
+    "long-min",
+    "long-max",
+    "quoted-null",
+    "semantic-invalid-source-safe",
+    "literal-separator",
+    "flow-parse",
+    "flow-unrelated",
+    "flow-local",
+    "flow-unsafe",
+    "new-mapping-block",
+    "nested-ulong-lossless",
+    "inline-record",
+    "folded-unrelated",
+    "lexical-unrelated"
+  ],
+  "occurrenceAddressing": "1-based order in physical source at base capture; never PK",
+  "saveScenarios": [
+    "save-record",
+    "save-schema",
+    "save-both",
+    "save-inline",
+    "save-mixed",
+    "conflict-no-partial",
+    "cached-identity-no-authorization"
+  ],
+  "structuralScenarios": [
+    "migration-rename",
+    "migration-drop",
+    "migration-add"
+  ]
+}

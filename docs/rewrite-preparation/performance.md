@@ -1,8 +1,8 @@
-# Performance / Responsiveness Constitution案
+# Performance / Responsiveness Constitution
 
-Status: Draft
+Status: Approved
 
-性能は最初のvertical sliceからproduct contractとして扱う。次の数値はrewrite用candidate budgetであり、現行実装が満たしたという主張でも、異なるCI hardwareへ固定thresholdを適用する承認でもない。[適用境界](README.md) に従う。
+性能は最初のvertical sliceからproduct contractとして扱う。次の数値は0051 Human-selected rewrite targetであり、現行実装が満たしたという主張でも、異なるCI hardwareへ固定thresholdを適用する承認でもない。[適用境界](README.md) に従う。
 
 ## Baselineの監査
 
@@ -33,7 +33,7 @@ final Linux EPYC7763 / 4 vCPU: load 78,161ms、query 82,069ms、preview 91,766ms
 
 固定input維持は有用だが、harness成功だけでquery結果やpaste全cellの期待値が証明されたとは扱わない。新corpusでは正しい出力oracleとstage別latency / RSSを付ける。100k全量のone-shot処理を毎navigationで再現する要件は除外する。
 
-## 構造上の契約案
+## 構造上の契約
 
 通常の同一Project warm selectionのcritical pathでは、**project-wide discovery = 0、enumeration = 0、YAML parse = 0、validation = 0**。changed source / required dependencyのfreshness確認、局所reparse、必要なprojectionは許容する。inventoryのbackground reconciliationを禁止する意味ではないが、clickごとの全体rebuildや並列rebuildは許容しない。
 
@@ -43,9 +43,9 @@ selectionはbackend completionを待たずtargetを示す。new target header / 
 
 dirty overlayはread baseと別所有。read cacheはwrite authorizationではない。freshness不明なsnapshotをcurrent editableとして出さず、必要なidentity確認を経る。writeのfresh preflightは [domain-safety](domain-safety.md) を維持する。
 
-## Candidate budgets
+## Reference-hardware budgets
 
-| 操作 / boundary | Candidate target | 必須の測定区別 |
+| 操作 / boundary | Rewrite target | 必須の測定区別 |
 | --- | --- | --- |
 | selection visual feedback / target identity | next frame、通常16–33ms級 | React commitとpaint opportunityを別記録 |
 | warm backend view derivation（2,000 × 20） | p95 < 50ms級 | freshness + projection + serializationまで。IPCは別 |
@@ -58,9 +58,9 @@ dirty overlayはread baseと別所有。read cacheはwrite authorizationでは�
 | local single-source Save（2,000 × 20） | 200ms級を候補として測定から確定 | fresh preflight / commit / fs latency / Unknownを分離。安全性を省略しない |
 | large / wide scroll・editing | bounded render、通常frame < 33ms級、main-thread long taskを追跡 | 100k dataset全量転送・mountとviewportを区別 |
 
-50ms / 150msはcandidateであって、単発Mac 26msだけから承認したhard SLAではない。現行Desktopはwarm UI target未達であり、rewrite readinessはこのgapを明示した状態で判断する。capacity operationsの絶対budget / memory capは現evidenceだけでは定まらない。reference hardwareでthroughput / peak RSSを測り、baseline比とabsolute tailの両方を最初のsliceから残す。
+50ms / 150msはHuman-selected reference-hardware targetであり、異なるhardwareへ一律適用するhard CI SLAではない。現行Desktopはwarm UI target未達であり、rewrite readinessはこのgapを明示した状態で判断する。capacity operationsの絶対budget / memory capは現evidenceだけでは定まらない。reference hardwareでthroughput / peak RSSを測り、baseline比とabsolute tailの両方を最初のsliceから残す。
 
-## 測定protocol案
+## 測定protocol
 
 release、Tier1 macOS arm64 / Windows x64を主対象に、CPU / core / RAM / OS / runtime / toolchain / fixture hash / selected dimensions / dirty stateを記録する。Linux CIは補助evidence。同じ条件のbaselineなしにhardware間の改善率を出さない。
 
@@ -75,3 +75,7 @@ rapid testは20–50 selections、最後のtarget、dirty/history/query保持、
 closed per-cell Popoverのmount costが旧Desktopで見つかり、`d811361`で改善された。source switchingによる過剰なcomponent recreation、geometry再測定、duplicate commit、global update fan-out、offscreen controls、巨大DTO、unbounded DOMを計測対象にする。exact componentの再利用をtestが要求しても、product契約にはしない。
 
 semantic datasetとcurrent UI projectionは分離できること。DOM virtualizationだけでserialization / IPC costが消えたと扱わない。現行2k native serialization約6msだけを理由にpagination protocolを必須化しない。bounded transportは支配costの測定で必要になった時に選ぶ。最初のvertical sliceに上記inputとwork-count / end-to-end harnessを置き、機能完成後のtuningへ延期しない。
+
+## Finalization時のfresh evidence
+
+今回のdistribution、current adapterのgap、未取得platform / boundaryは [finalization report](finalization-report.md) を参照する。上の0050の数値はHistorical Evidenceであり今回の再実行結果ではない。正式のobservable contractは [GUI performance](../gui/performance.md)。dirty revisit / rapid / first accepted interactionをnativeの4caseから推定しない。

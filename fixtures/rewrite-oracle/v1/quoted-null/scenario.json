@@ -1,0 +1,22 @@
+{
+  "id": "quoted-null",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "note",
+    "value": {
+      "meaning": "text",
+      "text": "null"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "quoted nullはScalar text。unquoted nullだけがNull。"
+}

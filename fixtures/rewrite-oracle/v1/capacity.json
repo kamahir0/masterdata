@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "input": {
+    "tables": 1,
+    "records": 100000,
+    "dataFiles": 10,
+    "columns": 20,
+    "recordsPerFile": 10000,
+    "recordId": "fileIndex * 10000 + rowIndex",
+    "fieldValue": "recordId + columnIndex"
+  },
+  "operation": {
+    "selectedFileIndex": 0,
+    "findText": "99999",
+    "pasteRows": 1000,
+    "pasteColumns": "field01..field10",
+    "pasteValue": "1000000 + rowIndex * 10 + zeroBasedPasteColumn"
+  },
+  "expected": {
+    "selectedRows": 10000,
+    "findMatches": [],
+    "pasteChangedCells": 10000,
+    "allOtherCellsUnchanged": true,
+    "diagnostics": [],
+    "implicitSave": false
+  },
+  "evidenceRequired": [
+    "stage latency",
+    "peak RSS",
+    "bounded mounted UI",
+    "all candidate cells checked"
+  ]
+}

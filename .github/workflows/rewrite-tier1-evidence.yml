@@ -1,0 +1,48 @@
+name: Rewrite Tier1 Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact Candidate SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+      - name: Require exact identity
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          test "${#CANDIDATE_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Collect native distributions (not Desktop paint)
+        shell: bash
+        run: |
+          mkdir -p rewrite-evidence
+          node -e 'const os=require("node:os"),fs=require("node:fs"),cp=require("node:child_process");fs.writeFileSync("rewrite-evidence/host.json",JSON.stringify({sha:cp.execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(),platform:os.platform(),arch:os.arch(),release:os.release(),cpus:os.cpus().map(c=>c.model),memoryBytes:os.totalmem(),rust:cp.execFileSync("rustc",["-Vv"],{encoding:"utf8"}),node:process.version},null,2));'
+          cargo run --release -p masterdata-app --example navigation_performance -- --distribution > rewrite-evidence/native.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rewrite-native-${{ matrix.os }}-${{ inputs.candidate_sha }}
+          path: rewrite-evidence/

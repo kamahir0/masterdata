@@ -1,0 +1,8 @@
+kind: data
+table: item
+records:
+  - id: 2
+    note: >
+      first line
+      second line
+    profile: null

@@ -1,0 +1,16 @@
+{
+  "id": "migration-drop",
+  "operation": {
+    "intent": "drop-field",
+    "table": "item",
+    "field": "note"
+  },
+  "expected": {
+    "affectedRecordCount": 2,
+    "destructive": true,
+    "requiresReviewedAuthorizationBeforeCommit": true,
+    "candidateSources": "expected",
+    "sourceDiskUnchangedUntilApply": true
+  },
+  "rationale": "MIGRATION source-preserving multi-source patch; declaration key / record values / unrelated bytes remain authoritative. Drop consequence is explicit."
+}

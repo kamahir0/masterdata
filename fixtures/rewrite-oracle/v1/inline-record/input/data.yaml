@@ -1,0 +1,20 @@
+kind: schema
+table: item
+fields:
+  - key: 0
+    name: id
+    type: long
+  - key: 1
+    name: note
+    type: string
+  - key: 2
+    name: profile
+    type: Profile
+    nullable: true
+primaryKey:
+  fields: [id]
+secondaryKeys: []
+records:
+  - id: 1
+    note: 'old'
+    profile: null

@@ -1,0 +1,10 @@
+kind: data
+table: item
+records:
+  - id: 1
+    note: |
+      old
+
+  # next record
+  - id: 2
+    note: other

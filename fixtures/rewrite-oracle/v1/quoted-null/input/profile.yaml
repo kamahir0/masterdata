@@ -1,0 +1,14 @@
+kind: type
+name: Profile
+custom:
+  fields:
+    - key: 0
+      name: credits
+      type: ulong
+    - key: 1
+      name: label
+      type: string
+    - key: 2
+      name: alias
+      type: string
+      nullable: true

@@ -60,9 +60,9 @@ Pending deleteによりcandidateから除外されたrecordだけに属するdia
 
 ### GUI-DATA-ROW-009
 
-Diff viewはAdded record draftとPending deleteを含むcurrent file Save candidateをbase snapshotと比較して表示しなければならない（MUST）。gridとDiff間を移動してもAdd / Delete / existing value editのlocal bufferを保持しなければならない（MUST NOT discard）。
+candidate compareはAdded record draftとPending deleteを含むcurrent file Save candidateをbase snapshotと比較して表示しなければならない（MUST）。gridとcompare間を移動してもAdd / Delete / existing value editのlocal bufferを保持しなければならない（MUST NOT discard）。
 
-可能な範囲で、Diffからgridへ戻る際は直前に操作していたsurviving row / cell / nested controlへfocus contextを復元しなければならない（MUST）。
+可能な範囲で、compareからgridへ戻る際は直前に操作していたsurviving row / cell / nested controlへfocus contextを復元しなければならない（MUST）。
 
 ### GUI-DATA-ROW-010
 
@@ -113,7 +113,7 @@ Nullableのnull/non-null transition、Array materializationとelement add/remove
 
 ## Compatibility
 
-既存Data Editorのexisting-record edit behavior、keyboard Save、dirty lifecycle、validation、Diff、Build semanticsを維持する。Added record draftだけが初回Save前にkey fieldをeditableとする例外であり、Save success後は既存`GUI-DATA-STATE-001`のscopeへ戻る。
+既存Data Editorのexisting-record edit behavior、keyboard Save、dirty lifecycle、validation、Diff、Build semanticsを維持する。existing keyのdirect editもcurrent `GUI-DATA-EDIT-001`に従う。pasteのkey制約をdirect editへ流用しない。
 
 Add Rowのfield category対応をApproved Type Systemのv1 supported resolved value shapeへ拡張するが、source record order、logical Table、key、generated C#、binary semanticsを変更しない。未入力typed valueのYAML `null` placeholderはvalidation non-blocking contractに従い、domain defaultを追加しない。
 
@@ -121,7 +121,7 @@ Add Rowのfield category対応をApproved Type Systemのv1 supported resolved va
 
 None identified. Exact complex editor layout、DTO field name、internal draft data structureはobservable contractを変えない範囲でimplementation detailとする。
 
-## 非目標
+## Historical initial-slice non-goals（current authorityではない）
 
 - `$tags` authoring。
 - record duplicate、source間move、bulk add / bulk delete。

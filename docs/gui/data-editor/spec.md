@@ -28,13 +28,13 @@ validation diagnosticsの一覧は、main gridの編集を妨げない下部`Pro
 
 ### GUI-DATA-LAYOUT-005
 
-source diffはmain gridとは別のfile単位`Diff` view / editorとして表示しなければならない（MUST）。Diffを確認するためにdirty bufferを保存または破棄する必要があってはならず（MUST NOT）、Diff表示自体をSaveやvalidationのgateとして扱ってはならない（MUST NOT）。
+unsaved candidateのcompareを、dirty bufferを保存・破棄せず必要文脈から確認できなければならない（MUST）。独立した常設Diff viewを要求しない。compare表示自体はSave / validationのgateではない。Conflict / Migrationのcompareは対応するsafety ownerに従う。
 
 ### GUI-DATA-LAYOUT-006
 
 定常的なData編集画面はgridを最大の視覚領域とし、primary editing commandと現在のfile statusへ到達できなければならない（MUST）。正常なvalidation / Saved / selection countを同強度の常設button列として表示しなくてよい。dirty、validation pending / error、Conflict、Recovery Requiredは対象fileと関係づけて識別でき、assistive technologyにも伝えなければならない（MUST）。
 
-Searchは直接到達可能とし、query詳細とbatch操作は別々に開閉できる補助領域に置く。閉じても入力・selection・dirty bufferを失ってはならない（MUST NOT）。Problemsは0件時に閉じた状態から開始してよい（MAY）が、件数とvalidation stateへ到達でき、diagnosticとoperation failureは見失わない（MUST）。fileまたはProject areaを移動して同じData fileへ戻る際はquery / batch入力を復元し、別fileの入力を混入させてはならない（MUST）。表示中のquery resultとcontrolsのfile identityが食い違ってはならない（MUST NOT）。
+Searchは直接到達可能とする。高度な操作は必要文脈から開く。閉じても入力・selection・dirty bufferを失ってはならない（MUST NOT）。Problemsは0件時に閉じた状態から開始してよい（MAY）が、件数とvalidation stateへ到達でき、diagnosticとoperation failureは見失わない（MUST）。fileまたはProject areaを移動して同じData fileへ戻る際はSearch / selection stateを復元し、別fileの入力を混入させてはならない（MUST）。表示中のSearch resultとcontrolsのfile identityが食い違ってはならない（MUST NOT）。
 
 ### GUI-DATA-LAYOUT-007
 
@@ -146,7 +146,7 @@ Saveの`Success`後はcommitされたcontentを新しいbase snapshotとしてdi
 
 ### GUI-DATA-DIFF-002
 
-Diff viewは選択中source fileのbase snapshotと現在のlocal bufferに対応するSave candidateとの差分をfile単位で表示しなければならない（MUST）。Diff viewとgridの間を移動してもdirty bufferを保持し、可能な範囲でgrid selection / focus contextを復元しなければならない（MUST）。
+compareは選択中physical sourceのbase snapshotとcurrent Save candidateを識別しなければならない（MUST）。compareを開閉してもdirty / selection / historyを保持し、可能な範囲でsurviving targetへfocusを復元する。standalone tabやexact placementは固定しない。
 
 ### GUI-DATA-BUILD-001
 
@@ -222,7 +222,7 @@ gridのrow / column / cell関係、editable / read-only、selected / editing、d
 
 None.
 
-## 初期sliceの非目標
+## Historical initial slice（current non-goalsではない）
 
 - recordの追加・削除（別のApproved Record Mutation仕様が所有する）。
 - Value Object、Enum等の編集・作成。Table column編集は[Unified Table Editor](../table-editor/spec.md)が所有する。
@@ -232,7 +232,7 @@ None.
 
 これらはExplorer + typed editorsという全体構造の将来拡張を妨げない。
 
-## 将来拡張方向: Programmable View
+## Historical future idea: Programmable View（Deferred、rewrite baseline外）
 
 Human-requestedな将来product directionとして、Data Editorにsource fieldとは別のderived / annotation authoring支援を追加する可能性を保持する。これは現Current Objectiveの実装範囲ではなく、現在のpersisted format、runtime language、query semantics、security modelを定義するものでもない。
 
@@ -243,3 +243,7 @@ derived / annotation informationをTable schemaやMasterMemory runtime dataへ�
 ## 未解決事項（Open Questions）
 
 None identified for the existing-record Data Editor contract. Programmable View / Computed / Annotation column、Table横断view、高度なspreadsheet操作、layout customization等はcurrent Objective外の将来機能として別途仕様化する。
+
+## Rewrite transition
+
+[Rewrite baseline](../rewrite-baseline.md)が日常surfaceの範囲を所有する。旧独立Diff / Typed Filter / View Sort / Advanced Batch / Overviewのcapabilityはcurrent implementationに一時的に残ってよいが、clean implementationの必須surfaceではない。

@@ -70,12 +70,7 @@ custom tagを含む。
 
 ### YAML-SUBSET-007
 
-block mappingはサポートしなければならない（MUST）。flow mappingはサポートしてはならない（MUST NOT）。block sequenceとflow
-sequenceはサポートしなければならない（MUST）。flow sequenceのpunctuation、separator、whitespace、および改行は、custom
-Masterdata grammarではなく、YAML 1.2.2のflow-sequence syntaxに従わなければならない（MUST）。したがって、YAML 1.2.2のsyntaxとして
-validなmultiline flow sequenceも受理しなければならない（MUST）。flow sequence内のnested valueまたはconstructにも、このsubsetの
-unsupported ruleを適用しなければならない（MUST）。flow mapping、anchor、alias、explicit tag、およびunsupported scalar formは、
-flow sequence内であることを理由に許可してはならない（MUST NOT）。
+Retired / superseded by `YAML-SUBSET-019`（0051 Human D6）。旧flow mapping禁止はcurrent source compatibilityを定義しない。
 
 ### YAML-SUBSET-008
 
@@ -180,6 +175,10 @@ parser libraryの変更はこのsubset contractを変更せず、選択された
 このspecificationでは行わない。ApprovedのPrimitive Types仕様とのparser-boundaryの接続は、[仕様変更 0002](../spec-changes/0002-yaml-subset.md)
 によってatomicに適用済みであり、このspecificationはPrimitive Typesのtarget semanticsを変更しない。
 
+### YAML-SUBSET-019
+
+block mapping / block sequence / YAML 1.2.2のflow mapping / flow sequenceをサポートする（MUST）。existing flow mappingはsemanticに扱えなければならない（MUST）。flow syntax内にもduplicate key、unknown member、anchor / alias / tag等のsubset制約を適用する。syntax acceptanceと安全なlocal mutation capabilityは別であり、patchできないsyntaxをbroad reserializeする許可ではない。新規mappingのwriter styleは[Source Edit](source-edit.md) `SOURCE-EDIT-018`。
+
 ## 受け入れ証拠
 
 | Requirement | Success observation | Failure observation |
@@ -190,7 +189,7 @@ parser libraryの変更はこのsubset contractを変更せず、選択された
 | `YAML-SUBSET-004` | unknown semantic memberがerrorになる。 | unknown memberがsilent ignoreされる、またはGUI preservationをsemantic acceptanceとみなす。 |
 | `YAML-SUBSET-005` | 通常のmapping/sequenceが受理される。 | anchor、alias、`<<` mergeが受理される。 |
 | `YAML-SUBSET-006` | explicit tagなしのscalarが受理される。 | `!!str`、`!!int`、`!!timestamp`、custom tagが受理される。 |
-| `YAML-SUBSET-007` | block mapping、block sequence、YAML 1.2.2 syntaxに従うsingle-lineおよびmultiline flow sequenceが受理される。 | flow mapping `{ itemId: 1001 }`、またはflow sequence内のflow mapping・anchor・alias・explicit tag・unsupported scalar formが受理される。 |
+| `YAML-SUBSET-019` | block / flow mapping、block / flow sequence（multilineを含む）がsubset規則の下で受理される。 | flow構文だけを理由に既存sourceをrejectする、またはanchor / tag等の禁止を緩める。 |
 | `YAML-SUBSET-008` | full-line/inline commentを含む入力のdomain/binary resultがcommentなしと一致する。 | commentがdomain valueやbinary semanticsを変更する。 |
 | `YAML-SUBSET-009` | schema-owned boolean optionは`true`/`false`だけを受理し、record値はfield schemaへ委譲する。 | YAML libraryの広いboolean resolutionがschema optionやrecord fieldのauthorityになる。 |
 | `YAML-SUBSET-010` | `null`だけがnullになり、`~`がrejectされ、quoted `"null"`がstringになる。 | `~`がnull shorthandとして受理される。 |
@@ -261,7 +260,6 @@ records:
 ```yaml
 description: |-
   clipped
-values: [{ x: 1 }]
 1: Potion
 name:
 ```
@@ -269,7 +267,7 @@ name:
 ## 未解決事項（Open Questions）
 
 - source span、diagnostic code、duplicate/unsupported constructのerror severityをどう割り当てるか。
-- GUI saveでcomment、formatting、quote、orderingを保持する必要があるか。
+- source preservationは[Source Edit](source-edit.md)が確定済みowner。
 - YAML parser/libraryの採用、migration、maintenance policyをRFC 0002の比較からどう決定するか。
 
 ## 非目標

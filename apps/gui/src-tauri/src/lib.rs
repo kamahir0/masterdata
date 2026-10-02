@@ -896,8 +896,14 @@ fn build(
     })
 }
 
+#[cfg(feature = "navigation-evidence")]
+mod navigation_evidence;
+
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(feature = "navigation-evidence")]
+    let builder = builder.plugin(navigation_evidence::init());
+    builder
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]

@@ -1,0 +1,22 @@
+{
+  "id": "duplicate-pk-occurrence",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 2,
+    "field": "id",
+    "value": {
+      "meaning": "integer",
+      "decimal": "2"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "duplicate PKはdiagnostic、occurrenceはPKに依存しない。単一PK直接編集は許可。"
+}

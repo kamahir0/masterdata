@@ -1,0 +1,4 @@
+kind: data
+table: item
+records:
+  - id: 1 # first

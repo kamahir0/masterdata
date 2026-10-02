@@ -1,0 +1,22 @@
+{
+  "id": "inline-record",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "note",
+    "value": {
+      "meaning": "text",
+      "text": "new"
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "inline schema/recordsは同一physical source。record editでschema bytesを変えない。"
+}

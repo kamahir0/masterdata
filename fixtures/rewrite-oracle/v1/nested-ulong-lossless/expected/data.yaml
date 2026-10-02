@@ -1,0 +1,9 @@
+kind: data
+table: item
+records:
+  - id: 1
+    note: old
+    profile:
+      credits: 0 # precise
+      label: 'old'
+      alias: null

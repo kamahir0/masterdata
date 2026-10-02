@@ -1,0 +1,8 @@
+kind: schema
+table: item
+fields:
+  - key: 0
+    name: id # identity
+    type: int
+primaryKey:
+  fields: [id] # key binding

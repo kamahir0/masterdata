@@ -2,30 +2,30 @@
 
 Status: Approved
 
-この仕様はData Editorのrange selection、batch preview、query composition、未保存履歴、keyboard precedenceを定義する。[Data Editor](spec.md)のsingle-cell / dirty / Save contractと[Authoring Batch](../../specs/authoring-batch.md)、[Authoring Query](../../specs/authoring-query.md)を前提とする。適用記録は[仕様変更0016](../../spec-changes/0016-desktop-daily-editing.md)を参照する。
+この仕様はData Editorのrange selection、direct paste、Search composition、未保存履歴、keyboard precedenceを定義する。[Data Editor](spec.md)のsingle-cell / dirty / Save contractと[Authoring Batch](../../specs/authoring-batch.md)、[Authoring Query](../../specs/authoring-query.md)を前提とする。適用記録は[仕様変更0016](../../spec-changes/0016-desktop-daily-editing.md)を参照する。
 
 ## 規範要件
 
 ### GUI-GRID-001
 
-Data Editorはsingle active cellと矩形rangeのanchor/focusを区別し、Shift+Arrowとpointerで連続rangeを選択できなければならない（MUST）。非連続selectionはv1外。columnはschema順、rowはquery結果順とする。
-pasteはactive cellを左上とし、clipboard shapeだけを使う。選択rangeへのrepeat、sheet境界でのtruncate、row自動追加をしてはならない（MUST NOT）。fillは選択rangeへ利用者が入力した一つのtextを各target typeで解釈する。hidden rowへ適用しない。
+Data Editorはsingle active cellと矩形rangeのanchor/focusを区別し、Shift+Arrowとpointerで連続rangeを選択できなければならない（MUST）。非連続selectionはv1外。columnはschema順、rowはsource presentation順を基本とする。
+pasteはactive cellを左上とし、clipboard shapeだけを使う。選択rangeへのrepeat、sheet境界でのtruncate、row自動追加をしてはならない（MUST NOT）。pasteでhidden rowへ暗黙適用しない。
 
 ### GUI-GRID-002
 
-Grid navigation modeのCmd/Ctrl+Vはclipboardをshared codecでdecodeし、shared Applicationのbatch preflightでbase / buffer / schema/type / query/selection revisionを照合した後、全targetを一つのUndo単位でlocal bufferへ直接反映しなければならない（MUST）。single-cell pasteも同じ経路とする。失敗、read-only混入、stale、shape不一致ではbufferを変更せず、対象と理由を示さなければならない（MUST）。domain-invalid valueだけを理由にbuffer適用を拒否してはならない（MUST NOT）。pasteはSave / Build / Migrationを暗黙実行してはならない（MUST NOT）。
+Grid navigation modeのCmd/Ctrl+Vはclipboardをshared lossless codecでdecodeし、shared semantic preflight後に全targetを一つのUndo単位でlocal bufferへ直接反映しなければならない（MUST）。single-cell pasteも同じsafety boundary。unsafe localization、read-only混入、stale、shape不一致ではbuffer / historyを変更せず、理由を示す。domain-invalidだけではsource-safe適用を拒否しない。pasteはSave / Build / Migrationを暗黙実行しない。no-opは履歴を増やさない。
 
-利用者が変更前に範囲を確認できる明示的なPaste preview導線を残し、file、変更cell数、target row/column、before/after、diagnosticsを確認できなければならない（MUST）。Fillとrange Set Nullは従来通りpreviewと明示Apply / Cancelを要求する（MUST）。previewはbase、buffer revision、schema/type revision、query/selection revisionにbindし、どれか変わればApply不可とする（MUST）。Cancel/failureは元bufferとselectionを保つ。全cell no-opは履歴を増やさない。
+Fill / range Set Null専用workflow / persistent Batch previewはrewrite baselineに含めない。必要なcandidate compare capabilityは残すが、ordinary pasteに明示preview / Applyを要求しない。legacy previewのguardは既存production維持のため残ってよい。
 
 ### GUI-GRID-003
 
-query変更はcell edit確定後に反映しなければならない（MUST）。入力が表現不能ならactive editを保持してquery変更を停止する。domain-invalidだけでは確定を拒否しない。
-編集確定でrowがfilter対象外になった場合は同じ表示位置の次row、なければ前rowへselectionを移し、0件ならgridのempty stateへfocusを置く。sortで移動したsurviving occurrenceのselectionは追従する（MUST）。query変更はrangeをactive cell一つへ縮める。selection / edit targetはview ordinalだけで保持せず、source record occurrenceまたはAdded draft identityへ結び付ける（MUST）。
-Pending deleteは通常query結果と別のUndo可能な一覧として発見でき、range対象にしない。Add Row直後はfilter/sortをclearして新rowへfocusし、clearしたことを通知する（MUST）。これはsource順を変えない。
+Search / view stateの変更は未確定cell editと安全にcompositionする。source-safe editはdomain-invalidだけを理由に拒否しない。selection / edit targetはview ordinalだけで保持せず、physical source record occurrenceまたはAdded draft identityへ結び付ける（MUST）。source switchingでdirty / history / source-local Search / selectionを混同・破棄しない。Pending deleteはUndo可能でありpaste対象にしない。Add Rowへのfocus intentは一回限りで、遅延responseが後のuser focusを奪わない。
+
+旧filter / sortによるselection移動規則はlegacy regressionに限り、rewrite acceptanceではない。
 
 ### GUI-GRID-004
 
-fileごとの未保存履歴は、scalar edit確定、complex control一操作、Add Row、Delete、Undo Delete、batch Apply、およびTag確定を単位にUndo/Redoできなければならない（MUST）。typingの一文字ごとではなくedit確定を単位とする。new editはそのfileのRedoをclearする。
+fileごとの未保存履歴は、scalar edit確定、complex control一操作、Add Row、Delete、Undo Delete、paste、およびTag確定を単位にUndo/Redoできなければならない（MUST）。typingの一文字ごとではなくedit確定を単位とする。new editはそのfileのRedoをclearする。
 履歴は値だけでなくAdded draft、Pending delete、source provenance、nested sequence identity等を戻し、同じlocal stateから同じcandidateを再生成できなければならない（MUST）。Undo Deleteは削除前のeditsを戻す新操作として履歴へ入り、general Undoで再びPending deleteへ戻せる。Added draft削除をUndoすればそのdraftの入力が戻る。
 
 ### GUI-GRID-005
@@ -52,7 +52,7 @@ Array item handleのdrag/dropは0045の一つのcomplex value operationへ変換
 
 ## 既存Data Editor contractへの適用
 
-- `GUI-DATA-EDIT-001`のsingle-cell editingを維持し、本仕様のrange / paste / fill / Undo/Redoを追加する。fill handle、非連続range、bulk row add/deleteは対象外。
+- `GUI-DATA-EDIT-001`のsingle-cell editingを維持し、本仕様のrange / paste / Undo/Redoを追加する。fill handle、非連続range、bulk row add/deleteは対象外。
 - `GUI-DATA-LAYOUT-003`の初期/reset表示はsource順を維持し、明示query時のみAuthoring Queryに従う。
 - `GUI-DATA-KEY-002`のkeyboard-only編集を維持し、mode precedenceは`GUI-GRID-006`を使用する。
 - `GUI-DATA-ROW-004`のappend/source順をdefaultとし、Add Row後のquery clearは`GUI-GRID-003`に従う。
@@ -60,4 +60,8 @@ Array item handleのdrag/dropは0045の一つのcomplex value operationへ変換
 
 ## 受け入れ証拠
 
-filter中paste/fill、境界超過、preview後query変更、編集でrowが消える場合、Addでquery clear、Pending deleteのUndo導線、Add→edit→delete→Undo、Undo DeleteのUndo、Save All部分失敗、clean external reload、ConflictとUndo、IME / text-control precedenceを検証する。
+typed paste、境界超過・unsafe時のall-or-none、Searchと編集のcomposition、Pending deleteのUndo導線、Add→edit→delete→Undo、Undo DeleteのUndo、Save All部分失敗、clean external reload、ConflictとUndo、IME / text-control precedenceを検証する。
+
+## Rewrite transition
+
+[Rewrite baseline](../rewrite-baseline.md)が日常surfaceの範囲を所有する。旧独立Diff / Typed Filter / View Sort / Advanced Batch / Overviewのcapabilityはcurrent implementationに一時的に残ってよいが、clean implementationの必須surfaceではない。

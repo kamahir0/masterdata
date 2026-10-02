@@ -1,0 +1,43 @@
+{
+  "id": "new-mapping-block",
+  "operation": {
+    "intent": "edit-record-occurrence",
+    "source": "data.yaml",
+    "occurrence": 1,
+    "field": "profile",
+    "value": {
+      "meaning": "mapping",
+      "members": [
+        {
+          "name": "credits",
+          "value": {
+            "meaning": "integer",
+            "decimal": "18446744073709551615"
+          }
+        },
+        {
+          "name": "label",
+          "value": {
+            "meaning": "text",
+            "text": "new"
+          }
+        },
+        {
+          "name": "alias",
+          "value": {
+            "meaning": "null"
+          }
+        }
+      ]
+    }
+  },
+  "expected": {
+    "outcome": "candidate",
+    "source": "expected/data.yaml",
+    "dirtyPhysicalSources": [
+      "data.yaml"
+    ],
+    "implicitSave": false
+  },
+  "rationale": "D6\u65b0\u898fmaterialized mapping\u306edefault\u306fblock\u3002\u65e2\u5b58flow\u4fdd\u5b58\u3068\u306f\u5225\u5951\u7d04\u3002"
+}

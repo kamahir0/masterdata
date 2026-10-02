@@ -1,0 +1,22 @@
+{
+  "id": "migration-add",
+  "operation": {
+    "intent": "add-field",
+    "table": "item",
+    "field": "rank",
+    "key": 2,
+    "type": "int",
+    "initializer": {
+      "meaning": "integer",
+      "decimal": "7"
+    }
+  },
+  "expected": {
+    "affectedRecordCount": 2,
+    "destructive": false,
+    "requiresReviewedAuthorizationBeforeCommit": true,
+    "candidateSources": "expected",
+    "sourceDiskUnchangedUntilApply": true
+  },
+  "rationale": "MIGRATION source-preserving multi-source patch; declaration key / record values / unrelated bytes remain authoritative. Drop consequence is explicit."
+}

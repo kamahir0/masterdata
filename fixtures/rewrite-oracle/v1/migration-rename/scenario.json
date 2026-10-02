@@ -1,0 +1,17 @@
+{
+  "id": "migration-rename",
+  "operation": {
+    "intent": "rename-field",
+    "table": "item",
+    "field": "id",
+    "newName": "itemId"
+  },
+  "expected": {
+    "affectedRecordCount": 2,
+    "destructive": false,
+    "requiresReviewedAuthorizationBeforeCommit": true,
+    "candidateSources": "expected",
+    "sourceDiskUnchangedUntilApply": true
+  },
+  "rationale": "MIGRATION source-preserving multi-source patch; declaration key / record values / unrelated bytes remain authoritative. Drop consequence is explicit."
+}

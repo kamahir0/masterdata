@@ -1,0 +1,4 @@
+
+# Exact CRLF oracle bytes must survive checkout on every platform.
+fixtures/rewrite-oracle/** -text
+fixtures/rewrite-oracle/v1/crlf/** -text whitespace=cr-at-eol

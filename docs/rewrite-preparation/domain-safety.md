@@ -16,7 +16,7 @@ rewriteの内部APIを指定しない最小契約。詳細のcurrent authority�
 | occurrence identity ≠ PK value | duplicate / changed PK、同値Array itemでも狙ったoccurrenceだけを変更する。location mechanismやID型は自由 | [record mutation](../specs/source-record-mutation.md), [source edit](../specs/source-edit.md) |
 | inline / separate / mixed / emptyを等価に扱う | storage topologyを編集workflowに押しつけず、physical source安全性を維持する。`records`不在と空配列は同一source表現ではない | [Tables](../specs/table-and-keys.md), [0037](../spec-changes/0037-inline-table-records.md) |
 
-YAMLの許容syntaxは [yaml-subset](../specs/yaml-subset.md) を参照する。ただしflow mappingはApprovedとtestが衝突しており [D6](human-decisions.md#d6-yaml-flow-mapping) の解決まで新しいacceptance oracleにしない。禁止syntaxを黙って広げることも、現在受理されるsourceを互換性調査なしに拒否することも避ける。
+YAMLの許容syntaxは [yaml-subset](../specs/yaml-subset.md) を参照する。ただしflow mappingはApprovedとtestが衝突しており [D6](human-decisions.md#d6--yaml-flow-mapping) の解決まで新しいacceptance oracleにしない。禁止syntaxを黙って広げることも、現在受理されるsourceを互換性調査なしに拒否することも避ける。
 
 Table/type/key/referenceのnominal identity、modifier legality、nullableとdefaultの区別、Reference Required/Nullableとunique/non-uniqueの振る舞いはdomain contractとして残す。exact generated C# public shape、MessagePack key、reference helperはconsumer compatibilityでもある。[table/key](../specs/table-and-keys.md)、[reference](../specs/index-and-reference.md)、[C# naming](../specs/type-system/csharp-naming.md) の期待結果を移植し、内部module名と一緒に捨てない。
 

@@ -120,6 +120,6 @@ obsolete / legacyの詳細はregistry A30/A39–A41/A46–A57が所有する。�
 
 このObjectiveのfocused verificationはDraft link / classification count / scope check、`cargo xtask check-specs`、`cargo xtask check-rationale`、`cargo test -p xtask --test execution_state`、`git diff --check`。flow mapping findingについては `cargo test -p masterdata-core flow_custom_member_insertion_preserves_existing_mapping_bytes` が1 focused case pass（他caseはfiltered out）。full product / Desktop / performanceを今回再実行したという意味ではない。
 
-local結果: spec integrity（29 domain / 15 GUI / 520 Requirement IDs / 8 ADR / 8 RFC / 50 proposals / 656 relative links）pass、rationale integrity（164 files / 106 blocks / 200 references）pass、state integrity 3 tests pass。state checkでCandidate未設定値のcaseを`none`へ修正して再実行した。新Draft10 filesのlocal link欠落0、classification63項目の件数一致、全fileのDraft境界を確認した。
+local結果: spec integrity（29 domain / 15 GUI / 520 Requirement IDs / 8 ADR / 8 RFC / 50 proposals / 656 relative links）pass、rationale integrity（164 files / 106 blocks / 200 references）pass、state integrity 3 tests pass。state checkでCandidate未設定値のcaseを`none`へ修正して再実行した。新Draft10 filesのlocal link欠落0、classification63項目の件数一致、全fileのDraft境界を確認した。確定diffのfresh reviewでD6のfragment参照を修正し、Draft内のlocal heading linkも確認した。
 
 production/test/configを変えていないためdoc/state checksと自動Fast CIをdelivery gateにする。既存Deep / Desktop successは基準Candidateの歴史的evidenceであり、このDraftの新実行結果と混同しない。fresh確定Candidate reviewとrequired CI reconciliationはGit / Development Stateが所有する。

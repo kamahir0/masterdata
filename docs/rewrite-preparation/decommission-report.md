@@ -44,6 +44,6 @@ Rationale Freshness: retired mechanismsのrationaleはforensicに限定し、保
 
 Architecture: 新product implementation / skeletonなし。visible runtime sourceはconsumer oracleの2C#だけ、neutral checker以外のadapterなし。Git tagから旧Core / GUI / .NET sourceが存在することをobject存在で確認し、旧solutionを再配置していない。
 
-Findings: Blocking None identified。Non-blocking: actual Windows Desktop / Unity未実施は既存conformance条件へ引継ぎ済みで、今回の削除によるgapではない。
+Findings: exact Candidate scanでcanonicalの旧component名1件を発見し、同じresolved value編集能力というobservable契約へ補正。再scanでBlocking None identified。Non-blocking: actual Windows Desktop / Unity未実施は既存conformance条件へ引継ぎ済みで、今回の削除によるgapではない。
 
 Verdict: Ready to deliver clean-slate boundary（branch CI successはexact CandidateのDevelopment Stateでreconcileする）。旧product conformanceを実行したというverdictではない。

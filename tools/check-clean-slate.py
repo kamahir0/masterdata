@@ -208,7 +208,7 @@ for path in markdown:
         for identifier in re.findall(r"^#{2,6}\s+([A-Z]+(?:-[A-Z]+)*-\d{3})\s*$", text, re.M):
             require(identifier not in definitions, f"duplicate Requirement ID: {identifier}")
             definitions[identifier] = str(path)
-        forbidden = r"WorkspaceAuthoringSession|NativeApplicationService|open_table_context|select_source|App\.tsx|masterdata-(?:core|app|dotnet|codegen-csharp)"
+        forbidden = r"WorkspaceAuthoringSession|NativeApplicationService|open_table_context|select_source|App\.tsx|ValueEditor|TableEditor|TypeEditor|ApplicationSettings|pendingCellFocus|schemaDrafts|workspaceGeneration|masterdata-(?:core|app|dotnet|codegen-csharp)"
         require(not re.search(forbidden, text), f"internal implementation name in current contract: {path}")
 counts["markdown_files"] = len(markdown)
 counts["requirement_definitions"] = len(definitions)

@@ -114,7 +114,7 @@ Complex editorのcheckbox、member選択、materialize、null切替、Array add/
 
 nested scalarのtypingはcontrol内で一時保持し、Enter / Tab / blurで一回確定する。Escapeは未確定typingを破棄し、未確定typingがなければeditorを閉じる（MUST）。Cmd/Ctrl+Sは未確定typingを先に確定し、`GUI-UNIFIED-004`の通常Saveを行う（MUST）。text control内のnative Undoをfile historyが横取りしてはならない（MUST NOT）。transactionalな`Apply to buffer` / `Cancel`をcomplex editor全体の通常確定経路として要求してはならない（MUST NOT）。
 
-Arrayのnull、空sequence、要素、nested sequence provenanceを区別・保持する。unknown / invalid source値やCustomのunknown memberを明示操作なしに置換・削除してはならない（MUST NOT）。source valueがlosslessにauthoring stateへproject可能で、source-preserving candidateを構成できる場合、schema不一致だけを理由に既存cellの明示repairをread-onlyにしてはならない（MUST NOT）。project不能またはlocalization不能なら安全理由を示して拒否する。existing recordとAdded Rowには同じresolved ValueEditorを適用する。editorのkeyboard open、内部操作、close後のorigin cell focus、Problemsから一意なnested controlへのfocus、`GUI-UNIFIED-006`のgrid geometryを維持する（MUST）。
+Arrayのnull、空sequence、要素、nested sequence provenanceを区別・保持する。unknown / invalid source値やCustomのunknown memberを明示操作なしに置換・削除してはならない（MUST NOT）。source valueがlosslessにauthoring stateへproject可能で、source-preserving candidateを構成できる場合、schema不一致だけを理由に既存cellの明示repairをread-onlyにしてはならない（MUST NOT）。project不能またはlocalization不能なら安全理由を示して拒否する。existing recordとAdded Rowには同じresolved shapeに基づくvalue編集能力を適用する。editorのkeyboard open、内部操作、close後のorigin cell focus、Problemsから一意なnested controlへのfocus、`GUI-UNIFIED-006`のgrid geometryを維持する（MUST）。
 
 ### GUI-DATA-SAVE-001
 

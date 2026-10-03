@@ -8,7 +8,7 @@ Status: Applied
 
 ## Affected Specifications / delta
 
-[CLI-010](../specs/cli.md)、[Build責務境界](../specs/build-pipeline.md)、[GUI index](../gui/README.md)、[ADR0002](../adr/0002-rust-core-shared-by-cli-and-gui.md)、[ADR0003](../adr/0003-dotnet-mastermemory-bridge.md)。旧crate / service名はarchitecture constraintから除く。shared Rust semantics、in-process CLI利用、native .NET delegation、structured diagnostics、Build/Publish separationは維持する。glossaryのscaffold/hash/API説明はdomain意味とhistorical mechanismを分離する。
+[CLI-010](../specs/cli.md)、[Build責務境界](../specs/build-pipeline.md)、[GUI index](../gui/README.md)、[Data Editor](../gui/data-editor/spec.md)、[ADR0002](../adr/0002-rust-core-shared-by-cli-and-gui.md)、[ADR0003](../adr/0003-dotnet-mastermemory-bridge.md)。旧crate / service名はarchitecture constraintから除く。shared Rust semantics、in-process CLI利用、native .NET delegation、structured diagnostics、Build/Publish separationは維持する。glossaryのscaffold/hash/API説明はdomain意味とhistorical mechanismを分離する。
 
 ## Agent Decisions / compatibility / acceptance
 

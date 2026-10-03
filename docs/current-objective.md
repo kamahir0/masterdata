@@ -2,21 +2,20 @@
 
 ## Objective
 
-**Rewrite Contract Finalization。Human確定D1〜D6をcanonicalへ適用し、現行内部API非依存のCompatibility / Acceptance Oracle、Tier1 p95とconsumer evidence、正式rewrite inputを完成させる。production rewriteは開始しない。**
+**Rewrite Readiness Gap Closure。nested Value Object consumer defectのfirst-loss boundaryを同定し最小production correctionを行う。controlled Tier1 actual Desktop baselineを取得し、正式rewrite inputのReady / Not Readyを再判定する。rewriteは開始しない。**
 
 ## Completion slices
 
-- D1〜D6のcanonical application、stale / superseded proseとowner conflict解消。
-- 独立source / safety / topology / paste / UI / Build / Publish / consumer oracle、legacy-only test分離。
-- Tier1 warm p95、cold / first usable / rapid evidence、100k correctness/capacity oracle、performance contract確定。
-- adversarial / code-blind review、focused tests / check-all / required CI、Ready / Not Ready判定。
+- minimal / full consumer reproduction、value-path観測、first-loss boundary、direct / nested / key-order regression、actual consumerとBuild determinism。
+- 少なくとも1つのcontrolled Tier1 Desktopでclean / same Table / cross Table / schema / dirty / rapidを測定。invalid environmentを分離しstage別distributionを記録。
+- macOS / Windows native hard invariant evidenceのreconciliation、fresh review / check-all / required CI、readiness再判定。
 
 ## Authority / output routing
 
-authorityは[Product Vision](product/vision.md)、[canonical specs](specs/README.md)、[GUI specs](gui/README.md)。D1〜D6のHuman decisionはspec-changeのapproval recordから各ownerへ適用する。
+consumer authorityは[Value Object](specs/type-system/value-objects.md)、[Custom Type](specs/type-system/custom-types.md)、[Build](specs/build-pipeline.md)、[portable consumer oracle](../fixtures/rewrite-oracle/v1/consumer/scenario.json)。performance targetは[GUI performance](gui/performance.md)と[rewrite performance](rewrite-preparation/performance.md)。
 
-rewrite inputは[rewrite preparation](rewrite-preparation/README.md)、executable inputは独立corpusへrouteする。現行legacy capabilityを直ちに削除する要件へ変換しない。
+Human-selected Gap ClosureのDecision Aは最小consumer correctness修正を許可する。Decision Bはrewrite前baselineにcontrolled Tier1 actual Desktop少なくとも1platform、rewrite final conformanceに双方を要求する。成果と限界は[finalization report](rewrite-preparation/finalization-report.md)へrouteする。
 
 ## Explicit non-scope
 
-production architecture / UI / CSS rewrite・refactor、current runtime性能最適化、framework / dependency replacement、新機能、clean-room implementation着手。
+clean-room rewrite、architecture全面刷新、GUI redesign / general performance optimization、新機能、D1〜D6再審査、source format再設計、broad cleanup、unrelated warnings / dependency upgrade。

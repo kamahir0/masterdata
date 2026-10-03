@@ -12,9 +12,18 @@ fn report(report: serde_json::Value, done: bool) -> Result<(), String> {
     }
     Ok(())
 }
+#[tauri::command]
+fn environment(window: tauri::WebviewWindow) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "focused": window.is_focused().map_err(|error| error.to_string())?,
+        "visible": window.is_visible().map_err(|error| error.to_string())?,
+        "minimized": window.is_minimized().map_err(|error| error.to_string())?,
+        "candidate": std::env::var("MASTERDATA_NAVIGATION_EVIDENCE_CANDIDATE").ok(),
+    }))
+}
 pub fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::new("navigation-evidence")
-        .invoke_handler(tauri::generate_handler![report])
+        .invoke_handler(tauri::generate_handler![report, environment])
         .on_page_load(|webview, payload| {
             eprintln!("navigation evidence page: {:?}", payload.event());
             if payload.event() == tauri::webview::PageLoadEvent::Finished {

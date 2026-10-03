@@ -1,0 +1,13 @@
+kind: data
+table: miniature
+records:
+  - id: 1
+    direct: 3001
+    reward:
+      itemId: 2001
+      amount: 17
+  - id: 2
+    direct: 3002
+    reward:
+      itemId: 2002
+      amount: 19

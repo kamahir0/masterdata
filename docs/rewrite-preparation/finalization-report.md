@@ -1,6 +1,8 @@
 # Rewrite Contract Finalization — evidence / readiness
 
-Status: Finalized contract / Not Ready evidence gate
+Status: Finalized contract / Historical finalization evidence
+
+このreportのNot ReadyはFinalization時点の判定。後続Human-selected Gap Closureの現在判定・consumer correction・controlled Desktop evidenceは[readiness report](../evidence/rewrite-readiness/report.md)が所有する。
 
 ## Canonical application / purification delta
 

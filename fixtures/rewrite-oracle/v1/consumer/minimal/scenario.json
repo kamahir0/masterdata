@@ -1,0 +1,9 @@
+{
+  "intent": "Build two records, compile the generated public types, load the actual MasterMemory binary and query both records by primary key.",
+  "expected": [
+    {"id": 1, "direct": "3001", "reward": {"itemId": "2001", "amount": "17"}},
+    {"id": 2, "direct": "3002", "reward": {"itemId": "2002", "amount": "19"}}
+  ],
+  "invariants": ["declaration order is independent of persisted field keys", "direct and nested Value Objects retain their underlying scalar", "repeat Build preserves generated source and binary determinism"],
+  "rationale": "Two differently typed Custom fields with declaration keys [9, 0] expose silent default-value corruption; nesting alone or a single sparse field did not reproduce it. Expected values are independent of any serializer implementation."
+}

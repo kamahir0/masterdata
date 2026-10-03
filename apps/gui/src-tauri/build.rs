@@ -3,7 +3,7 @@ fn main() {
     {
         tauri_build::try_build(tauri_build::Attributes::new().plugin(
             "navigation-evidence",
-            tauri_build::InlinedPlugin::new().commands(&["report"]),
+            tauri_build::InlinedPlugin::new().commands(&["report", "environment"]),
         ))
         .unwrap();
     }

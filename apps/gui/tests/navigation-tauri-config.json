@@ -5,7 +5,7 @@
     "security": {
       "capabilities": [
         "default",
-        { "identifier": "navigation-evidence-only", "windows": ["main"], "permissions": ["navigation-evidence:allow-report"] }
+        { "identifier": "navigation-evidence-only", "windows": ["main"], "permissions": ["navigation-evidence:allow-report", "navigation-evidence:allow-environment"] }
       ]
     }
   }

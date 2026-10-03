@@ -79,3 +79,9 @@ semantic datasetとcurrent UI projectionは分離できること。DOM virtualiz
 ## Finalization時のfresh evidence
 
 今回のdistribution、current adapterのgap、未取得platform / boundaryは [finalization report](finalization-report.md) を参照する。上の0050の数値はHistorical Evidenceであり今回の再実行結果ではない。正式のobservable contractは [GUI performance](../gui/performance.md)。dirty revisit / rapid / first accepted interactionをnativeの4caseから推定しない。
+
+## Rewrite前baseline gate / rewrite final conformance
+
+2026-10-03 Human Decision Bにより、rewrite開始前には**少なくとも一つのTier1**でforeground / visibilityを制御したactual Desktop distributionを要求する。macOS arm64 / Windows x64のnative structural evidenceは双方を維持する。現行UIの150ms target未達はbaselineを正確に残し、旧実装の最適化を開始条件にしない。
+
+Clean-room final conformanceでは**actual DesktopをmacOS arm64とWindows x64の双方**で検証する。今回未取得のplatformはそのgateへ引き継ぐ。foreground不明、visibility喪失、5秒級のrAF starvationはmeasurement unavailableとして件数・理由を別記録し、通常latency distributionへ含めない。rAFはGPU presentation完了の証明ではない。

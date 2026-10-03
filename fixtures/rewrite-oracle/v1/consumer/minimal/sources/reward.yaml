@@ -1,0 +1,10 @@
+kind: type
+name: Reward
+custom:
+  fields:
+    - key: 9
+      name: itemId
+      type: ItemId
+    - key: 0
+      name: amount
+      type: uint

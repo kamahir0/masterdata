@@ -306,7 +306,18 @@ fn render_custom(
     fields: &[ResolvedField],
     type_system: &TypeSystem,
 ) -> Result<()> {
+    let mut formatter_name = "__MessagePackFormatter".to_owned();
+    while formatter_name == name
+        || fields
+            .iter()
+            .any(|field| csharp_property_name(&field.name) == formatter_name)
+    {
+        formatter_name.push('_');
+    }
     document.line("[MessagePack.MessagePackObject]");
+    document.line(format!(
+        "[MessagePack.MessagePackFormatter(typeof({name}.{formatter_name}))]"
+    ));
     document.line(format!(
         "public readonly struct {name} : System.IEquatable<{name}>"
     ));
@@ -434,7 +445,78 @@ fn render_custom(
     document.line(format!(
         "    public static bool operator !=({name} left, {name} right) => !left.Equals(right);"
     ));
+    render_custom_formatter(document, name, &formatter_name, fields, type_system)?;
     document.line("}");
+    Ok(())
+}
+
+// Integer MessagePack keys are persisted identity, whereas the public constructor
+// follows declaration order (SCHEMA-KEY-001, SCHEMA-CUSTOM-017). MessagePack 3.1.3's
+// automatic constructor binding can select the parameterless struct constructor
+// and skip every get-only member when those orders differ. Bind keys explicitly
+// through the library's formatter extension, retaining the public API and wire.
+// Regression: consumer_preserves_custom_keys_independently_of_constructor_order.
+fn render_custom_formatter(
+    document: &mut CSharpDocument,
+    name: &str,
+    formatter_name: &str,
+    fields: &[ResolvedField],
+    type_system: &TypeSystem,
+) -> Result<()> {
+    let mut keyed_fields = fields.iter().enumerate().collect::<Vec<_>>();
+    keyed_fields.sort_by_key(|(_, field)| field.key);
+    document.line("");
+    document.line(format!("    internal sealed class {formatter_name} : MessagePack.Formatters.IMessagePackFormatter<{name}>"));
+    document.line("    {");
+    document.line(format!("        public {formatter_name}() {{ }}"));
+    document.line(format!("        public void Serialize(ref MessagePack.MessagePackWriter writer, {name} value, MessagePack.MessagePackSerializerOptions options)"));
+    document.line("        {");
+    let length = keyed_fields
+        .last()
+        .map_or(0, |(_, field)| u64::from(field.key) + 1);
+    document.line(format!("            writer.WriteArrayHeader({length});"));
+    let mut next_key = 0_u64;
+    for (_, field) in &keyed_fields {
+        if u64::from(field.key) > next_key {
+            document.line(format!("            for (var unused = {next_key}; unused < {}; unused++) writer.WriteNil();", field.key));
+        }
+        let ty = csharp_field_type(type_system, &field.base_type, field.modifier)?;
+        let property = csharp_property_name(&field.name);
+        document.line(format!("            MessagePack.FormatterResolverExtensions.GetFormatterWithVerify<{ty}>(options.Resolver).Serialize(ref writer, value.{property}, options);"));
+        next_key = u64::from(field.key) + 1;
+    }
+    document.line("        }");
+    document.line(format!("        public {name} Deserialize(ref MessagePack.MessagePackReader reader, MessagePack.MessagePackSerializerOptions options)"));
+    document.line("        {");
+    document.line("            if (reader.TryReadNil()) throw new MessagePack.MessagePackSerializationException(\"A Custom value cannot be nil.\");");
+    document.line("            options.Security.DepthStep(ref reader);");
+    document.line("            try");
+    document.line("            {");
+    document.line("                var length = reader.ReadArrayHeader();");
+    for (index, field) in fields.iter().enumerate() {
+        let ty = csharp_field_type(type_system, &field.base_type, field.modifier)?;
+        document.line(format!("                {ty} field{index} = default!;"));
+    }
+    document.line("                for (var key = 0; key < length; key++)");
+    document.line("                {");
+    document.line("                    switch (key)");
+    document.line("                    {");
+    for (index, field) in &keyed_fields {
+        let ty = csharp_field_type(type_system, &field.base_type, field.modifier)?;
+        document.line(format!("                        case {}: field{index} = MessagePack.FormatterResolverExtensions.GetFormatterWithVerify<{ty}>(options.Resolver).Deserialize(ref reader, options); break;", field.key));
+    }
+    document.line("                        default: reader.Skip(); break;");
+    document.line("                    }");
+    document.line("                }");
+    let arguments = (0..fields.len())
+        .map(|index| format!("field{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    document.line(format!("                return new {name}({arguments});"));
+    document.line("            }");
+    document.line("            finally { reader.Depth--; }");
+    document.line("        }");
+    document.line("    }");
     Ok(())
 }
 

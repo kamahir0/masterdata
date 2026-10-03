@@ -9,12 +9,22 @@ void (async () => {
   if (window.__navigationEvidenceStarted) return;
   window.__navigationEvidenceStarted = true;
   window.__navigationTrace = [];
-  const evidence = { method: 'real-tauri-webview-synthetic-dom-input', userAgent: navigator.userAgent, samples: [], runs: 3, samplesPerCasePerRun: 100 };
+  const evidence = { method: 'real-tauri-webview-synthetic-dom-input', userAgent: navigator.userAgent, samples: [], invalid: [], runs: 3, samplesPerCasePerRun: 100 };
+  let visibilityEpoch = 0;
+  for (const event of ['blur','visibilitychange']) window.addEventListener(event, () => visibilityEpoch++);
+  class InvalidEnvironment extends Error {}
+  const environment = async () => {
+    const native = await window.__TAURI_INTERNALS__.invoke('plugin:navigation-evidence|environment');
+    const state = {...native, documentFocused:document.hasFocus(), visibility:document.visibilityState};
+    if (!state.focused || !state.visible || state.minimized || !state.documentFocused || state.visibility !== 'visible')
+      throw new InvalidEnvironment(`foreground unavailable: ${JSON.stringify(state)}`);
+    return state;
+  };
   const checkpoint = () => window.__TAURI_INTERNALS__.invoke('plugin:navigation-evidence|report', { report:evidence, done:false });
   evidence.phase = 'injected';
   void checkpoint();
   const frame = () => new Promise((resolve,reject) => {
-    const timer = setTimeout(() => reject(Error('paint opportunity unavailable for 5s; check foreground/occlusion')),5000);
+    const timer = setTimeout(() => reject(new InvalidEnvironment('paint opportunity unavailable for 5s')),5000);
     requestAnimationFrame(() => {clearTimeout(timer);resolve();});
   });
   const wait = async predicate => {
@@ -24,6 +34,8 @@ void (async () => {
   const active = () => document.querySelector('.editor-area')?.dataset.activeSource;
   const grid = path => active() === path && document.querySelector('.editor-area [role=gridcell]') && !document.querySelector('.editor-area .placeholder-editor');
   const select = async (path, expected = path) => {
+    await environment();
+    const epoch = visibilityEpoch;
     window.__navigationTrace = [];
     const start = performance.now();
     const item = document.querySelector(`[data-tree-path="${path}"]`);
@@ -43,19 +55,39 @@ void (async () => {
     if (active() !== expected) throw Error('stale active target');
     const rows = document.querySelectorAll('tr[data-grid-row-index]').length;
     if (rows > 100) throw Error('unbounded mounted rows');
-    return { path, expected, selectedMs, paintOpportunityMs, acceptedInteractionMs, rows, trace: [...window.__navigationTrace] };
+    const trace = [...window.__navigationTrace].filter(event => event.at >= start);
+    const commit = trace.find(event => event.phase==='react-commit' && event.path===expected);
+    const gridCommit = trace.find(event => event.phase==='grid-render-commit' && event.path===expected);
+    const gridPaint = trace.find(event => event.phase==='grid-paint' && event.path===expected && event.at >= (gridCommit?.at ?? Infinity));
+    await environment();
+    if (epoch !== visibilityEpoch) throw new InvalidEnvironment('focus/visibility changed during sample');
+    if (!commit || !gridCommit || !gridPaint) throw Error('missing target-filtered React/grid paint trace');
+    return { path, expected, selectedMs, selectionReactCommitMs:commit.at-start,
+      gridReactCommitMs:gridCommit.at-start, targetFilteredPaintMs:gridPaint.at-start, paintOpportunityMs, acceptedInteractionMs, rows, trace };
+  };
+  const measuredSelect = async (path, expected=path, context={case:'setup',run:0}) => {
+    {
+      try { return await select(path,expected); }
+      catch (error) {
+        if (!(error instanceof InvalidEnvironment)) throw error;
+        evidence.invalid.push({...context,path,reason:String(error)});
+        await checkpoint();
+        throw error; // Fail closed: no focus repair/retry conceals unavailable environment.
+      }
+    }
   };
   try {
+    evidence.environment = await environment();
     const boot = performance.now();
     evidence.phase = 'waiting-for-initial-grid';
     await wait(() => document.querySelector('.editor-area [role=gridcell]'));
     evidence.coldFromHarnessInjectionMs = performance.now() - boot;
     evidence.phase = 'first-projection';
     void checkpoint();
-    evidence.firstProjection = await select('sources/a-2.yaml');
+    evidence.firstProjection = await measuredSelect('sources/a-2.yaml');
     if (window.__navigationEvidenceMode === 'dirty-rapid') {
       evidence.phase = 'create-dirty-overlay';
-      await select('sources/a-1.yaml');
+      await measuredSelect('sources/a-1.yaml');
       const cell = document.querySelector('.editor-area [role=gridcell]');
       const original = cell.textContent;
       cell.focus();
@@ -69,13 +101,17 @@ void (async () => {
       await wait(() => document.querySelector('[data-tree-path="sources/a-1.yaml"]').getAttribute('aria-label').includes('unsaved'));
       evidence.phase = 'dirty-revisit';
       for (let run=1;run<=3;run++) for (let index=0;index<100;index++) {
-        await select('sources/a-2.yaml');
-        const sample = await select('sources/a-1.yaml');
+        await measuredSelect('sources/a-2.yaml');
+        const sample = await measuredSelect('sources/a-1.yaml','sources/a-1.yaml',{case:'dirty-revisit',run});
         if (!document.querySelector('.editor-area [role=gridcell]').textContent.includes('999999')) throw Error('dirty overlay lost');
         evidence.samples.push({run,case:'dirty-revisit',...sample});
         if (index===99) await checkpoint();
       }
       evidence.phase = 'rapid';
+      evidence.rapidRuns=[];
+      for(let rapidRun=1;rapidRun<=3;rapidRun++) {
+      await environment();
+      const rapidEpoch=visibilityEpoch;
       window.__navigationTrace=[];
       const paths=['sources/a-2.yaml','sources/b-schema.yaml','sources/c-2.yaml','sources/a-1.yaml'];
       for(let index=0;index<50;index++) {
@@ -85,11 +121,14 @@ void (async () => {
       }
       await wait(() => grid('sources/a-1.yaml') && document.querySelector('.editor-area [role=gridcell]').textContent.includes('999999'));
       await wait(() => window.__navigationTrace.filter(x=>x.phase==='request-start').length===window.__navigationTrace.filter(x=>x.phase==='ipc-return').length);
-      evidence.rapid={selections:50,active:active(),trace:[...window.__navigationTrace],dirtyRetained:true};
+      await environment();
+      if (rapidEpoch !== visibilityEpoch) throw new InvalidEnvironment('rapid focus changed');
+      evidence.rapidRuns.push({run:rapidRun,selections:50,active:active(),trace:[...window.__navigationTrace],dirtyRetained:true});
+      }
       const undoCell=document.querySelector('.editor-area [role=gridcell]');undoCell.focus();
       undoCell.dispatchEvent(new KeyboardEvent('keydown',{key:'z',metaKey:true,bubbles:true}));
       await wait(() => document.querySelector('.editor-area [role=gridcell]').textContent===original);
-      evidence.rapid.historyRetained=true;
+      evidence.historyRetained=true;
     } else for (let run = 1; run <= 3; run++) {
       for (const [name, path, alternate, expected] of [
         ['revisit', 'sources/a-1.yaml', 'sources/c-2.yaml', 'sources/a-1.yaml'],
@@ -98,8 +137,8 @@ void (async () => {
         ['schema-selection', 'sources/c-schema.yaml', 'sources/a-1.yaml', 'sources/c-1.yaml'],
       ]) {
         for (let index = 0; index < 100; index++) {
-          await select(alternate);
-          evidence.samples.push({ run, case: name, ...await select(path, expected) });
+          await measuredSelect(alternate);
+          evidence.samples.push({ run, case: name, ...await measuredSelect(path, expected,{case:name,run}) });
         }
         await checkpoint();
       }
@@ -110,11 +149,11 @@ void (async () => {
     for (let run = 1; run <= 3; run++) for (const name of ['revisit','same-table','cross-table','schema-selection','dirty-revisit']) {
       const samples = evidence.samples.filter(x => x.run===run && x.case===name);
       if (!samples.length) continue;
-      for (const boundary of ['selectedMs','paintOpportunityMs','acceptedInteractionMs']) {
+      for (const boundary of ['selectedMs','selectionReactCommitMs','gridReactCommitMs','targetFilteredPaintMs','paintOpportunityMs','acceptedInteractionMs']) {
         const values = samples.map(x => x[boundary]);
-        evidence.distributions.push({ run, case:name, boundary, count:values.length, median:percentile(values,.5), p95:percentile(values,.95), max:Math.max(...values) });
+        evidence.distributions.push({ run, case:name, boundary, count:values.length, invalidCount:evidence.invalid.filter(x=>x.run===run && x.case===name).length, median:percentile(values,.5), p95:percentile(values,.95), max:Math.max(...values) });
       }
     }
-  } catch (error) { evidence.error = String(error); }
+  } catch (error) { evidence.error = String(error); evidence.unavailable = error instanceof InvalidEnvironment; }
   await window.__TAURI_INTERNALS__.invoke('plugin:navigation-evidence|report', { report:evidence, done:true });
 })();

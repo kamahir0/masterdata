@@ -27,7 +27,13 @@ namespace RewriteOracle
                 if (first.LongValue != long.MinValue || second.LongValue != long.MaxValue || first.UlongValue != ulong.MaxValue) throw new Exception("rounded value");
             });
             verify("nested Value Object", () => {
-                if (first.Reward.ItemId.Value != 2001) throw new Exception("expected 2001, actual " + first.Reward.ItemId.Value);
+                if (first.Reward.ItemId.Value != 2001 || second.Reward.ItemId.Value != 2002) throw new Exception("expected 2001, actual " + first.Reward.ItemId.Value);
+            });
+            verify("direct Value Object", () => {
+                if (first.ItemId.Value != 2001 || second.ItemId.Value != 2002) throw new Exception("wrong direct values");
+            });
+            verify("Custom multi-field preservation", () => {
+                if (first.Reward.Values.Length != 1 || first.Reward.Values[0] != 1 || second.Reward.Values.Length != 2 || second.Reward.Values[0] != 2 || second.Reward.Values[1] != 3 || first.Reward.Amount != 1 || second.Reward.Amount != uint.MaxValue || first.Reward.Note != null || second.Reward.Note != null) throw new Exception("Custom values corrupted");
             });
             verify("Array values", () => {
                 if (first.Numbers.Length != 2 || first.Numbers[0] != 1 || first.Numbers[1] != -2) throw new Exception("wrong elements");

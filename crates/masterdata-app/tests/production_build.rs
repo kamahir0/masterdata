@@ -107,6 +107,102 @@ fn full_build_writes_matching_artifact_receipt() {
 }
 
 #[test]
+fn consumer_preserves_custom_keys_independently_of_constructor_order() {
+    let _dotnet_test_guard = dotnet_test_guard();
+    if !dotnet_available() {
+        eprintln!(".NET SDK unavailable; actual consumer regression not executed");
+        return;
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let corpus = root.join("fixtures/rewrite-oracle/v1/consumer");
+    let project = Builder::new().prefix("nested consumer ").tempdir().unwrap();
+    copy_directory(&corpus.join("minimal"), project.path());
+    let service = NativeApplicationService::new();
+    service
+        .build(Some(project.path()), project.path(), false)
+        .expect("minimal Build");
+    let artifacts = project.path().join(".masterdata/output");
+    let before = snapshot_files(&artifacts);
+    service
+        .build(Some(project.path()), project.path(), false)
+        .expect("repeat Build");
+    assert_eq!(
+        snapshot_files(&artifacts),
+        before,
+        "generated C# and binary determinism"
+    );
+    execute_consumer(&artifacts, &corpus.join("minimal/Consumer.cs"));
+
+    let full = copy_full_fixture("multi-field consumer");
+    for name in ["probe-schema.yaml", "probe-data.yaml"] {
+        fs::copy(corpus.join(name), full.path().join("sources").join(name)).unwrap();
+    }
+    service
+        .build(Some(full.path()), full.path(), false)
+        .expect("full Build");
+    execute_consumer(
+        &full.path().join(".masterdata/output"),
+        &corpus.join("Consumer.cs"),
+    );
+
+    // A non-null nullable member must survive too; null alone could hide loss.
+    let source = full.path().join("sources/catalog-data.yaml");
+    let text = fs::read_to_string(&source).unwrap();
+    assert!(text.contains("note: null"));
+    fs::write(&source, text.replacen("note: null", "note: preserved", 1)).unwrap();
+    service
+        .build(Some(full.path()), full.path(), false)
+        .expect("non-null member Build");
+    let check = full.path().join("NonNullConsumer.cs");
+    fs::write(&check, r#"using MasterMemory; using Masterdata.Generated;
+[assembly: MasterMemoryGeneratorOptions(Namespace = "Masterdata.Generated")]
+namespace RewriteOracle { public static class Consumer { public static void Check(byte[] bytes) {
+var db = new MemoryDatabase(bytes);
+if (db.ItemMasterTable.FindById(1002).Reward.Note != "preserved" || db.ItemMasterTable.FindById(1001).Reward.Note != null)
+throw new System.Exception("nullable member loss");
+} } }"#).unwrap();
+    execute_consumer(&full.path().join(".masterdata/output"), &check);
+}
+
+fn execute_consumer(artifacts: &Path, oracle: &Path) {
+    let consumer = Builder::new().prefix("actual consumer ").tempdir().unwrap();
+    copy_directory(
+        &artifacts.join("csharp"),
+        &consumer.path().join("Generated"),
+    );
+    fs::copy(oracle, consumer.path().join("Consumer.cs")).unwrap();
+    fs::write(consumer.path().join("consumer.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><LangVersion>12</LangVersion><Nullable>enable</Nullable></PropertyGroup><ItemGroup><PackageReference Include="MasterMemory" Version="3.0.4"/><PackageReference Include="MessagePack" Version="3.1.3"/></ItemGroup></Project>"#).unwrap();
+    fs::write(
+        consumer.path().join("Program.cs"),
+        "RewriteOracle.Consumer.Check(System.IO.File.ReadAllBytes(args[0]));",
+    )
+    .unwrap();
+    let dotnet = std::env::var_os("MASTERDATA_DOTNET").unwrap_or_else(|| "dotnet".into());
+    let output = Command::new(&dotnet)
+        .args(["build", "-c", "Release"])
+        .current_dir(consumer.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "consumer compile: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = Command::new(&dotnet)
+        .arg(consumer.path().join("bin/Release/net8.0/consumer.dll"))
+        .arg(artifacts.join("masterdata.bytes"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "actual binary consumer: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn production_build_accepts_empty_selected_table() {
     let _dotnet_test_guard = dotnet_test_guard();
     if !dotnet_available() {

@@ -1,0 +1,15 @@
+kind: schema
+table: miniature
+csharpName: Miniature
+fields:
+  - key: 0
+    name: id
+    type: int
+  - key: 1
+    name: direct
+    type: ItemId
+  - key: 2
+    name: reward
+    type: Reward
+primaryKey:
+  fields: [id]

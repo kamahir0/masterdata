@@ -34,7 +34,7 @@ while true {
  let value: [String: Any] = ["at": Date().timeIntervalSince1970 * 1000, "expectedForeground": app?.bundleIdentifier == expected, "visibleWindow": visible]
  let data = try! JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
  FileHandle.standardOutput.write(data); FileHandle.standardOutput.write(Data([10]))
- Thread.sleep(forTimeInterval: 0.25)
+ RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.25))
 }
 `);
 const monitorBinary=path.join(absoluteOutput,'monitor');
@@ -61,6 +61,17 @@ try {
   host.launcherStatus=status;
   const evidence=JSON.parse(fs.readFileSync(path.join(absoluteOutput,'desktop.json'),'utf8'));
   host.completed=evidence.distributions?.length>0 && !evidence.error;
+  for (const rapid of evidence.rapidRuns ?? []) {
+    const last = rapid.trace.findLastIndex(event=>event.phase==='selection');
+    if (rapid.active !== rapid.trace[last]?.path || rapid.trace.slice(last+1).some(event=>event.phase==='react-commit' && event.path!==rapid.active))
+      throw Error('obsolete selection result became current');
+  }
+  const display = fs.readFileSync(path.join(absoluteOutput,'foreground.jsonl'),'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+  const first = display.findIndex(event=>event.expectedForeground && event.visibleWindow);
+  const last = display.findLastIndex(event=>event.expectedForeground && event.visibleWindow);
+  const controlled = display.slice(first,last+1);
+  host.displayMonitor = {samples:controlled.length,invalid:controlled.filter(event=>!event.expectedForeground || !event.visibleWindow).length,excludedStartupQuitSamples:display.length-controlled.length};
+  if (!controlled.length || host.displayMonitor.invalid) throw Error('measurement unavailable: OS foreground/visibility interruption');
   host.sourceBytesUnchanged=before===sourceHash(fixture);
   if(!host.sourceBytesUnchanged || !host.completed) throw Error(evidence.error ?? 'incomplete measurement');
 } finally {

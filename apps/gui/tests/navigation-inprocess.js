@@ -56,16 +56,17 @@ void (async () => {
     const rows = document.querySelectorAll('tr[data-grid-row-index]').length;
     if (rows > 100) throw Error('unbounded mounted rows');
     const trace = [...window.__navigationTrace].filter(event => event.at >= start);
-    const commit = trace.find(event => event.phase==='react-commit' && event.path===expected);
+    const commit = trace.find(event => event.phase==='react-commit' && event.path===path);
     const gridCommit = trace.find(event => event.phase==='grid-render-commit' && event.path===expected);
     const gridPaint = trace.find(event => event.phase==='grid-paint' && event.path===expected && event.at >= (gridCommit?.at ?? Infinity));
     await environment();
     if (epoch !== visibilityEpoch) throw new InvalidEnvironment('focus/visibility changed during sample');
     if (!commit || !gridCommit || !gridPaint) throw Error('missing target-filtered React/grid paint trace');
-    return { path, expected, selectedMs, selectionReactCommitMs:commit.at-start,
+    return { path, expected, inputAt:start, selectedMs, selectionReactCommitMs:commit.at-start,
       gridReactCommitMs:gridCommit.at-start, targetFilteredPaintMs:gridPaint.at-start, paintOpportunityMs, acceptedInteractionMs, rows, trace };
   };
   const measuredSelect = async (path, expected=path, context={case:'setup',run:0}) => {
+    if (context.case==='setup' && grid(expected)) return null;
     {
       try { return await select(path,expected); }
       catch (error) {

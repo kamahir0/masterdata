@@ -8,7 +8,7 @@
 
 `workflows.json`はUI / lifecycle / injected failureのportable event-and-state oracle。pixel / CSS / component treeはrequiredではない。inputはtopologyの小project、consumerのfull source asset、scenarioが指定するarrangementを使う。断定的なUI結果とfault injectionの実行coverageを混同しない。
 
-`interpretation.json`はschema-directed scalar expectation。`navigation.json`は3Tables / 8sources / 12krecords / 2k×20のコード非依存生成条件、target aliasesと各case。`capacity.json`は100k inputと全candidate cellの数式oracle。`consumer/`は既存`fixtures/full` + 二つのprobe sourceからcanonical Buildし、独立C# consumerでpublic query / binary semanticsを検証する。compileとloadは別phase。formattingやprivate codegen functionは固定しない。
+`interpretation.json`はschema-directed scalar expectation。`navigation.json`は3Tables / 8sources / 12krecords / 2k×20のコード非依存生成条件、target aliasesと各case。`capacity.json`は100k inputと全candidate cellの数式oracle。`consumer/`は既存`fixtures/full` + 二つのprobe sourceからcanonical Buildし、独立C# consumerでpublic query / binary semanticsを検証する。compileとloadは別phase。formattingやprivate codegen functionは固定しない。`consumer/minimal`は2records、direct / nested Value Object、declarationとpersisted keyの異なる2field Customの独立inputとexpected public consumer。full consumerはArray / nullable / uintも併せて検証する。
 
 ## Adapter coverage / known gaps
 

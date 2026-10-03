@@ -35,8 +35,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
       - name: Run portable safety adapter with test-only observation fault
         run: cargo test -p masterdata-app --features authoring-test-faults --test rewrite_oracle
+      - name: Execute actual portable consumer on exact Candidate
+        shell: bash
+        run: |
+          mkdir -p rewrite-evidence
+          cargo build --release -p masterdata-cli
+          consumer_cli=target/release/masterdata
+          if [ "$RUNNER_OS" = Windows ]; then consumer_cli=target/release/masterdata.exe; fi
+          node scripts/rewrite-consumer.mjs "$consumer_cli" rewrite-evidence/managed-consumer.json
       - name: Collect native distributions (not Desktop paint)
         shell: bash
         run: |

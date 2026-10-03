@@ -2,7 +2,7 @@
 
 Status: Approved
 
-0051による正式rewrite target input。current productionのcleanup / rewrite着手を許可するものではない。**Readyの判定は別のevidence gate**で、[finalization report](finalization-report.md)が所有する。現行codeをarchitecture templateとして読む必要はない。
+0051による正式rewrite target input。current productionのcleanup / rewrite着手を許可するものではない。**Readyの判定は別のevidence gate**で、[Gap Closure readiness evidence](../evidence/rewrite-readiness/report.md)とexact Candidateの[Development State](../execution-state.md)へrouteする。[finalization report](finalization-report.md)は前ObjectiveのHistorical Evidence。現行codeをarchitecture templateとして読む必要はない。
 
 ## Authority hierarchy
 

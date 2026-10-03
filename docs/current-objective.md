@@ -14,7 +14,7 @@
 
 consumer authorityは[Value Object](specs/type-system/value-objects.md)、[Custom Type](specs/type-system/custom-types.md)、[Build](specs/build-pipeline.md)、[portable consumer oracle](../fixtures/rewrite-oracle/v1/consumer/scenario.json)。performance targetは[GUI performance](gui/performance.md)と[rewrite performance](rewrite-preparation/performance.md)。
 
-Human-selected Gap ClosureのDecision Aは最小consumer correctness修正を許可する。Decision Bはrewrite前baselineにcontrolled Tier1 actual Desktop少なくとも1platform、rewrite final conformanceに双方を要求する。成果と限界は[finalization report](rewrite-preparation/finalization-report.md)へrouteする。
+Human-selected Gap ClosureのDecision Aは最小consumer correctness修正を許可する。Decision Bはrewrite前baselineにcontrolled Tier1 actual Desktop少なくとも1platform、rewrite final conformanceに双方を要求する。成果と限界は[readiness report](evidence/rewrite-readiness/report.md)へrouteする。
 
 ## Explicit non-scope
 

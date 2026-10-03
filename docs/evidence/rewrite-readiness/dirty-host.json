@@ -1,0 +1,28 @@
+{
+  "method": "LaunchServices-foreground-with-native-WebView-and-OS-display-monitor",
+  "candidate": "567b425d98d72e3a078fa0402ddafaa95e6852af",
+  "workingTreeDirty": true,
+  "platform": "darwin",
+  "arch": "arm64",
+  "osRelease": "25.6.0",
+  "cpu": "Apple M1",
+  "memoryBytes": 17179869184,
+  "node": "v25.9.0",
+  "bundleSha256": "80f10bd1ef64675824e723272432cf8fb2986dff6819012acbd9b3bee701a2f3",
+  "fixtureSha256": "c62d22df13d97abe1fb6c74ada13380bdbba9a2c1274af766374482c2350b953",
+  "mode": "dirty-rapid",
+  "startedAt": "2026-10-03T03:27:15.472Z",
+  "sleepInhibited": "caffeinate -dims",
+  "monitorPeriodMs": 250,
+  "input": "synthetic DOM click/key in actual Tauri WebView",
+  "paint": "rAF opportunity, not GPU completion",
+  "launcherStatus": 0,
+  "completed": true,
+  "sourceBytesUnchanged": true,
+  "endedAt": "2026-10-03T03:28:55.098Z",
+  "displayMonitor": {
+    "samples": 384,
+    "invalid": 0,
+    "excludedStartupQuitSamples": 0
+  }
+}

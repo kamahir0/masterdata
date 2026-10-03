@@ -1,0 +1,1269 @@
+{
+  "clean": {
+    "sampleCount": 1200,
+    "invalidCount": 0,
+    "coldFromHarnessInjectionMs": 2460,
+    "firstProjection": {
+      "acceptedInteractionMs": 180,
+      "expected": "sources/a-2.yaml",
+      "gridReactCommitMs": 100,
+      "paintOpportunityMs": 153,
+      "path": "sources/a-2.yaml",
+      "rows": 31,
+      "selectedMs": 30,
+      "selectionReactCommitMs": 9,
+      "targetFilteredPaintMs": 123
+    },
+    "perRun": [
+      {
+        "boundary": "selectedMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 87.00000000000182,
+        "median": 11.999999999996362,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 82,
+        "median": 7,
+        "p95": 8.000000000001819,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 155,
+        "median": 72,
+        "p95": 85,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 177.00000000000182,
+        "median": 93,
+        "p95": 106,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 203,
+        "median": 116,
+        "p95": 131,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 223,
+        "median": 139,
+        "p95": 155,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 25.999999999992724,
+        "median": 12,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7.000000000007276,
+        "p95": 9,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 93,
+        "median": 72,
+        "p95": 85,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 116,
+        "median": 92.99999999999272,
+        "p95": 105,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 142,
+        "median": 116,
+        "p95": 131,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 162,
+        "median": 138.00000000000728,
+        "p95": 155,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 28,
+        "median": 12,
+        "p95": 16,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 18,
+        "median": 7.000000000014552,
+        "p95": 10,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 90,
+        "median": 71.00000000001455,
+        "p95": 83,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 111,
+        "median": 92,
+        "p95": 103,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 137,
+        "median": 115,
+        "p95": 128,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 160.00000000001455,
+        "median": 138.99999999999272,
+        "p95": 156,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 27,
+        "median": 12,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7,
+        "p95": 8.999999999985448,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 95,
+        "median": 74,
+        "p95": 88,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 115,
+        "median": 94,
+        "p95": 107,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 140,
+        "median": 117.00000000001457,
+        "p95": 132,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 162,
+        "median": 138.00000000001455,
+        "p95": 155.00000000001455,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 27,
+        "median": 12,
+        "p95": 15,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 12,
+        "median": 7.999999999970896,
+        "p95": 9,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 140.99999999998545,
+        "median": 72,
+        "p95": 86,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 165.99999999998545,
+        "median": 93,
+        "p95": 106,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 191.99999999998545,
+        "median": 116,
+        "p95": 131,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 220,
+        "median": 138.9999999999709,
+        "p95": 158,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 30,
+        "median": 12,
+        "p95": 15,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11.000000000029104,
+        "median": 7,
+        "p95": 9,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 132,
+        "median": 72,
+        "p95": 85,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 155,
+        "median": 92.0000000000291,
+        "p95": 105.9999999999709,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 181,
+        "median": 116,
+        "p95": 132,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 205,
+        "median": 138.9999999999709,
+        "p95": 156.9999999999709,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 19.000000000029104,
+        "median": 11.000000000029104,
+        "p95": 14.000000000029104,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 12,
+        "median": 7,
+        "p95": 8.000000000029104,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 89,
+        "median": 71,
+        "p95": 84,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 112.0000000000291,
+        "median": 91,
+        "p95": 105,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 153,
+        "median": 115,
+        "p95": 130,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 185,
+        "median": 138.0000000000291,
+        "p95": 157,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 21.000000000029104,
+        "median": 12,
+        "p95": 15.999999999970896,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 16,
+        "median": 7.999999999970896,
+        "p95": 9.000000000029104,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 192,
+        "median": 74,
+        "p95": 88.0000000000291,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 216,
+        "median": 95,
+        "p95": 108,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 255,
+        "median": 119,
+        "p95": 134.0000000000291,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 275,
+        "median": 139,
+        "p95": 163,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 28,
+        "median": 12,
+        "p95": 15,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 12,
+        "median": 7.000000000029104,
+        "p95": 9.999999999970896,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 98,
+        "median": 72,
+        "p95": 85,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 119,
+        "median": 92,
+        "p95": 106,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 145,
+        "median": 116,
+        "p95": 131,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 186,
+        "median": 138.9999999999709,
+        "p95": 163.0000000000291,
+        "run": 3
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 29,
+        "median": 11.000000000058208,
+        "p95": 14.000000000058208,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11.000000000058208,
+        "median": 7,
+        "p95": 9,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 108,
+        "median": 72,
+        "p95": 88,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 128,
+        "median": 93,
+        "p95": 108,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 151,
+        "median": 116.0000000000582,
+        "p95": 135,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 169,
+        "median": 138,
+        "p95": 160,
+        "run": 3
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 31,
+        "median": 12,
+        "p95": 15,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 16,
+        "median": 7.999999999941792,
+        "p95": 9.000000000058208,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 89.99999999994179,
+        "median": 72,
+        "p95": 85.00000000005821,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 110,
+        "median": 92.9999999999418,
+        "p95": 105.9999999999418,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 136,
+        "median": 116,
+        "p95": 132,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 167,
+        "median": 138.0000000000582,
+        "p95": 155,
+        "run": 3
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 31,
+        "median": 12,
+        "p95": 15,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11.000000000058208,
+        "median": 7.999999999941792,
+        "p95": 8.000000000058208,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 108,
+        "median": 74,
+        "p95": 87.00000000005821,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 128,
+        "median": 95,
+        "p95": 109,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 151,
+        "median": 118,
+        "p95": 135.0000000000582,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 169,
+        "median": 139,
+        "p95": 159,
+        "run": 3
+      }
+    ],
+    "cases": [
+      {
+        "case": "cross-table",
+        "boundary": "selectedMs",
+        "count": 300,
+        "median": 12,
+        "p95": 15,
+        "max": 31
+      },
+      {
+        "case": "cross-table",
+        "boundary": "selectionReactCommitMs",
+        "count": 300,
+        "median": 7.000000000029104,
+        "p95": 9.000000000058208,
+        "max": 18
+      },
+      {
+        "case": "cross-table",
+        "boundary": "gridReactCommitMs",
+        "count": 300,
+        "median": 71,
+        "p95": 84.00000000001455,
+        "max": 90
+      },
+      {
+        "case": "cross-table",
+        "boundary": "targetFilteredPaintMs",
+        "count": 300,
+        "median": 92,
+        "p95": 105,
+        "max": 112.0000000000291
+      },
+      {
+        "case": "cross-table",
+        "boundary": "paintOpportunityMs",
+        "count": 300,
+        "median": 115,
+        "p95": 130,
+        "max": 153
+      },
+      {
+        "case": "cross-table",
+        "boundary": "acceptedInteractionMs",
+        "count": 300,
+        "median": 138.9999999999418,
+        "p95": 156,
+        "max": 185
+      },
+      {
+        "case": "revisit",
+        "boundary": "selectedMs",
+        "count": 300,
+        "median": 12,
+        "p95": 15,
+        "max": 87.00000000000182
+      },
+      {
+        "case": "revisit",
+        "boundary": "selectionReactCommitMs",
+        "count": 300,
+        "median": 7.000000000029104,
+        "p95": 9,
+        "max": 82
+      },
+      {
+        "case": "revisit",
+        "boundary": "gridReactCommitMs",
+        "count": 300,
+        "median": 72,
+        "p95": 85.99999999999636,
+        "max": 155
+      },
+      {
+        "case": "revisit",
+        "boundary": "targetFilteredPaintMs",
+        "count": 300,
+        "median": 93,
+        "p95": 106,
+        "max": 177.00000000000182
+      },
+      {
+        "case": "revisit",
+        "boundary": "paintOpportunityMs",
+        "count": 300,
+        "median": 116,
+        "p95": 131,
+        "max": 203
+      },
+      {
+        "case": "revisit",
+        "boundary": "acceptedInteractionMs",
+        "count": 300,
+        "median": 138.99999999999818,
+        "p95": 160,
+        "max": 223
+      },
+      {
+        "case": "same-table",
+        "boundary": "selectedMs",
+        "count": 300,
+        "median": 12,
+        "p95": 15,
+        "max": 30
+      },
+      {
+        "case": "same-table",
+        "boundary": "selectionReactCommitMs",
+        "count": 300,
+        "median": 7,
+        "p95": 9,
+        "max": 11.000000000058208
+      },
+      {
+        "case": "same-table",
+        "boundary": "gridReactCommitMs",
+        "count": 300,
+        "median": 72,
+        "p95": 85.9999999999709,
+        "max": 132
+      },
+      {
+        "case": "same-table",
+        "boundary": "targetFilteredPaintMs",
+        "count": 300,
+        "median": 92.99999999999272,
+        "p95": 107,
+        "max": 155
+      },
+      {
+        "case": "same-table",
+        "boundary": "paintOpportunityMs",
+        "count": 300,
+        "median": 116,
+        "p95": 133.9999999999418,
+        "max": 181
+      },
+      {
+        "case": "same-table",
+        "boundary": "acceptedInteractionMs",
+        "count": 300,
+        "median": 138,
+        "p95": 158.9999999999418,
+        "max": 205
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "selectedMs",
+        "count": 300,
+        "median": 12,
+        "p95": 15,
+        "max": 31
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "selectionReactCommitMs",
+        "count": 300,
+        "median": 7.000000000029104,
+        "p95": 9,
+        "max": 16
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "gridReactCommitMs",
+        "count": 300,
+        "median": 74,
+        "p95": 88,
+        "max": 192
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "targetFilteredPaintMs",
+        "count": 300,
+        "median": 95,
+        "p95": 108,
+        "max": 216
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "paintOpportunityMs",
+        "count": 300,
+        "median": 118,
+        "p95": 134,
+        "max": 255
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "acceptedInteractionMs",
+        "count": 300,
+        "median": 139,
+        "p95": 159,
+        "max": 275
+      },
+      {
+        "case": "cross-table",
+        "boundary": "requestToIpcReturnMs",
+        "count": 300,
+        "median": 38,
+        "p95": 42.999999999970896,
+        "max": 51
+      },
+      {
+        "case": "revisit",
+        "boundary": "requestToIpcReturnMs",
+        "count": 300,
+        "median": 38.999999999970896,
+        "p95": 42.99999999994179,
+        "max": 101.0
+      },
+      {
+        "case": "same-table",
+        "boundary": "requestToIpcReturnMs",
+        "count": 300,
+        "median": 39,
+        "p95": 44,
+        "max": 83
+      },
+      {
+        "case": "schema-selection",
+        "boundary": "requestToIpcReturnMs",
+        "count": 300,
+        "median": 41,
+        "p95": 46,
+        "max": 147
+      }
+    ]
+  },
+  "dirty": {
+    "sampleCount": 300,
+    "invalidCount": 0,
+    "coldFromHarnessInjectionMs": 2540,
+    "firstProjection": {
+      "acceptedInteractionMs": 178.00000000000043,
+      "expected": "sources/a-2.yaml",
+      "gridReactCommitMs": 99,
+      "paintOpportunityMs": 151,
+      "path": "sources/a-2.yaml",
+      "rows": 31,
+      "selectedMs": 29,
+      "selectionReactCommitMs": 7,
+      "targetFilteredPaintMs": 125
+    },
+    "perRun": [
+      {
+        "boundary": "selectedMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 22,
+        "median": 12,
+        "p95": 14.000000000003638,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 12,
+        "median": 7.999999999996362,
+        "p95": 9,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 100,
+        "median": 73.99999999999909,
+        "p95": 85.99999999999636,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 122.00000000000044,
+        "median": 94.99999999999636,
+        "p95": 105.99999999999636,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 147,
+        "median": 117.00000000000364,
+        "p95": 131,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 167.99999999999957,
+        "median": 139,
+        "p95": 156,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 23,
+        "median": 12,
+        "p95": 14,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 9,
+        "median": 7,
+        "p95": 8.000000000007276,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 102,
+        "median": 73,
+        "p95": 86.00000000000728,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 124,
+        "median": 94,
+        "p95": 106.99999999999272,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 148,
+        "median": 116,
+        "p95": 132,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 170,
+        "median": 139,
+        "p95": 155,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 24,
+        "median": 11,
+        "p95": 13,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7,
+        "p95": 8.000000000014552,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 89,
+        "median": 73,
+        "p95": 84,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 110,
+        "median": 93,
+        "p95": 105,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 140.00000000001455,
+        "median": 116,
+        "p95": 128,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 164.00000000001455,
+        "median": 138.99999999998545,
+        "p95": 154,
+        "run": 3
+      }
+    ],
+    "cases": [
+      {
+        "case": "dirty-revisit",
+        "boundary": "selectedMs",
+        "count": 300,
+        "median": 12,
+        "p95": 14.000000000000457,
+        "max": 24
+      },
+      {
+        "case": "dirty-revisit",
+        "boundary": "selectionReactCommitMs",
+        "count": 300,
+        "median": 7.000000000001819,
+        "p95": 8.000000000014552,
+        "max": 12
+      },
+      {
+        "case": "dirty-revisit",
+        "boundary": "gridReactCommitMs",
+        "count": 300,
+        "median": 73,
+        "p95": 86,
+        "max": 102
+      },
+      {
+        "case": "dirty-revisit",
+        "boundary": "targetFilteredPaintMs",
+        "count": 300,
+        "median": 94,
+        "p95": 106,
+        "max": 124
+      },
+      {
+        "case": "dirty-revisit",
+        "boundary": "paintOpportunityMs",
+        "count": 300,
+        "median": 117,
+        "p95": 131,
+        "max": 148
+      },
+      {
+        "case": "dirty-revisit",
+        "boundary": "acceptedInteractionMs",
+        "count": 300,
+        "median": 139,
+        "p95": 155,
+        "max": 170
+      },
+      {
+        "case": "dirty-revisit",
+        "boundary": "requestToIpcReturnMs",
+        "count": 300,
+        "median": 40,
+        "p95": 43.00000000001455,
+        "max": 56.99999999999909
+      }
+    ],
+    "historyRetained": true,
+    "rapid": [
+      {
+        "run": 1,
+        "selections": 50,
+        "lastTarget": "sources/a-1.yaml",
+        "dirtyRetained": true,
+        "obsoleteCommitsAfterLastInput": 0,
+        "requestStarts": 23,
+        "requestCompletions": 23
+      },
+      {
+        "run": 2,
+        "selections": 50,
+        "lastTarget": "sources/a-1.yaml",
+        "dirtyRetained": true,
+        "obsoleteCommitsAfterLastInput": 0,
+        "requestStarts": 23,
+        "requestCompletions": 23
+      },
+      {
+        "run": 3,
+        "selections": 50,
+        "lastTarget": "sources/a-1.yaml",
+        "dirtyRetained": true,
+        "obsoleteCommitsAfterLastInput": 0,
+        "requestStarts": 24,
+        "requestCompletions": 24
+      }
+    ]
+  },
+  "discardedAttempts": [
+    {
+      "attempt": "dirty-initial",
+      "completedPartialSamplesExcluded": 57,
+      "invalidEnvironmentCount": 1,
+      "reason": "foreground lost",
+      "error": "Error: foreground unavailable: {\"candidate\":\"567b425d98d72e3a078fa0402ddafaa95e6852af\",\"focused\":false,\"minimized\":false,\"visible\":true,\"documentFocused\":true,\"visibility\":\"visible\"}"
+    },
+    {
+      "attempt": "clean-initial",
+      "completedPartialSamplesExcluded": 100,
+      "invalidEnvironmentCount": 0,
+      "reason": "harness incorrectly required commit for no-op setup selection",
+      "error": "Error: missing target-filtered React/grid paint trace"
+    }
+  ],
+  "metricCorrection": "Raw adapter selectionReactCommitMs used the redirected record target for schema selection. Only summary feedback metric is recomputed from the first React commit for the clicked schema path. Input start is recovered from the recorded first grid commit timestamp minus gridReactCommitMs. Raw events and latency remain unchanged; future adapter records inputAt explicitly."
+}

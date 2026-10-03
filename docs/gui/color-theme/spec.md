@@ -167,9 +167,9 @@ theme == system
 
 Theme preferenceとtheme resolutionはGUI application concernとする。
 
-`masterdata-core`へTheme概念を追加してはならない（MUST NOT）。
+shared Rust domain semanticsへTheme概念を追加してはならない（MUST NOT）。
 
-`masterdata-app`のProject/application serviceへTheme semanticsを追加する必要はない。
+shared Rust application boundaryのProject/application serviceへTheme semanticsを追加する必要はない。
 
 永続化はDesktop application hostのApplication preference storageが所有する。React/WebView層は
 WebView storageをdurable canonical authorityとして所有してはならない（MUST NOT）。exact native API、

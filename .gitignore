@@ -1,41 +1,11 @@
-# Rust
-/target/
-
-# Node / frontend
-/node_modules/
-/apps/gui/node_modules/
-/apps/gui/dist/
-/apps/gui/.vite/
-
-# Tauri
-/apps/gui/src-tauri/target/
-/apps/gui/src-tauri/gen/
-
-# .NET
-**/bin/
-**/obj/
-/dotnet/spike/target/
-
-# masterdata generated and local state
-/.masterdata/cache/
-/.masterdata/output/
-/.masterdata/generated/
-/.masterdata/dev-project/
-**/.masterdata/cache/
-**/.masterdata/output/
-**/.masterdata/generated/
-**/.masterdata/dev-project/
-/target/dev-project/
-/target/local-dist/
-
-# IDE / OS
+# OS/editor/local environment only; no product workspace topology
 .DS_Store
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# Local environment
+__pycache__/
+*.pyc
 .env
 .env.*
 !.env.example

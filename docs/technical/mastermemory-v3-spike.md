@@ -1,3 +1,5 @@
+> FORENSIC ONLY: legacy-finalに対するhistorical implementation evidence。現行rewrite contractでもarchitecture templateでもない。
+
 # MasterMemory v3 technical spike（technical spike）
 
 Status: Experimental validation artifact

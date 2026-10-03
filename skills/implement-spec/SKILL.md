@@ -68,15 +68,15 @@ authority / recovery
   -> review-code self-review
   -> safe self-fix
   -> affected validation
-  -> cargo xtask check-rationale
-  -> cargo xtask check-all
+  -> current branchのrationale integrity check
+  -> current branchのscope適合repository check
   -> diff / scope review
   -> candidate commit
   -> verification-ready
   -> fresh verification
 ```
 
-環境が対応する場合は`cargo xtask check-all`を最終repository checkに使う。実行不能checkは理由を報告し、完全なverificationを主張しない。
+環境が対応する場合は`current branchのscope適合repository check`を最終repository checkに使う。実行不能checkは理由を報告し、完全なverificationを主張しない。
 
 ## Specification status
 
@@ -106,3 +106,5 @@ Human gate判定はExecution Workflow、Agent Decision / approvalはSpecificatio
 - unresolved Gap / unavailable check
 
 既知のcanonical semanticsやacceptance matrixをreportへ再複製しない。
+
+clean-slate branchでは[handoff](../../docs/rewrite-preparation/clean-room-handoff.md)に従い、退役済みproduct tests / mixed toolingを要求せず、`python3 tools/check-clean-slate.py`を使う。新runtimeが存在する将来の検証とは分離する。

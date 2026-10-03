@@ -4,9 +4,9 @@ GUI behaviorがuserのobservable workflowに影響する場合、それは仕様
 `Draft`、`Proposed`、`Approved`、`Implemented`、`Deprecated` lifecycleを使用する。Requirement IDには `GUI-`
 prefixを付け、その後にsurfaceとstableな3桁のnumberを続ける。
 
-GUI specでは `masterdata-core` のsemanticsを重複させず、behaviorを記述する。layout、state、selection、editing、
+GUI specでは shared Rust domain semanticsを重複させず、behaviorを記述する。layout、state、selection、editing、
 validation、focus、keyboardとmouse interaction、loading、empty/error/disabled state、unsaved change、build-in-progress
-behaviorを扱ってよい。shared domain operationに対するadapter boundaryはTauri commandである。
+behaviorを扱ってよい。shared domain operationのadapter transport / command粒度は内部設計であり、observable contractを指定しない。
 
 ## Surface index
 
@@ -48,5 +48,5 @@ Requirement IDをreviewし、compatibility/acceptance noteを必要に応じて�
 
 各canonical GUI ruleは、1つのsurface specificationに1つだけ置く。observableなlayout、state、selection、editing、
 keyboard、focus、validation、loading、empty/error/disabled、unsaved-change、build-progress behaviorには、
-`GUI-DATA-EDIT-001` のようなRequirement IDを使用する。shared domain meaningは `masterdata-core` に残し、GUI specは
-userのobservableなadapter behaviorとTauriとのboundaryだけを記述する。
+`GUI-DATA-EDIT-001` のようなRequirement IDを使用する。shared domain meaningは shared Rust domain semantics に残し、GUI specは
+userのobservableなadapter behaviorとnative hostとのboundaryだけを記述する。

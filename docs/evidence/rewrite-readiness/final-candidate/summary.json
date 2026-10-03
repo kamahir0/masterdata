@@ -1,0 +1,4941 @@
+{
+  "candidate": "45b74bb6ac883398f993b6a04988b81c3c01048d",
+  "configuration": "dedicated opt-in Tauri window alwaysOnTop; geometry unchanged; OS monitor matches owned onscreen window irrespective of layer",
+  "productTreeRelationship": "Production core/application/codegen/frontend/Tauri source identical between producer 567b425 and Candidate45. Candidate changes only measurement adapter, evidence, docs, CI. Metadata working-tree change only execution-state.",
+  "cases": [
+    {
+      "case": "cross-table",
+      "boundary": "selectedMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 12,
+      "p95": 15,
+      "max": 28
+    },
+    {
+      "case": "cross-table",
+      "boundary": "selectionReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 7.000000000058208,
+      "p95": 9,
+      "max": 24
+    },
+    {
+      "case": "cross-table",
+      "boundary": "gridReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 72,
+      "p95": 80,
+      "max": 95
+    },
+    {
+      "case": "cross-table",
+      "boundary": "targetFilteredPaintMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 92.99999999998543,
+      "p95": 101.9999999999418,
+      "max": 117
+    },
+    {
+      "case": "cross-table",
+      "boundary": "acceptedInteractionMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 138.0000000000582,
+      "p95": 155,
+      "max": 180
+    },
+    {
+      "case": "revisit",
+      "boundary": "selectedMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 12,
+      "p95": 15,
+      "max": 27
+    },
+    {
+      "case": "revisit",
+      "boundary": "selectionReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 7.0000000000009095,
+      "p95": 9,
+      "max": 21.99999999999909
+    },
+    {
+      "case": "revisit",
+      "boundary": "gridReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 72,
+      "p95": 85.00000000005821,
+      "max": 194.9999999999418
+    },
+    {
+      "case": "revisit",
+      "boundary": "targetFilteredPaintMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 93,
+      "p95": 106,
+      "max": 219.9999999999418
+    },
+    {
+      "case": "revisit",
+      "boundary": "acceptedInteractionMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 139,
+      "p95": 155.0000000000291,
+      "max": 272.9999999999418
+    },
+    {
+      "case": "same-table",
+      "boundary": "selectedMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 12,
+      "p95": 15,
+      "max": 83
+    },
+    {
+      "case": "same-table",
+      "boundary": "selectionReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 7,
+      "p95": 9.999999999992724,
+      "max": 78.00000000000728
+    },
+    {
+      "case": "same-table",
+      "boundary": "gridReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 72,
+      "p95": 81,
+      "max": 156
+    },
+    {
+      "case": "same-table",
+      "boundary": "targetFilteredPaintMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 93,
+      "p95": 104,
+      "max": 182.00000000000728
+    },
+    {
+      "case": "same-table",
+      "boundary": "acceptedInteractionMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 138,
+      "p95": 158,
+      "max": 232
+    },
+    {
+      "case": "schema-selection",
+      "boundary": "selectedMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 12,
+      "p95": 15,
+      "max": 75
+    },
+    {
+      "case": "schema-selection",
+      "boundary": "selectionReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 7.000000000014552,
+      "p95": 9,
+      "max": 71.00000000005821
+    },
+    {
+      "case": "schema-selection",
+      "boundary": "gridReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 74,
+      "p95": 89,
+      "max": 140
+    },
+    {
+      "case": "schema-selection",
+      "boundary": "targetFilteredPaintMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 95,
+      "p95": 109,
+      "max": 162
+    },
+    {
+      "case": "schema-selection",
+      "boundary": "acceptedInteractionMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 139,
+      "p95": 159,
+      "max": 209
+    },
+    {
+      "case": "dirty-revisit",
+      "boundary": "selectedMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 12,
+      "p95": 14.999999999992724,
+      "max": 84
+    },
+    {
+      "case": "dirty-revisit",
+      "boundary": "selectionReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 7,
+      "p95": 9,
+      "max": 78
+    },
+    {
+      "case": "dirty-revisit",
+      "boundary": "gridReactCommitMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 73,
+      "p95": 84,
+      "max": 170
+    },
+    {
+      "case": "dirty-revisit",
+      "boundary": "targetFilteredPaintMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 94,
+      "p95": 105.00000000000092,
+      "max": 195
+    },
+    {
+      "case": "dirty-revisit",
+      "boundary": "acceptedInteractionMs",
+      "count": 300,
+      "invalid": 0,
+      "median": 139,
+      "p95": 156,
+      "max": 240
+    }
+  ],
+  "discardedConfirmationAttempts": [
+    {
+      "attempt": "topmost-clean",
+      "partialSamplesNotAdopted": 1200,
+      "WebViewInvalidCount": 0,
+      "error": null,
+      "hostCompleted": true,
+      "reason": "OS monitor calibration incorrectly allowed layers0/3, while actual topmost layer is5; host rejected even though native/WebView guards passed"
+    },
+    {
+      "attempt": "topmost-dirty",
+      "partialSamplesNotAdopted": 300,
+      "WebViewInvalidCount": 0,
+      "error": null,
+      "hostCompleted": true,
+      "reason": "OS monitor calibration incorrectly allowed layers0/3, while actual topmost layer is5; host rejected even though native/WebView guards passed"
+    }
+  ],
+  "clean": {
+    "host": {
+      "method": "LaunchServices-foreground-with-native-WebView-and-OS-display-monitor",
+      "candidate": "45b74bb6ac883398f993b6a04988b81c3c01048d",
+      "workingTreeDirty": true,
+      "platform": "darwin",
+      "arch": "arm64",
+      "osRelease": "25.6.0",
+      "cpu": "Apple M1",
+      "memoryBytes": 17179869184,
+      "node": "v25.9.0",
+      "bundleSha256": "9aa3880204533b3a3b79f1ef0a56c1c5c35d28d7aaf237ed8148b46aa274e96e",
+      "fixtureSha256": "c62d22df13d97abe1fb6c74ada13380bdbba9a2c1274af766374482c2350b953",
+      "mode": "clean",
+      "startedAt": "2026-10-03T04:11:57.506Z",
+      "sleepInhibited": "caffeinate -dims",
+      "monitorPeriodMs": 250,
+      "input": "synthetic DOM click/key in actual Tauri WebView",
+      "paint": "rAF opportunity, not GPU completion",
+      "launcherStatus": 0,
+      "completed": true,
+      "displayMonitor": {
+        "samples": 1385,
+        "invalid": 0,
+        "excludedStartupQuitSamples": 0
+      },
+      "sourceBytesUnchanged": true,
+      "endedAt": "2026-10-03T04:18:05.448Z"
+    },
+    "coldFromHarnessInjectionMs": 2479,
+    "firstProjectionAcceptedMs": 173,
+    "perRun": [
+      {
+        "boundary": "selectedMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 25.99999999999909,
+        "median": 11.00000000000182,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 21.99999999999909,
+        "median": 7.0000000000009095,
+        "p95": 8.000000000003638,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 104,
+        "median": 72.00000000000364,
+        "p95": 87,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 126,
+        "median": 93,
+        "p95": 108.99999999999956,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 153.00000000000182,
+        "median": 116,
+        "p95": 133,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 173,
+        "median": 139,
+        "p95": 155,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 83,
+        "median": 12,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 78.00000000000728,
+        "median": 7,
+        "p95": 10.000000000007276,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 156,
+        "median": 72,
+        "p95": 83.99999999999272,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 182.00000000000728,
+        "median": 93,
+        "p95": 104.99999999999272,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 210,
+        "median": 116,
+        "p95": 130,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 232,
+        "median": 138,
+        "p95": 156.00000000000728,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 26,
+        "median": 12,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 12,
+        "median": 7.999999999985448,
+        "p95": 10,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 93,
+        "median": 72,
+        "p95": 79,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 115,
+        "median": 93,
+        "p95": 101,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 143,
+        "median": 116,
+        "p95": 128,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 174,
+        "median": 138.99999999998545,
+        "p95": 155,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 32,
+        "median": 12,
+        "p95": 15,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7.000000000014552,
+        "p95": 9,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 107,
+        "median": 74,
+        "p95": 83,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 129,
+        "median": 95,
+        "p95": 106,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 157,
+        "median": 118,
+        "p95": 131,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 180,
+        "median": 139,
+        "p95": 155,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 27,
+        "median": 12,
+        "p95": 15,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7.000000000014552,
+        "p95": 10,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 89,
+        "median": 72,
+        "p95": 81,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 109,
+        "median": 92.00000000001457,
+        "p95": 104,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 135,
+        "median": 116,
+        "p95": 129,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 165,
+        "median": 138.0000000000291,
+        "p95": 154.9999999999709,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 18,
+        "median": 12,
+        "p95": 14,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7.999999999970896,
+        "p95": 9,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 89,
+        "median": 72,
+        "p95": 79,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 110,
+        "median": 93,
+        "p95": 101,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 137,
+        "median": 116.0000000000291,
+        "p95": 130,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 172,
+        "median": 138,
+        "p95": 160,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 27.000000000029104,
+        "median": 12,
+        "p95": 15,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11.000000000029104,
+        "median": 7.999999999970896,
+        "p95": 8.000000000029104,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 88,
+        "median": 72,
+        "p95": 79.9999999999709,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 108,
+        "median": 93,
+        "p95": 100.9999999999709,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 139,
+        "median": 116,
+        "p95": 130,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 173.0000000000291,
+        "median": 138.0000000000291,
+        "p95": 155,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 28,
+        "median": 12,
+        "p95": 15,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7,
+        "p95": 8.000000000029104,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 101,
+        "median": 74,
+        "p95": 88.0000000000291,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 122,
+        "median": 95,
+        "p95": 108,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 148,
+        "median": 118.0000000000291,
+        "p95": 134,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 169,
+        "median": 139,
+        "p95": 157,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 27,
+        "median": 12,
+        "p95": 14.999999999970896,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7,
+        "p95": 8.000000000058208,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 194.9999999999418,
+        "median": 72,
+        "p95": 85.00000000005821,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 219.9999999999418,
+        "median": 93,
+        "p95": 106,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 248.9999999999418,
+        "median": 117,
+        "p95": 132,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 272.9999999999418,
+        "median": 139,
+        "p95": 157.0000000000582,
+        "run": 3
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 30,
+        "median": 11,
+        "p95": 15,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7,
+        "p95": 9,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 89,
+        "median": 72,
+        "p95": 81,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 109,
+        "median": 92,
+        "p95": 103,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 136,
+        "median": 116,
+        "p95": 130,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "same-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 175.9999999999418,
+        "median": 139,
+        "p95": 155.0000000000582,
+        "run": 3
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 28,
+        "median": 12,
+        "p95": 15,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 24,
+        "median": 7,
+        "p95": 9,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 95,
+        "median": 72,
+        "p95": 86,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 117,
+        "median": 92,
+        "p95": 106,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 147,
+        "median": 116,
+        "p95": 132.0000000000582,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "cross-table",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 180,
+        "median": 138.0000000000582,
+        "p95": 160,
+        "run": 3
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 75,
+        "median": 12,
+        "p95": 15,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 71.00000000005821,
+        "median": 7.000000000058208,
+        "p95": 9,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 140,
+        "median": 74,
+        "p95": 92,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 162,
+        "median": 95,
+        "p95": 113,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 190,
+        "median": 118,
+        "p95": 143,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "schema-selection",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 209,
+        "median": 139,
+        "p95": 166,
+        "run": 3
+      }
+    ]
+  },
+  "dirty": {
+    "host": {
+      "method": "LaunchServices-foreground-with-native-WebView-and-OS-display-monitor",
+      "candidate": "45b74bb6ac883398f993b6a04988b81c3c01048d",
+      "workingTreeDirty": true,
+      "platform": "darwin",
+      "arch": "arm64",
+      "osRelease": "25.6.0",
+      "cpu": "Apple M1",
+      "memoryBytes": 17179869184,
+      "node": "v25.9.0",
+      "bundleSha256": "9aa3880204533b3a3b79f1ef0a56c1c5c35d28d7aaf237ed8148b46aa274e96e",
+      "fixtureSha256": "c62d22df13d97abe1fb6c74ada13380bdbba9a2c1274af766374482c2350b953",
+      "mode": "dirty-rapid",
+      "startedAt": "2026-10-03T04:19:11.864Z",
+      "sleepInhibited": "caffeinate -dims",
+      "monitorPeriodMs": 250,
+      "input": "synthetic DOM click/key in actual Tauri WebView",
+      "paint": "rAF opportunity, not GPU completion",
+      "launcherStatus": 0,
+      "completed": true,
+      "displayMonitor": {
+        "samples": 373,
+        "invalid": 0,
+        "excludedStartupQuitSamples": 0
+      },
+      "sourceBytesUnchanged": true,
+      "endedAt": "2026-10-03T04:20:51.412Z"
+    },
+    "coldFromHarnessInjectionMs": 2486,
+    "firstProjectionAcceptedMs": 183,
+    "perRun": [
+      {
+        "boundary": "selectedMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 84,
+        "median": 12,
+        "p95": 16,
+        "run": 1
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 78,
+        "median": 7,
+        "p95": 11,
+        "run": 1
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 170,
+        "median": 73,
+        "p95": 85,
+        "run": 1
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 195,
+        "median": 94,
+        "p95": 105.00000000000092,
+        "run": 1
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 220.00000000000185,
+        "median": 117,
+        "p95": 133.00000000000182,
+        "run": 1
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 240,
+        "median": 139,
+        "p95": 156,
+        "run": 1
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 14.999999999992724,
+        "median": 11.999999999992724,
+        "p95": 13.999999999992724,
+        "run": 2
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 10.999999999992724,
+        "median": 7,
+        "p95": 8.000000000007276,
+        "run": 2
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 100,
+        "median": 73,
+        "p95": 86.99999999999272,
+        "run": 2
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 120,
+        "median": 93.99999999999272,
+        "p95": 106.99999999999272,
+        "run": 2
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 143,
+        "median": 116,
+        "p95": 132,
+        "run": 2
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 165,
+        "median": 139,
+        "p95": 157,
+        "run": 2
+      },
+      {
+        "boundary": "selectedMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 24.999999999985448,
+        "median": 12,
+        "p95": 14.000000000014552,
+        "run": 3
+      },
+      {
+        "boundary": "selectionReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 11,
+        "median": 7.000000000014552,
+        "p95": 8.000000000014552,
+        "run": 3
+      },
+      {
+        "boundary": "gridReactCommitMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 91,
+        "median": 73,
+        "p95": 83.00000000001455,
+        "run": 3
+      },
+      {
+        "boundary": "targetFilteredPaintMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 112,
+        "median": 93,
+        "p95": 104,
+        "run": 3
+      },
+      {
+        "boundary": "paintOpportunityMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 135,
+        "median": 116,
+        "p95": 128,
+        "run": 3
+      },
+      {
+        "boundary": "acceptedInteractionMs",
+        "case": "dirty-revisit",
+        "count": 100,
+        "invalidCount": 0,
+        "max": 165,
+        "median": 139,
+        "p95": 155,
+        "run": 3
+      }
+    ]
+  },
+  "rapid": [
+    {
+      "active": "sources/a-1.yaml",
+      "dirtyRetained": true,
+      "run": 1,
+      "selections": 50,
+      "trace": [
+        {
+          "at": 94768,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94775,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94776,
+          "command": "select_source",
+          "path": "sources/a-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 94779,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94780,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94782,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94786,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94791,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94793,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94803,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94804,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 94826.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 94840,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94857,
+          "command": "select_source",
+          "ms": 81,
+          "path": "sources/a-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 94857,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 94857,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94862.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94868,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94868,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94868,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94870,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94871,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94872,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94881,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94882,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94885,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94899,
+          "command": "select_source",
+          "ms": 42,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 94899,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 94900,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94901,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 94920,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 94935,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94951.0,
+          "command": "select_source",
+          "ms": 52.00000000001455,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 94951.0,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 94952,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94957.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94963.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94963.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94964,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94966.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94968,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 94975.0,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94976,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 94992,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 94993,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95012,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95026,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95032,
+          "command": "select_source",
+          "ms": 80.99999999998545,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95032,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95033,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95033,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95033,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 95040,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95046,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95053,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95054,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95064,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95064,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95066,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95067,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95078,
+          "command": "select_source",
+          "ms": 46,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95078,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95079.0,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95080,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95100.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95115,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95131,
+          "command": "select_source",
+          "ms": 53,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95131,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95132,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95132,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95132,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 95138,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95145,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95151,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95153,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95154,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95155,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95165,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95166,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95179,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95180,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95198.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95212,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95218,
+          "command": "select_source",
+          "ms": 87,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95218,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95219.0,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95220,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95220,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 95227,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95233,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95241,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95242,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95244,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95245,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95254,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95256,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95271,
+          "command": "select_source",
+          "ms": 53,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95271,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95272,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95273,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95314,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95329.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95337,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95337,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95337,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 95354,
+          "command": "select_source",
+          "ms": 83,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95354,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95355,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95360,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95366,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95377,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95378,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95379,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95389,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95391,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95393,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95405,
+          "command": "select_source",
+          "ms": 51,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95405,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95406,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95407,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95431,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95445.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95453,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95453,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 95469.0,
+          "command": "select_source",
+          "ms": 64.00000000001455,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95469.0,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95470,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95475.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95482,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95483,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95485,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95489,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95498,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95499,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95504,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95516,
+          "command": "select_source",
+          "ms": 46.99999999998545,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95516,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95517,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95518,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95538,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95554,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95572,
+          "command": "select_source",
+          "ms": 56,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95572,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95573.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95573.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 95580,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95586,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95593,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95594.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95599,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95600.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95615.0,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95616,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95616,
+          "command": "select_source",
+          "ms": 44,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95616,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95618,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95634,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95636,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95660,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95674,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95693,
+          "command": "select_source",
+          "ms": 77,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95693,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95693,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95698.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95716.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95716.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95717,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95719.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95727,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95740.0,
+          "command": "select_source",
+          "ms": 47.00000000001455,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95740.0,
+          "command": "select_source",
+          "path": "sources/b-schema.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95740.0,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95741,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95742,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95754,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95755,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95775,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95789,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95808,
+          "command": "select_source",
+          "ms": 67.99999999998545,
+          "path": "sources/b-schema.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95808,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95808,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95813,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95819,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95820.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95821,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95823.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95826.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95834,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95835.0,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95837,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95849,
+          "command": "select_source",
+          "ms": 41,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95849,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95850.0,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95851,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95871,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95885,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95902,
+          "command": "select_source",
+          "ms": 53,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95902,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95903,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95907,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95914,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95914,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95917,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95918,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95920,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95929,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95931,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95944,
+          "command": "select_source",
+          "ms": 42,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95944,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95944,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 95945.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 95964,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 95979,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 95996,
+          "command": "select_source",
+          "ms": 52,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 95996,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 95996,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95997,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 95997,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96004,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96009,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96017,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96018,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96037,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96051,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96068,
+          "command": "select_source",
+          "ms": 72,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96068,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96069,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96070.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96070.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96122,
+          "command": "select_source",
+          "ms": 54,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96122,
+          "path": "sources/a-1.yaml",
+          "phase": "state-update"
+        }
+      ]
+    },
+    {
+      "active": "sources/a-1.yaml",
+      "dirtyRetained": true,
+      "run": 2,
+      "selections": 50,
+      "trace": [
+        {
+          "at": 96127,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96133,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96134,
+          "command": "select_source",
+          "path": "sources/a-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96140,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96142,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96144,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96148,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96152,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96154,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96157,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96163,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96164,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96186,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96201.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96219.0,
+          "command": "select_source",
+          "ms": 85.00000000001455,
+          "path": "sources/a-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96219.0,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96220,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96225.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96232,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96232,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96234.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96235,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96240.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96244,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96246,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96254,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96256,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96257,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96277,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96292,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96310,
+          "command": "select_source",
+          "ms": 90.99999999998543,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96310,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96310,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96316,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96322,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96322,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96324,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96326.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96330,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96334,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96336,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96339,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96352,
+          "command": "select_source",
+          "ms": 42,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96352,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96353.0,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96354,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96374,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96388,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96406,
+          "command": "select_source",
+          "ms": 54,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96406,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96407,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96407,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96414,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96420,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96426,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96428,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96438,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96440,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96441,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96441,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96442,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96454.0,
+          "command": "select_source",
+          "ms": 48.00000000001455,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96454.0,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96455,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96456,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96477,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96492,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96499,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96499,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96515,
+          "command": "select_source",
+          "ms": 60.99999999998545,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96515,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96526,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96532,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96539,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96541,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96542,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96552,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96554,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96556,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96567,
+          "command": "select_source",
+          "ms": 52,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96567,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96568,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96569,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96590,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96606.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96623,
+          "command": "select_source",
+          "ms": 56,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96623,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96625,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96625,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96625,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96631,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96636,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96645,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96646,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96647,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96648,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96667,
+          "command": "select_source",
+          "ms": 44,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96667,
+          "command": "select_source",
+          "path": "sources/b-schema.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96667,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96669,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96670,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96682,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96683,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96702,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96716.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96736,
+          "command": "select_source",
+          "ms": 69,
+          "path": "sources/b-schema.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96736,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96736,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96741,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96749,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96749,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96751,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96753,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96758,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96765,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96766,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96771,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96783,
+          "command": "select_source",
+          "ms": 47,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96783,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96784,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96785,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96806,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96822,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96840,
+          "command": "select_source",
+          "ms": 57,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96840,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96841.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96841.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96849,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96856.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96863,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96865.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96874,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96874,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96888,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96890,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96890,
+          "command": "select_source",
+          "ms": 50,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96890,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96892,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96907,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96909,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 96931,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 96945.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96963.0,
+          "command": "select_source",
+          "ms": 73.00000000001455,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 96963.0,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 96964,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96964,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 96972.0,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96978.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96985,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96986,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 96988,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96989,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 96997,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 96998,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97000,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97012,
+          "command": "select_source",
+          "ms": 48.99999999998545,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97012,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97012,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97013,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97033,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97048,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97065,
+          "command": "select_source",
+          "ms": 53,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97065,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97066,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97070.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97077,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97077,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97080,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97081,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97084,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97093,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97094.0,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97107,
+          "command": "select_source",
+          "ms": 42,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97107,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97107,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97108,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97129,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97144,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97161,
+          "command": "select_source",
+          "ms": 54,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97161,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97162,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97162,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97162,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97170,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97176,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97183,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97184,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97195.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97195.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97209,
+          "command": "select_source",
+          "ms": 48,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97209,
+          "command": "select_source",
+          "path": "sources/b-schema.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97209,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97211,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97213.0,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97228.0,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97230,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97253,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97270,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97291,
+          "command": "select_source",
+          "ms": 82,
+          "path": "sources/b-schema.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97291,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97292,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97292,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97320.0,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97327,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97334,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97347.0,
+          "command": "select_source",
+          "ms": 56.00000000001455,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97347.0,
+          "command": "select_source",
+          "path": "sources/a-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97348,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97349,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97350.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97366,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97368,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97369,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97380,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97382,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97404,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97419,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97437,
+          "command": "select_source",
+          "ms": 89.99999999998545,
+          "path": "sources/a-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97437,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97438,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97438,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97446,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97452,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97459,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97460.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97481.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97497,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97515,
+          "command": "select_source",
+          "ms": 78,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97515,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97516,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97516,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97516,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97570.0,
+          "command": "select_source",
+          "ms": 55.00000000001455,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97570.0,
+          "path": "sources/a-1.yaml",
+          "phase": "state-update"
+        },
+        {
+          "at": 97574,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97582.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97582.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97583,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        }
+      ]
+    },
+    {
+      "active": "sources/a-1.yaml",
+      "dirtyRetained": true,
+      "run": 3,
+      "selections": 50,
+      "trace": [
+        {
+          "at": 97585.0,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97589,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97590,
+          "command": "select_source",
+          "path": "sources/a-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97596,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97596,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97599,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97600.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97605,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97609.0,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97611,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97621,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97622,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97640,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97655,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97663,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97664,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97664,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97679,
+          "command": "select_source",
+          "ms": 89,
+          "path": "sources/a-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97679,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97680,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97686,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97693,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97694,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97695.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97695.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97703,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97705,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97707.0,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97721,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97722.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97740.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97754,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97761,
+          "command": "select_source",
+          "ms": 82,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97761,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97763,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97763,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97769,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97775,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97782,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97784,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97786,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97786,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97792,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97794,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97797,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97810,
+          "command": "select_source",
+          "ms": 49,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97810,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97811,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97812,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97832.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97847.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97855,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97855,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97872,
+          "command": "select_source",
+          "ms": 62,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97872,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97872,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97879,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97894,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97895,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97897,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97897,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97909,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97911,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97913,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97925,
+          "command": "select_source",
+          "ms": 53,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97925,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97926,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97927,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 97948.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 97963.0,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 97971,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 97971,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 97988,
+          "command": "select_source",
+          "ms": 63,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 97988,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 97988,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 97993,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98000,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98002,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98004,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98007,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98013,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98015,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98021,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98034,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98035,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98053,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98067,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98074,
+          "command": "select_source",
+          "ms": 86,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98074,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98076.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98076.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98082.0,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98088.0,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98094.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98096,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98100.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98100.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98116,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98117,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98117,
+          "command": "select_source",
+          "ms": 43,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98117,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98120,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98131,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98132,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98152,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98166,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98174,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98174,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98191,
+          "command": "select_source",
+          "ms": 74,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98191,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98191,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98196,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98203,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98205,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98207.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98212,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98217,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98219.0,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98224,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98229,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98230,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98248,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98262,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98280,
+          "command": "select_source",
+          "ms": 89,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98280,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98280,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98285,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98293,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98293,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98294,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98296,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98299,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98305,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98307,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98309,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98323.0,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98324,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98346,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98361,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98367,
+          "command": "select_source",
+          "ms": 87,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98367,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98369,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98369,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98376,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98382,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98392,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98393,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98401,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98401,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98415,
+          "command": "select_source",
+          "ms": 48,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98415,
+          "command": "select_source",
+          "path": "sources/b-schema.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98415,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98418,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98422,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98435,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98436,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98460.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98474,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98484.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98484.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98503,
+          "command": "select_source",
+          "ms": 88,
+          "path": "sources/b-schema.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98503,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98504,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98509,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98516,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98518,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98520,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98526,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98529,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98530,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98535,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98548,
+          "command": "select_source",
+          "ms": 45,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98548,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98548,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98549,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98569,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98584,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98602,
+          "command": "select_source",
+          "ms": 54,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98602,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98602,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98607,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98615.0,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98615.0,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98616,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98618,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98620,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98629,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98630,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98645,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98646,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98664,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98678,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98684,
+          "command": "select_source",
+          "ms": 82,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98684,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98686,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98686,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98686,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98693,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98699,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98706,
+          "path": "sources/b-schema.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98707.0,
+          "path": "sources/b-schema.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98717,
+          "path": "sources/c-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98719.0,
+          "path": "sources/c-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98720,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98720,
+          "path": "sources/b-schema.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98721,
+          "path": "sources/c-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98733,
+          "command": "select_source",
+          "ms": 49,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98733,
+          "command": "select_source",
+          "path": "sources/c-2.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98734.0,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98735,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98755,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98769,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98777,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98777,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98794,
+          "command": "select_source",
+          "ms": 61,
+          "path": "sources/c-2.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98794,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98794,
+          "path": "sources/a-2.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98800,
+          "path": "sources/a-2.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98807,
+          "path": "sources/a-2.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98822,
+          "path": "sources/a-1.yaml",
+          "phase": "selection"
+        },
+        {
+          "at": 98823.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-start"
+        },
+        {
+          "at": 98847.0,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-render-commit"
+        },
+        {
+          "at": 98861,
+          "path": "sources/a-1.yaml",
+          "phase": "react-commit"
+        },
+        {
+          "at": 98878,
+          "command": "select_source",
+          "ms": 84,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98878,
+          "command": "select_source",
+          "path": "sources/a-1.yaml",
+          "phase": "request-start"
+        },
+        {
+          "at": 98879,
+          "path": "sources/a-1.yaml",
+          "phase": "paint-opportunity"
+        },
+        {
+          "at": 98879,
+          "path": "sources/a-1.yaml",
+          "phase": "grid-paint"
+        },
+        {
+          "at": 98927,
+          "command": "select_source",
+          "ms": 49,
+          "path": "sources/a-1.yaml",
+          "phase": "ipc-return"
+        },
+        {
+          "at": 98927,
+          "path": "sources/a-1.yaml",
+          "phase": "state-update"
+        }
+      ]
+    }
+  ],
+  "historyRetained": true,
+  "ci": {
+    "fast": "https://github.com/kamahir0/masterdata/actions/runs/37094413402",
+    "deep": "https://github.com/kamahir0/masterdata/actions/runs/37094413672",
+    "tier1": "https://github.com/kamahir0/masterdata/actions/runs/37094415018"
+  }
+}

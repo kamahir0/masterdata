@@ -79,8 +79,7 @@ Requirement IDは、uppercase ASCII segmentをhyphenで区切り、末尾に3桁
 IDを追加する前に、既存のすべてのspecification definitionを検索して割り当てる。一度公開したIDは、
 rename、reassign、削除後の再利用をしてはならない（MUST NOT）。意味を変更する場合は新しいIDを
 割り当て、predecessor/deprecation noteを付ける。同じnormative ruleは1つのcanonical specificationに
-置き、他のdocumentからはそのIDへlinkし、内容をcopyしない。軽量な `cargo xtask check-specs`
-commandは、明示的なrequirement definitionとreference、duplicate definition、malformed ID、
+置き、他のdocumentからはそのIDへlinkし、内容をcopyしない。spec integrity checkは、明示的なrequirement definitionとreference、duplicate definition、malformed ID、
 status/header metadata、duplicate ADR number、RFC/proposal numberingとmetadata、broken relative linkを
 検査する。`See PROJECT-001` のようなrequirement referenceはownerではない。
 

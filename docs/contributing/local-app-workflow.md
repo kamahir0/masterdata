@@ -1,3 +1,5 @@
+> FORENSIC ONLY: legacy-final向けのhistorical developer手順。clean-slate branchでは実行不能。新implementationのworkspace / frameworkを指定しない。
+
 # ローカルGUI workflow
 
 ## 目的と前提

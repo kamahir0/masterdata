@@ -2,7 +2,7 @@
 
 Status: Approved
 
-testはexecutable evidenceであり、存在だけでproduct contractにならない。意味の分類は [registry](classification.md)、input/oracleは [corpus](compatibility-corpus.md)、workflowは [matrix](acceptance-matrix.md)。旧testはcurrent regressionとして保持し、rewrite gateは独立corpusへのconformanceで切る。
+testはexecutable evidenceであり、存在だけでproduct contractにならない。意味の分類は [registry](classification.md)、input/oracleは [corpus](compatibility-corpus.md)、workflowは [matrix](acceptance-matrix.md)。旧testはlegacy-finalに保存し、rewrite gateは独立corpusへのconformanceで切る。
 
 ## 6つの役割
 
@@ -17,7 +17,7 @@ testはexecutable evidenceであり、存在だけでproduct contractになら�
 
 1 testに複数roleがある。case全体をKEEP/DELETEする前にoracleを分解する。特にdirect PK editとbatch既存PK edit禁止は違うscopeであり、単純な矛盾ではない。
 
-## 現行suiteの移植方針
+## Legacy suiteのbehavior移植方針（forensic inventory）
 
 | Suite | 主role / portするevidence | 除外 / refineする拘束 |
 | --- | --- | --- |
@@ -61,7 +61,7 @@ port順序は、source/config/consumer corpus → fresh write safety → daily a
 | Gate class | 対象 |扱い |
 | --- | --- | --- |
 | Rewrite acceptance | fixtures/rewrite-oracle/v1 のinput / intent / expected、canonical domain / GUI contract | 新adapterで同じ意味を検証。legacy helper不要 |
-| Current implementation regression | 現Rust / GUI / Tauri / .NET test、source-text app.test.mjs、exact DTO mock、transform calibration | 現製品維持に実行する。新architectureのAPI / topologyを要求しない |
+| Current implementation regression | 現Rust / GUI / Tauri / .NET test、source-text app.test.mjs、exact DTO mock、transform calibration | legacy-finalの現製品維持に実行する。clean-slate treeには置かず、新architectureのAPI / topologyを要求しない |
 | Historical / obsolete | 0047 insertion line、0044 revoked Save案、旧Complex footer、retired Web / Computed / Released、D1〜D5 legacy surface test | future rewrite gate外。現testに残るならhistorical / legacy guardとして読む |
 
 core/appのrewrite_oracle.rsとconsumer scriptはcurrent implementation adapterでありoracleそのものではない。known gapをassertしてgreenにする現adapter testはconformance passではなくgap固定・期待値保全のregression。rewrite implementationではgap exemptionを認めない。

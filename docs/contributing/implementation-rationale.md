@@ -63,7 +63,7 @@ refactorでprotected codeを移動する場合、必要なrationaleもinvariant�
 
 ## Structural reference check
 
-`cargo xtask check-rationale`はcomment内の明示referenceについて、Requirement ID、ADR/RFC、Regression test identifier、repository-relative docs pathの存在を確認する。
+`current branchのrationale integrity check`はcomment内の明示referenceについて、Requirement ID、ADR/RFC、Regression test identifier、repository-relative docs pathの存在を確認する。
 
 このcheckは自然言語のWHY、failure mode、workaround必要性、benchmark妥当性を判定しない。semantic freshnessはreview-codeで判断する。
 
@@ -77,3 +77,5 @@ refactorでprotected codeを移動する場合、必要なrationaleもinvariant�
 ```
 
 この形式は例でありcomment DSLではない。
+
+clean-slate branchでは[handoff](../../docs/rewrite-preparation/clean-room-handoff.md)に従い、退役済みproduct tests / mixed toolingを要求せず、`python3 tools/check-clean-slate.py`を使う。新runtimeが存在する将来の検証とは分離する。

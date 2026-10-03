@@ -150,7 +150,7 @@ diagnosticsとCLI resultの分離方法はSchema Migration仕様の未決定outp
 
 ### CLI-010
 
-CLIは`NativeApplicationService`をdirect/in-processで使用しなければならない（MUST）。CLI commandの存在と実行時の利用可否を混同してはならず（MUST NOT）、domain処理のためにdaemon、network serialization、async runtimeを必須にしてはならない（MUST NOT）。Tauri Desktopも同じapplication semanticsを使用する。
+CLIはshared Rust application semanticsをdirect/in-processで使用しなければならない（MUST）。CLI commandの存在と実行時の利用可否を混同してはならず（MUST NOT）、domain処理のためにdaemon、network serialization、async runtimeを必須にしてはならない（MUST NOT）。Tauri Desktopも同じapplication semanticsを使用する。
 
 ### CLI-011
 

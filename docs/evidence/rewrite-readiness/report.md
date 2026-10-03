@@ -62,3 +62,11 @@ Review findings: consumer / controlled baselineに未解決のcorrectness・safe
 focused actual consumer、codegen11 tests、portable consumer全10checks、repeat artifacts / Build / Publish、rationale / execution-state、専用Tauri release build / JS syntaxを実行。workspace check-allは全pass（GUI174 tests / 14 filesを含む）。exact Candidate required CIとfresh final Candidate consumer実行をreconcileしてからStageを完了させる。Tier1 workflowは両platformのactual managed consumer reportもartifactへ保持する。
 
 **Consumerとcontrolled Tier1 baselineの二つのgapは閉じた。** 最終Ready / Not Readyはexact Candidateとrequired CIを含めた[Development State](../../execution-state.md)と最終報告が所有する。本evidenceだけでpending CIをpass扱いしない。Readyでもrewriteは開始せず、次のHuman-selected Objectiveを待つ。
+
+## Frozen Ready Candidate reconciliation
+
+2026-10-04のfreeze前にexact Candidate `45b74bb6ac883398f993b6a04988b81c3c01048d`の[Fast](https://github.com/kamahir0/masterdata/actions/runs/37094413402)、[Deep](https://github.com/kamahir0/masterdata/actions/runs/37094413672)、[Tier1](https://github.com/kamahir0/masterdata/actions/runs/37094415018) successをfresh確認。main `c13d5a7da32acbd2f2c1927dc6d572648512fb6e`との差はStateのみ。Ready legacyを`legacy-final`へ固定した。
+
+final Candidateのread-only raw dataは[final summary](final-candidate/summary.json)、[actual managed consumer](final-candidate/managed-consumer.json)、[macOS native](final-candidate/macos/native.jsonl)、[Windows native](final-candidate/windows/native.jsonl)、[100k capacity](final-candidate/capacity.txt)へ保存。producer measurement adapterはclean-slateから退役し、protocolと結果だけを保持する。
+
+final confirmationは1500 completed / invalid0。accepted interaction pooled p95: clean155ms / same Table158ms / cross Table155ms / schema159ms / dirty156ms。selection p95 15ms。50 rapid selections×3はfinal-only / dirty / Undo保持。これは上のinitial confirmationとは別datasetであり、initial値を置換しない。target <150msは未達のまま保持する。native双方のwork countsは0、actual managed consumer全10check pass。actual Unityは未実施。Windows actual Desktopはrewrite final conformanceへ引き継ぐ。Ready gateは成功CIとこの確認を含めて閉じた。

@@ -77,8 +77,8 @@ Build Selectionとselected datasetに対するconstraint validationの順序は�
 selection後のdataset-level validationを混同してはならない。
 
 Rust coreはproject/config解決、YAMLのsource representation、schema-directed semantic interpretation、Type System/Table resolution、BuildPlan、およびcanonical artifact生成に
-必要なvalidated modelを担当する。`masterdata-codegen-csharp`はresolved modelからstructured C#をloweringし、MasterMemory binary formatと
-Source Generatorのbehaviorは.NET dependencyに残す。`.NET` process invocationは`masterdata-dotnet`に集約し、application serviceはstagingと
+必要なvalidated modelを担当する。C# generation responsibilityはresolved modelからstructured C#をloweringし、MasterMemory binary formatと
+Source Generatorのbehaviorは.NET dependencyに残す。`.NET` process invocationはnative .NET invocation boundaryに集約し、application serviceはstagingと
 artifact publicationを担当する。CLIとTauriはshared workflowを呼び出し、domain semanticsまたは.NET invocationを複製しない。
 
 generated C#のtype、property、constructor parameterのidentifier contractは[C#命名仕様](type-system/csharp-naming.md)が所有する。build pipelineは
@@ -785,12 +785,12 @@ contractを閉じるが、ASCII lowercase、NFC-only normalization、またはOS
 
 ## 責務境界と非目標
 
-- `masterdata-core`: project/config解決、source representationとschema-directed typed model、Type System/Table resolution、Build Selection、record/constraint validation、canonical ordering、
+- shared Rust domain semantics: project/config解決、source representationとschema-directed typed model、Type System/Table resolution、Build Selection、record/constraint validation、canonical ordering、
   normalized semantic model。
-- `masterdata-codegen-csharp`: resolved modelからのC# generation planとcanonical C# artifact materialization。raw YAMLからsemanticを推論しない。
-- `masterdata-dotnet`: internal normalized protocol、.NET process invocation、schema-specific builder、MasterMemory/MessagePack compile、DatabaseBuilder、
+- C# generation responsibility: resolved modelからのC# generation planとcanonical C# artifact materialization。raw YAMLからsemanticを推論しない。
+- native .NET invocation boundary: internal normalized protocol、.NET process invocation、schema-specific builder、MasterMemory/MessagePack compile、DatabaseBuilder、
   MemoryDatabase reload validation。
-- `masterdata-app`: build/publish orchestration、staging、canonical artifact publication、将来のpublish target adapter。
+- shared Rust application boundary: build/publish orchestration、staging、canonical artifact publication、将来のpublish target adapter。
 - CLI/Tauri: application serviceを呼び出すadapter。YAML semantics、filesystem discovery、または.NET process invocationを複製しない。
 
 このspecificationでは、Reference、named Build Profile adapter、GUI、Unity importer、semantic schema hash、builder cache/reuse、cache eviction、

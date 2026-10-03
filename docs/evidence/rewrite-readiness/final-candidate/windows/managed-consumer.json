@@ -1,0 +1,97 @@
+{
+  "method": "independent-public-CSharp-consumer-and-actual-MasterMemory-load",
+  "executedAt": "2026-10-03T03:50:36.436Z",
+  "revision": "45b74bb6ac883398f993b6a04988b81c3c01048d",
+  "workingTreeDirty": false,
+  "temp": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF",
+  "platform": "win32",
+  "stages": [
+    {
+      "command": "masterdata.exe",
+      "args": [
+        "--project",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input",
+        "build"
+      ],
+      "status": 0,
+      "stdout": "schema source content hash: d0c663c3648fead58fd2d4003bcd0740a214fc1ea941d7eb088de3f507a3117e\nC# files planned: 8\n  - ItemCode.g.cs\n  - ItemId.g.cs\n  - ItemTags.g.cs\n  - LongFeatures.g.cs\n  - Rarity.g.cs\n  - Reward.g.cs\n  - ItemMaster.g.cs\n  - Probe.g.cs\nnote: Reference integrity is resolved by shared Rust core; cache reuse remains outside this slice.\nwrote 8 canonical C# file(s) to C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\csharp\nbuilt canonical MasterMemory binary: C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\masterdata.bytes (206 bytes)\n",
+      "stderr": ""
+    },
+    {
+      "command": "masterdata.exe",
+      "args": [
+        "--project",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input",
+        "build"
+      ],
+      "status": 0,
+      "stdout": "schema source content hash: d0c663c3648fead58fd2d4003bcd0740a214fc1ea941d7eb088de3f507a3117e\nC# files planned: 8\n  - ItemCode.g.cs\n  - ItemId.g.cs\n  - ItemTags.g.cs\n  - LongFeatures.g.cs\n  - Rarity.g.cs\n  - Reward.g.cs\n  - ItemMaster.g.cs\n  - Probe.g.cs\nnote: Reference integrity is resolved by shared Rust core; cache reuse remains outside this slice.\nwrote 8 canonical C# file(s) to C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\csharp\nbuilt canonical MasterMemory binary: C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\masterdata.bytes (206 bytes)\n",
+      "stderr": ""
+    },
+    {
+      "command": "masterdata.exe",
+      "args": [
+        "--project",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input",
+        "publish"
+      ],
+      "status": 0,
+      "stdout": "publish: succeeded\n  [0] csharp dist/csharp succeeded\n  [1] binary dist/masterdata.bytes succeeded\n",
+      "stderr": ""
+    },
+    {
+      "command": "masterdata.exe",
+      "args": [
+        "--project",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input",
+        "publish"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "publish: failed\n  [0] csharp dist/csharp not attempted\n  [1] binary dist/masterdata.bytes not attempted\nerror: [E-ARTIFACT-SET-BINARY-HASH-MISMATCH] canonical binary does not match the SHA-256 recorded in the receipt (C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\masterdata.bytes)\n"
+    },
+    {
+      "command": "masterdata.exe",
+      "args": [
+        "--project",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input",
+        "build",
+        "--publish"
+      ],
+      "status": 0,
+      "stdout": "schema source content hash: d0c663c3648fead58fd2d4003bcd0740a214fc1ea941d7eb088de3f507a3117e\nC# files planned: 8\n  - ItemCode.g.cs\n  - ItemId.g.cs\n  - ItemTags.g.cs\n  - LongFeatures.g.cs\n  - Rarity.g.cs\n  - Reward.g.cs\n  - ItemMaster.g.cs\n  - Probe.g.cs\nnote: Reference integrity is resolved by shared Rust core; cache reuse remains outside this slice.\nwrote 8 canonical C# file(s) to C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\csharp\nbuilt canonical MasterMemory binary: C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\masterdata.bytes (206 bytes)\npublish: succeeded\n  [0] csharp dist/csharp succeeded\n  [1] binary dist/masterdata.bytes succeeded\n",
+      "stderr": ""
+    },
+    {
+      "command": "dotnet",
+      "args": [
+        "build",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj",
+        "-c",
+        "Release"
+      ],
+      "status": 0,
+      "stdout": "  Determining projects to restore...\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2f33-pr97-265q\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2x83-8g95-xh59\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-382j-8mxh-c7x2\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cj9g-3mj2-g8vv\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cxmj-83gh-fp49\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-hv8m-jj95-wg3x\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-q2h6-ghwm-5qm8\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-qhmf-xw27-6rqr\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-v72x-2h86-7f8m\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-vh6j-jc39-fggf\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w567-gjr2-hm5j\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-wfr3-xj75-pfwh\r\n  Restored C:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj (in 461 ms).\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2f33-pr97-265q\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2x83-8g95-xh59\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-382j-8mxh-c7x2\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cj9g-3mj2-g8vv\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cxmj-83gh-fp49\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-hv8m-jj95-wg3x\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-q2h6-ghwm-5qm8\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-qhmf-xw27-6rqr\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-v72x-2h86-7f8m\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-vh6j-jc39-fggf\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w567-gjr2-hm5j\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-wfr3-xj75-pfwh\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\Generated\\ItemMaster.g.cs(39,19): warning CS8618: Non-nullable property 'Name' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [C:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj]\r\n  consumer -> C:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\bin\\Release\\net8.0\\consumer.dll\r\n\r\nBuild succeeded.\r\n\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2f33-pr97-265q\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2x83-8g95-xh59\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-382j-8mxh-c7x2\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cj9g-3mj2-g8vv\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cxmj-83gh-fp49\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-hv8m-jj95-wg3x\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-q2h6-ghwm-5qm8\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-qhmf-xw27-6rqr\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-v72x-2h86-7f8m\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-vh6j-jc39-fggf\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w567-gjr2-hm5j\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-wfr3-xj75-pfwh\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2f33-pr97-265q\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2x83-8g95-xh59\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-382j-8mxh-c7x2\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cj9g-3mj2-g8vv\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-cxmj-83gh-fp49\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-hv8m-jj95-wg3x\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-q2h6-ghwm-5qm8\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-qhmf-xw27-6rqr\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-v72x-2h86-7f8m\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1903: Package 'MessagePack' 3.1.3 has a known high severity vulnerability, https://github.com/advisories/GHSA-vh6j-jc39-fggf\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-w567-gjr2-hm5j\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj : warning NU1902: Package 'MessagePack' 3.1.3 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-wfr3-xj75-pfwh\r\nC:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\Generated\\ItemMaster.g.cs(39,19): warning CS8618: Non-nullable property 'Name' must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring the property as nullable. [C:\\Users\\runneradmin\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\consumer.csproj]\r\n    25 Warning(s)\r\n    0 Error(s)\r\n\r\nTime Elapsed 00:00:12.68\r\n",
+      "stderr": ""
+    },
+    {
+      "command": "dotnet",
+      "args": [
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\consumer\\bin\\Release\\net8.0\\consumer.dll",
+        "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\masterdata-consumer-oracle-pl5jZF\\input\\.masterdata\\output\\masterdata.bytes"
+      ],
+      "status": 0,
+      "stdout": "PASS required reference helper\r\nPASS PK lookup\r\nPASS 64-bit boundaries\r\nPASS nested Value Object\r\nPASS direct Value Object\r\nPASS Custom multi-field preservation\r\nPASS Array values\r\nPASS secondary key\r\nPASS nonunique Value Object key\r\nPASS composite key\r\nconsumer oracle PASS\r\n",
+      "stderr": ""
+    }
+  ],
+  "buildDoesNotPublish": true,
+  "deterministicBinary": true,
+  "deterministicGeneratedCSharp": true,
+  "standalonePublishEligibleWithInvalidCurrentSource": true,
+  "unmanagedAndMetadataPreserved": true,
+  "corruptReceiptArtifactRejected": true,
+  "buildPublishComposition": true,
+  "generatedCSharpCompiles": true,
+  "actualConsumerPass": true
+}

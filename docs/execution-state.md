@@ -1,12 +1,14 @@
 # Development State
 
-Stage: objective-complete
-Candidate: b92de0110163f5bfd5342ee2e178b8095e61ce1c
-Work base: c13d5a7da32acbd2f2c1927dc6d572648512fb6e
+Stage: implementation-ready
+Candidate: none
+Work base: e5c2f3df82b8e5ac033a894cd8ae400b4e312c56
 
 ## Active work
 
-None.
+Completed: fresh recovery、contractからのarchitecture導出、新workspace / CI bootstrap、source byte oracle 17 cases。
+In progress: shared type interpretation / resolution、workspace draft / history / write safety、Desktop vertical slice。
+Remaining: Desktop vertical slice、authoring completeness、Migration / delivery / CLI、全oracle / Tier1 Desktop / performance / capacity、fresh review / cutover readiness。
 
 ## Blocking findings
 

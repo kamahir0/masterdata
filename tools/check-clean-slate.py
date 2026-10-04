@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clean-slate input integrity only; contains no product execution adapter."""
+"""Rewrite authority/corpus/state integrity; independent of product adapters."""
 import gzip
 import hashlib
 import json
@@ -40,6 +40,13 @@ def read_json(path):
 manifest = read_json(Path("docs/rewrite-preparation/decommission-manifest.json"))
 freeze = manifest["freezeCommit"]
 assets = manifest["assets"]
+implementation = Path("Cargo.toml").exists()
+bootstrap_files = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml"} if implementation else set()
+source_roots = {"engine", "command", "desktop", "delivery", "verification"} if implementation else set()
+if implementation:
+    workspace = tomllib.loads(Path("Cargo.toml").read_text())
+    require(workspace.get("workspace", {}).get("metadata", {}).get("masterdata", {}).get("clean-room-rewrite") is True,
+            "workspace is not marked as fresh clean-room implementation")
 paths = [a["path"] for a in assets]
 require(len(paths) == len(set(paths)), "duplicate decommission asset")
 require(git("cat-file", "-t", "refs/tags/legacy-final") == "tag", "freeze tag is not annotated")
@@ -57,7 +64,7 @@ for asset in assets:
     classification = asset["classification"]
     require(classification in {"KEEP_AUTHORITY_CORPUS", "KEEP_GOVERNANCE_NEUTRAL", "REMOVE", "REVIEW_TRANSITIONAL"},
             f"unknown classification: {path}")
-    require(not path.exists() if classification == "REMOVE" else path.exists(),
+    require((not path.exists() or str(path) in bootstrap_files) if classification == "REMOVE" else path.exists(),
             f"retention mismatch: {path}")
     if path.exists() and path.parts[0] == "fixtures":
         require(hashlib.sha256(path.read_bytes()).hexdigest() == asset["sha256"],
@@ -65,18 +72,19 @@ for asset in assets:
 counts["frozen_assets"] = len(assets)
 counts["retired_assets"] = sum(a["classification"] == "REMOVE" for a in assets)
 
-for name in ("apps", "crates", "dotnet", "unity", "scripts", ".cargo", "target", "node_modules",
+for name in ("apps", "crates", "dotnet", "unity", "scripts", ".cargo", "node_modules",
              "Cargo.toml", "Cargo.lock", "package.json", "package-lock.json", "global.json",
              "rust-toolchain.toml", "legacy", "old", "archive", "reference", "previous"):
-    require(not Path(name).exists(), f"forbidden legacy path: {name}")
+    if name not in bootstrap_files:
+        require(not Path(name).exists(), f"forbidden legacy path: {name}")
 allowed_source = {"tools/check-clean-slate.py", "fixtures/rewrite-oracle/v1/consumer/Consumer.cs",
                   "fixtures/rewrite-oracle/v1/consumer/minimal/Consumer.cs"}
-for path in ROOT.rglob("*"):
-    if not path.is_file() or ".git" in path.relative_to(ROOT).parts:
-        continue
-    rel = path.relative_to(ROOT).as_posix()
+inventory = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]).decode().split("\0")
+for rel in set(inventory) - {""}:
+    path = Path(rel)
     if path.suffix in {".rs", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".cs", ".css", ".csproj", ".sln", ".py", ".exe", ".dll"}:
-        require(rel in allowed_source, f"unexpected product/adapter source: {rel}")
+        require(rel in allowed_source or path.parts[0] in source_roots,
+                f"unexpected product/adapter source: {rel}")
 
 oracle = Path("fixtures/rewrite-oracle/v1")
 index = read_json(oracle / "manifest.json")
@@ -217,7 +225,11 @@ state = Path("docs/execution-state.md").read_text()
 stage = re.search(r"^Stage: (.+)$", state, re.M)
 require(stage and stage[1] in {"designing", "decision-required", "implementation-ready", "verification-ready",
                              "correction-ready", "objective-complete"}, "invalid Stage")
-require(f"Work base: {freeze}" in state, "Work base does not match frozen Ready HEAD")
+work_base = re.search(r"^Work base: (none|[0-9a-f]{40})$", state, re.M)
+require(bool(work_base), "invalid Work base")
+if work_base and work_base[1] != "none":
+    require(subprocess.run(["git", "merge-base", "--is-ancestor", work_base[1], "HEAD"]).returncode == 0,
+            "Work base is not an ancestor of current HEAD")
 candidate = re.search(r"^Candidate: (none|[0-9a-f]{40})$", state, re.M)
 require(bool(candidate), "invalid Candidate")
 if candidate and candidate[1] != "none":
@@ -238,4 +250,4 @@ if errors:
     print("\n".join(errors), file=sys.stderr)
     sys.exit(1)
 print(json.dumps({"cleanSlateIntegrity": "PASS", "counts": counts, "freeze": freeze}, indent=2))
-print("Legacy runtime tests intentionally absent; product conformance not executed.")
+print("Frozen corpus preserved. Product conformance is verified by independent runtime adapters.")

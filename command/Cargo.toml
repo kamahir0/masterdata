@@ -1,0 +1,13 @@
+[package]
+name = "masterdata-command"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "masterdata"
+path = "src/main.rs"
+
+[dependencies]
+masterdata-engine = { path = "../engine" }
+serde_json.workspace = true

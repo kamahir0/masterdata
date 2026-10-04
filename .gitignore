@@ -9,3 +9,11 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+/target/
+/.venv/
+**/node_modules/
+**/dist/
+**/bin/
+**/obj/
+/verification/results/

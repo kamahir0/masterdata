@@ -1,0 +1,25 @@
+[workspace]
+members = ["engine", "command"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.metadata.masterdata]
+clean-room-rewrite = true
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+sha2 = "0.10"
+tree-sitter = "0.27"
+tree-sitter-yaml = "0.7.2"
+yaml-rust2 = "0.13"
+toml = "0.9"
+tempfile = "3"
+thiserror = "2"
+
+[profile.release]
+lto = "thin"

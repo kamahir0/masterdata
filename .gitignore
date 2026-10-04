@@ -17,3 +17,4 @@ __pycache__/
 **/bin/
 **/obj/
 /verification/results/
+/desktop/native/gen/

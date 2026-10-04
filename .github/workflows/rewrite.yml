@@ -27,3 +27,41 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Shared semantics and independent oracle adapters
         run: cargo test --workspace --locked --features masterdata-engine/oracle-faults
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop
+      - run: npm --prefix desktop/web ci
+      - run: npm --prefix desktop/web run build
+      - run: cargo clippy -p masterdata-desktop --features desktop-evidence --all-targets -- -D warnings
+      - run: cargo build -p masterdata-desktop --release --locked --features desktop-evidence
+      - name: Native Desktop warm navigation, latest selection and bounded projection
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --output verification/results/desktop.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ matrix.os }}
+          path: verification/results

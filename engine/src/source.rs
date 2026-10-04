@@ -107,21 +107,45 @@ pub struct Document {
     pub identity: String,
     pub root: Arc<Node>,
     pub subset_issues: Vec<(Range<usize>, String)>,
+    syntax: tree_sitter::Tree,
+    line_offsets: Arc<Vec<usize>>,
 }
 
 impl Document {
     pub fn parse(bytes: impl Into<Arc<str>>) -> Result<Self> {
+        Self::parse_with_tree(bytes.into(), None)
+    }
+    fn parse_with_tree(bytes: Arc<str>, old: Option<&tree_sitter::Tree>) -> Result<Self> {
+        let _stage = crate::instrument::span("parseIndex");
         crate::instrument::count(crate::instrument::Kind::LocalParse);
-        let bytes = bytes.into();
         let mut parser = Parser::new();
         parser
             .set_language(&tree_sitter_yaml::LANGUAGE.into())
             .map_err(|e| Error::new("E-YAML-PARSER", e.to_string()))?;
         let tree = parser
-            .parse(bytes.as_bytes(), None)
+            .parse(bytes.as_bytes(), old)
             .ok_or_else(|| Error::new("E-YAML-PARSE", "parse cancelled"))?;
         if tree.root_node().has_error() {
-            return Err(Error::new("E-YAML-PARSE", "invalid YAML syntax"));
+            let mut failed = tree.root_node();
+            while !failed.is_error() && !failed.is_missing() {
+                let mut c = failed.walk();
+                let Some(child) = failed
+                    .children(&mut c)
+                    .find(|n| n.has_error() || n.is_missing())
+                else {
+                    break;
+                };
+                failed = child;
+            }
+            return Err(Error::new(
+                "E-YAML-PARSE",
+                format!(
+                    "invalid YAML syntax at {}:{} ({})",
+                    failed.start_position().row + 1,
+                    failed.start_position().column + 1,
+                    failed.kind()
+                ),
+            ));
         }
         let mut issues = Vec::new();
         let mut cursor = tree.root_node().walk();
@@ -135,11 +159,22 @@ impl Document {
         }
         let root = read_node(docs[0], &bytes, &mut issues)?;
         root.members()?;
+        drop(cursor);
+        let mut line_offsets = vec![0];
+        line_offsets.extend(
+            bytes
+                .bytes()
+                .enumerate()
+                .filter(|(_, b)| *b == b'\n')
+                .map(|(i, _)| i + 1),
+        );
         Ok(Self {
             identity: content_identity(bytes.as_bytes()),
             bytes,
             root: Arc::new(root),
             subset_issues: issues,
+            syntax: tree,
+            line_offsets: Arc::new(line_offsets),
         })
     }
 
@@ -219,10 +254,29 @@ impl Document {
             last = patch.span.end;
         }
         let mut output = self.bytes.to_string();
+        let mut syntax = self.syntax.clone();
         for p in patches.into_iter().rev() {
+            let start = self.point(p.span.start);
+            let newlines = p.text.bytes().filter(|b| *b == b'\n').count();
+            let new_end = tree_sitter::Point {
+                row: start.row + newlines,
+                column: if newlines == 0 {
+                    start.column + p.text.len()
+                } else {
+                    p.text.len() - p.text.rfind('\n').unwrap() - 1
+                },
+            };
+            syntax.edit(&tree_sitter::InputEdit {
+                start_byte: p.span.start,
+                old_end_byte: p.span.end,
+                new_end_byte: p.span.start + p.text.len(),
+                start_position: start,
+                old_end_position: self.point(p.span.end),
+                new_end_position: new_end,
+            });
             output.replace_range(p.span, &p.text);
         }
-        Self::parse(Arc::<str>::from(output))
+        Self::parse_with_tree(Arc::<str>::from(output), Some(&syntax))
     }
 
     pub fn newline(&self) -> &str {
@@ -233,10 +287,17 @@ impl Document {
         }
     }
     pub fn column(&self, at: usize) -> usize {
-        at - self.bytes[..at].rfind('\n').map_or(0, |x| x + 1)
+        self.point(at).column
     }
     pub fn line_start(&self, at: usize) -> usize {
-        self.bytes[..at].rfind('\n').map_or(0, |x| x + 1)
+        self.line_offsets[self.point(at).row]
+    }
+    pub fn point(&self, at: usize) -> tree_sitter::Point {
+        let row = self.line_offsets.partition_point(|p| *p <= at) - 1;
+        tree_sitter::Point {
+            row,
+            column: at - self.line_offsets[row],
+        }
     }
     pub fn line_end(&self, at: usize) -> usize {
         self.bytes[at..]

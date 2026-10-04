@@ -1,6 +1,7 @@
 [workspace]
-members = ["engine", "command"]
+members = ["engine", "command", "desktop/native"]
 resolver = "2"
+exclude = ["engine/syntax"]
 
 [workspace.package]
 version = "0.1.0"
@@ -23,3 +24,6 @@ thiserror = "2"
 
 [profile.release]
 lto = "thin"
+
+[patch.crates-io]
+tree-sitter-yaml = { path = "engine/syntax" }

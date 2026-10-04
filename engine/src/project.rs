@@ -836,7 +836,7 @@ fn row_diagnostic(
     }
 }
 pub fn locate(d: &mut Diagnostic, doc: &Document, at: usize) {
-    d.line = doc.bytes[..at].bytes().filter(|b| *b == b'\n').count() + 1;
+    d.line = doc.point(at).row + 1;
     d.column = doc.column(at) + 1;
 }
 pub fn io_error(e: std::io::Error) -> Error {

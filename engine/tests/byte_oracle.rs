@@ -108,3 +108,36 @@ fn typed_literal_cannot_inject_members_and_quoted_unicode_is_lossless() {
         text
     );
 }
+
+#[test]
+fn large_source_crosses_scanner_line_boundary() {
+    let mut source = String::from("kind: data\ntable: item\nrecords:\n");
+    for row in 0..2000 {
+        source.push_str(&format!("  - id: {row}\n"));
+        for field in 1..20 {
+            source.push_str(&format!("    field{field:02}: {}\n", row + field));
+        }
+    }
+    let doc = Document::parse(source.clone()).unwrap();
+    assert_eq!(doc.records().unwrap().len(), 2000);
+    let edited = doc
+        .edit_occurrence(
+            2000,
+            &["field19".into()],
+            &Value::Literal("2147483647".into()),
+        )
+        .unwrap();
+    assert_eq!(
+        edited.bytes.as_ref(),
+        source.replacen("field19: 2018", "field19: 2147483647", 1)
+    );
+    assert_eq!(
+        edited.records().unwrap()[1999]
+            .value
+            .required("field19")
+            .unwrap()
+            .text()
+            .unwrap(),
+        "2147483647"
+    );
+}

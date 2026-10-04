@@ -4,6 +4,7 @@ use crate::{
     project::{io_error, relative_safe},
     source::content_identity,
 };
+#[cfg(not(windows))]
 use same_file::Handle;
 use serde::Serialize;
 use std::{
@@ -19,9 +20,70 @@ pub struct Snapshot {
     pub physical: PathBuf,
     pub bytes: Arc<str>,
     pub content: String,
-    file: Arc<Handle>,
-    parent: Arc<Handle>,
+    file: Arc<Identity>,
+    parent: Arc<Identity>,
     permissions: fs::Permissions,
+}
+#[derive(Debug, PartialEq, Eq)]
+enum Identity {
+    #[cfg(not(windows))]
+    Unix(Handle),
+    #[cfg(windows)]
+    Windows {
+        volume: u64,
+        id: [u8; 16],
+        created: u64,
+    },
+}
+#[cfg(not(windows))]
+fn file_identity(file: &File) -> std::io::Result<Identity> {
+    Handle::from_file(file.try_clone()?).map(Identity::Unix)
+}
+#[cfg(windows)]
+fn file_identity(file: &File) -> std::io::Result<Identity> {
+    use std::os::windows::{fs::MetadataExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx,
+    };
+    let mut info: FILE_ID_INFO = unsafe { std::mem::zeroed() };
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileIdInfo,
+            (&mut info as *mut FILE_ID_INFO).cast(),
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // Retaining the target handle across a Windows replace prevents MoveFileExW
+    // replacement even with delete sharing. Capture 128-bit identity + creation
+    // identity instead; every authorization still opens and compares actual disk.
+    Ok(Identity::Windows {
+        volume: info.VolumeSerialNumber,
+        id: info.FileId.Identifier,
+        created: file.metadata()?.creation_time(),
+    })
+}
+fn path_identity(path: &Path) -> std::io::Result<Identity> {
+    #[cfg(not(windows))]
+    {
+        Handle::from_path(path).map(Identity::Unix)
+    }
+    #[cfg(windows)]
+    {
+        use std::fs::OpenOptions;
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+        file_identity(
+            &OpenOptions::new()
+                .access_mode(0)
+                .share_mode(7)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)?,
+        )
+    }
 }
 impl Snapshot {
     pub fn matches(&self, other: &Self) -> bool {
@@ -58,13 +120,13 @@ pub fn capture(root: &Path, roots: &[PathBuf], logical: &str) -> Result<Snapshot
     if !metadata.is_file() {
         return Err(Error::new("E-PATH-KIND", "source must be a regular file"));
     }
-    let handle = Handle::from_file(file.try_clone().map_err(io_error)?).map_err(io_error)?;
-    let parent = Handle::from_path(path.parent().unwrap()).map_err(io_error)?;
+    let handle = file_identity(&file).map_err(io_error)?;
+    let parent = path_identity(path.parent().unwrap()).map_err(io_error)?;
     let mut bytes = String::new();
     file.read_to_string(&mut bytes).map_err(io_error)?;
     crate::instrument::count(crate::instrument::Kind::Bytes(bytes.len() as u64));
-    if handle != Handle::from_path(&path).map_err(io_error)?
-        || parent != Handle::from_path(path.parent().unwrap()).map_err(io_error)?
+    if handle != path_identity(&path).map_err(io_error)?
+        || parent != path_identity(path.parent().unwrap()).map_err(io_error)?
     {
         return Err(Error::new(
             "E-SOURCE-CHANGED",

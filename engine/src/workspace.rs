@@ -81,7 +81,7 @@ impl Default for SourceViewState {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cell {
-    pub value: Value,
+    pub value: Option<Value>,
     pub display: String,
     pub valid: bool,
     pub editable: bool,
@@ -120,6 +120,8 @@ pub struct Projection {
     pub schema_dirty: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    pub schema_can_undo: bool,
+    pub schema_can_redo: bool,
     pub conflict: bool,
     pub view_state: SourceViewState,
     pub measurement: Measurement,
@@ -380,6 +382,7 @@ impl Workspace {
         })
     }
     fn select_inner(&mut self, clicked: &str, start: usize, count: usize) -> Result<Projection> {
+        let freshness = instrument::span("freshness");
         self.check_config()?;
         self.refresh_source(clicked)?;
         let selected = self.read.sources[clicked].clone();
@@ -421,6 +424,8 @@ impl Workspace {
             self.last_source.insert(table_name.clone(), source.clone());
         }
         self.ensure_draft(&table.source)?;
+        drop(freshness);
+        let _projection = instrument::span("projection");
         let table = self.current_table(table_name)?;
         let columns = table
             .fields
@@ -460,7 +465,7 @@ impl Workspace {
                     .map(|c| {
                         let Some(raw) = row.value.get(&c.field.name) else {
                             return Cell {
-                                value: Value::Null,
+                                value: None,
                                 display: "(missing)".into(),
                                 valid: false,
                                 editable: false,
@@ -472,7 +477,10 @@ impl Workspace {
                         let editable = c.shape.is_some() && raw.safe;
                         let display = display(raw);
                         Cell {
-                            value: raw.value(),
+                            value: match raw.raw {
+                                Raw::Sequence(_) | Raw::Mapping(_) => None,
+                                _ => Some(raw.value()),
+                            },
                             display,
                             valid: interpreted.is_ok(),
                             editable,
@@ -518,11 +526,14 @@ impl Workspace {
             schema_dirty: schema.dirty(),
             can_undo,
             can_redo,
+            schema_can_undo: schema.can_undo(),
+            schema_can_redo: schema.can_redo(),
             conflict: conflict || schema.outcome.is_some(),
             view_state,
             measurement: Measurement {
                 elapsed_ms: 0.0,
                 work: Default::default(),
+                stages_ms: Default::default(),
             },
         })
     }
@@ -871,7 +882,7 @@ impl Workspace {
         self.snapshots.insert(path.into(), snapshot);
         self.ensure_draft(path)
     }
-    pub fn validation_snapshot(&self) -> Project {
+    pub fn diagnostic_input(&self) -> Project {
         let mut p = (*self.read).clone();
         p.generation = self.generation;
         for (path, d) in &self.drafts {
@@ -882,6 +893,10 @@ impl Workspace {
             source.identity = d.document.identity.clone();
             p.sources.insert(path.clone(), Arc::new(source));
         }
+        p
+    }
+    pub fn validation_snapshot(&self) -> Project {
+        let mut p = self.diagnostic_input();
         p.rebuild_declarations();
         p
     }

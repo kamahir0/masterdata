@@ -45,7 +45,11 @@ fn precommit_failure_and_unknown_keep_draft_history_and_never_retry() {
             assert_eq!(r[0].outcome, Outcome::Failure);
             assert_eq!(fs::read(path).unwrap(), old);
         } else {
-            assert_eq!(r[0].outcome, Outcome::OutcomeUnknown);
+            assert_eq!(
+                r[0].outcome,
+                Outcome::OutcomeUnknown,
+                "native write result: {r:#?}"
+            );
             let candidate = fs::read(root.join("save-record/expected/sources/data.yaml")).unwrap();
             assert_eq!(fs::read(&path).unwrap(), candidate);
             assert!(w.save_all().is_err());

@@ -111,6 +111,7 @@ pub struct Document {
 
 impl Document {
     pub fn parse(bytes: impl Into<Arc<str>>) -> Result<Self> {
+        crate::instrument::count(crate::instrument::Kind::LocalParse);
         let bytes = bytes.into();
         let mut parser = Parser::new();
         parser

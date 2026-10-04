@@ -1,5 +1,10 @@
 //! YAML source authority and shared MasterData semantics.
+pub mod instrument;
+pub mod native;
+pub mod project;
+pub mod semantic;
 pub mod source;
+pub mod workspace;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{code}: {message}")]

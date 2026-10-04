@@ -1,0 +1,905 @@
+//! Long-lived Desktop authoring workspace. Selection never reopens a Project.
+use crate::{
+    Error, Result,
+    instrument::{self, Measurement},
+    native::{self, Fault, Outcome, Snapshot, WriteResult},
+    project::{self, Diagnostic, Project, Source},
+    semantic::{self, Field, Shape, Table},
+    source::{Document, Patch, Raw, Value},
+};
+use serde::Serialize;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    sync::Arc,
+};
+
+#[derive(Clone, Debug)]
+struct State {
+    document: Arc<Document>,
+    rows: Arc<Vec<String>>,
+}
+#[derive(Clone, Debug)]
+pub struct Draft {
+    pub base: Snapshot,
+    pub document: Arc<Document>,
+    pub revision: u64,
+    pub row_ids: Arc<Vec<String>>,
+    undo: Vec<State>,
+    redo: Vec<State>,
+    pub outcome: Option<Outcome>,
+    pub external: Option<Snapshot>,
+}
+impl Draft {
+    pub fn dirty(&self) -> bool {
+        self.document.bytes != self.base.bytes
+    }
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+    fn state(&self) -> State {
+        State {
+            document: self.document.clone(),
+            rows: self.row_ids.clone(),
+        }
+    }
+    fn apply(&mut self, document: Document, rows: Arc<Vec<String>>) -> bool {
+        if self.document.bytes == document.bytes && self.row_ids == rows {
+            return false;
+        }
+        self.undo.push(self.state());
+        self.redo.clear();
+        self.document = Arc::new(document);
+        self.row_ids = rows;
+        self.revision += 1;
+        true
+    }
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceViewState {
+    pub search: String,
+    pub selected_row: Option<String>,
+    pub selected_field: Option<String>,
+    pub scroll_top: f64,
+    pub scroll_left: f64,
+}
+impl Default for SourceViewState {
+    fn default() -> Self {
+        Self {
+            search: String::new(),
+            selected_row: None,
+            selected_field: None,
+            scroll_top: 0.0,
+            scroll_left: 0.0,
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cell {
+    pub value: Value,
+    pub display: String,
+    pub valid: bool,
+    pub editable: bool,
+    pub reason: Option<String>,
+    pub problem: Option<semantic::ValueProblem>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewRow {
+    pub id: String,
+    pub occurrence: usize,
+    pub cells: Vec<Cell>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Column {
+    pub field: Field,
+    pub shape: Option<Shape>,
+    pub reason: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Projection {
+    pub clicked: String,
+    pub source: Option<String>,
+    pub table: Arc<Table>,
+    pub sources: Vec<String>,
+    pub columns: Vec<Column>,
+    pub rows: Vec<ViewRow>,
+    pub total_rows: usize,
+    pub row_start: usize,
+    pub revision: u64,
+    pub schema_revision: u64,
+    pub generation: u64,
+    pub dirty: bool,
+    pub schema_dirty: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub conflict: bool,
+    pub view_state: SourceViewState,
+    pub measurement: Measurement,
+}
+#[derive(Clone, Debug)]
+pub struct Workspace {
+    pub read: Arc<Project>,
+    pub drafts: BTreeMap<String, Draft>,
+    pub views: BTreeMap<String, SourceViewState>,
+    snapshots: BTreeMap<String, Snapshot>,
+    last_source: BTreeMap<String, String>,
+    pub recovery_required: bool,
+    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics_generation: u64,
+    pub diagnostics_pending: bool,
+    pub generation: u64,
+}
+impl Workspace {
+    pub fn open(path: &std::path::Path) -> Result<Self> {
+        Ok(Self {
+            read: Arc::new(Project::open(path)?),
+            drafts: BTreeMap::new(),
+            views: BTreeMap::new(),
+            snapshots: BTreeMap::new(),
+            last_source: BTreeMap::new(),
+            recovery_required: false,
+            diagnostics: vec![],
+            diagnostics_generation: 0,
+            diagnostics_pending: true,
+            generation: 1,
+        })
+    }
+    pub fn check_config(&self) -> Result<()> {
+        let bytes = fs::read_to_string(self.read.root.join("masterdata.toml"))
+            .map_err(project::io_error)?;
+        instrument::count(instrument::Kind::Bytes(bytes.len() as u64));
+        if bytes.as_str() != self.read.config_bytes.as_ref() {
+            return Err(Error::new(
+                "E-CONFIG-CONFLICT",
+                "project configuration changed; explicit Project reload required",
+            ));
+        }
+        for (binding, root) in self.read.config.sources.roots.iter().zip(&self.read.roots) {
+            if self
+                .read
+                .root
+                .join(binding)
+                .canonicalize()
+                .map_err(project::io_error)?
+                != *root
+            {
+                return Err(Error::new(
+                    "E-CONFIG-BINDING",
+                    "source root binding changed",
+                ));
+            }
+        }
+        Ok(())
+    }
+    fn replace_read(
+        &mut self,
+        path: &str,
+        snapshot: &Snapshot,
+        document: Option<Arc<Document>>,
+        error: Option<String>,
+    ) {
+        let mut p = (*self.read).clone();
+        if let Some(old) = p.sources.get(path) {
+            if old.kind.as_deref() == Some("schema")
+                && let Some(t) = &old.binding
+                && p.tables.get(t).is_some_and(|t| t.source == path)
+            {
+                p.tables.remove(t);
+            }
+            if old.kind.as_deref() == Some("type")
+                && let Some(n) = old
+                    .document
+                    .as_ref()
+                    .and_then(|d| d.root.get("name"))
+                    .and_then(|n| n.text().ok())
+            {
+                Arc::make_mut(&mut p.types).remove(n);
+                p.type_sources.remove(n);
+            }
+        }
+        let kind = document
+            .as_ref()
+            .and_then(|d| d.root.get("kind"))
+            .and_then(|n| n.text().ok())
+            .map(str::to_owned);
+        let binding = document
+            .as_ref()
+            .and_then(|d| d.root.get("table"))
+            .and_then(|n| n.text().ok())
+            .map(str::to_owned);
+        let s = Source {
+            path: path.into(),
+            physical: snapshot.physical.clone(),
+            bytes: snapshot.bytes.clone(),
+            identity: snapshot.content.clone(),
+            document: document.clone(),
+            error,
+            kind: kind.clone(),
+            binding,
+        };
+        if let Some(doc) = document {
+            match kind.as_deref() {
+                Some("schema") => {
+                    if let Ok(t) = semantic::parse_table(&doc, path) {
+                        p.tables.insert(t.name.clone(), Arc::new(t));
+                    }
+                }
+                Some("type") => {
+                    if let Ok((name, t)) = semantic::parse_type(&doc) {
+                        p.type_sources.insert(name.clone(), path.into());
+                        Arc::make_mut(&mut p.types).insert(name, t);
+                    }
+                }
+                _ => {}
+            }
+        }
+        p.sources.insert(path.into(), Arc::new(s));
+        p.generation += 1;
+        self.read = Arc::new(p);
+        self.generation += 1;
+        self.diagnostics_pending = true;
+    }
+    pub fn refresh_source(&mut self, path: &str) -> Result<()> {
+        let previous = self
+            .read
+            .sources
+            .get(path)
+            .ok_or_else(|| Error::new("E-SOURCE-NOT-FOUND", path))?
+            .clone();
+        let snapshot = native::capture(&self.read.root, &self.read.roots, path)?;
+        if let Some(d) = self.drafts.get_mut(path) {
+            if !snapshot.matches(&d.base) {
+                if d.outcome != Some(Outcome::OutcomeUnknown) {
+                    d.outcome = Some(Outcome::Conflict);
+                }
+                d.external = Some(snapshot.clone());
+                // Keep the draft, but never label a removed/invalid/rebound disk source current.
+                let external = Document::parse(snapshot.bytes.clone())?;
+                if external.root.get("kind").and_then(|n| n.text().ok()) != previous.kind.as_deref()
+                    || external.root.get("table").and_then(|n| n.text().ok())
+                        != previous.binding.as_deref()
+                {
+                    return Err(Error::new(
+                        "E-SOURCE-BINDING",
+                        "external source binding changed",
+                    ));
+                }
+                if d.dirty() || d.outcome == Some(Outcome::OutcomeUnknown) {
+                    return Ok(());
+                }
+            } else {
+                return Ok(());
+            }
+        }
+        let changed = previous.bytes != snapshot.bytes
+            || self
+                .snapshots
+                .get(path)
+                .is_some_and(|s| !snapshot.matches(s));
+        if changed {
+            let parsed = Document::parse(snapshot.bytes.clone());
+            match parsed {
+                Ok(doc) => {
+                    self.replace_read(path, &snapshot, Some(Arc::new(doc)), None);
+                    self.drafts.remove(path);
+                }
+                Err(e) => {
+                    self.replace_read(path, &snapshot, None, Some(e.to_string()));
+                    self.drafts.remove(path);
+                    self.snapshots.insert(path.into(), snapshot);
+                    return Err(e);
+                }
+            }
+        }
+        self.snapshots.insert(path.into(), snapshot);
+        Ok(())
+    }
+    fn ensure_draft(&mut self, path: &str) -> Result<()> {
+        if self.drafts.contains_key(path) {
+            return Ok(());
+        }
+        if !self.snapshots.contains_key(path) {
+            self.refresh_source(path)?;
+        }
+        let source = &self.read.sources[path];
+        let document = source
+            .document
+            .as_ref()
+            .ok_or_else(|| Error::new("E-YAML-PARSE", source.error.clone().unwrap_or_default()))?
+            .clone();
+        let rows = document
+            .root
+            .get("records")
+            .map(|n| n.items().map(|s| s.len()))
+            .transpose()?
+            .unwrap_or(0);
+        let base = self.snapshots[path].clone();
+        let row_ids = Arc::new(
+            (0..rows)
+                .map(|i| format!("{}:{}", base.content, i + 1))
+                .collect(),
+        );
+        self.drafts.insert(
+            path.into(),
+            Draft {
+                base,
+                document,
+                revision: 0,
+                row_ids,
+                undo: vec![],
+                redo: vec![],
+                outcome: None,
+                external: None,
+            },
+        );
+        Ok(())
+    }
+    pub fn current_doc(&self, path: &str) -> Result<Arc<Document>> {
+        self.drafts
+            .get(path)
+            .map(|d| d.document.clone())
+            .or_else(|| self.read.sources.get(path).and_then(|s| s.document.clone()))
+            .ok_or_else(|| Error::new("E-YAML-PARSE", "no current parseable document"))
+    }
+    pub fn current_table(&self, name: &str) -> Result<Arc<Table>> {
+        let t = self
+            .read
+            .tables
+            .get(name)
+            .ok_or_else(|| Error::new("E-TABLE-MISSING", name))?;
+        if let Some(d) = self.drafts.get(&t.source) {
+            Ok(Arc::new(semantic::parse_table(&d.document, &t.source)?))
+        } else {
+            Ok(t.clone())
+        }
+    }
+    pub fn current_types(&self) -> Result<semantic::Types> {
+        let mut types = (*self.read.types).clone();
+        for (path, d) in &self.drafts {
+            if self.read.sources[path].kind.as_deref() == Some("type") {
+                let (name, t) = semantic::parse_type(&d.document)?;
+                types.insert(name, t);
+            }
+        }
+        Ok(types)
+    }
+    pub fn select(&mut self, clicked: &str, start: usize, count: usize) -> Result<Projection> {
+        let (result, measurement) =
+            instrument::measure(|| self.select_inner(clicked, start, count));
+        result.map(|mut v| {
+            v.measurement = measurement;
+            v
+        })
+    }
+    fn select_inner(&mut self, clicked: &str, start: usize, count: usize) -> Result<Projection> {
+        self.check_config()?;
+        self.refresh_source(clicked)?;
+        let selected = self.read.sources[clicked].clone();
+        if !matches!(selected.kind.as_deref(), Some("schema" | "data")) {
+            return Err(Error::new("E-EDITOR-KIND", "Table source required"));
+        }
+        let table_name = selected
+            .binding
+            .as_ref()
+            .ok_or_else(|| Error::new("E-TABLE-MISSING", "source has no Table"))?;
+        let table = self.current_table(table_name)?;
+        for path in self.read.dependencies(&table) {
+            if path != clicked {
+                self.refresh_source(&path)?;
+            }
+        }
+        let table = self.current_table(table_name)?;
+        let types = self.current_types()?;
+        let sources = self.read.record_sources(table_name);
+        let record_source = if selected.kind.as_deref() == Some("data")
+            || selected
+                .document
+                .as_ref()
+                .is_some_and(|d| d.root.get("records").is_some())
+        {
+            Some(clicked.into())
+        } else {
+            self.last_source
+                .get(table_name)
+                .filter(|s| sources.contains(s))
+                .cloned()
+                .or_else(|| sources.first().cloned())
+        };
+        if let Some(source) = &record_source {
+            if source != clicked {
+                self.refresh_source(source)?;
+            }
+            self.ensure_draft(source)?;
+            self.last_source.insert(table_name.clone(), source.clone());
+        }
+        self.ensure_draft(&table.source)?;
+        let table = self.current_table(table_name)?;
+        let columns = table
+            .fields
+            .iter()
+            .map(|f| match semantic::shape(f, &types) {
+                Ok(shape) => Column {
+                    field: f.clone(),
+                    shape: Some(shape),
+                    reason: None,
+                },
+                Err(e) => Column {
+                    field: f.clone(),
+                    shape: None,
+                    reason: Some(e.to_string()),
+                },
+            })
+            .collect::<Vec<_>>();
+        let mut rows = Vec::new();
+        let mut total_rows = 0;
+        let mut revision = 0;
+        let mut dirty = false;
+        let mut can_undo = false;
+        let mut can_redo = false;
+        let mut conflict = false;
+        if let Some(source) = &record_source {
+            let d = &self.drafts[source];
+            total_rows = d.row_ids.len();
+            revision = d.revision;
+            dirty = d.dirty();
+            can_undo = d.can_undo();
+            can_redo = d.can_redo();
+            conflict = d.outcome.is_some();
+            let records = d.document.records()?;
+            for (i, row) in records.iter().enumerate().skip(start).take(count.min(128)) {
+                let cells = columns
+                    .iter()
+                    .map(|c| {
+                        let Some(raw) = row.value.get(&c.field.name) else {
+                            return Cell {
+                                value: Value::Null,
+                                display: "(missing)".into(),
+                                valid: false,
+                                editable: false,
+                                reason: Some("field entry missing".into()),
+                                problem: None,
+                            };
+                        };
+                        let interpreted = semantic::interpret(&c.field, raw, &types);
+                        let editable = c.shape.is_some() && raw.safe;
+                        let display = display(raw);
+                        Cell {
+                            value: raw.value(),
+                            display,
+                            valid: interpreted.is_ok(),
+                            editable,
+                            reason: if editable {
+                                None
+                            } else {
+                                Some(
+                                    c.reason
+                                        .clone()
+                                        .unwrap_or_else(|| "unsafe source representation".into()),
+                                )
+                            },
+                            problem: interpreted.err(),
+                        }
+                    })
+                    .collect();
+                rows.push(ViewRow {
+                    id: d.row_ids[i].clone(),
+                    occurrence: i + 1,
+                    cells,
+                });
+            }
+        }
+        let schema = &self.drafts[&table.source];
+        let view_state = record_source
+            .as_ref()
+            .and_then(|s| self.views.get(s))
+            .cloned()
+            .unwrap_or_default();
+        Ok(Projection {
+            clicked: clicked.into(),
+            source: record_source,
+            table,
+            sources,
+            columns,
+            rows,
+            total_rows,
+            row_start: start,
+            revision,
+            schema_revision: schema.revision,
+            generation: self.generation,
+            dirty,
+            schema_dirty: schema.dirty(),
+            can_undo,
+            can_redo,
+            conflict: conflict || schema.outcome.is_some(),
+            view_state,
+            measurement: Measurement {
+                elapsed_ms: 0.0,
+                work: Default::default(),
+            },
+        })
+    }
+    pub fn edit(
+        &mut self,
+        path: &str,
+        revision: u64,
+        row_id: &str,
+        value_path: &[String],
+        value: &Value,
+    ) -> Result<bool> {
+        if self.recovery_required {
+            return Err(Error::new(
+                "E-RECOVERY-REQUIRED",
+                "source mutation is gated",
+            ));
+        }
+        self.ensure_draft(path)?;
+        let d = self.drafts.get_mut(path).unwrap();
+        if d.revision != revision {
+            return Err(Error::new("E-DRAFT-STALE", "draft revision changed"));
+        }
+        if d.outcome == Some(Outcome::OutcomeUnknown) {
+            return Err(Error::new(
+                "E-OUTCOME-UNKNOWN",
+                "fresh observation and recovery required",
+            ));
+        }
+        let i = d
+            .row_ids
+            .iter()
+            .position(|id| id == row_id)
+            .ok_or_else(|| Error::new("E-LOCATOR-STALE", "record occurrence no longer exists"))?;
+        let candidate = d.document.edit_occurrence(i + 1, value_path, value)?;
+        let changed = d.apply(candidate, d.row_ids.clone());
+        if changed {
+            self.diagnostics_pending = true;
+            self.generation += 1;
+        }
+        Ok(changed)
+    }
+    pub fn edit_text(
+        &mut self,
+        path: &str,
+        revision: u64,
+        row_id: &str,
+        field: &str,
+        text: &str,
+    ) -> Result<bool> {
+        let table_name = self
+            .read
+            .sources
+            .get(path)
+            .and_then(|s| s.binding.as_ref())
+            .ok_or_else(|| Error::new("E-TABLE-MISSING", "source Table missing"))?;
+        let table = self.current_table(table_name)?;
+        let types = self.current_types()?;
+        let f = table
+            .fields
+            .iter()
+            .find(|f| f.name == field)
+            .ok_or_else(|| Error::new("E-FIELD-MISSING", field))?;
+        let shape = semantic::shape(f, &types)?;
+        self.edit(
+            path,
+            revision,
+            row_id,
+            &[field.into()],
+            &semantic::authoring_input(&shape, text),
+        )
+    }
+    pub fn schema_modifier(
+        &mut self,
+        path: &str,
+        revision: u64,
+        field_name: &str,
+        nullable: bool,
+        array: bool,
+        type_name: Option<&str>,
+    ) -> Result<bool> {
+        if self.recovery_required {
+            return Err(Error::new(
+                "E-RECOVERY-REQUIRED",
+                "source mutation is gated",
+            ));
+        }
+        if nullable && array {
+            return Err(Error::new(
+                "E-SCHEMA-MODIFIER",
+                "Nullable and Array are mutually exclusive",
+            ));
+        }
+        self.ensure_draft(path)?;
+        let d = self.drafts.get_mut(path).unwrap();
+        if d.revision != revision {
+            return Err(Error::new("E-DRAFT-STALE", "schema revision changed"));
+        }
+        let fields = d.document.root.required("fields")?.items()?;
+        let field = fields
+            .iter()
+            .find(|f| f.value.get("name").and_then(|n| n.text().ok()) == Some(field_name))
+            .ok_or_else(|| Error::new("E-FIELD-MISSING", field_name))?;
+        let mut patches = Vec::new();
+        let mut additions = String::new();
+        if let Some(t) = type_name {
+            semantic::derive_field_type_patch(&d.document, &field.value, t, &mut patches)?;
+        }
+        for (name, value) in [("nullable", nullable), ("array", array)] {
+            if let Some(n) = field.value.get(name) {
+                crate::source::derive_patch(
+                    &d.document,
+                    n,
+                    &Value::Literal(value.to_string()),
+                    &mut patches,
+                )?;
+            } else if value {
+                let indent = d.document.column(field.value.span.start);
+                additions.push_str(&format!(
+                    "{}{}: true{}",
+                    " ".repeat(indent),
+                    name,
+                    d.document.newline()
+                ));
+            }
+        }
+        if !additions.is_empty() {
+            if field.value.style == crate::source::Style::Flow {
+                return Err(Error::new(
+                    "E-SOURCE-UNSAFE",
+                    "flow field membership needs structural localization",
+                ));
+            }
+            let pair_end = field.value.members()?.last().unwrap().span.end;
+            let end = d.document.line_end(pair_end);
+            if !d.document.bytes[..end].ends_with('\n') {
+                additions.insert_str(0, d.document.newline());
+            }
+            patches.push(Patch {
+                span: end..end,
+                text: additions,
+            });
+        }
+        let candidate = d.document.patched(patches)?;
+        semantic::parse_table(&candidate, path)?;
+        let changed = d.apply(candidate, d.row_ids.clone());
+        if changed {
+            self.diagnostics_pending = true;
+            self.generation += 1;
+        }
+        Ok(changed)
+    }
+    pub fn undo(&mut self, path: &str, redo: bool) -> Result<bool> {
+        let d = self
+            .drafts
+            .get_mut(path)
+            .ok_or_else(|| Error::new("E-DRAFT-MISSING", path))?;
+        if d.outcome == Some(Outcome::OutcomeUnknown) {
+            return Err(Error::new("E-OUTCOME-UNKNOWN", "observation required"));
+        }
+        let state = if redo { d.redo.pop() } else { d.undo.pop() };
+        let Some(state) = state else {
+            return Ok(false);
+        };
+        let current = d.state();
+        if redo {
+            d.undo.push(current);
+        } else {
+            d.redo.push(current);
+        }
+        d.document = state.document;
+        d.row_ids = state.rows;
+        d.revision += 1;
+        self.diagnostics_pending = true;
+        self.generation += 1;
+        Ok(true)
+    }
+    pub fn dirty_paths(&self) -> Vec<String> {
+        self.drafts
+            .iter()
+            .filter(|(_, d)| d.dirty())
+            .map(|(p, _)| p.clone())
+            .collect()
+    }
+    pub fn save_table(&mut self, table: &str, selected: Option<&str>) -> Result<Vec<WriteResult>> {
+        let schema = self.current_table(table)?.source.clone();
+        if let Some(path) = selected {
+            let source = self
+                .read
+                .sources
+                .get(path)
+                .ok_or_else(|| Error::new("E-SOURCE-MISSING", path))?;
+            if source.binding.as_deref() != Some(table)
+                || self.current_doc(path)?.root.get("records").is_none()
+            {
+                return Err(Error::new(
+                    "E-SAVE-SCOPE",
+                    "selected record source does not belong to current Table",
+                ));
+            }
+        }
+        let targets =
+            BTreeSet::from_iter(std::iter::once(schema).chain(selected.map(str::to_owned)));
+        self.save_paths(
+            targets
+                .into_iter()
+                .filter(|p| self.drafts.get(p).is_some_and(Draft::dirty))
+                .collect(),
+            Fault::None,
+        )
+    }
+    pub fn save_all(&mut self) -> Result<Vec<WriteResult>> {
+        self.save_paths(self.dirty_paths(), Fault::None)
+    }
+    pub fn save_paths(&mut self, paths: Vec<String>, fault: Fault) -> Result<Vec<WriteResult>> {
+        if self.recovery_required {
+            return Err(Error::new("E-RECOVERY-REQUIRED", "writes are gated"));
+        }
+        self.check_config()?;
+        let mut preflight = BTreeMap::new();
+        for path in &paths {
+            let d = self
+                .drafts
+                .get(path)
+                .ok_or_else(|| Error::new("E-DRAFT-MISSING", path))?;
+            if d.outcome == Some(Outcome::OutcomeUnknown) {
+                return Err(Error::new(
+                    "E-OUTCOME-UNKNOWN",
+                    "no automatic retry; observe actual source first",
+                ));
+            }
+            if let Err(e) = native::preflight(&self.read.root, &self.read.roots, path, &d.base) {
+                preflight.insert(path.clone(), e.to_string());
+            }
+        }
+        if !preflight.is_empty() {
+            let mut results = Vec::new();
+            for path in paths {
+                if let Some(message) = preflight.get(&path) {
+                    self.drafts.get_mut(&path).unwrap().outcome = Some(Outcome::Conflict);
+                    results.push(WriteResult::new(&path, Outcome::Conflict, message));
+                } else {
+                    results.push(WriteResult::new(
+                        &path,
+                        Outcome::NotAttempted,
+                        "another target failed preflight",
+                    ));
+                }
+            }
+            return Ok(results);
+        }
+        let mut results = Vec::new();
+        for path in paths {
+            let d = &self.drafts[&path];
+            let (result, snapshot) = native::commit(
+                &self.read.root,
+                &self.read.roots,
+                &path,
+                &d.base,
+                &d.document.bytes,
+                fault,
+            );
+            if result.outcome == Outcome::Success {
+                let snapshot = snapshot.unwrap();
+                let doc = d.document.clone();
+                let d = self.drafts.get_mut(&path).unwrap();
+                d.base = snapshot.clone();
+                d.undo.clear();
+                d.redo.clear();
+                d.outcome = None;
+                d.external = None;
+                d.revision += 1;
+                self.snapshots.insert(path.clone(), snapshot.clone());
+                self.replace_read(&path, &snapshot, Some(doc), None);
+            } else {
+                self.drafts.get_mut(&path).unwrap().outcome = Some(result.outcome.clone());
+            }
+            results.push(result);
+        }
+        Ok(results)
+    }
+    pub fn compare(&mut self, path: &str) -> Result<(String, String, String)> {
+        let actual = native::capture(&self.read.root, &self.read.roots, path)?;
+        let d = self
+            .drafts
+            .get_mut(path)
+            .ok_or_else(|| Error::new("E-DRAFT-MISSING", path))?;
+        d.external = Some(actual.clone());
+        Ok((
+            actual.content,
+            actual.bytes.to_string(),
+            d.document.bytes.to_string(),
+        ))
+    }
+    pub fn overwrite(&mut self, path: &str, reviewed_identity: &str) -> Result<WriteResult> {
+        if self.recovery_required {
+            return Err(Error::new("E-RECOVERY-REQUIRED", "writes are gated"));
+        }
+        self.check_config()?;
+        let d = self
+            .drafts
+            .get(path)
+            .ok_or_else(|| Error::new("E-DRAFT-MISSING", path))?;
+        let reviewed = d
+            .external
+            .as_ref()
+            .ok_or_else(|| {
+                Error::new(
+                    "E-OVERWRITE-AUTHORITY",
+                    "external identity must be captured",
+                )
+            })?
+            .clone();
+        if reviewed.content != reviewed_identity {
+            return Err(Error::new("E-OVERWRITE-STALE", "reviewed identity differs"));
+        }
+        let (result, snapshot) = native::commit(
+            &self.read.root,
+            &self.read.roots,
+            path,
+            &reviewed,
+            &d.document.bytes,
+            Fault::None,
+        );
+        if result.outcome == Outcome::Success {
+            let snapshot = snapshot.unwrap();
+            let doc = d.document.clone();
+            let d = self.drafts.get_mut(path).unwrap();
+            d.base = snapshot.clone();
+            d.undo.clear();
+            d.redo.clear();
+            d.outcome = None;
+            d.external = None;
+            d.revision += 1;
+            self.snapshots.insert(path.into(), snapshot.clone());
+            self.replace_read(path, &snapshot, Some(doc), None);
+        } else {
+            self.drafts.get_mut(path).unwrap().outcome = Some(result.outcome.clone());
+        }
+        Ok(result)
+    }
+    pub fn reload_source(&mut self, path: &str) -> Result<()> {
+        let snapshot = native::capture(&self.read.root, &self.read.roots, path)?;
+        let doc = Document::parse(snapshot.bytes.clone())?;
+        self.drafts.remove(path);
+        self.replace_read(path, &snapshot, Some(Arc::new(doc)), None);
+        self.snapshots.insert(path.into(), snapshot);
+        self.ensure_draft(path)
+    }
+    pub fn validation_snapshot(&self) -> Project {
+        let mut p = (*self.read).clone();
+        p.generation = self.generation;
+        for (path, d) in &self.drafts {
+            let old = &p.sources[path];
+            let mut source = (**old).clone();
+            source.bytes = d.document.bytes.clone();
+            source.document = Some(d.document.clone());
+            source.identity = d.document.identity.clone();
+            p.sources.insert(path.clone(), Arc::new(source));
+        }
+        p.rebuild_declarations();
+        p
+    }
+    pub fn accept_diagnostics(&mut self, generation: u64, problems: Vec<Diagnostic>) -> bool {
+        if generation != self.generation || problems.iter().any(|d| d.generation != generation) {
+            return false;
+        }
+        self.diagnostics = problems;
+        self.diagnostics_generation = generation;
+        self.diagnostics_pending = false;
+        true
+    }
+}
+fn display(raw: &crate::source::Node) -> String {
+    match &raw.raw {
+        Raw::Null => "null".into(),
+        Raw::Scalar(s) => s.clone(),
+        Raw::Sequence(s) => format!("[{} items]", s.len()),
+        Raw::Mapping(m) => format!("{{{} fields}}", m.len()),
+    }
+}

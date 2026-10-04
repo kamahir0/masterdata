@@ -205,6 +205,7 @@ main {
   outline: none;
   background: var(--md-bg);
   scrollbar-gutter: stable;
+  overscroll-behavior: none;
 }
 #viewport.grid-pending {
   visibility: hidden;
@@ -343,6 +344,54 @@ main {
 .spatial-handle:focus-visible {
   outline: 2px solid var(--md-accent);
   outline-offset: 1px;
+}
+.spatial-handle:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.spatial-clip {
+  position: absolute;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+.spatial-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  background: var(--md-elevated);
+  box-shadow: var(--md-shadow);
+  outline: 1px solid var(--md-focus);
+  will-change: transform;
+}
+.spatial-ghost[data-drop-valid="false"] {
+  opacity: 0.65;
+}
+.spatial-origin {
+  visibility: hidden;
+}
+.spatial-displaced {
+  transition: transform var(--md-motion) var(--md-ease);
+}
+.column-preview > .column {
+  width: 100%;
+  background: var(--md-panel);
+  border-bottom: 1px solid var(--md-border);
+}
+.column-preview .cell {
+  background: var(--md-elevated);
 }
 .row-grip,
 .column-grip,
@@ -605,6 +654,10 @@ main {
 }
 .complex-enum {
   width: 100%;
+}
+.complex-control:focus-visible {
+  outline: 2px solid var(--md-accent);
+  outline-offset: 1px;
 }
 .complex-pages {
   display: flex;

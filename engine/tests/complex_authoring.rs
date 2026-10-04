@@ -29,6 +29,169 @@ fn project() -> (tempfile::TempDir, Workspace) {
     (t, w)
 }
 const SOURCE: &str = "sources/catalog-data.yaml";
+fn publish_problems(w: &mut Workspace) {
+    let (problems, _) = w.validation_snapshot().validate(None).unwrap();
+    assert!(w.accept_diagnostics(w.generation, problems));
+}
+#[test]
+fn problems_resolve_exact_record_and_array_occurrences_without_changing_search_or_bytes() {
+    let (_temp, mut w) = project();
+    let p = w.select(SOURCE, 0, 32).unwrap();
+    let row = p.rows[1].id.clone();
+    let numbers = w
+        .complex_view(
+            SOURCE,
+            p.revision,
+            p.generation,
+            &row,
+            &["numbers".into()],
+            0..64,
+        )
+        .unwrap();
+    let item = numbers.node.children[1].path.last().unwrap().clone();
+    operation(
+        &mut w,
+        &row,
+        &["numbers", &item],
+        Operation::Text {
+            text: "invalid".into(),
+        },
+    );
+    let p = w.select(SOURCE, 0, 32).unwrap();
+    w.delete_row(SOURCE, p.revision, p.generation, &p.rows[0].id)
+        .unwrap();
+    publish_problems(&mut w);
+    let problem = w
+        .diagnostics
+        .iter()
+        .find(|d| d.field_path == ["numbers", "1"])
+        .unwrap()
+        .clone();
+    assert_eq!(problem.occurrence, Some(2));
+    let before = w.current_doc(SOURCE).unwrap().bytes.clone();
+    let target = w
+        .problem_target(
+            SOURCE,
+            problem.generation,
+            problem.occurrence,
+            &problem.field_path,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(target.row, row);
+    assert_eq!(target.view_index, Some(1));
+    assert_eq!(target.editor_path, Some(vec!["numbers".into()]));
+    assert_eq!(target.focus_path, vec!["numbers".to_owned(), item.clone()]);
+    w.set_search(SOURCE, "no matching scalar").unwrap();
+    let hidden = w
+        .problem_target(
+            SOURCE,
+            problem.generation,
+            problem.occurrence,
+            &problem.field_path,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(hidden.row, row);
+    assert_eq!(hidden.view_index, None);
+    assert_eq!(w.views[SOURCE].search, "no matching scalar");
+    assert_eq!(w.current_doc(SOURCE).unwrap().bytes, before);
+    w.undo(SOURCE, false).unwrap();
+    assert!(
+        w.problem_target(
+            SOURCE,
+            problem.generation,
+            problem.occurrence,
+            &problem.field_path
+        )
+        .is_err()
+    );
+}
+#[test]
+fn problems_open_the_correct_bounded_nested_container_and_preserve_unknown_members() {
+    let (temp, _) = project();
+    let file = temp.path().join(SOURCE);
+    let values = (0..70)
+        .map(|i| {
+            if i == 69 {
+                "invalid".into()
+            } else {
+                i.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let bytes = fs::read_to_string(&file).unwrap().replace(
+        "values: [1]",
+        &format!("values: [{values}]\n      unexpected: retained"),
+    );
+    fs::write(&file, &bytes).unwrap();
+    let mut w = Workspace::open(temp.path()).unwrap();
+    w.select(SOURCE, 0, 32).unwrap();
+    publish_problems(&mut w);
+    let unknown = w
+        .diagnostics
+        .iter()
+        .find(|d| d.field_path == ["reward", "unexpected"])
+        .unwrap()
+        .clone();
+    let target = w
+        .problem_target(
+            SOURCE,
+            unknown.generation,
+            unknown.occurrence,
+            &unknown.field_path,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(target.editor_path, Some(vec!["reward".into()]));
+    assert_eq!(target.focus_path, vec!["reward", "unexpected"]);
+    // A separate validation sees the nested value problem after the explicitly
+    // inspected unknown member is absent; no implicit repair by opening occurs.
+    assert_eq!(fs::read_to_string(&file).unwrap(), bytes);
+    let without_unknown = bytes.replace("      unexpected: retained\n", "");
+    fs::write(&file, &without_unknown).unwrap();
+    let p = w.select(SOURCE, 0, 32).unwrap();
+    publish_problems(&mut w);
+    let problem = w
+        .diagnostics
+        .iter()
+        .find(|d| d.field_path == ["reward", "values", "69"])
+        .unwrap()
+        .clone();
+    let target = w
+        .problem_target(
+            SOURCE,
+            problem.generation,
+            problem.occurrence,
+            &problem.field_path,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        target.editor_path,
+        Some(vec!["reward".into(), "values".into()])
+    );
+    assert_eq!(target.editor_start, 64);
+    let view = w
+        .complex_view(
+            SOURCE,
+            p.revision,
+            p.generation,
+            &target.row,
+            &target.editor_path.unwrap(),
+            64..128,
+        )
+        .unwrap();
+    assert_eq!(view.node.children.len(), 6);
+    assert_eq!(target.focus_path, view.node.children[5].path);
+    assert!(!view.node.children[5].valid);
+    assert_eq!(
+        w.current_doc(SOURCE).unwrap().bytes.as_ref(),
+        without_unknown
+    );
+    assert!(!w.drafts[SOURCE].dirty());
+}
 fn operation(w: &mut Workspace, row: &str, path: &[&str], op: Operation) {
     let v = w.select(SOURCE, 0, 32).unwrap();
     w.complex_operation(
@@ -40,6 +203,134 @@ fn operation(w: &mut Workspace, row: &str, path: &[&str], op: Operation) {
         op,
     )
     .unwrap();
+}
+#[test]
+fn scalar_input_cannot_cross_an_observed_schema_generation() {
+    let (_temp, mut w) = project();
+    let before = w.select(SOURCE, 0, 32).unwrap();
+    let bytes = w.current_doc(SOURCE).unwrap().bytes.clone();
+    w.schema_modifier(
+        &before.table.source,
+        before.schema_revision,
+        "longValue",
+        false,
+        false,
+        Some("string"),
+    )
+    .unwrap();
+    let after = w.select(SOURCE, 0, 32).unwrap();
+    assert_eq!(after.revision, before.revision);
+    assert_ne!(after.generation, before.generation);
+    let stale = w
+        .edit_text_at(
+            SOURCE,
+            before.revision,
+            before.generation,
+            &before.rows[0].id,
+            "longValue",
+            "9223372036854775807",
+        )
+        .unwrap_err();
+    assert_eq!(stale.code, "E-DRAFT-STALE");
+    assert_eq!(w.current_doc(SOURCE).unwrap().bytes, bytes);
+    assert!(!w.drafts[SOURCE].dirty());
+    assert!(!w.drafts[SOURCE].can_undo());
+    assert!(w.drafts[&before.table.source].dirty());
+    assert!(
+        w.edit_text_at(
+            SOURCE,
+            after.revision,
+            after.generation,
+            &after.rows[0].id,
+            "longValue",
+            "new text",
+        )
+        .unwrap()
+    );
+    w.undo(SOURCE, false).unwrap();
+    assert_eq!(w.current_doc(SOURCE).unwrap().bytes, bytes);
+    assert!(w.drafts[&before.table.source].dirty());
+}
+#[test]
+fn bounded_array_drop_uses_exact_global_destination_and_one_source_local_undo() {
+    let (temp, _) = project();
+    let file = temp.path().join(SOURCE);
+    let values = (0..70).map(|n| n.to_string()).collect::<Vec<_>>();
+    let original = fs::read_to_string(&file).unwrap().replace(
+        "numbers: [1, \"1\", -2]",
+        &format!("numbers: [{}]", values.join(", ")),
+    );
+    fs::write(file, &original).unwrap();
+    let mut w = Workspace::open(temp.path()).unwrap();
+    let p = w.select(SOURCE, 0, 32).unwrap();
+    let row = p.rows[1].id.clone();
+    let view = w
+        .complex_view(
+            SOURCE,
+            p.revision,
+            p.generation,
+            &row,
+            &["numbers".into()],
+            0..64,
+        )
+        .unwrap();
+    assert_eq!(view.node.children.len(), 64);
+    let item = view.node.children[0].path.last().unwrap().clone();
+    let invalid = w
+        .complex_operation(
+            SOURCE,
+            p.revision,
+            p.generation,
+            &row,
+            &["numbers".into()],
+            Operation::Place {
+                item: item.clone(),
+                index: 70,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(invalid.code, "E-REORDER-POSITION");
+    assert_eq!(w.current_doc(SOURCE).unwrap().bytes.as_ref(), original);
+    assert!(!w.drafts[SOURCE].can_undo());
+    assert!(
+        w.complex_operation(
+            SOURCE,
+            p.revision,
+            p.generation,
+            &row,
+            &["numbers".into()],
+            Operation::Place {
+                item: item.clone(),
+                index: 63
+            },
+        )
+        .unwrap()
+    );
+    let mut expected = values.clone();
+    expected.remove(0);
+    expected.insert(63, "0".into());
+    assert_eq!(
+        w.current_doc(SOURCE).unwrap().bytes.as_ref(),
+        original.replace(
+            &format!("numbers: [{}]", values.join(", ")),
+            &format!("numbers: [{}]", expected.join(", ")),
+        )
+    );
+    let next = w.select(SOURCE, 0, 32).unwrap();
+    let view = w
+        .complex_view(
+            SOURCE,
+            next.revision,
+            next.generation,
+            &row,
+            &["numbers".into()],
+            0..64,
+        )
+        .unwrap();
+    assert_eq!(view.node.children[63].path.last(), Some(&item));
+    assert!(w.undo(SOURCE, false).unwrap());
+    assert_eq!(w.current_doc(SOURCE).unwrap().bytes.as_ref(), original);
+    assert!(!w.drafts[SOURCE].can_undo());
 }
 #[test]
 fn independent_complex_direct_workflow_preserves_source_and_operation_history() {

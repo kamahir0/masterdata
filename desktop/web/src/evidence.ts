@@ -106,6 +106,7 @@ export async function run({
       kind: "editText",
       source: p.source,
       revision: p.revision,
+      generation: p.generation,
       row: p.rows[0].id,
       field: "id",
       text: "999999",

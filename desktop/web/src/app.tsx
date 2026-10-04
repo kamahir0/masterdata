@@ -170,6 +170,8 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     <div
       className={`desktop-frame ${platform === "macos" ? "mac" : ""}`}
       style={variables}
+      onPointerDownCapture={desktop.noteInputIntent}
+      onKeyDownCapture={desktop.noteInputIntent}
     >
       <header id="titlebar">
         <div id="drag-region" data-tauri-drag-region>

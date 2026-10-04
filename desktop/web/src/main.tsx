@@ -14,6 +14,7 @@ const boot = await invoke<{
   platform: string;
   initialProject: string | null;
   evidence: boolean;
+  evidenceKind: string;
   preferences: { theme: Preference };
 }>("boot");
 startup.bootReadyMs = performance.now();
@@ -77,7 +78,10 @@ export function acceptedInteraction(sample: SelectionSample) {
     sample.invalid = sample.invalid ?? "interaction was not accepted";
 }
 if (boot.evidence) {
-  const evidence = await import("./evidence");
+  const evidence =
+    boot.evidenceKind === "authoring"
+      ? await import("./authoring-evidence")
+      : await import("./evidence");
   await evidence.run({
     rpc,
     selectTarget,

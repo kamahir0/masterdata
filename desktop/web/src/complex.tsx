@@ -31,12 +31,15 @@ import {
   MoreOutlined,
   PlusOutlined,
   RightOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import { useInteraction, useSurface } from "./app";
 import { desktop, type ComplexView, type EditorNode } from "./workspace";
+import { beginArrayDrag, consumeSpatialClick } from "./spatial";
 const same = (a: string[], b: string[]) =>
   a.length === b.length && a.every((s, i) => s === b[i]);
 type Typing = {
+  authority: ComplexView;
   path: string[];
   initial: string;
   text: string;
@@ -62,6 +65,21 @@ export function ComplexPanel() {
     body = useRef<HTMLDivElement>(null),
     request = useRef(0),
     viewRef = useRef(view);
+  const focusedTarget = useRef<typeof target>(null);
+  // focus-only / window changes can retain the same value path. Focus must
+  // wait for that target's descriptor; a later pending state would make its
+  // newly focused control inert and silently lose focus.
+  const resolvedTarget = useRef<typeof target>(null);
+  const restoreFocus = useRef<{
+    target: typeof target;
+    intent: number;
+    element: HTMLElement;
+    path?: string;
+  } | null>(null);
+  const blocked =
+    s.busy ||
+    s.status.recoveryRequired ||
+    s.status.uncertain.includes(target?.source ?? "");
   viewRef.current = view;
   useEffect(() => {
     const mine = ++request.current;
@@ -72,6 +90,7 @@ export function ComplexPanel() {
       target.source !== s.projection?.source
     ) {
       setView(null);
+      resolvedTarget.current = null;
       setMenu(null);
       return;
     }
@@ -87,6 +106,7 @@ export function ComplexPanel() {
           value?.generation !== desktop.surface.projection?.generation
         )
           return;
+        resolvedTarget.current = target;
         setView(value);
         setLoading(false);
       })
@@ -112,16 +132,31 @@ export function ComplexPanel() {
     s.status.epoch,
   ]);
   const operation = useCallback(
-    async (path: string[], op: Record<string, unknown>) => {
-      const value = viewRef.current;
+    async (
+      path: string[],
+      op: Record<string, unknown>,
+      observed?: ComplexView,
+    ) => {
+      const value = observed ?? viewRef.current;
       if (!value) return false;
+      const element = document.activeElement as HTMLElement | null;
+      restoreFocus.current =
+        element && body.current?.contains(element)
+          ? {
+              target: desktop.interaction.complex,
+              intent: desktop.inputIntent,
+              element,
+              path: element.closest<HTMLElement>("[data-value-path]")?.dataset
+                .valuePath,
+            }
+          : null;
       const ok = await desktop.complexEdit(value, path, op);
       if (ok) {
         setActive(null);
         setNonNull(false);
         typing.current = null;
         setMenu(null);
-      }
+      } else restoreFocus.current = null;
       return ok;
     },
     [],
@@ -132,10 +167,14 @@ export function ComplexPanel() {
     if (!current || current.text === current.initial)
       return Promise.resolve(true);
     if (current.composing) return Promise.resolve(false);
-    committing.current = operation(current.path, {
-      kind: "text",
-      text: current.text,
-    }).finally(() => {
+    committing.current = operation(
+      current.path,
+      {
+        kind: "text",
+        text: current.text,
+      },
+      current.authority,
+    ).finally(() => {
       committing.current = null;
     });
     return committing.current;
@@ -158,14 +197,50 @@ export function ComplexPanel() {
     }
   };
   const navigate = async (path: string[], start = 0) => {
-    if (await commit()) desktop.complexPath(path, start);
+    const previous = desktop.interaction.complex;
+    if ((await commit()) && desktop.interaction.complex === previous)
+      desktop.complexPath(path, start);
   };
   const change = async (path: string[], op: Record<string, unknown>) => {
-    if (await commit()) return operation(path, op);
-    return false;
+    const previous = desktop.interaction.complex,
+      observed = viewRef.current,
+      p = desktop.surface.projection;
+    if (
+      !previous ||
+      !observed ||
+      p?.revision !== observed.revision ||
+      p.generation !== observed.generation
+    )
+      return false;
+    if (!(await commit()) || desktop.interaction.complex !== previous)
+      return false;
+    const current = desktop.surface.projection;
+    if (
+      current?.revision !== observed.revision ||
+      current.generation !== observed.generation
+    ) {
+      // Completing this editor's own typing can advance the descriptor. Fetch
+      // its bounded replacement before composing the user's next direct action.
+      const next = await desktop.complexView(previous);
+      if (
+        !next ||
+        desktop.interaction.complex !== previous ||
+        next.generation !== desktop.surface.projection?.generation ||
+        next.revision !== desktop.surface.projection.revision
+      )
+        return false;
+      viewRef.current = next;
+      setView(next);
+    }
+    return operation(path, op);
   };
   const keydown = (e: KeyboardEvent) => {
-    if (e.nativeEvent.isComposing || typing.current?.composing) return;
+    if (
+      e.isDefaultPrevented() ||
+      e.nativeEvent.isComposing ||
+      typing.current?.composing
+    )
+      return;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -186,6 +261,14 @@ export function ComplexPanel() {
       e.preventDefault();
       e.stopPropagation();
       void desktop.undo(e.shiftKey);
+    } else if (
+      e.ctrlKey &&
+      e.key.toLowerCase() === "y" &&
+      !(e.target as Element).closest("input,textarea")
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      void desktop.undo(true);
     }
   };
   const control = (node: EditorNode) => {
@@ -204,6 +287,8 @@ export function ComplexPanel() {
         <Button
           type="text"
           className="complex-value-link"
+          aria-invalid={!node.valid}
+          icon={node.valid ? undefined : <WarningOutlined />}
           onClick={() => void navigate(node.path)}
         >
           {node.display}
@@ -214,6 +299,7 @@ export function ComplexPanel() {
       return (
         <LeafInput
           node={node}
+          authority={view!}
           update={(value) => {
             typing.current = value;
           }}
@@ -227,6 +313,8 @@ export function ComplexPanel() {
       <Button
         type="text"
         className="complex-value-link"
+        aria-invalid={!node.valid}
+        icon={node.valid ? undefined : <WarningOutlined />}
         data-value-path={JSON.stringify(node.path)}
         aria-label={`Edit ${node.label}`}
         onClick={() => setActive(node.path)}
@@ -242,6 +330,61 @@ export function ComplexPanel() {
     same(view.node.path, target.path)
       ? view.node
       : undefined;
+  const stale =
+    !!view &&
+    (resolvedTarget.current !== target ||
+      view.revision !== s.projection?.revision ||
+      view.generation !== s.projection?.generation);
+  useLayoutEffect(() => {
+    const restore = restoreFocus.current;
+    const validRestore =
+      restore?.target === target && restore.intent === desktop.inputIntent;
+    if (restore && !validRestore) restoreFocus.current = null;
+    if (
+      !target ||
+      !root ||
+      loading ||
+      stale ||
+      blocked ||
+      (!validRestore &&
+        target.inputIntent !== undefined &&
+        target.inputIntent !== desktop.inputIntent) ||
+      (focusedTarget.current === target && !restoreFocus.current)
+    )
+      return;
+    const container = body.current;
+    if (!container) return;
+    if (focusedTarget.current === target && !validRestore) return;
+    const focusPath =
+      validRestore && restore.path
+        ? restore.path
+        : target.focusPath
+          ? JSON.stringify(target.focusPath)
+          : undefined;
+    const requested = focusPath
+      ? [...container.querySelectorAll<HTMLElement>("[data-value-path]")].find(
+          (element) => element.dataset.valuePath === focusPath,
+        )
+      : undefined;
+    const within = requested ?? container;
+    const control = within.querySelector<HTMLElement>(
+      "input:not(:disabled),button:not(:disabled),[role=combobox]:not([aria-disabled=true])",
+    );
+    const focus =
+      validRestore && restore.element.isConnected
+        ? restore.element
+        : (control ?? requested);
+    if (focus) {
+      focus.focus({ preventScroll: true });
+      if (
+        document.activeElement === focus ||
+        focus.contains(document.activeElement)
+      ) {
+        focusedTarget.current = target;
+        restoreFocus.current = null;
+      }
+    }
+  }, [target, root, loading, stale, blocked]);
   const arrayItems = (invalidFlag = false) =>
     root?.children
       .filter((child) => !invalidFlag || !child.valid)
@@ -255,7 +398,20 @@ export function ComplexPanel() {
             className="spatial-handle element-grip"
             title="Reorder element"
             aria-label={`Reorder element ${child.label}`}
+            disabled={!root?.editable || !root.shape?.array}
+            onPointerDown={(e) =>
+              view &&
+              beginArrayDrag(
+                e,
+                view,
+                child,
+                (item, index) =>
+                  change(root!.path, { kind: "place", item, index }),
+                (path) => desktop.complexPath(root!.path, root!.start, path),
+              )
+            }
             onClick={(e) => {
+              if (consumeSpatialClick(e.detail)) return;
               const r = e.currentTarget.getBoundingClientRect();
               setMenu({ child, index, x: r.left, y: r.bottom });
             }}
@@ -263,7 +419,11 @@ export function ComplexPanel() {
             <HolderOutlined />
           </button>
           <span className="element-number">{child.label}</span>
-          <div className="element-value">
+          <div
+            className="element-value complex-control"
+            data-value-path={JSON.stringify(child.path)}
+            tabIndex={-1}
+          >
             {invalidFlag ? (
               <Tag color="warning">{child.display}</Tag>
             ) : (
@@ -337,13 +497,13 @@ export function ComplexPanel() {
       rootStyle={{ position: "absolute" }}
       classNames={{ body: "complex-body" }}
       destroyOnHidden
-      autoFocus
+      autoFocus={false}
     >
       <div
         ref={body}
         onKeyDown={keydown}
-        inert={loading || s.busy}
-        aria-busy={loading || s.busy}
+        inert={loading || stale || blocked}
+        aria-busy={loading || stale || blocked}
       >
         {error ? (
           <Alert
@@ -397,15 +557,38 @@ export function ComplexPanel() {
                   <Button
                     type="text"
                     icon={<PlusOutlined />}
-                    onClick={() =>
-                      void change(root.path, { kind: "add" }).then((ok) => {
-                        if (ok && root.totalChildren >= 64)
-                          desktop.complexPath(
-                            root.path,
-                            Math.floor(root.totalChildren / 64) * 64,
-                          );
-                      })
-                    }
+                    onClick={() => {
+                      const previous = target,
+                        intent = desktop.inputIntent;
+                      void change(root.path, { kind: "add" }).then(
+                        async (ok) => {
+                          if (
+                            !ok ||
+                            intent !== desktop.inputIntent ||
+                            desktop.interaction.complex !== previous ||
+                            !previous
+                          )
+                            return;
+                          const start =
+                            Math.floor(root.totalChildren / 64) * 64;
+                          const next = await desktop.complexView({
+                            ...previous,
+                            start,
+                          });
+                          if (
+                            next &&
+                            intent === desktop.inputIntent &&
+                            desktop.interaction.complex === previous &&
+                            next.generation ===
+                              desktop.surface.projection?.generation
+                          ) {
+                            const added =
+                              next.node.children[root.totalChildren - start];
+                            desktop.complexPath(root.path, start, added?.path);
+                          }
+                        },
+                      );
+                    }}
                   >
                     Element
                   </Button>
@@ -441,7 +624,13 @@ export function ComplexPanel() {
                       <Typography.Text type="secondary">
                         {child.label}
                       </Typography.Text>
-                      <div>{control(child)}</div>
+                      <div
+                        className="complex-control"
+                        data-value-path={JSON.stringify(child.path)}
+                        tabIndex={-1}
+                      >
+                        {control(child)}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -461,18 +650,25 @@ export function ComplexPanel() {
                       : "Custom valueを作成"}
                 </Button>
               ) : root.kind !== "null" || nonNull || !root.shape.nullable ? (
-                <LeafInput
-                  key={JSON.stringify(root.path)}
-                  node={root}
-                  nonNull={nonNull}
-                  update={(value) => {
-                    typing.current = value;
-                  }}
-                  commit={commit}
-                  enumSelect={(symbol) =>
-                    void change(root.path, { kind: "enum", symbol })
-                  }
-                />
+                <div
+                  className="complex-control"
+                  data-value-path={JSON.stringify(root.path)}
+                  tabIndex={-1}
+                >
+                  <LeafInput
+                    key={JSON.stringify(root.path)}
+                    node={root}
+                    authority={view!}
+                    nonNull={nonNull}
+                    update={(value) => {
+                      typing.current = value;
+                    }}
+                    commit={commit}
+                    enumSelect={(symbol) =>
+                      void change(root.path, { kind: "enum", symbol })
+                    }
+                  />
+                </div>
               ) : null}
               {root.totalChildren > 64 && (
                 <div className="complex-pages">
@@ -513,13 +709,28 @@ export function ComplexPanel() {
           onClick: ({ key }) => {
             if (!menu || !root) return;
             const item = menu.child.path.at(-1);
+            const previous = target,
+              path = menu.child.path;
+            const destination = Math.max(
+              0,
+              root.start + menu.index + (key === "up" ? -1 : 1),
+            );
             setMenu(null);
             void change(
               root.path,
               key === "remove"
                 ? { kind: "remove", item }
                 : { kind: "nudge", item, delta: key === "up" ? -1 : 1 },
-            );
+            ).then((ok) => {
+              if (ok && desktop.interaction.complex === previous)
+                desktop.complexPath(
+                  root.path,
+                  key === "remove"
+                    ? root.start
+                    : Math.floor(destination / 64) * 64,
+                  key === "remove" ? undefined : path,
+                );
+            });
           },
         }}
       >
@@ -534,12 +745,14 @@ export function ComplexPanel() {
 }
 function LeafInput({
   node,
+  authority,
   nonNull = false,
   update,
   commit,
   enumSelect,
 }: {
   node: EditorNode;
+  authority: ComplexView;
   nonNull?: boolean;
   update: (typing: Typing) => void;
   commit: () => Promise<boolean>;
@@ -548,10 +761,12 @@ function LeafInput({
   const input = useRef<InputRef>(null),
     initial = useRef(nonNull ? "" : (node.input ?? "")),
     value = useRef(initial.current),
-    composing = useRef(false);
+    composing = useRef(false),
+    observed = useRef(authority);
   const [text, set] = useState(initial.current);
   const report = (force = false) =>
     update({
+      authority: observed.current,
       path: node.path,
       initial: force ? "\u0000" : initial.current,
       text: value.current,
@@ -572,8 +787,9 @@ function LeafInput({
       initial.current = next;
       value.current = next;
       set(next);
+      observed.current = authority;
     }
-  }, [node.input, nonNull]);
+  }, [node.input, nonNull, authority]);
   if (node.shape?.category === "enum")
     return (
       <Select
@@ -584,6 +800,7 @@ function LeafInput({
         options={node.shape.members?.map((value) => ({ value, label: value }))}
         onChange={enumSelect}
         className="complex-enum"
+        status={node.valid ? undefined : "error"}
       />
     );
   return (

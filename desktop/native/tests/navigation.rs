@@ -96,6 +96,7 @@ async fn previous_project_authoring_cannot_mutate_a_new_session_with_identical_s
             Intent::EditText {
                 source: "sources/data.yaml".into(),
                 revision: 0,
+                generation: v["data"]["generation"].as_u64().unwrap(),
                 row,
                 field: "note".into(),
                 text: "late clipboard / typing".into(),

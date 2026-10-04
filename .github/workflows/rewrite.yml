@@ -60,6 +60,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --output verification/results/desktop.json
+      - name: Native WebView authoring events, spatial previews, cancellation and nested Problems
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case authoring --output verification/results/authoring.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

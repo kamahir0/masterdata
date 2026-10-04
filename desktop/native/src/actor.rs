@@ -62,6 +62,7 @@ pub enum Intent {
     EditText {
         source: String,
         revision: u64,
+        generation: u64,
         row: String,
         field: String,
         text: String,
@@ -69,6 +70,7 @@ pub enum Intent {
     EditValue {
         source: String,
         revision: u64,
+        generation: u64,
         row: String,
         path: Vec<String>,
         value: SourceValue,
@@ -97,6 +99,12 @@ pub enum Intent {
     Locate {
         source: String,
         row: String,
+    },
+    ProblemTarget {
+        source: String,
+        generation: u64,
+        occurrence: Option<usize>,
+        path: Vec<String>,
     },
     AddRow {
         source: String,
@@ -132,6 +140,7 @@ pub enum Intent {
     Columns {
         source: String,
         revision: u64,
+        generation: u64,
         order: Vec<String>,
     },
     Complex {
@@ -154,6 +163,7 @@ pub enum Intent {
     Schema {
         source: String,
         revision: u64,
+        generation: u64,
         field: String,
         nullable: bool,
         array: bool,
@@ -452,17 +462,24 @@ fn execute(
         Intent::EditText {
             source,
             revision,
+            generation,
             row,
             field,
             text,
-        } => convert(w.edit_text(&source, revision, &row, &field, &text)?),
+        } => convert(w.edit_text_at(&source, revision, generation, &row, &field, &text)?),
         Intent::EditValue {
             source,
             revision,
+            generation,
             row,
             path,
             value,
-        } => convert(w.edit(&source, revision, &row, &path, &value)?),
+        } => {
+            if w.generation != generation {
+                return Err(Error::new("E-DRAFT-STALE", "semantic generation changed").into());
+            }
+            convert(w.edit(&source, revision, &row, &path, &value)?)
+        }
         Intent::Paste {
             source,
             revision,
@@ -491,6 +508,12 @@ fn execute(
             Ok(Value::Null)
         }
         Intent::Locate { source, row } => convert(w.locate_row(&source, &row)?),
+        Intent::ProblemTarget {
+            source,
+            generation,
+            occurrence,
+            path,
+        } => convert(w.problem_target(&source, generation, occurrence, &path)?),
         Intent::AddRow {
             source,
             revision,
@@ -526,8 +549,9 @@ fn execute(
         Intent::Columns {
             source,
             revision,
+            generation,
             order,
-        } => convert(w.reorder_columns(&source, revision, &order)?),
+        } => convert(w.reorder_columns_at(&source, revision, generation, &order)?),
         Intent::Complex {
             source,
             revision,
@@ -562,17 +586,21 @@ fn execute(
         Intent::Schema {
             source,
             revision,
+            generation,
             field,
             nullable,
             array,
             type_name,
-        } => convert(w.schema_modifier(
+        } => convert(w.schema_modifier_at(
             &source,
             revision,
+            generation,
             &field,
-            nullable,
-            array,
-            type_name.as_deref(),
+            masterdata_engine::workspace::FieldShapeEdit {
+                nullable,
+                array,
+                type_name: type_name.as_deref(),
+            },
         )?),
         Intent::Undo { source, redo } => convert(w.undo(&source, redo)?),
         Intent::Save { table, source } => convert(w.save_table(&table, source.as_deref())?),

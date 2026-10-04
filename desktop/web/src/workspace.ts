@@ -57,6 +57,15 @@ export interface ComplexView {
   generation: number;
   node: EditorNode;
 }
+interface ProblemTarget {
+  source: string;
+  row: string;
+  field: string | null;
+  viewIndex: number | null;
+  editorPath: string[] | null;
+  focusPath: string[];
+  editorStart: number;
+}
 export interface ComplexTarget {
   epoch: number;
   source: string;
@@ -65,11 +74,13 @@ export interface ComplexTarget {
   path: string[];
   start: number;
   focusPath?: string[];
+  inputIntent?: number;
 }
 export interface Editor {
   epoch: number;
   source: string;
   revision: number;
+  generation: number;
   row: string;
   field: string;
   rowIndex: number;
@@ -194,6 +205,10 @@ class Desktop {
   currentSample: SelectionSample | null = null;
   samples: SelectionSample[] = [];
   evidence = false;
+  inputIntent = 0;
+  noteInputIntent = () => {
+    this.inputIntent++;
+  };
   private publish(delta: Partial<Surface>) {
     this.surface = { ...this.surface, ...delta };
     for (const f of this.surfaces) f();
@@ -691,6 +706,7 @@ class Desktop {
           root: column.field.name,
           path: [column.field.name],
           start: 0,
+          inputIntent: this.inputIntent,
         },
       });
     } else
@@ -699,6 +715,7 @@ class Desktop {
           epoch: p.sessionEpoch,
           source: p.source,
           revision: p.revision,
+          generation: p.generation,
           row: r.id,
           field: column.field.name,
           rowIndex: s.row,
@@ -710,6 +727,7 @@ class Desktop {
       });
   };
   closeEditor = () => this.interact({ editor: null });
+  collapseRange = () => this.interact({ anchor: null });
   async edit(editor: Editor, text: string) {
     if (text === editor.initial) {
       this.closeEditor();
@@ -720,6 +738,7 @@ class Desktop {
       epoch: editor.epoch,
       source: editor.source,
       revision: editor.revision,
+      generation: editor.generation,
       row: editor.row,
       field: editor.field,
       text,
@@ -733,7 +752,16 @@ class Desktop {
   closeComplex = () => this.interact({ complex: null });
   complexPath = (path: string[], start = 0, focusPath?: string[]) => {
     const c = this.interaction.complex;
-    if (c) this.interact({ complex: { ...c, path, start, focusPath } });
+    if (c)
+      this.interact({
+        complex: {
+          ...c,
+          path,
+          start,
+          focusPath,
+          inputIntent: this.inputIntent,
+        },
+      });
   };
   async complexView(target: ComplexTarget): Promise<ComplexView | null> {
     const p = this.surface.projection;
@@ -760,11 +788,13 @@ class Desktop {
     operation: Record<string, unknown>,
   ) {
     const current = this.surface.projection;
+    // Navigation publishes the incoming identity before committing outgoing
+    // typing. Its captured descriptor still targets the original source; Rust
+    // checks that complete generation/revision context before applying it.
     if (
       !current ||
       current.source !== view.source ||
       current.sessionEpoch !== view.sessionEpoch ||
-      this.surface.pending ||
       current.revision !== view.revision ||
       current.generation !== view.generation
     )
@@ -797,6 +827,7 @@ class Desktop {
       epoch: p.sessionEpoch,
       source: p.table.source,
       revision: p.schemaRevision,
+      generation: p.generation,
       field,
       typeName: change.typeName ?? null,
       nullable: change.nullable ?? (change.array ? false : f.nullable),
@@ -804,7 +835,9 @@ class Desktop {
     });
   }
   focusSchema = () => {
-    this.historySource = this.surface.projection?.table.source ?? null;
+    const source = this.surface.projection?.table.source ?? null;
+    if (source === this.historySource) return;
+    this.historySource = source;
     this.publish({});
   };
   history() {
@@ -1026,14 +1059,8 @@ class Desktop {
       this.surface.status.diagnosticsPending
     )
       return;
-    const occurrence = (problem.occurrence ?? 1) - 1;
     try {
-      await this.selectTarget(
-        problem.source,
-        "problem",
-        false,
-        Math.max(0, occurrence - 3),
-      );
+      await this.selectTarget(problem.source, "problem", true);
       const p = this.surface.projection;
       if (
         !p ||
@@ -1041,14 +1068,88 @@ class Desktop {
         p.clicked !== problem.source
       )
         return;
+      const intent = this.interaction.focusIntent;
+      const resolved = await this.rpc<ProblemTarget | null>({
+        kind: "problemTarget",
+        epoch: p.sessionEpoch,
+        source: problem.source,
+        generation: problem.generation,
+        occurrence: problem.occurrence,
+        path: problem.fieldPath,
+      });
+      const target = resolved.data;
+      const current = () =>
+        this.currentFor(p) &&
+        this.surface.status.generation === problem.generation &&
+        this.interaction.focusIntent === intent;
+      if (!current() || !target) return;
+      let at = target.viewIndex;
+      if (at === null) {
+        const answer = await this.choose(
+          "Searchで非表示のrecord",
+          "Searchを解除して、このProblemのrecordを表示します。",
+          ["Clear Search", "Cancel"],
+        );
+        if (answer !== "Clear Search" || !current()) return;
+        await this.rpc({
+          kind: "search",
+          epoch: p.sessionEpoch,
+          source: target.source,
+          text: "",
+        });
+        if (!current()) return;
+        this.local.delete(target.source);
+        await this.refresh();
+        if (!current()) return;
+        at = (
+          await this.rpc<number | null>({
+            kind: "locate",
+            epoch: p.sessionEpoch,
+            source: target.source,
+            row: target.row,
+          })
+        ).data;
+      }
+      if (!current() || at === null) return;
       const column = Math.max(
         0,
-        p.columns.findIndex((c) => c.field.name === problem.fieldPath[0]),
+        p.columns.findIndex((c) => c.field.name === target.field),
       );
-      this.setSelection(occurrence, column);
+      this.setSelection(at, column);
+      const applied = this.interaction.focusIntent;
+      const v = this.viewport;
+      if (v) {
+        v.scrollTop = Math.max(0, at * GRID.row - GRID.header);
+        v.scrollLeft = Math.max(0, column * GRID.column - GRID.identity);
+      }
+      await this.ensureWindow();
+      if (
+        !this.currentFor(p) ||
+        applied !== this.interaction.focusIntent ||
+        this.surface.status.generation !== problem.generation
+      )
+        return;
       this.viewport?.focus();
+      if (target.editorPath)
+        this.interact({
+          complex: {
+            epoch: p.sessionEpoch,
+            source: target.source,
+            row: target.row,
+            root: target.field!,
+            path: target.editorPath,
+            start: target.editorStart,
+            focusPath: target.focusPath,
+            inputIntent: this.inputIntent,
+          },
+        });
+      else if (target.field) this.beginEditor();
     } catch (e) {
-      this.showError(e);
+      if (
+        this.surface.target === problem.source &&
+        this.surface.status.generation === problem.generation
+      )
+        this.showError(e);
     }
   }
   search = (text: string) => {
@@ -1207,10 +1308,16 @@ class Desktop {
     )
       return;
     this.setSelection(r.data, column);
+    const applied = this.interaction.focusIntent;
     if (this.viewport)
       this.viewport.scrollTop = Math.max(0, r.data * GRID.row - GRID.header);
     await this.ensureWindow();
-    this.viewport?.focus();
+    if (
+      applied === this.interaction.focusIntent &&
+      epoch === this.surface.status.epoch &&
+      source === this.surface.projection?.source
+    )
+      this.viewport?.focus();
   }
   addRow = async (
     before: string | null = null,
@@ -1276,18 +1383,64 @@ class Desktop {
       await this.focusRow(row, focus, p.source, p.sessionEpoch);
   }
   async columns(order: string[], p: Projection) {
-    if (!(await this.commit())) return;
+    if (!(await this.commit())) return false;
     const current = this.currentFor(p);
-    if (!current) return;
+    if (!current) return false;
     p = current;
     this.historySource = p.table.source;
-    await this.operation({
+    return this.operation({
       kind: "columns",
       epoch: p.sessionEpoch,
       source: p.table.source,
       revision: p.schemaRevision,
+      generation: p.generation,
       order,
     });
+  }
+  async moveRow(row: string, targetIndex: number, p: Projection) {
+    const current = this.currentFor(p);
+    if (
+      !current?.source ||
+      current.revision !== p.revision ||
+      current.generation !== p.generation ||
+      current.viewState.search
+    )
+      return false;
+    const target = current.rows.find((r) => r.viewIndex === targetIndex),
+      from = p.rows.find((r) => r.id === row)?.viewIndex;
+    if (
+      !target ||
+      target.pendingDelete ||
+      from === undefined ||
+      from === targetIndex
+    )
+      return false;
+    let before: string | null = target.id;
+    if (targetIndex > from)
+      before = (
+        await this.rpc<string | null>({
+          kind: "nextRow",
+          epoch: p.sessionEpoch,
+          source: p.source,
+          row: target.id,
+        })
+      ).data;
+    if (
+      !this.currentFor(p) ||
+      this.surface.projection?.revision !== p.revision ||
+      this.surface.projection.generation !== p.generation
+    )
+      return false;
+    const focus = this.interaction.focusIntent;
+    this.historySource = p.source;
+    const ok = await this.operation({
+      kind: "moveRow",
+      ...this.scope(p),
+      row,
+      before,
+    });
+    if (ok) await this.focusRow(row, focus, p.source!, p.sessionEpoch);
+    return ok;
   }
   async start() {
     await listen<Status>("workspace-status", (event) => {
@@ -1296,6 +1449,21 @@ class Desktop {
       if (
         next.epoch < current.epoch ||
         (next.epoch === current.epoch && next.generation < current.generation)
+      )
+        return;
+      const samePaths = (a: string[], b: string[]) =>
+        a.length === b.length && a.every((path, i) => path === b[i]);
+      // Read replies can carry the same status. Republishing it would rerender
+      // ordinary chrome, and an open Problems panel would request itself again.
+      if (
+        next.open === current.open &&
+        next.epoch === current.epoch &&
+        next.generation === current.generation &&
+        next.recoveryRequired === current.recoveryRequired &&
+        next.diagnosticsPending === current.diagnosticsPending &&
+        next.problemCount === current.problemCount &&
+        samePaths(next.dirty, current.dirty) &&
+        samePaths(next.uncertain, current.uncertain)
       )
         return;
       this.publish({

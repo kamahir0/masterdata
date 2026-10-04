@@ -300,6 +300,18 @@ impl Workspace {
     }
 
     pub fn reorder_columns(&mut self, path: &str, revision: u64, order: &[String]) -> Result<bool> {
+        self.reorder_columns_at(path, revision, self.generation, order)
+    }
+    pub fn reorder_columns_at(
+        &mut self,
+        path: &str,
+        revision: u64,
+        generation: u64,
+        order: &[String],
+    ) -> Result<bool> {
+        if self.generation != generation {
+            return Err(Error::new("E-DRAFT-STALE", "semantic generation changed"));
+        }
         if self.recovery_required {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
@@ -310,7 +322,7 @@ impl Workspace {
         self.refresh_source(path)?;
         self.ensure_draft(path)?;
         let d = &self.drafts[path];
-        if d.revision != revision {
+        if d.revision != revision || self.generation != generation {
             return Err(Error::new("E-DRAFT-STALE", "schema revision changed"));
         }
         if d.outcome == Some(Outcome::OutcomeUnknown) {

@@ -16,6 +16,12 @@ use std::{
 
 mod batch;
 pub mod complex;
+pub struct FieldShapeEdit<'a> {
+    pub nullable: bool,
+    pub array: bool,
+    pub type_name: Option<&'a str>,
+}
+mod problems;
 mod records;
 mod search;
 
@@ -757,7 +763,18 @@ impl Workspace {
         field: &str,
         text: &str,
     ) -> Result<bool> {
-        let (table, types) = self.batch_context(path, revision, self.generation)?;
+        self.edit_text_at(path, revision, self.generation, row_id, field, text)
+    }
+    pub fn edit_text_at(
+        &mut self,
+        path: &str,
+        revision: u64,
+        generation: u64,
+        row_id: &str,
+        field: &str,
+        text: &str,
+    ) -> Result<bool> {
+        let (table, types) = self.batch_context(path, revision, generation)?;
         let f = table
             .fields
             .iter()
@@ -781,6 +798,34 @@ impl Workspace {
         array: bool,
         type_name: Option<&str>,
     ) -> Result<bool> {
+        self.schema_modifier_at(
+            path,
+            revision,
+            self.generation,
+            field_name,
+            FieldShapeEdit {
+                nullable,
+                array,
+                type_name,
+            },
+        )
+    }
+    pub fn schema_modifier_at(
+        &mut self,
+        path: &str,
+        revision: u64,
+        generation: u64,
+        field_name: &str,
+        declaration: FieldShapeEdit<'_>,
+    ) -> Result<bool> {
+        let FieldShapeEdit {
+            nullable,
+            array,
+            type_name,
+        } = declaration;
+        if self.generation != generation {
+            return Err(Error::new("E-DRAFT-STALE", "semantic generation changed"));
+        }
         if self.recovery_required {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
@@ -797,7 +842,7 @@ impl Workspace {
         self.refresh_source(path)?;
         self.ensure_draft(path)?;
         let d = self.drafts.get_mut(path).unwrap();
-        if d.revision != revision {
+        if d.revision != revision || self.generation != generation {
             return Err(Error::new("E-DRAFT-STALE", "schema revision changed"));
         }
         if d.outcome == Some(Outcome::OutcomeUnknown) {

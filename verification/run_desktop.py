@@ -1,5 +1,6 @@
 """Actual native webview measurement; OS manual interactions are separate evidence."""
 import argparse
+import hashlib
 import json
 import math
 import platform
@@ -48,11 +49,31 @@ def check(report):
             for case, values in cases.items()}
 
 
-def run(binary: Path, output: Path):
+def check_authoring(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused'], 'native window not usable'
+    assert [item['name'] for item in report['checks']] == [
+        'scalar-composition', 'pointer-range', 'row-drag-cancel', 'row-drag-drop',
+        'column-drag-drop', 'array-drag-drop', 'complex-typing-add', 'complex-focus-intent', 'nested-problem-focus', 'complex-navigation',
+    ], report['checks']
+    assert report['source']['before'] == report['source']['after']
+    assert report['schema']['before'] == report['schema']['after']
+    assert report['mountedRows'] <= 64
+    assert not report['startup'].get('browserErrors')
+    return {'checks': len(report['checks']), 'exactSourceAndSchemaRestored': True}
+
+
+def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
         project = temporary / 'project'
-        navigation(project)
+        if case == 'navigation':
+            navigation(project)
+        else:
+            shutil.copytree(ROOT / 'fixtures/full', project)
+            data = project / 'sources/catalog-data.yaml'
+            data.write_text(data.read_text().replace('numbers: [1, -2]', 'numbers: [1, "1", -2]'), encoding='utf-8')
+        initial_sources = {path.relative_to(project): path.read_bytes() for path in project.rglob('*.yaml')}
         executable = binary.resolve()
         if platform.system() == 'Darwin':
             app = temporary / 'MasterData Rewrite.app' / 'Contents'
@@ -67,7 +88,7 @@ def run(binary: Path, output: Path):
         report_path = temporary / 'measurement.json'
         with (output.parent / 'desktop-process.log').open('w') as log:
             process = subprocess.Popen([str(executable), '--project', str(project),
-                                        '--evidence-output', str(report_path)], stdout=log, stderr=log)
+                                        '--evidence-output', str(report_path), '--evidence-kind', case], stdout=log, stderr=log)
             try:
                 deadline = time.monotonic() + 240
                 while not report_path.exists():
@@ -77,10 +98,17 @@ def run(binary: Path, output: Path):
                     time.sleep(.1)
                 report = json.loads(report_path.read_text())
                 report['environment'] = {'os': platform.system(), 'release': platform.release(),
-                                         'architecture': platform.machine(), 'kind': 'actual native webview; controlled DOM keyboard handler'}
+                                         'architecture': platform.machine(),
+                                         'kind': 'actual native WebView; controlled DOM keyboard/pointer handlers; OS input is separate'}
+                report['implementation'] = {
+                    'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                    'workingTreeChanged': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True)),
+                    'binarySha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+                }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2))
-                report['summary'] = check(report)
+                report['summary'] = check(report) if case == 'navigation' else check_authoring(report)
+                assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
                 output.write_text(json.dumps(report, indent=2))
                 print(json.dumps(report['summary'], indent=2))
             finally:
@@ -92,6 +120,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--case', choices=['navigation', 'authoring'], default='navigation')
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    run(args.binary, args.output)
+    run(args.binary, args.output, args.case)

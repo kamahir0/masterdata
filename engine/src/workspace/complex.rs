@@ -59,6 +59,10 @@ pub enum Operation {
         item: String,
         before: Option<String>,
     },
+    Place {
+        item: String,
+        index: usize,
+    },
     Nudge {
         item: String,
         delta: isize,
@@ -399,6 +403,32 @@ impl Workspace {
                 ids = Some(order);
                 candidate
             }
+            Operation::Place { item, index } => {
+                if !target.shape.array {
+                    return Err(Error::new("E-VALUE-SHAPE", "Array required"));
+                }
+                let old = ids.as_ref().unwrap();
+                let at = old
+                    .iter()
+                    .position(|id| id == &item)
+                    .ok_or_else(|| Error::new("E-LOCATOR-STALE", "Array occurrence missing"))?;
+                if index >= old.len() {
+                    return Err(Error::new(
+                        "E-REORDER-POSITION",
+                        "Array destination outside source",
+                    ));
+                }
+                if at == index {
+                    return Ok(false);
+                }
+                let mut order = old.clone();
+                order.remove(at);
+                order.insert(index, item);
+                let positions = super::records::permutation(old, &order)?;
+                let candidate = d.document.reorder_sequence(&target.node, &positions)?;
+                ids = Some(order);
+                candidate
+            }
         };
         // The source primitives already reparse their localized candidates. Check
         // record membership as well: a nested operation cannot change its source rows.
@@ -548,6 +578,78 @@ fn resolve(
         actual,
         key,
     })
+}
+pub(super) fn diagnostic_path(
+    d: &mut Draft,
+    table: &Table,
+    types: &semantic::Types,
+    row: &str,
+    path: &[String],
+) -> Result<(Vec<String>, usize)> {
+    let field = table
+        .fields
+        .iter()
+        .find(|f| Some(&f.name) == path.first())
+        .ok_or_else(|| Error::new("E-FIELD-MISSING", "diagnostic field missing"))?;
+    let mut shape = Some(semantic::shape(field, types)?);
+    let mut node = d.document.records()?[d.active_index(row)?]
+        .value
+        .members()?
+        .iter()
+        .find(|m| m.name == field.name)
+        .map(|m| m.value.clone());
+    let mut result = vec![field.name.clone()];
+    let mut key = vec![row.to_owned(), field.name.clone()];
+    let mut start = 0;
+    for component in path.iter().skip(1) {
+        let current = node
+            .as_ref()
+            .ok_or_else(|| Error::new("E-LOCATOR-STALE", "diagnostic parent missing"))?;
+        let next = if matches!(current.raw, Raw::Sequence(_)) {
+            let index = component
+                .parse::<usize>()
+                .map_err(|_| Error::new("E-LOCATOR-STALE", "diagnostic element index invalid"))?;
+            let ids = element_ids(d, &key, current)?;
+            let id = ids
+                .get(index)
+                .ok_or_else(|| Error::new("E-LOCATOR-STALE", "diagnostic element missing"))?
+                .clone();
+            start = index / 64 * 64;
+            shape = shape.map(|mut s| {
+                s.array = false;
+                s.nullable = false;
+                s
+            });
+            node = Some(current.items()?[index].value.clone());
+            id
+        } else {
+            let members = current.members()?;
+            let fields = shape.as_ref().map(|s| s.fields.as_slice()).unwrap_or(&[]);
+            let known = fields.iter().position(|(f, _)| &f.name == component);
+            let index = known
+                .or_else(|| {
+                    members
+                        .iter()
+                        .filter(|m| !fields.iter().any(|(f, _)| f.name == m.name))
+                        .position(|m| &m.name == component)
+                        .map(|i| fields.len() + i)
+                })
+                .ok_or_else(|| Error::new("E-LOCATOR-STALE", "diagnostic member missing"))?;
+            start = index / 64 * 64;
+            shape = fields
+                .iter()
+                .find(|(f, _)| &f.name == component)
+                .map(|(_, s)| s.clone());
+            node = members
+                .iter()
+                .find(|m| &m.name == component)
+                .map(|m| m.value.clone());
+            component.clone()
+        };
+        key.push(next.clone());
+        result.push(next);
+    }
+    Ok((result, start))
 }
 fn new_element_id(d: &Draft, key: &[String], ordinal: usize) -> String {
     format!(

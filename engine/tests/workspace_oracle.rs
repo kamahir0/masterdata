@@ -35,6 +35,78 @@ fn compare(expected: &Path, actual: &Path) {
     }
 }
 #[test]
+fn a_clean_external_schema_change_cannot_reuse_the_old_revision_for_header_authoring() {
+    for reorder in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        copy(&oracle().join("save-both/input"), temp.path());
+        let mut w = Workspace::open(temp.path()).unwrap();
+        let p = w.select("sources/data.yaml", 0, 32).unwrap();
+        w.edit_text(
+            "sources/data.yaml",
+            p.revision,
+            &p.rows[0].id,
+            "note",
+            "keep this draft",
+        )
+        .unwrap();
+        let observed = w.select("sources/schema.yaml", 0, 32).unwrap();
+        let data = w.current_doc("sources/data.yaml").unwrap().bytes.clone();
+        let file = temp.path().join("sources/schema.yaml");
+        let external = format!(
+            "{}\n# External authoring\n",
+            fs::read_to_string(&file).unwrap()
+        );
+        fs::write(&file, &external).unwrap();
+        let (result, measurement) = instrument::measure(|| {
+            if reorder {
+                let mut order = observed
+                    .columns
+                    .iter()
+                    .map(|c| c.field.name.clone())
+                    .collect::<Vec<_>>();
+                order.reverse();
+                w.reorder_columns_at(
+                    "sources/schema.yaml",
+                    observed.schema_revision,
+                    observed.generation,
+                    &order,
+                )
+            } else {
+                w.schema_modifier_at(
+                    "sources/schema.yaml",
+                    observed.schema_revision,
+                    observed.generation,
+                    "note",
+                    masterdata_engine::workspace::FieldShapeEdit {
+                        nullable: false,
+                        array: false,
+                        type_name: None,
+                    },
+                )
+            }
+        });
+        assert_eq!(result.unwrap_err().code, "E-DRAFT-STALE");
+        assert_eq!(
+            w.drafts["sources/schema.yaml"].revision,
+            observed.schema_revision
+        );
+        assert_eq!(fs::read_to_string(file).unwrap(), external);
+        assert_eq!(
+            w.current_doc("sources/schema.yaml").unwrap().bytes.as_ref(),
+            external
+        );
+        assert!(!w.drafts["sources/schema.yaml"].dirty());
+        assert!(!w.drafts["sources/schema.yaml"].can_undo());
+        assert_eq!(w.current_doc("sources/data.yaml").unwrap().bytes, data);
+        assert!(w.drafts["sources/data.yaml"].dirty());
+        assert!(w.drafts["sources/data.yaml"].can_undo());
+        assert_eq!(measurement.work.project_discovery, 0);
+        assert_eq!(measurement.work.project_enumeration, 0);
+        assert_eq!(measurement.work.project_yaml_parse, 0);
+        assert_eq!(measurement.work.project_validation, 0);
+    }
+}
+#[test]
 fn independent_table_save_scope_and_fresh_conflicts() {
     let root = oracle();
     let manifest: Json =

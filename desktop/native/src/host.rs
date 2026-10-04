@@ -16,6 +16,7 @@ struct Host {
     exit_allowed: Arc<AtomicBool>,
     initial_project: Option<String>,
     evidence_output: Option<PathBuf>,
+    evidence_kind: String,
     preferences_path: PathBuf,
     preferences: Arc<Mutex<crate::preferences::Preferences>>,
 }
@@ -68,7 +69,7 @@ async fn pick_project(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 #[tauri::command]
 fn boot(state: tauri::State<'_, Host>) -> Value {
-    json!({"platform":std::env::consts::OS,"initialProject":state.initial_project,"preferences":*state.preferences.lock().unwrap(),"evidence":cfg!(feature="desktop-evidence")&&state.evidence_output.is_some()})
+    json!({"platform":std::env::consts::OS,"initialProject":state.initial_project,"preferences":*state.preferences.lock().unwrap(),"evidence":cfg!(feature="desktop-evidence")&&state.evidence_output.is_some(),"evidenceKind":state.evidence_kind})
 }
 #[tauri::command]
 fn finish_exit(
@@ -128,6 +129,13 @@ pub fn run() {
     } else {
         None
     };
+    let evidence_kind =
+        if output.is_some() && argument("--evidence-kind").as_deref() == Some("authoring") {
+            "authoring"
+        } else {
+            "navigation"
+        }
+        .to_string();
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
@@ -143,6 +151,7 @@ pub fn run() {
                 exit_allowed: Arc::new(AtomicBool::new(false)),
                 initial_project: initial,
                 evidence_output: output,
+                evidence_kind,
                 preferences_path,
                 preferences,
             });

@@ -29,8 +29,14 @@ import {
   PlusOutlined,
   UndoOutlined,
 } from "@ant-design/icons";
-import type { Projection, Row } from "./types";
+import type { Field, Projection, Row } from "./types";
 import { desktop, GRID, type Editor } from "./workspace";
+import {
+  beginColumnDrag,
+  beginRowDrag,
+  beginRangeSelection,
+  consumeSpatialClick,
+} from "./spatial";
 
 function isInput(target: EventTarget | null) {
   return (
@@ -114,6 +120,11 @@ export const AuthoringGrid = memo(function AuthoringGrid({
       void desktop.undo(e.shiftKey);
       return;
     }
+    if (e.ctrlKey && e.key.toLowerCase() === "y") {
+      e.preventDefault();
+      void desktop.undo(true);
+      return;
+    }
     if (command && e.key.toLowerCase() === "c") {
       e.preventDefault();
       void desktop.copyGrid();
@@ -124,6 +135,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
       void desktop.pasteGrid();
       return;
     }
+    if ((e.target as Element).closest("button")) return;
     if (e.key === "Enter" || e.key === "F2") {
       e.preventDefault();
       desktop.beginEditor();
@@ -132,6 +144,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
     if (e.key === "Escape") {
       e.preventDefault();
       desktop.closeComplex();
+      desktop.collapseRange();
       setMenu(null);
       return;
     }
@@ -193,7 +206,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
             <ColumnHeader
               key={col.field.name}
               index={index}
-              p={p}
+              field={col.field}
               types={types}
               active={index >= columns.first && index < columns.last}
               busy={busy}
@@ -231,124 +244,141 @@ export const AuthoringGrid = memo(function AuthoringGrid({
     </>
   );
 });
-const ColumnHeader = memo(function ColumnHeader({
-  p,
-  index,
-  active,
-  types,
-  busy,
-  menu,
-}: {
-  p: Projection;
-  index: number;
-  active: boolean;
-  types: string[];
-  busy: boolean;
-  menu: (column: number, x: number, y: number) => void;
-}) {
-  const field = p.columns[index].field;
-  const options = [
-    ...new Set([
-      "int",
-      "uint",
-      "long",
-      "ulong",
-      "float",
-      "double",
-      "bool",
-      "string",
-      ...types,
-      field.typeName,
-    ]),
-  ].map((value) => ({ value, label: value }));
-  return (
-    <div
-      className="column"
-      role="columnheader"
-      aria-colindex={index + 2}
-      data-field={field.name}
-      onFocus={desktop.focusSchema}
-    >
-      <div className="column-identity">
-        <button
-          className="spatial-handle column-grip"
-          aria-label={`Reorder column ${field.name}`}
-          title={`Reorder column ${field.name}`}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            menu(index, r.left, r.bottom);
-          }}
-        >
-          <HolderOutlined />
-        </button>
-        <span className="field-name" title={field.name}>
-          {field.name}
-        </span>
-        <button
-          className="spatial-handle column-actions"
-          aria-label={`${field.name} actions`}
-          title={`${field.name} actions`}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            menu(index, r.right - 180, r.bottom);
-          }}
-        >
-          <MoreOutlined />
-        </button>
-      </div>
-      <div className="column-shape">
-        {active ? (
-          <>
-            <Select
-              aria-label={`${field.name} type`}
-              variant="borderless"
-              value={field.typeName}
-              options={options}
-              disabled={busy}
-              onChange={(typeName) =>
-                void desktop.schema(field.name, { typeName })
-              }
-              className="field-type"
-              popupMatchSelectWidth={160}
-            />
-            <Tooltip title="Nullable">
-              <Button
-                type="text"
-                className={field.nullable ? "modifier active" : "modifier"}
-                icon={<QuestionOutlined />}
-                aria-label={`${field.name} nullable`}
-                aria-pressed={field.nullable}
-                disabled={busy}
-                onClick={() =>
-                  void desktop.schema(field.name, { nullable: !field.nullable })
-                }
-              />
-            </Tooltip>
-            <Tooltip title="Array">
-              <Button
-                type="text"
-                className={field.array ? "modifier active" : "modifier"}
-                icon={<SwapOutlined />}
-                aria-label={`${field.name} array`}
-                aria-pressed={field.array}
-                disabled={busy}
-                onClick={() =>
-                  void desktop.schema(field.name, { array: !field.array })
-                }
-              />
-            </Tooltip>
-          </>
-        ) : (
-          <span className="shape-summary">
-            {field.typeName}
-            {field.nullable ? " ?" : ""}
-            {field.array ? " []" : ""}
+const ColumnHeader = memo(
+  function ColumnHeader({
+    field,
+    index,
+    active,
+    types,
+    busy,
+    menu,
+  }: {
+    field: Field;
+    index: number;
+    active: boolean;
+    types: string[];
+    busy: boolean;
+    menu: (column: number, x: number, y: number) => void;
+  }) {
+    const options = [
+      ...new Set([
+        "int",
+        "uint",
+        "long",
+        "ulong",
+        "float",
+        "double",
+        "bool",
+        "string",
+        ...types,
+        field.typeName,
+      ]),
+    ].map((value) => ({ value, label: value }));
+    return (
+      <div
+        className="column"
+        role="columnheader"
+        aria-colindex={index + 2}
+        data-field={field.name}
+        onFocus={desktop.focusSchema}
+      >
+        <div className="column-identity">
+          <button
+            className="spatial-handle column-grip"
+            aria-label={`Reorder column ${field.name}`}
+            title={`Reorder column ${field.name}`}
+            disabled={busy}
+            onPointerDown={(e) => beginColumnDrag(e, index)}
+            onClick={(e) => {
+              if (consumeSpatialClick(e.detail)) return;
+              const r = e.currentTarget.getBoundingClientRect();
+              menu(index, r.left, r.bottom);
+            }}
+          >
+            <HolderOutlined />
+          </button>
+          <span className="field-name" title={field.name}>
+            {field.name}
           </span>
-        )}
+          <button
+            className="spatial-handle column-actions"
+            aria-label={`${field.name} actions`}
+            title={`${field.name} actions`}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              menu(index, r.right - 180, r.bottom);
+            }}
+          >
+            <MoreOutlined />
+          </button>
+        </div>
+        <div className="column-shape">
+          {active ? (
+            <>
+              <Select
+                aria-label={`${field.name} type`}
+                variant="borderless"
+                value={field.typeName}
+                options={options}
+                disabled={busy}
+                onChange={(typeName) =>
+                  void desktop.schema(field.name, { typeName })
+                }
+                className="field-type"
+                popupMatchSelectWidth={160}
+              />
+              <Tooltip title="Nullable">
+                <Button
+                  type="text"
+                  className={field.nullable ? "modifier active" : "modifier"}
+                  icon={<QuestionOutlined />}
+                  aria-label={`${field.name} nullable`}
+                  aria-pressed={field.nullable}
+                  disabled={busy}
+                  onClick={() =>
+                    void desktop.schema(field.name, {
+                      nullable: !field.nullable,
+                    })
+                  }
+                />
+              </Tooltip>
+              <Tooltip title="Array">
+                <Button
+                  type="text"
+                  className={field.array ? "modifier active" : "modifier"}
+                  icon={<SwapOutlined />}
+                  aria-label={`${field.name} array`}
+                  aria-pressed={field.array}
+                  disabled={busy}
+                  onClick={() =>
+                    void desktop.schema(field.name, { array: !field.array })
+                  }
+                />
+              </Tooltip>
+            </>
+          ) : (
+            <span className="shape-summary">
+              {field.typeName}
+              {field.nullable ? " ?" : ""}
+              {field.array ? " []" : ""}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+  (a, b) =>
+    a.index === b.index &&
+    a.active === b.active &&
+    a.types === b.types &&
+    a.busy === b.busy &&
+    a.menu === b.menu &&
+    a.field.name === b.field.name &&
+    a.field.key === b.field.key &&
+    a.field.typeName === b.field.typeName &&
+    a.field.nullable === b.field.nullable &&
+    a.field.array === b.field.array,
+);
 const GridRow = memo(function GridRow({
   row,
   p,
@@ -386,7 +416,18 @@ const GridRow = memo(function GridRow({
           className="spatial-handle row-grip"
           aria-label={`Reorder row ${row.occurrence}`}
           title="Reorder row"
+          disabled={
+            row.pendingDelete ||
+            !!p.viewState.search ||
+            p.writeStates.some(
+              (s) =>
+                s.outcome === "OutcomeUnknown" ||
+                s.outcome === "RecoveryRequired",
+            )
+          }
+          onPointerDown={(e) => beginRowDrag(e, row)}
           onClick={(e) => {
+            if (consumeSpatialClick(e.detail)) return;
             const r = e.currentTarget.getBoundingClientRect();
             menu(row, r.left, r.bottom);
           }}
@@ -431,7 +472,7 @@ const GridRow = memo(function GridRow({
                 : (cell.reason ?? undefined)
             }
             onPointerDown={(e) => {
-              if (e.button === 0) choose(column, e.shiftKey);
+              beginRangeSelection(e, row, column);
             }}
             onDoubleClick={() => {
               const intent = desktop.interaction.focusIntent;
@@ -489,6 +530,11 @@ function SelectionOverlay({
   });
   return (
     <>
+      <span className="sr-only" role="status" aria-live="polite">
+        {anchor
+          ? `${Math.abs(anchor.row - s.row) + 1} rows, ${Math.abs(anchor.column - s.column) + 1} columns selected`
+          : `Row ${s.row + 1}, ${s.field ?? "cell"}`}
+      </span>
       {anchor && (
         <div
           className="range-outline"
@@ -566,6 +612,13 @@ function CellInput({ editor }: { editor: Editor }) {
         }}
         onBlur={() => void commit()}
         onKeyDown={(e) => {
+          if (
+            (e.metaKey || e.ctrlKey) &&
+            ["s", "f"].includes(e.key.toLowerCase()) &&
+            !e.nativeEvent.isComposing &&
+            !composing.current
+          )
+            return;
           e.stopPropagation();
           if (e.nativeEvent.isComposing || composing.current) return;
           if (e.key === "Escape") {

@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-host = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-build", "dep:objc2"]
+host = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-build", "dep:objc2", "dep:arboard"]
 custom-protocol = ["tauri/custom-protocol"]
 desktop-evidence = ["host", "custom-protocol"]
 
@@ -14,15 +14,18 @@ desktop-evidence = ["host", "custom-protocol"]
 masterdata-engine = { path = "../../engine" }
 serde.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 tokio = { version = "1", features = ["sync"] }
 tauri = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
+arboard = { version = "3.6.1", default-features = false, optional = true }
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { version="1", features=["macros","rt"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", optional = true }

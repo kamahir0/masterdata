@@ -73,6 +73,84 @@ pub enum Intent {
         path: Vec<String>,
         value: SourceValue,
     },
+    Paste {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        field: String,
+        text: String,
+    },
+    Copy {
+        source: String,
+        revision: u64,
+        generation: u64,
+        anchor: String,
+        focus: String,
+        first: String,
+        last: String,
+    },
+    Search {
+        source: String,
+        text: String,
+    },
+    Locate {
+        source: String,
+        row: String,
+    },
+    AddRow {
+        source: String,
+        revision: u64,
+        generation: u64,
+        before: Option<String>,
+    },
+    DeleteRow {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        restore: bool,
+    },
+    MoveRow {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        before: Option<String>,
+    },
+    NudgeRow {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        delta: isize,
+    },
+    NextRow {
+        source: String,
+        row: String,
+    },
+    Columns {
+        source: String,
+        revision: u64,
+        order: Vec<String>,
+    },
+    Complex {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        path: Vec<String>,
+        start: usize,
+        count: usize,
+    },
+    ComplexEdit {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        path: Vec<String>,
+        operation: masterdata_engine::workspace::complex::Operation,
+    },
     Schema {
         source: String,
         revision: u64,
@@ -127,6 +205,7 @@ struct Job {
     intent: Intent,
     reply: oneshot::Sender<Reply>,
     enqueued: Instant,
+    epoch: Option<u64>,
 }
 struct DiagnosticResult {
     epoch: u64,
@@ -164,6 +243,7 @@ pub struct Status {
     pub recovery_required: bool,
     pub diagnostics_pending: bool,
     pub problem_count: usize,
+    pub uncertain: Vec<String>,
 }
 #[derive(Clone)]
 pub struct Session {
@@ -232,6 +312,7 @@ impl Session {
      else {p.commands.pop_front().or_else(||p.selection.take())}
     };
     if let Some(job)=job{
+     if job.epoch.is_some_and(|expected|expected!=epoch){let _=job.reply.send(Err(UiError::new("E-PROJECT-OBSOLETE","request belongs to a previous Project session")));continue;}
      let token=job.intent.token();
      if token.is_some_and(|t|t!=q.latest.load(Ordering::Acquire)){let _=job.reply.send(Err(UiError::new("E-SELECTION-OBSOLETE","selection superseded")));continue;}
      let queued_ms=job.enqueued.elapsed().as_secs_f64()*1000.0;let start=Instant::now();
@@ -239,18 +320,18 @@ impl Session {
      if matches!(job.intent,Intent::Validate){scheduled=0;}
      let (result,measurement)=instrument::measure(||execute(&mut workspace,&mut epoch,job.intent));
      if epoch!=previous_epoch{scheduled=0;}
-     guard.store(workspace.as_ref().is_some_and(|w|!w.dirty_paths().is_empty()||w.recovery_required),Ordering::Release);
+     guard.store(workspace.as_ref().is_some_and(|w|!w.dirty_paths().is_empty()||w.recovery_required||!w.uncertain_paths().is_empty()),Ordering::Release);
      let reply=if token.is_some_and(|t|t!=q.latest.load(Ordering::Acquire)){Err(UiError::new("E-SELECTION-OBSOLETE","selection superseded"))}else{
       result.and_then(|data|{let encode=Instant::now();let encoded=serde_json::to_string(&data).map_err(|e|UiError::new("E-IPC",&e.to_string()))?;
-       let serialization_ms=encode.elapsed().as_secs_f64()*1000.0;let meta=json!({"queuedMs":queued_ms,"backendMs":measurement.elapsed_ms,"serializationMs":serialization_ms,"bytes":encoded.len(),"token":token,"work":measurement.work,"stagesMs":measurement.stages_ms,"nativeCompleteMs":start.elapsed().as_secs_f64()*1000.0});
+       let serialization_ms=encode.elapsed().as_secs_f64()*1000.0;let meta=json!({"epoch":epoch,"queuedMs":queued_ms,"backendMs":measurement.elapsed_ms,"serializationMs":serialization_ms,"bytes":encoded.len(),"token":token,"work":measurement.work,"stagesMs":measurement.stages_ms,"nativeCompleteMs":start.elapsed().as_secs_f64()*1000.0});
        Ok(format!("{{\"data\":{encoded},\"host\":{meta}}}"))
       })
      };
      let _=job.reply.send(reply);
     }
     if let Some(w)=workspace.as_ref(){
-     guard.store(!w.dirty_paths().is_empty()||w.recovery_required,Ordering::Release);
-     publish(Status{open:true,epoch,generation:w.generation,dirty:w.dirty_paths(),recovery_required:w.recovery_required,diagnostics_pending:w.diagnostics_pending,problem_count:w.diagnostics.len()});
+     guard.store(!w.dirty_paths().is_empty()||w.recovery_required||!w.uncertain_paths().is_empty(),Ordering::Release);
+     publish(Status{open:true,epoch,generation:w.generation,dirty:w.dirty_paths(),recovery_required:w.recovery_required,diagnostics_pending:w.diagnostics_pending,problem_count:w.diagnostics.len(),uncertain:w.uncertain_paths()});
      if w.diagnostics_pending&&scheduled!=w.generation{
       let mut p=validator.pending.lock().unwrap();p.snapshot=Some((epoch,w.diagnostic_input()));scheduled=w.generation;validator.wake.notify_one();
      }
@@ -261,6 +342,9 @@ impl Session {
         Self { queue, protected }
     }
     pub fn submit(&self, intent: Intent) -> oneshot::Receiver<Reply> {
+        self.submit_at(intent, None)
+    }
+    fn submit_at(&self, intent: Intent, epoch: Option<u64>) -> oneshot::Receiver<Reply> {
         let (tx, rx) = oneshot::channel();
         let mut pending = self.queue.pending.lock().unwrap();
         if let Some(token) = intent.token() {
@@ -275,6 +359,7 @@ impl Session {
             let job = Job {
                 intent,
                 reply: tx,
+                epoch,
                 enqueued: Instant::now(),
             };
             if let Some(old) = pending.selection.replace(job) {
@@ -293,11 +378,17 @@ impl Session {
             pending.commands.push_back(Job {
                 intent,
                 reply: tx,
+                epoch,
                 enqueued: Instant::now(),
             });
         }
         self.queue.wake.notify_one();
         rx
+    }
+    pub async fn request_at(&self, intent: Intent, epoch: u64) -> Reply {
+        self.submit_at(intent, Some(epoch))
+            .await
+            .map_err(|_| UiError::new("E-WORKSPACE-CLOSED", "workspace worker closed"))?
     }
     pub async fn request(&self, intent: Intent) -> Reply {
         self.submit(intent)
@@ -319,7 +410,7 @@ fn convert<T: Serialize>(v: T) -> Result<Value, UiError> {
     serde_json::to_value(v).map_err(|e| UiError::new("E-IPC", &e.to_string()))
 }
 fn inventory(w: &Workspace) -> Value {
-    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"generation":w.generation})
+    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"generation":w.generation})
 }
 fn execute(
     workspace: &mut Option<Workspace>,
@@ -350,7 +441,14 @@ fn execute(
         Intent::Inventory => Ok(inventory(w)),
         Intent::Select {
             path, start, count, ..
-        } => convert(w.select(&path, start, count)?),
+        } => {
+            let mut value = convert(w.select(&path, start, count)?)?;
+            value
+                .as_object_mut()
+                .unwrap()
+                .insert("sessionEpoch".into(), json!(*epoch));
+            Ok(value)
+        }
         Intent::EditText {
             source,
             revision,
@@ -365,6 +463,102 @@ fn execute(
             path,
             value,
         } => convert(w.edit(&source, revision, &row, &path, &value)?),
+        Intent::Paste {
+            source,
+            revision,
+            generation,
+            row,
+            field,
+            text,
+        } => convert(w.paste_at(&source, revision, generation, &row, &field, &text)?),
+        Intent::Copy {
+            source,
+            revision,
+            generation,
+            anchor,
+            focus,
+            first,
+            last,
+        } => convert(w.copy_between(
+            &source,
+            revision,
+            generation,
+            [&anchor, &focus],
+            [&first, &last],
+        )?),
+        Intent::Search { source, text } => {
+            w.set_search(&source, &text)?;
+            Ok(Value::Null)
+        }
+        Intent::Locate { source, row } => convert(w.locate_row(&source, &row)?),
+        Intent::AddRow {
+            source,
+            revision,
+            generation,
+            before,
+        } => convert(w.add_row(&source, revision, generation, before.as_deref())?),
+        Intent::DeleteRow {
+            source,
+            revision,
+            generation,
+            row,
+            restore,
+        } => convert(if restore {
+            w.undo_delete(&source, revision, generation, &row)?
+        } else {
+            w.delete_row(&source, revision, generation, &row)?
+        }),
+        Intent::MoveRow {
+            source,
+            revision,
+            generation,
+            row,
+            before,
+        } => convert(w.move_row(&source, revision, generation, &row, before.as_deref())?),
+        Intent::NudgeRow {
+            source,
+            revision,
+            generation,
+            row,
+            delta,
+        } => convert(w.nudge_row(&source, revision, generation, &row, delta)?),
+        Intent::NextRow { source, row } => convert(w.next_row(&source, &row)?),
+        Intent::Columns {
+            source,
+            revision,
+            order,
+        } => convert(w.reorder_columns(&source, revision, &order)?),
+        Intent::Complex {
+            source,
+            revision,
+            generation,
+            row,
+            path,
+            start,
+            count,
+        } => {
+            let mut value = convert(w.complex_view(
+                &source,
+                revision,
+                generation,
+                &row,
+                &path,
+                start..start.saturating_add(count),
+            )?)?;
+            value
+                .as_object_mut()
+                .unwrap()
+                .insert("sessionEpoch".into(), json!(*epoch));
+            Ok(value)
+        }
+        Intent::ComplexEdit {
+            source,
+            revision,
+            generation,
+            row,
+            path,
+            operation,
+        } => convert(w.complex_operation(&source, revision, generation, &row, &path, operation)?),
         Intent::Schema {
             source,
             revision,

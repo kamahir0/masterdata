@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def check(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused'], 'native window not usable'
+    assert report['interaction']['singleEditor'] == 1 and report['interaction']['focusedEditor']
+    assert report['interaction']['cancelRestoredGrid'], 'editor cancel changed the source or lost grid focus'
     cases = {}
     superseded = 0
     for sample in report['samples']:
@@ -28,6 +30,7 @@ def check(report):
         if sample['caseName'] in ['dirtySetup', 'dirtyAway']:
             continue
         assert 'firstAccepted' in sample, sample
+        assert sample['selectionPublication'] <= sample['ipcReturn'] <= sample['statePublication'] <= sample['reactCommit'] <= sample['layout'] <= sample['paintOpportunity'] <= sample['firstAccepted'], sample
         assert sample['mountedRows'] <= 64, sample
         for counter in ['projectDiscovery', 'projectEnumeration', 'projectYamlParse', 'projectValidation']:
             assert sample['host']['work'][counter] == 0, (counter, sample)
@@ -36,6 +39,10 @@ def check(report):
         assert len(cases[case]) == 300, case
     assert len(cases['dirtyRevisit']) == 100 and len(cases['rapid']) == 100
     assert superseded == 300, superseded
+    dark, light = report['presentation']
+    assert dark['shellBackground'] != light['shellBackground'], 'shell theme did not change'
+    assert dark['buttonColor'] != light['buttonColor'], 'standard control theme did not change'
+    assert dark['explorerColor'] != light['explorerColor'], 'Explorer theme did not change'
     return {case: {'n': len(values), 'medianMs': sorted(values)[len(values)//2],
                    'p95Ms': sorted(values)[math.ceil(len(values)*.95)-1], 'maxMs': max(values)}
             for case, values in cases.items()}
@@ -62,7 +69,7 @@ def run(binary: Path, output: Path):
             process = subprocess.Popen([str(executable), '--project', str(project),
                                         '--evidence-output', str(report_path)], stdout=log, stderr=log)
             try:
-                deadline = time.monotonic() + 120
+                deadline = time.monotonic() + 240
                 while not report_path.exists():
                     assert process.poll() is None, f'native host exited: {process.returncode}'
                     if time.monotonic() >= deadline:
@@ -71,6 +78,8 @@ def run(binary: Path, output: Path):
                 report = json.loads(report_path.read_text())
                 report['environment'] = {'os': platform.system(), 'release': platform.release(),
                                          'architecture': platform.machine(), 'kind': 'actual native webview; controlled DOM keyboard handler'}
+                # A failed assertion must retain the measurements that caused it.
+                output.write_text(json.dumps(report, indent=2))
                 report['summary'] = check(report)
                 output.write_text(json.dumps(report, indent=2))
                 print(json.dumps(report['summary'], indent=2))

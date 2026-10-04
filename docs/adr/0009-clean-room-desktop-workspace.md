@@ -14,7 +14,7 @@ Project openでinventoryとparsed documentsを作り、Desktop workspaceはimmut
 
 native write boundaryはactual path / binding / bytesをfresh確認してcommitを認可する。read generationはwrite authorizationを提供しない。file別の結果で成功したdraftだけbase/historyを進める。Migration / Build / Publishはordinary edit lifecycleとは別に捕捉したinputを扱う。
 
-Desktop hostにはTauri 2、表示にはTypeScriptとHTML/CSSを使う。macOSのWKWebView / WindowsのWebView2でnative text control、IME、keyboard、accessibilityを利用でき、Rust libraryを直接呼べることから選んだ。plain DOMのbounded gridと単一active editorを使い、cellごとのhidden editorや全Table payloadを作らない。transportは表示範囲、resolved field descriptor、lossless value、operation intent/resultに限定する。selection / scroll / focus / range / drag previewはpresentation-only。構文木、型解決、write authorityはDesktopへ渡さない。
+Desktop hostにはTauri 2を使う。macOSのWKWebView / WindowsのWebView2でnative text control、IME、keyboard、accessibilityを利用でき、Rust libraryを直接呼べることから選んだ。表示はReact + Ant Designをbaselineとする。standard controls / menus / overlays / theme / motionをAnt Designへ集約し、single active editorとbounded authoring gridはcustom Reactで表現する。汎用Tableのrow lifecycleへauthoring identity / spatial drag / viewport transportを従属させず、gridも同じdesign tokensを使う。cellごとのhidden editorや全Table payloadを作らない。transportは表示範囲、resolved field descriptor、lossless value、operation intent/resultに限定する。selection / scroll / focus / range / drag previewはpresentation-only。構文木、型解決、write authorityはDesktopへ渡さない。
 
 CLIは同じengineをshort-livedに使用する。.NET process invocationはnative delivery boundaryに集約し、validated Rust valuesとgenerated C#をnative MasterMemoryへ渡す。YAMLを.NETで再解釈しない。
 
@@ -26,6 +26,6 @@ targeted freshness、immutable publication、draft ownership、fresh write check
 
 ## 代替案（Alternatives）
 
-CLI operation wrapperはDesktopのlifetimeとwarm invariantsを満たさない。native immediate-mode gridはtext / IME / assistive interactionの独自実装量が増える。全semantic modelのfrontend保持は意味論とgeneration ownershipを二重化する。React等のframeworkを前提にする必要はなく、現contractの限定されたsurfaceでは直接DOM更新から始める。将来変更してもsemantic / source / write boundaryを維持する。
+CLI operation wrapperはDesktopのlifetimeとwarm invariantsを満たさない。native immediate-mode gridはtext / IME / assistive interactionの独自実装量が増える。全semantic modelのfrontend保持は意味論とgeneration ownershipを二重化する。初期のplain DOM choiceは[2026-10-04 Human presentation decision](../spec-changes/0053-desktop-presentation-quality.md)が置換した。控えめなsurfaceでもprofessionalなvisual / interaction品質が必要であり、standard UIを自作し続けるよりAnt Designのsystemへ統合する。workspace / source / semantic / writeの判断はこの変更で置換しない。
 
 外部APIの確認: [Tauri process model](https://v2.tauri.app/concept/process-model/)、[async commands](https://v2.tauri.app/develop/calling-rust/)、[Tree-sitter YAML](https://docs.rs/tree-sitter-yaml/0.7.2/tree_sitter_yaml/)。これらはproduct authorityではない。

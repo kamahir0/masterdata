@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::{
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -12,18 +12,49 @@ use tauri_plugin_dialog::DialogExt;
 
 struct Host {
     session: Session,
+    clipboard: crate::clipboard::Clipboard,
     exit_allowed: Arc<AtomicBool>,
     initial_project: Option<String>,
     evidence_output: Option<PathBuf>,
+    preferences_path: PathBuf,
+    preferences: Arc<Mutex<crate::preferences::Preferences>>,
+}
+#[tauri::command]
+async fn application_preferences(
+    state: tauri::State<'_, Host>,
+    theme: Option<crate::preferences::Theme>,
+) -> Result<crate::preferences::Preferences, String> {
+    let path = state.preferences_path.clone();
+    let preferences = state.preferences.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut current = preferences.lock().map_err(|e| e.to_string())?;
+        if let Some(theme) = theme {
+            let mut next = current.clone();
+            next.theme = theme;
+            crate::preferences::write(&path, &next)?;
+            *current = next;
+        }
+        Ok(current.clone())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn clipboard_text(
+    state: tauri::State<'_, Host>,
+    text: Option<String>,
+) -> Result<String, String> {
+    state.clipboard.text(text).await
 }
 #[tauri::command]
 async fn workspace(
     intent: Intent,
+    epoch: u64,
     state: tauri::State<'_, Host>,
 ) -> Result<tauri::ipc::Response, UiError> {
     state
         .session
-        .request(intent)
+        .request_at(intent, epoch)
         .await
         .map(tauri::ipc::Response::new)
 }
@@ -37,7 +68,7 @@ async fn pick_project(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 #[tauri::command]
 fn boot(state: tauri::State<'_, Host>) -> Value {
-    json!({"platform":std::env::consts::OS,"initialProject":state.initial_project,"evidence":cfg!(feature="desktop-evidence")&&state.evidence_output.is_some()})
+    json!({"platform":std::env::consts::OS,"initialProject":state.initial_project,"preferences":*state.preferences.lock().unwrap(),"evidence":cfg!(feature="desktop-evidence")&&state.evidence_output.is_some()})
 }
 #[tauri::command]
 fn finish_exit(
@@ -53,9 +84,17 @@ fn finish_exit(
     Ok(())
 }
 #[tauri::command]
-fn evidence_write(state: tauri::State<'_, Host>, report: Value) -> Result<(), String> {
+fn evidence_write(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Host>,
+    mut report: Value,
+) -> Result<(), String> {
     #[cfg(feature = "desktop-evidence")]
     {
+        if let Some(window) = app.get_webview_window("main") {
+            report["nativeWindow"] = json!({"visible": window.is_visible().ok(),
+                "minimized": window.is_minimized().ok(), "focused": window.is_focused().ok()});
+        }
         let path = state
             .evidence_output
             .as_ref()
@@ -71,7 +110,7 @@ fn evidence_write(state: tauri::State<'_, Host>, report: Value) -> Result<(), St
     }
     #[cfg(not(feature = "desktop-evidence"))]
     {
-        let _ = (state, report);
+        let _ = (app, state, &mut report);
         Err("evidence adapter is disabled in production".into())
     }
 }
@@ -92,15 +131,20 @@ pub fn run() {
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
+            let preferences_path = app.path().app_config_dir()?.join("preferences.json");
+            let preferences = Arc::new(Mutex::new(crate::preferences::read(&preferences_path)));
             let handle = app.handle().clone();
             let session = Session::new(Arc::new(move |status| {
                 let _ = handle.emit("workspace-status", status);
             }));
             app.manage(Host {
                 session,
+                clipboard: crate::clipboard::Clipboard::new(),
                 exit_allowed: Arc::new(AtomicBool::new(false)),
                 initial_project: initial,
                 evidence_output: output,
+                preferences_path,
+                preferences,
             });
             app.set_menu(tauri::menu::Menu::default(app.handle())?)?;
             #[cfg(target_os = "macos")]
@@ -116,8 +160,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             workspace,
+            clipboard_text,
             pick_project,
             boot,
+            application_preferences,
             finish_exit,
             evidence_write
         ])

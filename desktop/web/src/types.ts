@@ -30,6 +30,9 @@ export interface Cell {
 export interface Row {
   id: string;
   occurrence: number;
+  viewIndex: number;
+  pendingDelete: boolean;
+  added: boolean;
   cells: Cell[];
 }
 export interface Work {
@@ -46,6 +49,7 @@ export interface Measurement {
   stagesMs: Record<string, number>;
 }
 export interface Projection {
+  sessionEpoch: number;
   clicked: string;
   source: string | null;
   table: { name: string; csharpName: string; source: string; fields: Field[] };
@@ -53,6 +57,7 @@ export interface Projection {
   columns: { field: Field; shape: Shape | null; reason: string | null }[];
   rows: Row[];
   totalRows: number;
+  sourceTotalRows: number;
   rowStart: number;
   revision: number;
   schemaRevision: number;
@@ -64,6 +69,9 @@ export interface Projection {
   schemaCanUndo: boolean;
   schemaCanRedo: boolean;
   conflict: boolean;
+  writeStates: { source: string; outcome: string }[];
+  canAdd: boolean;
+  addReason: string | null;
   viewState: {
     search: string;
     selectedRow: string | null;
@@ -85,6 +93,7 @@ export interface Inventory {
   }[];
   types: string[];
   dirty: string[];
+  uncertain: string[];
   generation: number;
 }
 export interface Status {
@@ -95,6 +104,7 @@ export interface Status {
   recoveryRequired: boolean;
   diagnosticsPending: boolean;
   problemCount: number;
+  uncertain: string[];
 }
 export interface Diagnostic {
   code: string;
@@ -109,6 +119,7 @@ export interface Diagnostic {
   generation: number;
 }
 export interface HostTiming {
+  epoch: number;
   queuedMs: number;
   backendMs: number;
   serializationMs: number;
@@ -131,6 +142,7 @@ export interface SelectionSample {
   ipcReturn?: number;
   statePublication?: number;
   domCommit?: number;
+  reactCommit?: number;
   layout?: number;
   paintOpportunity?: number;
   firstAccepted?: number;

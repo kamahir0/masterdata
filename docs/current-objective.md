@@ -8,6 +8,7 @@
 
 - contractからのarchitecture導出、buildable workspaceとCI、instrumentされたDesktop vertical slice。
 - [ordinary authoring baseline](gui/rewrite-baseline.md)、[canonical domain](specs/README.md)、[Desktop contracts](gui/README.md)の実装。
+- [Desktop presentation quality](gui/app-shell.md#presentation-quality)とReact / Ant Design baseline、theme / motion / actual visual review。
 - source / schema / type mutation、write safety、Migration、CLI、Build / Publish、native MasterMemory delegationとactual consumer。
 - [independent oracle](../fixtures/rewrite-oracle/v1/README.md)の全category、[acceptance matrix](rewrite-preparation/acceptance-matrix.md)、source exact bytes、100k capacity。
 - [performance contract](gui/performance.md)のdistribution / work counts、macOS arm64 / Windows x64 actual Desktop、fresh Candidate reviewとrequired CI。

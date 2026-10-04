@@ -88,6 +88,16 @@ export interface Editor {
   initial: string;
   display: string;
 }
+export interface TemporaryInput {
+  source: string;
+  revision: number;
+  generation: number;
+  label: string;
+  text: string;
+  dirty: boolean;
+  cancel: () => void;
+}
+interface HeldInput { source: string; label: string; text: string; reason: string; }
 export interface Selection {
   row: number;
   column: number;
@@ -106,6 +116,7 @@ export interface Surface {
   projection: Projection | null;
   target: string;
   pending: boolean;
+  externalPending: boolean;
   busy: boolean;
   error: string | null;
   status: Status;
@@ -117,6 +128,7 @@ export interface Surface {
   comparison: Compare | null;
   appearance: boolean;
   theme: Preference;
+  heldInputs: HeldInput[];
 }
 type SavedView = {
   top: number;
@@ -133,6 +145,8 @@ const initialStatus: Status = {
   recoveryRequired: false,
   diagnosticsPending: false,
   problemCount: 0,
+  externalVersion: 0,
+  environmentError: null,
 };
 const errorText = (e: unknown) =>
   typeof e === "object" && e && "message" in e ? String(e.message) : String(e);
@@ -147,6 +161,7 @@ class Desktop {
     projection: null,
     target: "",
     pending: false,
+    externalPending: false,
     busy: false,
     error: null,
     status: initialStatus,
@@ -158,6 +173,7 @@ class Desktop {
     comparison: null,
     appearance: false,
     theme: "system",
+    heldInputs: [],
   };
   interaction: Interaction = {
     selection: { row: 0, column: 0, id: null, field: null },
@@ -200,7 +216,10 @@ class Desktop {
   private paintResolve = new Map<number, () => void>();
   private historySource: string | null = null;
   private commitActive: (() => Promise<boolean>) | null = null;
+  private inputPreview: (() => TemporaryInput | null) | null = null;
   private clipboardBusy = false;
+  private externalRunning = false;
+  private externalPending = false;
   private guardRunning: Promise<"saved" | "discard" | "cancel"> | null = null;
   currentSample: SelectionSample | null = null;
   samples: SelectionSample[] = [];
@@ -234,10 +253,11 @@ class Desktop {
       epoch: intent.epoch ?? this.surface.status.epoch,
     });
   }
-  bindEditor(commit: () => Promise<boolean>) {
+  bindEditor(commit: () => Promise<boolean>, inputPreview?: () => TemporaryInput | null) {
     this.commitActive = commit;
+    this.inputPreview = inputPreview ?? null;
     return () => {
-      if (this.commitActive === commit) this.commitActive = null;
+      if (this.commitActive === commit) { this.commitActive = null; this.inputPreview = null; }
     };
   }
   async commit() {
@@ -272,6 +292,7 @@ class Desktop {
       this.local.set(p.clicked, this.local.get(p.source)!);
   }
   async openProject(path: string, discard = false) {
+    if (this.surface.heldInputs.length && !discard) throw new Error("保持中の入力の確認が必要です。");
     const r = await this.rpc<Inventory>({ kind: "open", path, discard });
     this.token++;
     this.readToken++;
@@ -291,12 +312,14 @@ class Desktop {
       projection: null,
       target: "",
       pending: false,
+      externalPending: false,
       busy: false,
       query: "",
       queryPending: false,
       error: null,
       comparison: null,
       problems: [],
+      heldInputs: [],
       status: {
         ...initialStatus,
         open: true,
@@ -304,6 +327,8 @@ class Desktop {
         generation: r.data.generation,
         dirty: r.data.dirty,
         uncertain: r.data.uncertain,
+        externalVersion: r.data.externalVersion,
+        environmentError: r.data.environmentError,
       },
     });
     return r;
@@ -342,7 +367,8 @@ class Desktop {
     restore = true,
     startOverride?: number,
   ): Promise<SelectionSample> {
-    const after = caseName === "after-operation",
+    const external = caseName === "external-change",
+      after = caseName === "after-operation" || external,
       searching = caseName === "search-result";
     const same = (after || searching) && this.surface.target === path,
       queryVersion = this.queryVersion;
@@ -367,7 +393,8 @@ class Desktop {
     flushSync(() =>
       this.publish({
         target: path,
-        pending: !same || searching,
+        pending: external || !same || searching,
+        externalPending: external,
         queryPending: searching,
         error: same ? this.surface.error : null,
         comparison: null,
@@ -423,10 +450,13 @@ class Desktop {
         saved = restore
           ? (this.local.get(p.source ?? "") ?? previous)
           : undefined;
-      let row =
-        saved?.selection.row ??
-        Math.min(this.interaction.selection.row, Math.max(0, p.totalRows - 1));
-      if (saved?.selection.id && p.source && after) {
+      let row = Math.max(0, Math.min(
+        saved?.selection.row ?? this.interaction.selection.row,
+        Math.max(0, p.totalRows - 1),
+      ));
+      const visibleIdentity = p.rows.find((row) => row.id === saved?.selection.id);
+      if (visibleIdentity) row = visibleIdentity.viewIndex;
+      else if (saved?.selection.id && p.source && (after || searching)) {
         const located = await this.rpc<number | null>({
           kind: "locate",
           epoch: p.sessionEpoch,
@@ -438,6 +468,7 @@ class Desktop {
           return sample;
         }
         if (located.data !== null) row = located.data;
+        else if (searching) row = 0;
       }
       const column = saved?.selection.field
         ? Math.max(
@@ -456,7 +487,7 @@ class Desktop {
         selection: {
           row,
           column,
-          id: found?.id ?? saved?.selection.id ?? null,
+          id: found?.id ?? (row === saved?.selection.row ? saved?.selection.id : null) ?? null,
           field: p.columns[column]?.field.name ?? null,
         },
         anchor: saved?.anchor ?? null,
@@ -469,7 +500,8 @@ class Desktop {
       flushSync(() =>
         this.publish({
           projection: p,
-          pending: false,
+          pending: external,
+          externalPending: external,
           queryPending: false,
           query: p.viewState.search,
         }),
@@ -511,6 +543,7 @@ class Desktop {
       this.publish({
         projection: null,
         pending: false,
+        externalPending: false,
         queryPending: false,
         error: errorText(e),
       });
@@ -795,8 +828,7 @@ class Desktop {
       !current ||
       current.source !== view.source ||
       current.sessionEpoch !== view.sessionEpoch ||
-      current.revision !== view.revision ||
-      current.generation !== view.generation
+      current.revision !== view.revision
     )
       return false;
     this.historySource = view.source;
@@ -911,6 +943,10 @@ class Desktop {
   guard(): Promise<"saved" | "discard" | "cancel"> {
     if (this.guardRunning) return this.guardRunning;
     this.guardRunning = (async () => {
+      if (this.surface.heldInputs.length) {
+        const choice = await this.choose("保持中の入力と未保存の変更", "保持中の入力は変更後のsourceへ安全に適用できません。保持中の入力とsourceの未保存変更を破棄して続けますか。", ["Don't Save", "Cancel"]);
+        return choice === "Don't Save" ? "discard" as const : "cancel" as const;
+      }
       if (!(await this.commit())) return "cancel" as const;
       if (!this.surface.inventory) return "saved" as const;
       const latest = await this.rpc<Inventory>({ kind: "inventory" });
@@ -1462,6 +1498,8 @@ class Desktop {
         next.recoveryRequired === current.recoveryRequired &&
         next.diagnosticsPending === current.diagnosticsPending &&
         next.problemCount === current.problemCount &&
+        next.externalVersion === current.externalVersion &&
+        next.environmentError === current.environmentError &&
         samePaths(next.dirty, current.dirty) &&
         samePaths(next.uncertain, current.uncertain)
       )
@@ -1473,6 +1511,8 @@ class Desktop {
             ? []
             : this.surface.problems,
       });
+      if (next.epoch === current.epoch && next.externalVersion !== current.externalVersion)
+        this.externalRefresh();
       if (this.surface.problemsOpen && !next.diagnosticsPending)
         void this.readProblems();
     });
@@ -1487,5 +1527,65 @@ class Desktop {
           .catch(this.showError),
     );
   }
+  private externalRefresh() {
+    this.externalPending = true;
+    // Once an external observation is known, the old view loses interaction
+    // authority immediately. Its mounted input keeps temporary typing until a
+    // fresh projection/error resolves; background refresh never commits it.
+    const element = document.activeElement as HTMLElement | null,
+      input = this.inputIntent,
+      inputPreview = this.inputPreview;
+    if (this.surface.target) this.publish({ pending: true, externalPending: true });
+    if (this.externalRunning) return;
+    this.externalRunning = true;
+    void (async () => {
+      let operationEpoch = this.surface.status.epoch;
+      try {
+        while (this.externalPending) {
+          this.externalPending = false;
+          const epoch = this.surface.status.epoch;
+          operationEpoch = epoch;
+          const inventory = await this.rpc<Inventory>({ kind: "inventory", epoch });
+          if (epoch !== this.surface.status.epoch) continue;
+          this.publish({ inventory: inventory.data });
+          if (this.surface.status.environmentError) {
+            await this.recheckInput(inputPreview, epoch);
+            this.publish({ pending: false, externalPending: false, projection: null, error: this.surface.status.environmentError });
+          } else if (this.surface.target) {
+            const selected = await this.selectTarget(this.surface.target, "external-change", true);
+            await this.recheckInput(inputPreview, epoch);
+            if (this.currentSample === selected && !selected.invalid && epoch === this.surface.status.epoch && !this.externalPending)
+              this.publish({ pending: false, externalPending: false });
+          }
+        }
+        if (operationEpoch === this.surface.status.epoch && input === this.inputIntent && element?.isConnected && this.surface.projection)
+          element.focus({ preventScroll: true });
+      } catch (error) {
+        if (operationEpoch === this.surface.status.epoch) {
+          this.publish({ projection: null, pending: false, externalPending: false });
+          this.showError(error);
+          await this.recheckInput(inputPreview, operationEpoch);
+        }
+      }
+      finally { this.externalRunning = false; if (this.externalPending) this.externalRefresh(); }
+    })();
+  }
+  private async recheckInput(preview: typeof this.inputPreview, epoch: number) {
+    if (!preview || preview !== this.inputPreview || epoch !== this.surface.status.epoch) return;
+    const input = preview();
+    if (!input) return;
+    let observed: Reply<{current: boolean; reason: string | null}>;
+    try { observed = await this.rpc({kind: "authoringState", epoch, source: input.source, revision: input.revision, generation: input.generation}); }
+    catch (error) { if (epoch === this.surface.status.epoch) this.showError(error); return; }
+    if (observed.data.current || preview !== this.inputPreview || epoch !== this.surface.status.epoch) return;
+    const latest = preview();
+    if (latest?.dirty) this.publish({heldInputs: [...this.surface.heldInputs, {source: latest.source, label: latest.label, text: latest.text, reason: observed.data.reason ?? "authoring context changed"}]});
+    latest?.cancel();
+  }
+  discardHeldInput = (index: number) => this.publish({heldInputs: this.surface.heldInputs.filter((_input, at) => at !== index)});
+  copyHeldInput = async (index: number) => {
+    const input = this.surface.heldInputs[index];
+    if (input) await invoke("clipboard_text", {write: input.text});
+  };
 }
 export const desktop = new Desktop();

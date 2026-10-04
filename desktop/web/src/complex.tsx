@@ -44,6 +44,7 @@ type Typing = {
   initial: string;
   text: string;
   composing: boolean;
+  label: string;
   cancel: () => void;
 };
 export function ComplexPanel() {
@@ -77,12 +78,14 @@ export function ComplexPanel() {
     path?: string;
   } | null>(null);
   const blocked =
+    s.pending ||
     s.busy ||
     s.status.recoveryRequired ||
     s.status.uncertain.includes(target?.source ?? "");
   viewRef.current = view;
   useEffect(() => {
     const mine = ++request.current;
+    if (s.pending && s.externalPending) return;
     if (
       !target ||
       s.pending ||
@@ -129,6 +132,7 @@ export function ComplexPanel() {
     s.projection?.revision,
     s.projection?.generation,
     s.pending,
+    s.externalPending,
     s.status.epoch,
   ]);
   const operation = useCallback(
@@ -181,7 +185,10 @@ export function ComplexPanel() {
   }, [operation]);
   useLayoutEffect(() => {
     if (!target) return;
-    return desktop.bindEditor(commit);
+    return desktop.bindEditor(commit, () => {
+      const value = typing.current;
+      return value ? { source: value.authority.source, revision: value.authority.revision, generation: value.authority.generation, label: `${value.authority.node.label} · ${value.label}`, text: value.text, dirty: value.text !== value.initial, cancel: () => { value.cancel(); typing.current = null; setActive(null); setNonNull(false); } } : null;
+    });
   }, [target, commit]);
   useEffect(() => {
     setActive(null);
@@ -488,7 +495,7 @@ export function ComplexPanel() {
           <span>{root?.label ?? target?.root ?? "Complex value"}</span>
         </Space>
       }
-      open={!!target && !s.pending && target.epoch === s.status.epoch}
+      open={!!target && (!s.pending || s.externalPending) && target.epoch === s.status.epoch}
       onClose={() => void close()}
       keyboard={false}
       mask={false}
@@ -771,6 +778,7 @@ function LeafInput({
       initial: force ? "\u0000" : initial.current,
       text: value.current,
       composing: composing.current,
+      label: node.label,
       cancel: () => {
         value.current = initial.current;
         set(initial.current);
@@ -823,7 +831,7 @@ function LeafInput({
           composing.current = false;
           report();
         }}
-        onBlur={() => void commit()}
+        onBlur={() => { if (!desktop.surface.externalPending) void commit(); }}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing || composing.current) return;
           if (e.key === "Enter") {

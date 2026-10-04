@@ -85,6 +85,7 @@ export interface Inventory {
   project: { id: string; name: string; version: string };
   root: string;
   roots: string[];
+  folders: string[];
   sources: {
     path: string;
     kind: string | null;
@@ -95,6 +96,8 @@ export interface Inventory {
   dirty: string[];
   uncertain: string[];
   generation: number;
+  externalVersion: number;
+  environmentError: string | null;
 }
 export interface Status {
   open: boolean;
@@ -105,6 +108,8 @@ export interface Status {
   diagnosticsPending: boolean;
   problemCount: number;
   uncertain: string[];
+  externalVersion: number;
+  environmentError: string | null;
 }
 export interface Diagnostic {
   code: string;

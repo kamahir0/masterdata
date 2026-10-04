@@ -111,6 +111,7 @@ pub struct Project {
     pub config_identity: String,
     pub roots: Vec<PathBuf>,
     pub sources: BTreeMap<String, Arc<Source>>,
+    pub folders: BTreeSet<String>,
     pub tables: BTreeMap<String, Arc<Table>>,
     pub types: Arc<Types>,
     pub type_sources: BTreeMap<String, String>,
@@ -285,8 +286,9 @@ impl Project {
             })
             .collect::<Result<Vec<_>>>()?;
         let mut paths = BTreeSet::new();
+        let mut folders = BTreeSet::new();
         for source_root in &roots {
-            enumerate(source_root, &mut paths)?;
+            enumerate(source_root, &mut paths, &mut folders)?;
         }
         let mut sources = BTreeMap::new();
         for path in paths {
@@ -306,6 +308,14 @@ impl Project {
                 Arc::new(read_source(&root, &roots, &logical)?),
             );
         }
+        let folders = folders
+            .into_iter()
+            .filter_map(|path| {
+                path.strip_prefix(&root)
+                    .ok()
+                    .map(|p| p.to_string_lossy().replace('\\', "/"))
+            })
+            .collect();
         let mut p = Self {
             root,
             config,
@@ -313,6 +323,7 @@ impl Project {
             config_bytes,
             roots,
             sources,
+            folders,
             tables: BTreeMap::new(),
             types: Arc::new(BTreeMap::new()),
             type_sources: BTreeMap::new(),
@@ -879,8 +890,13 @@ pub fn read_source(root: &Path, roots: &[PathBuf], logical: &str) -> Result<Sour
         binding,
     })
 }
-fn enumerate(root: &Path, paths: &mut BTreeSet<PathBuf>) -> Result<()> {
+pub(crate) fn enumerate(
+    root: &Path,
+    paths: &mut BTreeSet<PathBuf>,
+    folders: &mut BTreeSet<PathBuf>,
+) -> Result<()> {
     crate::instrument::count(crate::instrument::Kind::Enumeration);
+    folders.insert(root.to_path_buf());
     for entry in fs::read_dir(root).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let kind = entry.file_type().map_err(io_error)?;
@@ -888,7 +904,7 @@ fn enumerate(root: &Path, paths: &mut BTreeSet<PathBuf>) -> Result<()> {
             continue;
         }
         if kind.is_dir() {
-            enumerate(&entry.path(), paths)?;
+            enumerate(&entry.path(), paths, folders)?;
         } else if kind.is_file()
             && entry
                 .path()

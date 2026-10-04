@@ -325,3 +325,129 @@ fn read_only_write_failure_keeps_exact_disk_bytes_and_local_history() {
     assert!(w.drafts["sources/data.yaml"].dirty());
     assert!(w.drafts["sources/data.yaml"].can_undo());
 }
+
+#[test]
+fn unavailable_external_sources_invalidate_diagnostics_without_discarding_authoring() {
+    for mutation in ["invalid", "delete", "binding", "schema"] {
+        let temp = tempfile::tempdir().unwrap();
+        copy(&oracle().join("save-both/input"), temp.path());
+        let mut w = Workspace::open(temp.path()).unwrap();
+        let p = w.select("sources/data.yaml", 0, 32).unwrap();
+        let base = w.drafts["sources/data.yaml"].document.bytes.clone();
+        w.edit_text(
+            "sources/data.yaml",
+            p.revision,
+            &p.rows[0].id,
+            "note",
+            "unfinished",
+        )
+        .unwrap();
+        let draft = w.drafts["sources/data.yaml"].document.bytes.clone();
+        let old = w.validation_snapshot();
+        let old_problems = old.validate(None).unwrap().0;
+        w.accept_diagnostics(w.generation, old_problems.clone());
+        let generation = w.generation;
+        let path = if mutation == "schema" {
+            "sources/schema.yaml"
+        } else {
+            "sources/data.yaml"
+        };
+        let file = temp.path().join(path);
+        let bytes = fs::read(&file).unwrap();
+        match mutation {
+            "delete" => fs::remove_file(&file).unwrap(),
+            "binding" => fs::write(&file, "kind: data\ntable: elsewhere\nrecords: []\n").unwrap(),
+            _ => fs::write(&file, "kind: [\n").unwrap(),
+        }
+        assert!(w.select("sources/data.yaml", 0, 32).is_err());
+        assert!(w.generation > generation);
+        assert!(!w.accept_diagnostics(generation, old_problems));
+        let failed_generation = w.generation;
+        assert!(w.select("sources/data.yaml", 0, 32).is_err());
+        assert_eq!(
+            w.generation, failed_generation,
+            "unchanged failure cannot restart diagnostics indefinitely"
+        );
+        let input = w.validation_snapshot();
+        let problems = input.validate(None).unwrap().0;
+        assert!(w.accept_diagnostics(w.generation, problems));
+        assert!(
+            w.diagnostics
+                .iter()
+                .any(|d| d.source == path && d.generation == w.generation)
+        );
+        assert_eq!(w.drafts["sources/data.yaml"].document.bytes, draft);
+        assert!(w.drafts["sources/data.yaml"].can_undo());
+        assert_eq!(w.dirty_paths(), ["sources/data.yaml"]);
+        if path.ends_with("data.yaml") {
+            assert!(
+                w.validation_snapshot().sources[path].document.is_none(),
+                "old overlay cannot hide unavailable current source"
+            );
+            assert_eq!(w.drafts[path].outcome, Some(Outcome::Conflict));
+        }
+        fs::write(&file, bytes).unwrap();
+        w.refresh_source(path).unwrap();
+        let current = w.select("sources/data.yaml", 0, 32).unwrap();
+        assert_eq!(current.rows[0].id, p.rows[0].id);
+        assert_eq!(w.drafts["sources/data.yaml"].document.bytes, draft);
+        w.undo("sources/data.yaml", false).unwrap();
+        assert_eq!(w.drafts["sources/data.yaml"].document.bytes, base);
+    }
+}
+
+#[test]
+fn unrelated_source_generations_preserve_observed_authoring_but_required_context_changes_reject_it()
+{
+    let temp = tempfile::tempdir().unwrap();
+    copy(&oracle().join("save-both/input"), temp.path());
+    let mut w = Workspace::open(temp.path()).unwrap();
+    let p = w.select("sources/data.yaml", 0, 32).unwrap();
+    let file = w.read.root.join("sources/inactive.yaml");
+    fs::write(
+        &file,
+        format!(
+            "{}\n# changed inactive source\n",
+            fs::read_to_string(&file).unwrap()
+        ),
+    )
+    .unwrap();
+    w.refresh_paths(&[file]);
+    assert!(w.generation > p.generation);
+    w.edit_text_at(
+        "sources/data.yaml",
+        p.revision,
+        p.generation,
+        &p.rows[0].id,
+        "note",
+        "observed input survives",
+    )
+    .unwrap();
+    let after = w.select("sources/data.yaml", 0, 32).unwrap();
+    let draft = w.drafts["sources/data.yaml"].document.bytes.clone();
+    let schema = w.read.root.join("sources/schema.yaml");
+    fs::write(
+        &schema,
+        format!(
+            "{}\n# changed required schema\n",
+            fs::read_to_string(&schema).unwrap()
+        ),
+    )
+    .unwrap();
+    w.refresh_paths(&[schema]);
+    assert_eq!(
+        w.edit_text_at(
+            "sources/data.yaml",
+            after.revision,
+            after.generation,
+            &after.rows[0].id,
+            "note",
+            "stale"
+        )
+        .unwrap_err()
+        .code,
+        "E-DRAFT-STALE"
+    );
+    assert_eq!(w.drafts["sources/data.yaml"].document.bytes, draft);
+    assert!(w.drafts["sources/data.yaml"].can_undo());
+}

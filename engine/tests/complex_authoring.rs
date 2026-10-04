@@ -121,9 +121,15 @@ fn problems_open_the_correct_bounded_nested_container_and_preserve_unknown_membe
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let bytes = fs::read_to_string(&file).unwrap().replace(
+    let original = fs::read_to_string(&file).unwrap();
+    let newline = if original.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    let bytes = original.replace(
         "values: [1]",
-        &format!("values: [{values}]\n      unexpected: retained"),
+        &format!("values: [{values}]{newline}      unexpected: retained"),
     );
     fs::write(&file, &bytes).unwrap();
     let mut w = Workspace::open(temp.path()).unwrap();
@@ -149,7 +155,7 @@ fn problems_open_the_correct_bounded_nested_container_and_preserve_unknown_membe
     // A separate validation sees the nested value problem after the explicitly
     // inspected unknown member is absent; no implicit repair by opening occurs.
     assert_eq!(fs::read_to_string(&file).unwrap(), bytes);
-    let without_unknown = bytes.replace("      unexpected: retained\n", "");
+    let without_unknown = bytes.replace(&format!("      unexpected: retained{newline}"), "");
     fs::write(&file, &without_unknown).unwrap();
     let p = w.select(SOURCE, 0, 32).unwrap();
     publish_problems(&mut w);

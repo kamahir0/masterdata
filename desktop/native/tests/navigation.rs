@@ -111,3 +111,144 @@ async fn previous_project_authoring_cannot_mutate_a_new_session_with_identical_s
     assert!(inventory["data"]["dirty"].as_array().unwrap().is_empty());
     session.stop();
 }
+
+#[test]
+fn filesystem_changes_refresh_clean_sources_conflict_dirty_sources_and_invalidate_unavailable_views()
+ {
+    use std::{
+        fs,
+        sync::{Arc, mpsc},
+        time::{Duration, Instant},
+    };
+    fn copy(src: &std::path::Path, dst: &std::path::Path) {
+        fs::create_dir_all(dst).unwrap();
+        for entry in fs::read_dir(src).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                copy(&entry.path(), &dst.join(entry.file_name()));
+            } else {
+                fs::copy(entry.path(), dst.join(entry.file_name())).unwrap();
+            }
+        }
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/rewrite-oracle/v1/save-both/input");
+    let temp = tempfile::tempdir().unwrap();
+    copy(&root, temp.path());
+    let (send, receive) = mpsc::channel();
+    let session = Session::new(Arc::new(move |status| {
+        let _ = send.send(status);
+    }));
+    session
+        .request_blocking(Intent::Open {
+            path: temp.path().to_string_lossy().into(),
+            discard: false,
+        })
+        .unwrap();
+    let select = |token| -> Value {
+        serde_json::from_str(
+            &session
+                .request_blocking(Intent::Select {
+                    path: "sources/data.yaml".into(),
+                    start: 0,
+                    count: 32,
+                    token,
+                })
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let first = select(1);
+    let file = temp.path().join("sources/data.yaml");
+    let base = fs::read_to_string(&file).unwrap();
+    fs::write(&file, format!("{base}\n# external clean source\n")).unwrap();
+    let observed = |after| {
+        let deadline = Instant::now() + Duration::from_secs(8);
+        loop {
+            let status = receive
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("native watcher did not publish actual change");
+            if status.external_version > after {
+                break status;
+            }
+        }
+    };
+    let clean = observed(0);
+    assert!(clean.environment_error.is_none());
+    let current = select(2);
+    assert!(
+        current["data"]["generation"].as_u64().unwrap()
+            > first["data"]["generation"].as_u64().unwrap()
+    );
+    assert!(!current["data"]["dirty"].as_bool().unwrap());
+    session
+        .request_blocking(Intent::EditText {
+            source: "sources/data.yaml".into(),
+            revision: current["data"]["revision"].as_u64().unwrap(),
+            generation: current["data"]["generation"].as_u64().unwrap(),
+            row: current["data"]["rows"][0]["id"].as_str().unwrap().into(),
+            field: "note".into(),
+            text: "local draft".into(),
+        })
+        .unwrap();
+    fs::write(&file, format!("{base}\n# external dirty source\n")).unwrap();
+    let dirty = observed(clean.external_version);
+    let conflict = select(3);
+    assert!(conflict["data"]["conflict"].as_bool().unwrap());
+    assert!(conflict["data"]["dirty"].as_bool().unwrap());
+    let local = conflict["data"]["rows"].clone();
+    assert!(
+        serde_json::to_string(&local)
+            .unwrap()
+            .contains("local draft")
+    );
+    fs::remove_file(&file).unwrap();
+    let removed = observed(dirty.external_version);
+    assert_eq!(removed.dirty, ["sources/data.yaml"]);
+    assert!(
+        session
+            .request_blocking(Intent::Select {
+                path: "sources/data.yaml".into(),
+                start: 0,
+                count: 32,
+                token: 4
+            })
+            .is_err()
+    );
+    fs::write(&file, format!("{base}\n# restored source\n")).unwrap();
+    observed(removed.external_version);
+    assert_eq!(select(5)["data"]["rows"], local);
+    let config = temp.path().join("masterdata.toml");
+    fs::write(
+        &config,
+        format!(
+            "{}\n# changed config\n",
+            fs::read_to_string(&config).unwrap()
+        ),
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        let status = receive
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .unwrap();
+        if status.environment_error.is_some() {
+            break;
+        }
+    }
+    assert!(
+        session
+            .request_blocking(Intent::Select {
+                path: "sources/data.yaml".into(),
+                start: 0,
+                count: 32,
+                token: 6
+            })
+            .is_err()
+    );
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        format!("{base}\n# restored source\n")
+    );
+    session.stop();
+}

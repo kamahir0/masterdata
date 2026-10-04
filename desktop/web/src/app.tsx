@@ -17,6 +17,7 @@ import {
   Flex,
   Input,
   Modal,
+  Popover,
   Radio,
   Select,
   Space,
@@ -43,6 +44,7 @@ import {
   RedoOutlined,
   WarningOutlined,
   PlusOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
@@ -483,7 +485,7 @@ function TableSurface({ s }: { s: Surface }) {
             <Spin size="small" />
             <span>
               {basename(s.target)}
-              {s.queryPending ? " · Search…" : " を開いています…"}
+              {s.queryPending ? " · Search…" : s.externalPending ? " · 再確認中…" : " を開いています…"}
             </span>
           </div>
         )}
@@ -557,11 +559,23 @@ function TableSurface({ s }: { s: Surface }) {
             description={<span className="error-detail">{s.error}</span>}
           />
         )}
+        {s.heldInputs.length > 0 && <HeldInputs s={s} />}
         <ComplexPanel />
       </div>
       <ProblemsBar s={s} />
     </section>
   );
+}
+function HeldInputs({s}: {s: Surface}) {
+  const [at, select] = useState(0);
+  const index = Math.min(at, s.heldInputs.length - 1), input = s.heldInputs[index];
+  return <Alert className="context-alert held-input-alert" type="warning" showIcon title={`未確定入力を${s.heldInputs.length}件保持しています`} description={<Popover trigger="click" title="変更後の対象を確認して貼り直してください" content={<Space direction="vertical" className="held-input-detail">
+    {s.heldInputs.length > 1 && <Select aria-label="保持中の入力" value={index} options={s.heldInputs.map((input, at) => ({value: at, label: `${basename(input.source)} · ${input.label}`}))} onChange={select} />}
+    <Typography.Text type="secondary">{input.source} · {input.label}</Typography.Text>
+    <Input.TextArea aria-label="保持中の入力内容" value={input.text} readOnly rows={3} />
+    <Typography.Text type="secondary">{input.reason}</Typography.Text>
+    <Space><Button icon={<CopyOutlined />} onClick={() => void desktop.copyHeldInput(index)}>Copy</Button><Button danger onClick={() => desktop.discardHeldInput(index)}>この入力を破棄</Button></Space>
+  </Space>}><Button size="small">入力を確認</Button></Popover>} />;
 }
 function ProblemsBar({ s }: { s: Surface }) {
   const { selection } = useInteraction(),

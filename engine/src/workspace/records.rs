@@ -309,9 +309,7 @@ impl Workspace {
         generation: u64,
         order: &[String],
     ) -> Result<bool> {
-        if self.generation != generation {
-            return Err(Error::new("E-DRAFT-STALE", "semantic generation changed"));
-        }
+        self.check_authoring_generation(path, generation)?;
         if self.recovery_required {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
@@ -321,8 +319,9 @@ impl Workspace {
         self.check_config()?;
         self.refresh_source(path)?;
         self.ensure_draft(path)?;
+        self.check_authoring_generation(path, generation)?;
         let d = &self.drafts[path];
-        if d.revision != revision || self.generation != generation {
+        if d.revision != revision {
             return Err(Error::new("E-DRAFT-STALE", "schema revision changed"));
         }
         if d.outcome == Some(Outcome::OutcomeUnknown) {

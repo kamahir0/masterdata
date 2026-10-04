@@ -129,13 +129,12 @@ pub fn run() {
     } else {
         None
     };
-    let evidence_kind =
-        if output.is_some() && argument("--evidence-kind").as_deref() == Some("authoring") {
-            "authoring"
-        } else {
-            "navigation"
-        }
-        .to_string();
+    let evidence_kind = match (output.is_some(), argument("--evidence-kind").as_deref()) {
+        (true, Some("authoring")) => "authoring",
+        (true, Some("external")) => "external",
+        _ => "navigation",
+    }
+    .to_string();
     let application = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {

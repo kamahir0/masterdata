@@ -7,7 +7,7 @@ pub mod semantic;
 pub mod source;
 pub mod workspace;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 #[error("{code}: {message}")]
 pub struct Error {
     pub code: &'static str,

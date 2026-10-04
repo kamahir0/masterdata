@@ -24,6 +24,13 @@ pub struct Snapshot {
     parent: Arc<Identity>,
     permissions: fs::Permissions,
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObservedIdentity {
+    physical: PathBuf,
+    content: String,
+    file: Arc<Identity>,
+    parent: Arc<Identity>,
+}
 #[derive(Debug, PartialEq, Eq)]
 enum Identity {
     #[cfg(not(windows))]
@@ -86,6 +93,14 @@ fn path_identity(path: &Path) -> std::io::Result<Identity> {
     }
 }
 impl Snapshot {
+    pub fn observed_identity(&self) -> ObservedIdentity {
+        ObservedIdentity {
+            physical: self.physical.clone(),
+            content: self.content.clone(),
+            file: self.file.clone(),
+            parent: self.parent.clone(),
+        }
+    }
     pub fn matches(&self, other: &Self) -> bool {
         self.physical == other.physical
             && self.content == other.content

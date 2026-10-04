@@ -21,6 +21,7 @@ pub struct FieldShapeEdit<'a> {
     pub array: bool,
     pub type_name: Option<&'a str>,
 }
+mod external;
 mod problems;
 mod records;
 mod search;
@@ -212,11 +213,29 @@ pub struct Workspace {
     search_indexes: BTreeMap<String, search::SearchIndex>,
     snapshots: BTreeMap<String, Snapshot>,
     last_source: BTreeMap<String, String>,
+    pub unavailable: BTreeMap<String, Error>,
+    pub environment_error: Option<Error>,
+    pub external_version: u64,
+    authoring_views: BTreeMap<String, Vec<(u64, u64, AuthoringView)>>,
     pub recovery_required: bool,
     pub diagnostics: Vec<Diagnostic>,
     pub diagnostics_generation: u64,
     pub diagnostics_pending: bool,
     pub generation: u64,
+}
+#[derive(Clone, Debug)]
+struct AuthoringView {
+    documents: Vec<(String, String, native::ObservedIdentity)>,
+}
+impl AuthoringView {
+    fn matches(&self, other: &Self) -> bool {
+        self.documents.len() == other.documents.len()
+            && self.documents.iter().zip(&other.documents).all(
+                |((path, bytes, base), (other_path, other_bytes, other_base))| {
+                    path == other_path && bytes == other_bytes && base == other_base
+                },
+            )
+    }
 }
 impl Workspace {
     pub fn open(path: &std::path::Path) -> Result<Self> {
@@ -227,6 +246,10 @@ impl Workspace {
             search_indexes: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             last_source: BTreeMap::new(),
+            unavailable: BTreeMap::new(),
+            environment_error: None,
+            external_version: 0,
+            authoring_views: BTreeMap::new(),
             recovery_required: false,
             diagnostics: vec![],
             diagnostics_generation: 0,
@@ -235,6 +258,9 @@ impl Workspace {
         })
     }
     pub fn check_config(&self) -> Result<()> {
+        if let Some(error) = &self.environment_error {
+            return Err(error.clone());
+        }
         let bytes = fs::read_to_string(self.read.root.join("masterdata.toml"))
             .map_err(project::io_error)?;
         instrument::count(instrument::Kind::Bytes(bytes.len() as u64));
@@ -268,25 +294,6 @@ impl Workspace {
         document: Option<Arc<Document>>,
         error: Option<String>,
     ) {
-        let mut p = (*self.read).clone();
-        if let Some(old) = p.sources.get(path) {
-            if old.kind.as_deref() == Some("schema")
-                && let Some(t) = &old.binding
-                && p.tables.get(t).is_some_and(|t| t.source == path)
-            {
-                p.tables.remove(t);
-            }
-            if old.kind.as_deref() == Some("type")
-                && let Some(n) = old
-                    .document
-                    .as_ref()
-                    .and_then(|d| d.root.get("name"))
-                    .and_then(|n| n.text().ok())
-            {
-                Arc::make_mut(&mut p.types).remove(n);
-                p.type_sources.remove(n);
-            }
-        }
         let kind = document
             .as_ref()
             .and_then(|d| d.root.get("kind"))
@@ -307,15 +314,37 @@ impl Workspace {
             kind: kind.clone(),
             binding,
         };
-        if let Some(doc) = document {
-            match kind.as_deref() {
+        self.install_read(s);
+        self.unavailable.remove(path);
+    }
+    fn install_read(&mut self, source: Source) {
+        let path = &source.path;
+        let mut p = (*self.read).clone();
+        p.tables.retain(|_, table| table.source != *path);
+        let removed = p
+            .type_sources
+            .iter()
+            .filter(|(_, source)| *source == path)
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>();
+        for name in removed {
+            Arc::make_mut(&mut p.types).remove(&name);
+            // Keep an unavailable type's physical dependency locator. Its
+            // semantics are absent, but a later repair must remain discoverable
+            // without project-wide discovery during selection.
+            if source.document.is_some() {
+                p.type_sources.remove(&name);
+            }
+        }
+        if let Some(doc) = &source.document {
+            match source.kind.as_deref() {
                 Some("schema") => {
-                    if let Ok(t) = semantic::parse_table(&doc, path) {
+                    if let Ok(t) = semantic::parse_table(doc, path) {
                         p.tables.insert(t.name.clone(), Arc::new(t));
                     }
                 }
                 Some("type") => {
-                    if let Ok((name, t)) = semantic::parse_type(&doc) {
+                    if let Ok((name, t)) = semantic::parse_type(doc) {
                         p.type_sources.insert(name.clone(), path.into());
                         Arc::make_mut(&mut p.types).insert(name, t);
                     }
@@ -323,11 +352,45 @@ impl Workspace {
                 _ => {}
             }
         }
-        p.sources.insert(path.into(), Arc::new(s));
+        p.sources.insert(path.clone(), Arc::new(source));
         p.generation += 1;
         self.read = Arc::new(p);
         self.generation += 1;
         self.diagnostics_pending = true;
+    }
+    fn unavailable_source(&mut self, path: &str, actual: Option<Snapshot>, error: Error) -> Error {
+        if let Some(d) = self.drafts.get_mut(path) {
+            if d.dirty() && d.outcome != Some(Outcome::OutcomeUnknown) {
+                d.outcome = Some(Outcome::Conflict);
+            }
+            if let Some(actual) = &actual {
+                d.external = Some(actual.clone());
+            }
+        }
+        let same = self
+            .unavailable
+            .get(path)
+            .is_some_and(|old| old.code == error.code && old.message == error.message)
+            && actual.as_ref().is_none_or(|actual| {
+                self.snapshots
+                    .get(path)
+                    .is_some_and(|old| old.matches(actual))
+            });
+        if !same {
+            let mut source = (*self.read.sources[path]).clone();
+            if let Some(actual) = actual {
+                source.bytes = actual.bytes.clone();
+                source.identity = actual.content.clone();
+                source.physical = actual.physical.clone();
+                self.snapshots.insert(path.into(), actual);
+            }
+            source.document = None;
+            source.error = Some(error.to_string());
+            self.install_read(source);
+            self.unavailable.insert(path.into(), error.clone());
+            self.external_version += 1;
+        }
+        error
     }
     pub fn refresh_source(&mut self, path: &str) -> Result<()> {
         let previous = self
@@ -336,78 +399,108 @@ impl Workspace {
             .get(path)
             .ok_or_else(|| Error::new("E-SOURCE-NOT-FOUND", path))?
             .clone();
-        let snapshot = native::capture(&self.read.root, &self.read.roots, path)?;
-        if let Some(d) = self.drafts.get_mut(path) {
-            if !snapshot.matches(&d.base) {
-                if d.outcome != Some(Outcome::OutcomeUnknown) {
-                    d.outcome = Some(Outcome::Conflict);
+        let snapshot = match native::capture(&self.read.root, &self.read.roots, path) {
+            Ok(snapshot) => snapshot,
+            Err(error) => return Err(self.unavailable_source(path, None, error)),
+        };
+        let protected = self
+            .drafts
+            .get(path)
+            .is_some_and(|d| d.dirty() || d.outcome == Some(Outcome::OutcomeUnknown));
+        if let Some(d) = self.drafts.get_mut(path)
+            && !snapshot.matches(&d.base)
+        {
+            if protected && d.outcome != Some(Outcome::OutcomeUnknown) {
+                d.outcome = Some(Outcome::Conflict);
+            }
+            d.external = Some(snapshot.clone());
+        }
+        let unchanged = self
+            .snapshots
+            .get(path)
+            .is_some_and(|old| old.matches(&snapshot));
+        if unchanged {
+            if let Some(error) = self.unavailable.get(path) {
+                return Err(error.clone());
+            }
+            if !protected
+                && self
+                    .drafts
+                    .get(path)
+                    .is_some_and(|draft| !snapshot.matches(&draft.base))
+            {
+                self.drafts.remove(path);
+                self.generation += 1;
+                self.external_version += 1;
+                self.diagnostics_pending = true;
+            }
+            return previous.document.as_ref().map(|_| ()).ok_or_else(|| {
+                Error::new("E-YAML-PARSE", previous.error.clone().unwrap_or_default())
+            });
+        }
+        // Failed observations invalidate the read generation, while an authoring
+        // overlay and its history remain intact. They must not mask a deleted,
+        // malformed or rebound dependency in the next diagnostic snapshot.
+        let document = match Document::parse(snapshot.bytes.clone()) {
+            Ok(document) => document,
+            Err(error) => return Err(self.unavailable_source(path, Some(snapshot), error)),
+        };
+        let source_shape = || -> Result<()> {
+            match document.root.get("kind").and_then(|n| n.text().ok()) {
+                Some("schema") => {
+                    semantic::parse_table(&document, path)?;
                 }
-                d.external = Some(snapshot.clone());
-                // Keep the draft, but never label a removed/invalid/rebound disk source current.
-                let external = Document::parse(snapshot.bytes.clone())?;
-                if external.root.get("kind").and_then(|n| n.text().ok()) != previous.kind.as_deref()
-                    || external.root.get("table").and_then(|n| n.text().ok())
-                        != previous.binding.as_deref()
-                {
+                Some("type") => {
+                    semantic::parse_type(&document)?;
+                }
+                Some("data") => {
+                    document.records()?;
+                }
+                _ => {
                     return Err(Error::new(
-                        "E-SOURCE-BINDING",
-                        "external source binding changed",
+                        "E-DOCUMENT-KIND",
+                        "kind must be schema, data or type",
                     ));
                 }
-                match previous.kind.as_deref() {
-                    Some("schema") => {
-                        semantic::parse_table(&external, path)?;
-                    }
-                    Some("type") => {
-                        let (name, _) = semantic::parse_type(&external)?;
-                        let old = previous
-                            .document
-                            .as_ref()
-                            .and_then(|doc| doc.root.get("name"))
-                            .and_then(|node| node.text().ok());
-                        if old != Some(name.as_str()) {
-                            return Err(Error::new(
-                                "E-SOURCE-BINDING",
-                                "external Type identity changed",
-                            ));
-                        }
-                    }
-                    Some("data") => {
-                        external.records()?;
-                    }
-                    _ => {}
-                }
-                if d.dirty() || d.outcome == Some(Outcome::OutcomeUnknown) {
-                    return Ok(());
-                }
-            } else {
-                return Ok(());
             }
+            if protected {
+                let base = &self.drafts[path].document;
+                for field in ["kind", "table", "name"] {
+                    if base.root.get(field).and_then(|n| n.text().ok())
+                        != document.root.get(field).and_then(|n| n.text().ok())
+                    {
+                        return Err(Error::new(
+                            "E-SOURCE-BINDING",
+                            "external source identity/binding changed",
+                        ));
+                    }
+                }
+            }
+            Ok(())
+        };
+        if let Err(error) = source_shape() {
+            return Err(self.unavailable_source(path, Some(snapshot), error));
         }
         let changed = previous.bytes != snapshot.bytes
+            || self.unavailable.contains_key(path)
             || self
                 .snapshots
                 .get(path)
-                .is_some_and(|s| !snapshot.matches(s));
+                .is_some_and(|old| !old.matches(&snapshot));
         if changed {
-            let parsed = Document::parse(snapshot.bytes.clone());
-            match parsed {
-                Ok(doc) => {
-                    self.replace_read(path, &snapshot, Some(Arc::new(doc)), None);
-                    self.drafts.remove(path);
-                }
-                Err(e) => {
-                    self.replace_read(path, &snapshot, None, Some(e.to_string()));
-                    self.drafts.remove(path);
-                    self.snapshots.insert(path.into(), snapshot);
-                    return Err(e);
-                }
+            self.replace_read(path, &snapshot, Some(Arc::new(document)), None);
+            self.external_version += 1;
+            if !protected {
+                self.drafts.remove(path);
             }
         }
         self.snapshots.insert(path.into(), snapshot);
         Ok(())
     }
     fn ensure_draft(&mut self, path: &str) -> Result<()> {
+        if let Some(error) = self.unavailable.get(path) {
+            return Err(error.clone());
+        }
         if self.drafts.contains_key(path) {
             return Ok(());
         }
@@ -452,6 +545,9 @@ impl Workspace {
         Ok(())
     }
     pub fn current_doc(&self, path: &str) -> Result<Arc<Document>> {
+        if let Some(error) = self.unavailable.get(path) {
+            return Err(error.clone());
+        }
         self.drafts
             .get(path)
             .map(|d| d.document.clone())
@@ -464,6 +560,9 @@ impl Workspace {
             .tables
             .get(name)
             .ok_or_else(|| Error::new("E-TABLE-MISSING", name))?;
+        if let Some(error) = self.unavailable.get(&t.source) {
+            return Err(error.clone());
+        }
         if let Some(d) = self.drafts.get(&t.source) {
             Ok(Arc::new(semantic::parse_table(&d.document, &t.source)?))
         } else {
@@ -473,12 +572,78 @@ impl Workspace {
     pub fn current_types(&self) -> Result<semantic::Types> {
         let mut types = (*self.read.types).clone();
         for (path, d) in &self.drafts {
-            if self.read.sources[path].kind.as_deref() == Some("type") {
+            if !self.unavailable.contains_key(path)
+                && self.read.sources[path].kind.as_deref() == Some("type")
+            {
                 let (name, t) = semantic::parse_type(&d.document)?;
                 types.insert(name, t);
             }
         }
         Ok(types)
+    }
+    fn authoring_view(&self, path: &str) -> Result<AuthoringView> {
+        let binding = self
+            .read
+            .sources
+            .get(path)
+            .and_then(|source| source.binding.as_ref())
+            .ok_or_else(|| Error::new("E-TABLE-MISSING", path))?;
+        let table = self.current_table(binding)?;
+        let mut paths = self.read.dependencies(&table);
+        paths.push(path.into());
+        paths.sort();
+        paths.dedup();
+        let documents = paths
+            .into_iter()
+            .map(|path| {
+                let doc = self.current_doc(&path)?;
+                let snapshot = self
+                    .drafts
+                    .get(&path)
+                    .map(|draft| &draft.base)
+                    .or_else(|| self.snapshots.get(&path))
+                    .ok_or_else(|| Error::new("E-DRAFT-STALE", "unobserved dependency"))?;
+                Ok((path, doc.identity.clone(), snapshot.observed_identity()))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(AuthoringView { documents })
+    }
+    fn remember_authoring_view(&mut self, path: &str) -> Result<()> {
+        let view = self.authoring_view(path)?;
+        let entries = self.authoring_views.entry(path.into()).or_default();
+        if let Some((_, through, previous)) = entries.last_mut()
+            && previous.matches(&view)
+        {
+            *through = self.generation;
+            return Ok(());
+        }
+        entries.push((self.generation, self.generation, view));
+        if entries.len() > 32 {
+            entries.remove(0);
+        }
+        Ok(())
+    }
+    pub fn check_authoring_generation(&self, path: &str, generation: u64) -> Result<()> {
+        // Global diagnostic generations also advance for unrelated sources.
+        // An unfinished input may retain its observed generation when the
+        // physical authoring base and every required document are unchanged.
+        // The mutation path checks this again after fresh source/dependency I/O;
+        // this bounded read witness never authorizes Save or structural writes.
+        if generation == self.generation {
+            return Ok(());
+        }
+        let current = self.authoring_view(path)?;
+        if self.authoring_views.get(path).is_some_and(|entries| {
+            entries.iter().any(|(observed, through, view)| {
+                generation >= *observed && generation <= *through && view.matches(&current)
+            })
+        }) {
+            return Ok(());
+        }
+        Err(Error::new(
+            "E-DRAFT-STALE",
+            "source or required semantic context changed",
+        ))
     }
     pub fn select(&mut self, clicked: &str, start: usize, count: usize) -> Result<Projection> {
         let (result, measurement) =
@@ -500,6 +665,22 @@ impl Workspace {
             .binding
             .as_ref()
             .ok_or_else(|| Error::new("E-TABLE-MISSING", "source has no Table"))?;
+        if !self.read.tables.contains_key(table_name) {
+            let schema = self
+                .read
+                .sources
+                .values()
+                .find(|source| {
+                    source.kind.as_deref() == Some("schema")
+                        && source.binding.as_ref() == Some(table_name)
+                })
+                .map(|source| source.path.clone());
+            if let Some(schema) = schema
+                && schema != clicked
+            {
+                self.refresh_source(&schema)?;
+            }
+        }
         let table = self.current_table(table_name)?;
         for path in self.read.dependencies(&table) {
             if path != clicked {
@@ -531,6 +712,10 @@ impl Workspace {
             self.last_source.insert(table_name.clone(), source.clone());
         }
         self.ensure_draft(&table.source)?;
+        self.remember_authoring_view(&table.source)?;
+        if let Some(source) = &record_source {
+            self.remember_authoring_view(source)?;
+        }
         drop(freshness);
         let _projection = instrument::span("projection");
         let table = self.current_table(table_name)?;
@@ -713,7 +898,18 @@ impl Workspace {
         value_path: &[String],
         value: &Value,
     ) -> Result<bool> {
-        let (table, types) = self.batch_context(path, revision, self.generation)?;
+        self.edit_at(path, revision, self.generation, row_id, value_path, value)
+    }
+    pub fn edit_at(
+        &mut self,
+        path: &str,
+        revision: u64,
+        generation: u64,
+        row_id: &str,
+        value_path: &[String],
+        value: &Value,
+    ) -> Result<bool> {
+        let (table, types) = self.batch_context(path, revision, generation)?;
         let field = value_path
             .first()
             .and_then(|name| table.fields.iter().find(|f| &f.name == name))
@@ -823,9 +1019,7 @@ impl Workspace {
             array,
             type_name,
         } = declaration;
-        if self.generation != generation {
-            return Err(Error::new("E-DRAFT-STALE", "semantic generation changed"));
-        }
+        self.check_authoring_generation(path, generation)?;
         if self.recovery_required {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
@@ -841,8 +1035,9 @@ impl Workspace {
         self.check_config()?;
         self.refresh_source(path)?;
         self.ensure_draft(path)?;
+        self.check_authoring_generation(path, generation)?;
         let d = self.drafts.get_mut(path).unwrap();
-        if d.revision != revision || self.generation != generation {
+        if d.revision != revision {
             return Err(Error::new("E-DRAFT-STALE", "schema revision changed"));
         }
         if d.outcome == Some(Outcome::OutcomeUnknown) {
@@ -1124,6 +1319,9 @@ impl Workspace {
         let mut p = (*self.read).clone();
         p.generation = self.generation;
         for (path, d) in &self.drafts {
+            if self.unavailable.contains_key(path) {
+                continue;
+            }
             let old = &p.sources[path];
             let mut source = (**old).clone();
             source.bytes = d.document.bytes.clone();
@@ -1141,6 +1339,15 @@ impl Workspace {
     pub fn accept_diagnostics(&mut self, generation: u64, mut problems: Vec<Diagnostic>) -> bool {
         if generation != self.generation || problems.iter().any(|d| d.generation != generation) {
             return false;
+        }
+        problems.retain(|d| !self.unavailable.contains_key(&d.source));
+        problems.extend(
+            self.unavailable
+                .iter()
+                .map(|(path, error)| Diagnostic::error(path, error, generation)),
+        );
+        if let Some(error) = &self.environment_error {
+            problems.push(Diagnostic::error("masterdata.toml", error, generation));
         }
         for problem in &mut problems {
             if let Some(d) = self.drafts.get(&problem.source)

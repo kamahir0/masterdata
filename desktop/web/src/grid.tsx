@@ -178,9 +178,9 @@ export const AuthoringGrid = memo(function AuthoringGrid({
         aria-rowcount={(p?.totalRows ?? 0) + 1}
         aria-colcount={(p?.columns.length ?? 0) + 1}
         aria-busy={pending}
-        aria-hidden={pending}
-        inert={pending}
-        className={pending ? "grid-pending" : ""}
+        aria-hidden={pending || !p}
+        inert={pending || !p}
+        className={pending || !p ? "grid-pending" : ""}
         style={style}
         onScroll={onScroll}
         onKeyDown={keydown}
@@ -582,7 +582,7 @@ function CellInput({ editor }: { editor: Editor }) {
     return committing.current;
   }, [editor]);
   useLayoutEffect(() => {
-    const unbind = desktop.bindEditor(commit);
+    const unbind = desktop.bindEditor(commit, () => ({ source: editor.source, revision: editor.revision, generation: editor.generation, label: `${editor.field} · Row ${editor.rowIndex + 1}`, text: value.current, dirty: value.current !== editor.initial, cancel: desktop.closeEditor }));
     input.current?.focus({ cursor: "all" });
     return unbind;
   }, [commit]);
@@ -610,7 +610,7 @@ function CellInput({ editor }: { editor: Editor }) {
         onCompositionEnd={() => {
           composing.current = false;
         }}
-        onBlur={() => void commit()}
+        onBlur={() => { if (!desktop.surface.externalPending) void commit(); }}
         onKeyDown={(e) => {
           if (
             (e.metaKey || e.ctrlKey) &&

@@ -5,11 +5,12 @@ use masterdata_engine::{
     source::Value as SourceValue,
     workspace::Workspace,
 };
+use notify::Watcher;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::VecDeque,
-    path::Path,
+    collections::{BTreeSet, VecDeque},
+    path::{Path, PathBuf},
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -53,6 +54,11 @@ pub enum Intent {
         discard: bool,
     },
     Inventory,
+    AuthoringState {
+        source: String,
+        revision: u64,
+        generation: u64,
+    },
     Select {
         path: String,
         start: usize,
@@ -227,7 +233,13 @@ struct Pending {
     commands: VecDeque<Job>,
     selection: Option<Job>,
     diagnostics: Option<DiagnosticResult>,
+    external: Option<External>,
     stopped: bool,
+}
+struct External {
+    epoch: u64,
+    paths: BTreeSet<PathBuf>,
+    error: Option<String>,
 }
 struct Queue {
     pending: Mutex<Pending>,
@@ -254,6 +266,8 @@ pub struct Status {
     pub diagnostics_pending: bool,
     pub problem_count: usize,
     pub uncertain: Vec<String>,
+    pub external_version: u64,
+    pub environment_error: Option<String>,
 }
 #[derive(Clone)]
 pub struct Session {
@@ -312,43 +326,91 @@ impl Session {
             .expect("diagnostics worker");
         let q = queue.clone();
         let guard = protected.clone();
-        thread::Builder::new().name("masterdata-workspace".into()).spawn(move||{
-   let mut workspace:Option<Workspace>=None;let mut epoch=0;let mut scheduled=0;
-   loop{
-    let job={let mut p=q.pending.lock().unwrap();
-     while p.commands.is_empty()&&p.selection.is_none()&&p.diagnostics.is_none()&&!p.stopped{p=q.wake.wait(p).unwrap();}
-     if p.stopped{break;}
-     if let Some(result)=p.diagnostics.take(){drop(p);if epoch==result.epoch&&let Some(w)=workspace.as_mut(){w.accept_diagnostics(result.generation,result.problems);}None}
-     else {p.commands.pop_front().or_else(||p.selection.take())}
-    };
-    if let Some(job)=job{
-     if job.epoch.is_some_and(|expected|expected!=epoch){let _=job.reply.send(Err(UiError::new("E-PROJECT-OBSOLETE","request belongs to a previous Project session")));continue;}
-     let token=job.intent.token();
-     if token.is_some_and(|t|t!=q.latest.load(Ordering::Acquire)){let _=job.reply.send(Err(UiError::new("E-SELECTION-OBSOLETE","selection superseded")));continue;}
-     let queued_ms=job.enqueued.elapsed().as_secs_f64()*1000.0;let start=Instant::now();
-     let previous_epoch=epoch;
-     if matches!(job.intent,Intent::Validate){scheduled=0;}
-     let (result,measurement)=instrument::measure(||execute(&mut workspace,&mut epoch,job.intent));
-     if epoch!=previous_epoch{scheduled=0;}
-     guard.store(workspace.as_ref().is_some_and(|w|!w.dirty_paths().is_empty()||w.recovery_required||!w.uncertain_paths().is_empty()),Ordering::Release);
-     let reply=if token.is_some_and(|t|t!=q.latest.load(Ordering::Acquire)){Err(UiError::new("E-SELECTION-OBSOLETE","selection superseded"))}else{
-      result.and_then(|data|{let encode=Instant::now();let encoded=serde_json::to_string(&data).map_err(|e|UiError::new("E-IPC",&e.to_string()))?;
-       let serialization_ms=encode.elapsed().as_secs_f64()*1000.0;let meta=json!({"epoch":epoch,"queuedMs":queued_ms,"backendMs":measurement.elapsed_ms,"serializationMs":serialization_ms,"bytes":encoded.len(),"token":token,"work":measurement.work,"stagesMs":measurement.stages_ms,"nativeCompleteMs":start.elapsed().as_secs_f64()*1000.0});
-       Ok(format!("{{\"data\":{encoded},\"host\":{meta}}}"))
-      })
-     };
-     let _=job.reply.send(reply);
-    }
-    if let Some(w)=workspace.as_ref(){
-     guard.store(!w.dirty_paths().is_empty()||w.recovery_required||!w.uncertain_paths().is_empty(),Ordering::Release);
-     publish(Status{open:true,epoch,generation:w.generation,dirty:w.dirty_paths(),recovery_required:w.recovery_required,diagnostics_pending:w.diagnostics_pending,problem_count:w.diagnostics.len(),uncertain:w.uncertain_paths()});
-     if w.diagnostics_pending&&scheduled!=w.generation{
-      let mut p=validator.pending.lock().unwrap();p.snapshot=Some((epoch,w.diagnostic_input()));scheduled=w.generation;validator.wake.notify_one();
-     }
-    }
-   }
-   let mut p=validator.pending.lock().unwrap();p.stopped=true;validator.wake.notify_one();
-  }).expect("workspace worker");
+        thread::Builder::new().name("masterdata-workspace".into()).spawn(move || {
+            let mut workspace: Option<Workspace> = None;
+            let mut epoch = 0;
+            let mut scheduled = 0;
+            let mut _watcher = None;
+            loop {
+                enum Work { Job(Job), Diagnostics(DiagnosticResult), External(External) }
+                let work = {
+                    let mut p = q.pending.lock().unwrap();
+                    while p.commands.is_empty() && p.selection.is_none() && p.diagnostics.is_none() && p.external.is_none() && !p.stopped {
+                        p = q.wake.wait(p).unwrap();
+                    }
+                    if p.stopped { break; }
+                    if let Some(result) = p.diagnostics.take() { Work::Diagnostics(result) }
+                    else if let Some(job) = p.commands.pop_front().or_else(|| p.selection.take()) { Work::Job(job) }
+                    else { Work::External(p.external.take().unwrap()) }
+                };
+                match work {
+                    Work::Diagnostics(result) => {
+                        if epoch == result.epoch && let Some(w) = workspace.as_mut() {
+                            w.accept_diagnostics(result.generation, result.problems);
+                        }
+                    }
+                    Work::External(result) => {
+                        if epoch == result.epoch && let Some(w) = workspace.as_mut() {
+                            if let Some(error) = result.error {
+                                w.invalidate_environment(Error::new("E-WATCH-UNAVAILABLE", error));
+                            } else { w.refresh_paths(&result.paths.into_iter().collect::<Vec<_>>()); }
+                        }
+                    }
+                    Work::Job(job) => {
+                        if job.epoch.is_some_and(|expected| expected != epoch) {
+                            let _ = job.reply.send(Err(UiError::new("E-PROJECT-OBSOLETE", "request belongs to a previous Project session")));
+                            continue;
+                        }
+                        let token = job.intent.token();
+                        if token.is_some_and(|t| t != q.latest.load(Ordering::Acquire)) {
+                            let _ = job.reply.send(Err(UiError::new("E-SELECTION-OBSOLETE", "selection superseded")));
+                            continue;
+                        }
+                        let queued_ms = job.enqueued.elapsed().as_secs_f64() * 1000.0;
+                        let start = Instant::now();
+                        let previous_epoch = epoch;
+                        if matches!(job.intent, Intent::Validate) { scheduled = 0; }
+                        let (result, measurement) = instrument::measure(|| execute(&mut workspace, &mut epoch, job.intent));
+                        if epoch != previous_epoch {
+                            scheduled = 0;
+                            _watcher = None;
+                            if let Some(w) = workspace.as_mut() {
+                                match watch(q.clone(), &w.read, epoch) {
+                                    Ok(watcher) => _watcher = Some(watcher),
+                                    Err(error) => w.invalidate_environment(error),
+                                }
+                            }
+                        }
+                        guard.store(workspace.as_ref().is_some_and(|w| !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()), Ordering::Release);
+                        let reply = if token.is_some_and(|t| t != q.latest.load(Ordering::Acquire)) {
+                            Err(UiError::new("E-SELECTION-OBSOLETE", "selection superseded"))
+                        } else {
+                            result.and_then(|data| {
+                                let encode = Instant::now();
+                                let encoded = serde_json::to_string(&data).map_err(|e| UiError::new("E-IPC", &e.to_string()))?;
+                                let serialization_ms = encode.elapsed().as_secs_f64() * 1000.0;
+                                let meta = json!({"epoch":epoch,"queuedMs":queued_ms,"backendMs":measurement.elapsed_ms,"serializationMs":serialization_ms,"bytes":encoded.len(),"token":token,"work":measurement.work,"stagesMs":measurement.stages_ms,"nativeCompleteMs":start.elapsed().as_secs_f64()*1000.0});
+                                Ok(format!("{{\"data\":{encoded},\"host\":{meta}}}"))
+                            })
+                        };
+                        let _ = job.reply.send(reply);
+                    }
+                }
+                if let Some(w) = workspace.as_ref() {
+                    guard.store(!w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty(), Ordering::Release);
+                    publish(Status { open:true, epoch, generation:w.generation, dirty:w.dirty_paths(), recovery_required:w.recovery_required, diagnostics_pending:w.diagnostics_pending, problem_count:w.diagnostics.len(), uncertain:w.uncertain_paths(), external_version:w.external_version, environment_error:w.environment_error.as_ref().map(ToString::to_string) });
+                    if w.diagnostics_pending && scheduled != w.generation {
+                        let mut p = validator.pending.lock().unwrap();
+                        p.snapshot = Some((epoch, w.diagnostic_input()));
+                        scheduled = w.generation;
+                        validator.wake.notify_one();
+                    }
+                }
+            }
+            let mut p = validator.pending.lock().unwrap();
+            p.stopped = true;
+            validator.wake.notify_one();
+        }).expect("workspace worker");
         Self { queue, protected }
     }
     pub fn submit(&self, intent: Intent) -> oneshot::Receiver<Reply> {
@@ -419,8 +481,46 @@ impl Session {
 fn convert<T: Serialize>(v: T) -> Result<Value, UiError> {
     serde_json::to_value(v).map_err(|e| UiError::new("E-IPC", &e.to_string()))
 }
+fn watch(
+    queue: Arc<Queue>,
+    project: &Project,
+    epoch: u64,
+) -> Result<notify::RecommendedWatcher, Error> {
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        if event.as_ref().is_ok_and(|event| event.kind.is_access()) { return; }
+        let mut p = queue.pending.lock().unwrap();
+        if p.stopped || p.external.as_ref().is_some_and(|pending| pending.epoch > epoch) { return; }
+        if p.external.as_ref().is_none_or(|pending| pending.epoch != epoch) {
+            p.external = Some(External { epoch, paths: BTreeSet::new(), error: None });
+        }
+        let pending = p.external.as_mut().unwrap();
+        match event {
+            Ok(event) if !event.need_rescan() => {
+                for path in event.paths {
+                    if pending.paths.len() >= 256 && !pending.paths.contains(&path) {
+                        pending.error = Some("filesystem event backlog exceeded its bound; explicit Project Reload required".into());
+                        break;
+                    }
+                    pending.paths.insert(path);
+                }
+            }
+            Ok(_) => pending.error = Some("filesystem watcher lost events; explicit Project Reload required".into()),
+            Err(error) => pending.error = Some(error.to_string()),
+        }
+        queue.wake.notify_one();
+    }).map_err(|e| Error::new("E-WATCH-UNAVAILABLE", e.to_string()))?;
+    for root in &project.roots {
+        watcher
+            .watch(root, notify::RecursiveMode::Recursive)
+            .map_err(|e| Error::new("E-WATCH-UNAVAILABLE", e.to_string()))?;
+    }
+    watcher
+        .watch(&project.root, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| Error::new("E-WATCH-UNAVAILABLE", e.to_string()))?;
+    Ok(watcher)
+}
 fn inventory(w: &Workspace) -> Value {
-    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"generation":w.generation})
+    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
 }
 fn execute(
     workspace: &mut Option<Workspace>,
@@ -449,6 +549,14 @@ fn execute(
     match intent {
         Intent::Open { .. } => unreachable!(),
         Intent::Inventory => Ok(inventory(w)),
+        Intent::AuthoringState {
+            source,
+            revision,
+            generation,
+        } => match w.check_authoring_input(&source, revision, generation) {
+            Ok(()) => Ok(json!({"current":true,"reason":null})),
+            Err(error) => Ok(json!({"current":false,"reason":error.to_string()})),
+        },
         Intent::Select {
             path, start, count, ..
         } => {
@@ -474,12 +582,7 @@ fn execute(
             row,
             path,
             value,
-        } => {
-            if w.generation != generation {
-                return Err(Error::new("E-DRAFT-STALE", "semantic generation changed").into());
-            }
-            convert(w.edit(&source, revision, &row, &path, &value)?)
-        }
+        } => convert(w.edit_at(&source, revision, generation, &row, &path, &value)?),
         Intent::Paste {
             source,
             revision,

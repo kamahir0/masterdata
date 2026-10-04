@@ -6,6 +6,15 @@ use crate::{
 };
 
 impl Workspace {
+    pub fn check_authoring_input(
+        &mut self,
+        path: &str,
+        revision: u64,
+        generation: u64,
+    ) -> Result<()> {
+        self.authoring_context(path, revision, generation, false)
+            .map(|_| ())
+    }
     pub(super) fn batch_context(
         &mut self,
         path: &str,
@@ -27,9 +36,7 @@ impl Workspace {
                 "source mutation is gated",
             ));
         }
-        if self.generation != generation {
-            return Err(Error::new("E-DRAFT-STALE", "semantic generation changed"));
-        }
+        self.check_authoring_generation(path, generation)?;
         self.check_config()?;
         self.refresh_source(path)?;
         let binding = self
@@ -45,8 +52,9 @@ impl Workspace {
             }
         }
         self.ensure_draft(path)?;
+        self.check_authoring_generation(path, generation)?;
         let draft = &self.drafts[path];
-        if self.generation != generation || draft.revision != revision {
+        if draft.revision != revision {
             return Err(Error::new(
                 "E-DRAFT-STALE",
                 "source/schema/type changed during preflight",

@@ -81,6 +81,8 @@ if (boot.evidence) {
   const evidence =
     boot.evidenceKind === "authoring"
       ? await import("./authoring-evidence")
+      : boot.evidenceKind === "external"
+        ? await import("./external-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

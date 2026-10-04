@@ -57,7 +57,17 @@ require(set(git("ls-tree", "-r", "--name-only", "legacy-final").splitlines()) ==
         "decommission manifest does not inventory exact frozen tree")
 for ref in ("refs/heads/main", "refs/remotes/origin/main"):
     if subprocess.run(["git", "show-ref", "--quiet", "--verify", ref]).returncode == 0:
-        require(git("rev-parse", ref) == freeze, f"{ref} moved from frozen main")
+        if implementation:
+            # The immutable tag owns the frozen product. External agent-skill
+            # additions do not cut over that product; changes to any frozen
+            # asset or new runtime on main still fail this boundary check.
+            require(subprocess.run(["git", "merge-base", "--is-ancestor", freeze, ref]).returncode == 0,
+                    f"{ref} does not descend from frozen main")
+            delta = git("diff", "--name-status", freeze, ref).splitlines()
+            require(all(re.fullmatch(r"A\t\.agents/skills/[^/]+/SKILL\.md", change) for change in delta),
+                    f"{ref} changed the frozen product before Human cutover")
+        else:
+            require(git("rev-parse", ref) == freeze, f"{ref} moved from frozen main")
 
 for asset in assets:
     path = Path(asset["path"])

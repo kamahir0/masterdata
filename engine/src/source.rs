@@ -6,6 +6,8 @@ use std::{collections::HashSet, ops::Range, sync::Arc};
 use tree_sitter::{Node as SyntaxNode, Parser};
 use yaml_rust2::parser::{Event, EventReceiver};
 
+mod structure;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum Value {
@@ -109,6 +111,7 @@ pub struct Document {
     pub subset_issues: Vec<(Range<usize>, String)>,
     syntax: tree_sitter::Tree,
     line_offsets: Arc<Vec<usize>>,
+    pub(crate) edits: Vec<Vec<(Range<usize>, usize)>>,
 }
 
 impl Document {
@@ -175,6 +178,7 @@ impl Document {
             subset_issues: issues,
             syntax: tree,
             line_offsets: Arc::new(line_offsets),
+            edits: vec![],
         })
     }
 
@@ -234,6 +238,33 @@ impl Document {
         Ok(candidate)
     }
 
+    pub fn occurrence_value(&self, occurrence: usize, path: &[String]) -> Result<&Node> {
+        let index = occurrence
+            .checked_sub(1)
+            .ok_or_else(|| Error::new("E-LOCATOR", "occurrence is 1-based"))?;
+        let mut node = self
+            .records()?
+            .get(index)
+            .ok_or_else(|| Error::new("E-LOCATOR", "occurrence missing"))?
+            .value
+            .as_ref();
+        for component in path {
+            node = if let Raw::Sequence(items) = &node.raw {
+                let index: usize = component
+                    .parse()
+                    .map_err(|_| Error::new("E-LOCATOR", "array occurrence required"))?;
+                items
+                    .get(index)
+                    .ok_or_else(|| Error::new("E-LOCATOR", "array occurrence missing"))?
+                    .value
+                    .as_ref()
+            } else {
+                node.required(component)?
+            };
+        }
+        Ok(node)
+    }
+
     pub fn patched(&self, mut patches: Vec<Patch>) -> Result<Self> {
         if patches.is_empty() {
             return Ok(self.clone());
@@ -253,8 +284,24 @@ impl Document {
             }
             last = patch.span.end;
         }
-        let mut output = self.bytes.to_string();
+        // Construct the candidate once. Replacing every cell in a large paste in
+        // reverse order would repeatedly copy the tail of the same source file.
+        let capacity = patches.iter().fold(self.bytes.len(), |n, p| {
+            n - (p.span.end - p.span.start) + p.text.len()
+        });
+        let mut output = String::with_capacity(capacity);
+        let mut cursor = 0;
+        for patch in &patches {
+            output.push_str(&self.bytes[cursor..patch.span.start]);
+            output.push_str(&patch.text);
+            cursor = patch.span.end;
+        }
+        output.push_str(&self.bytes[cursor..]);
         let mut syntax = self.syntax.clone();
+        let offsets = patches
+            .iter()
+            .map(|p| (p.span.clone(), p.text.len()))
+            .collect();
         for p in patches.into_iter().rev() {
             let start = self.point(p.span.start);
             let newlines = p.text.bytes().filter(|b| *b == b'\n').count();
@@ -274,9 +321,11 @@ impl Document {
                 old_end_position: self.point(p.span.end),
                 new_end_position: new_end,
             });
-            output.replace_range(p.span, &p.text);
         }
-        Self::parse_with_tree(Arc::<str>::from(output), Some(&syntax))
+        let mut candidate = Self::parse_with_tree(Arc::<str>::from(output), Some(&syntax))?;
+        candidate.edits = self.edits.clone();
+        candidate.edits.push(offsets);
+        Ok(candidate)
     }
 
     pub fn newline(&self) -> &str {
@@ -570,30 +619,10 @@ pub fn derive_patch(
         Value::Null => "null".into(),
         Value::Sequence(s) if s.is_empty() => "[]".into(),
         Value::Mapping(_) | Value::Sequence(_) => {
-            // A materialized value replaces only its prior scalar. New mappings use block style.
-            let line = &doc.bytes[doc.line_start(node.span.start)..node.span.start];
-            let indentation = line.chars().take_while(|c| *c == ' ').count() + 2;
-            if line.contains('{') || line.contains('[') {
-                return Err(Error::new(
-                    "E-SOURCE-UNSAFE",
-                    "block materialization inside flow cannot be localized",
-                ));
-            }
-            format!("{nl}{}", render_block(desired, indentation, nl)?)
+            return structure::derive_patch_materialization(doc, node, desired, patches);
         }
     };
-    let mut span = node.span.clone();
-    let text = if matches!(desired, Value::Mapping(_) | Value::Sequence(_)) && text.starts_with(nl)
-    {
-        while span.start > doc.line_start(span.start)
-            && doc.bytes.as_bytes()[span.start - 1] == b' '
-        {
-            span.start -= 1;
-        }
-        text
-    } else {
-        text
-    };
+    let span = node.span.clone();
     patches.push(Patch { span, text });
     Ok(())
 }
@@ -696,6 +725,12 @@ fn render_literal(s: &str) -> Result<String> {
             "E-SOURCE-UNSAFE",
             "literal must stay on one line",
         ));
+    }
+    if matches!(s, "true" | "false")
+        || crate::semantic::integer_grammar(s)
+        || crate::semantic::float_grammar(s)
+    {
+        return Ok(s.into());
     }
     let parsed = Document::parse(format!("value: {s}\n"))?;
     let value = parsed.root.required("value")?;

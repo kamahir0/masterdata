@@ -54,7 +54,24 @@ fn precommit_failure_and_unknown_keep_draft_history_and_never_retry() {
             assert_eq!(fs::read(&path).unwrap(), candidate);
             assert!(w.save_all().is_err());
             assert_eq!(fs::read(&path).unwrap(), candidate);
-            w.select("sources/data.yaml", 0, 16).unwrap();
+            let uncertain = w.select("sources/data.yaml", 0, 16).unwrap();
+            assert!(
+                !uncertain.conflict,
+                "Unknown must not be presented as Conflict"
+            );
+            assert!(!uncertain.can_add);
+            assert!(
+                uncertain
+                    .rows
+                    .iter()
+                    .flat_map(|r| &r.cells)
+                    .all(|c| !c.editable)
+            );
+            assert_eq!(w.uncertain_paths(), ["sources/data.yaml"]);
+            assert!(
+                w.undo("sources/data.yaml", false).is_err(),
+                "history remains protected until observation"
+            );
             assert_eq!(
                 w.drafts["sources/data.yaml"].outcome,
                 Some(Outcome::OutcomeUnknown)

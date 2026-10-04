@@ -14,8 +14,28 @@ use std::{
     sync::Arc,
 };
 
+mod batch;
+pub mod complex;
+mod records;
+mod search;
+
 #[derive(Clone, Debug)]
 struct State {
+    document: Arc<Document>,
+    rows: Arc<Vec<String>>,
+    pending: Arc<BTreeMap<String, PendingRecord>>,
+    added: Arc<BTreeSet<String>>,
+    origin: Option<Arc<AdditionOrigin>>,
+    arrays: Arc<BTreeMap<Vec<String>, Vec<String>>>,
+}
+#[derive(Clone, Debug)]
+struct PendingRecord {
+    node: Arc<crate::source::Node>,
+    bytes: Arc<str>,
+    position: usize,
+}
+#[derive(Clone, Debug)]
+struct AdditionOrigin {
     document: Arc<Document>,
     rows: Arc<Vec<String>>,
 }
@@ -25,6 +45,10 @@ pub struct Draft {
     pub document: Arc<Document>,
     pub revision: u64,
     pub row_ids: Arc<Vec<String>>,
+    pending: Arc<BTreeMap<String, PendingRecord>>,
+    added: Arc<BTreeSet<String>>,
+    origin: Option<Arc<AdditionOrigin>>,
+    arrays: Arc<BTreeMap<Vec<String>, Vec<String>>>,
     undo: Vec<State>,
     redo: Vec<State>,
     pub outcome: Option<Outcome>,
@@ -44,14 +68,49 @@ impl Draft {
         State {
             document: self.document.clone(),
             rows: self.row_ids.clone(),
+            pending: self.pending.clone(),
+            added: self.added.clone(),
+            origin: self.origin.clone(),
+            arrays: self.arrays.clone(),
         }
     }
-    fn apply(&mut self, document: Document, rows: Arc<Vec<String>>) -> bool {
+    fn active_index(&self, id: &str) -> Result<usize> {
+        if self.pending.contains_key(id) {
+            return Err(Error::new(
+                "E-ROW-PENDING-DELETE",
+                "pending delete is not editable",
+            ));
+        }
+        self.row_ids
+            .iter()
+            .filter(|row| !self.pending.contains_key(*row))
+            .position(|row| row == id)
+            .ok_or_else(|| Error::new("E-LOCATOR-STALE", "record occurrence missing"))
+    }
+    fn saved(&mut self) {
+        self.row_ids = Arc::new(
+            self.row_ids
+                .iter()
+                .filter(|id| !self.pending.contains_key(*id))
+                .cloned()
+                .collect(),
+        );
+        self.pending = Arc::new(BTreeMap::new());
+        self.added = Arc::new(BTreeSet::new());
+        self.origin = None;
+    }
+    fn apply(&mut self, mut document: Document, rows: Arc<Vec<String>>) -> bool {
         if self.document.bytes == document.bytes && self.row_ids == rows {
             return false;
         }
         self.undo.push(self.state());
         self.redo.clear();
+        for pending in Arc::make_mut(&mut self.pending).values_mut() {
+            pending.position = document.map_anchor(pending.position);
+        }
+        // Positions are now relative to this accepted draft. Do not retain prior
+        // patch traces after a history boundary or grow an implicit document chain.
+        document.edits.clear();
         self.document = Arc::new(document);
         self.row_ids = rows;
         self.revision += 1;
@@ -93,7 +152,10 @@ pub struct Cell {
 pub struct ViewRow {
     pub id: String,
     pub occurrence: usize,
+    pub view_index: usize,
     pub cells: Vec<Cell>,
+    pub pending_delete: bool,
+    pub added: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +163,12 @@ pub struct Column {
     pub field: Field,
     pub shape: Option<Shape>,
     pub reason: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteState {
+    pub source: String,
+    pub outcome: Outcome,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,6 +180,7 @@ pub struct Projection {
     pub columns: Vec<Column>,
     pub rows: Vec<ViewRow>,
     pub total_rows: usize,
+    pub source_total_rows: usize,
     pub row_start: usize,
     pub revision: u64,
     pub schema_revision: u64,
@@ -123,7 +192,10 @@ pub struct Projection {
     pub schema_can_undo: bool,
     pub schema_can_redo: bool,
     pub conflict: bool,
+    pub write_states: Vec<WriteState>,
     pub view_state: SourceViewState,
+    pub can_add: bool,
+    pub add_reason: Option<String>,
     pub measurement: Measurement,
 }
 #[derive(Clone, Debug)]
@@ -131,6 +203,7 @@ pub struct Workspace {
     pub read: Arc<Project>,
     pub drafts: BTreeMap<String, Draft>,
     pub views: BTreeMap<String, SourceViewState>,
+    search_indexes: BTreeMap<String, search::SearchIndex>,
     snapshots: BTreeMap<String, Snapshot>,
     last_source: BTreeMap<String, String>,
     pub recovery_required: bool,
@@ -145,6 +218,7 @@ impl Workspace {
             read: Arc::new(Project::open(path)?),
             drafts: BTreeMap::new(),
             views: BTreeMap::new(),
+            search_indexes: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             last_source: BTreeMap::new(),
             recovery_required: false,
@@ -274,6 +348,29 @@ impl Workspace {
                         "external source binding changed",
                     ));
                 }
+                match previous.kind.as_deref() {
+                    Some("schema") => {
+                        semantic::parse_table(&external, path)?;
+                    }
+                    Some("type") => {
+                        let (name, _) = semantic::parse_type(&external)?;
+                        let old = previous
+                            .document
+                            .as_ref()
+                            .and_then(|doc| doc.root.get("name"))
+                            .and_then(|node| node.text().ok());
+                        if old != Some(name.as_str()) {
+                            return Err(Error::new(
+                                "E-SOURCE-BINDING",
+                                "external Type identity changed",
+                            ));
+                        }
+                    }
+                    Some("data") => {
+                        external.records()?;
+                    }
+                    _ => {}
+                }
                 if d.dirty() || d.outcome == Some(Outcome::OutcomeUnknown) {
                     return Ok(());
                 }
@@ -336,6 +433,10 @@ impl Workspace {
                 document,
                 revision: 0,
                 row_ids,
+                pending: Arc::new(BTreeMap::new()),
+                added: Arc::new(BTreeSet::new()),
+                origin: None,
+                arrays: Arc::new(BTreeMap::new()),
                 undo: vec![],
                 redo: vec![],
                 outcome: None,
@@ -445,36 +546,52 @@ impl Workspace {
             .collect::<Vec<_>>();
         let mut rows = Vec::new();
         let mut total_rows = 0;
+        let mut source_total_rows = 0;
         let mut revision = 0;
         let mut dirty = false;
         let mut can_undo = false;
         let mut can_redo = false;
         let mut conflict = false;
         if let Some(source) = &record_source {
+            let indices = self.query_rows(source, &table, &types)?;
             let d = &self.drafts[source];
-            total_rows = d.row_ids.len();
+            total_rows = indices.len();
+            source_total_rows = d.row_ids.len();
             revision = d.revision;
             dirty = d.dirty();
             can_undo = d.can_undo();
             can_redo = d.can_redo();
-            conflict = d.outcome.is_some();
+            conflict = d.outcome == Some(Outcome::Conflict);
             let records = d.document.records()?;
-            for (i, row) in records.iter().enumerate().skip(start).take(count.min(128)) {
+            for (view_index, (i, active)) in
+                indices.iter().enumerate().skip(start).take(count.min(128))
+            {
+                let id = &d.row_ids[*i];
+                let pending = d.pending.get(id);
+                let raw_row = if let Some(pending) = pending {
+                    pending.node.as_ref()
+                } else {
+                    records[active.unwrap()].value.as_ref()
+                };
                 let cells = columns
                     .iter()
                     .map(|c| {
-                        let Some(raw) = row.value.get(&c.field.name) else {
+                        let Some(raw) = raw_row.get(&c.field.name) else {
                             return Cell {
                                 value: None,
                                 display: "(missing)".into(),
-                                valid: false,
+                                valid: pending.is_some(),
                                 editable: false,
                                 reason: Some("field entry missing".into()),
                                 problem: None,
                             };
                         };
                         let interpreted = semantic::interpret(&c.field, raw, &types);
-                        let editable = c.shape.is_some() && raw.safe;
+                        let editable = pending.is_none()
+                            && c.shape.is_some()
+                            && raw.safe
+                            && d.outcome != Some(Outcome::OutcomeUnknown)
+                            && !self.recovery_required;
                         let display = display(raw);
                         Cell {
                             value: match raw.raw {
@@ -482,25 +599,35 @@ impl Workspace {
                                 _ => Some(raw.value()),
                             },
                             display,
-                            valid: interpreted.is_ok(),
+                            valid: pending.is_some() || interpreted.is_ok(),
                             editable,
                             reason: if editable {
                                 None
                             } else {
                                 Some(
-                                    c.reason
-                                        .clone()
-                                        .unwrap_or_else(|| "unsafe source representation".into()),
+                                    if pending.is_some() {
+                                        Some("Pending delete".into())
+                                    } else {
+                                        c.reason.clone()
+                                    }
+                                    .unwrap_or_else(|| "unsafe source representation".into()),
                                 )
                             },
-                            problem: interpreted.err(),
+                            problem: if pending.is_none() {
+                                interpreted.err()
+                            } else {
+                                None
+                            },
                         }
                     })
                     .collect();
                 rows.push(ViewRow {
-                    id: d.row_ids[i].clone(),
+                    id: id.clone(),
                     occurrence: i + 1,
+                    view_index,
                     cells,
+                    pending_delete: pending.is_some(),
+                    added: d.added.contains(id),
                 });
             }
         }
@@ -510,6 +637,37 @@ impl Workspace {
             .and_then(|s| self.views.get(s))
             .cloned()
             .unwrap_or_default();
+        let add_reason = if record_source.is_none() {
+            Some("record source required; create/select a physical source".into())
+        } else if columns.iter().any(|c| c.shape.is_none()) {
+            Some("all field shapes must resolve before Add Row".into())
+        } else if self.recovery_required {
+            Some("Recovery Required".into())
+        } else if let Some(source) = &record_source
+            && self.drafts[source].outcome == Some(Outcome::OutcomeUnknown)
+        {
+            Some("Outcome Unknown; inspect and re-read the actual source before editing".into())
+        } else if let Some(source) = &record_source
+            && let Ok(records) = self.drafts[source].document.root.required("records")
+            && records.style != crate::source::Style::Block
+            && !records.items()?.is_empty()
+        {
+            Some("new record mapping requires a safely owned block sequence".into())
+        } else {
+            None
+        };
+        let mut write_states = Vec::new();
+        for source in std::iter::once(&table.source)
+            .chain(record_source.as_ref())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            if let Some(outcome) = self.drafts[source].outcome.clone() {
+                write_states.push(WriteState {
+                    source: source.clone(),
+                    outcome,
+                });
+            }
+        }
         Ok(Projection {
             clicked: clicked.into(),
             source: record_source,
@@ -518,6 +676,7 @@ impl Workspace {
             columns,
             rows,
             total_rows,
+            source_total_rows,
             row_start: start,
             revision,
             schema_revision: schema.revision,
@@ -528,8 +687,11 @@ impl Workspace {
             can_redo,
             schema_can_undo: schema.can_undo(),
             schema_can_redo: schema.can_redo(),
-            conflict: conflict || schema.outcome.is_some(),
+            conflict: conflict || schema.outcome == Some(Outcome::Conflict),
+            write_states,
             view_state,
+            can_add: add_reason.is_none(),
+            add_reason,
             measurement: Measurement {
                 elapsed_ms: 0.0,
                 work: Default::default(),
@@ -538,6 +700,22 @@ impl Workspace {
         })
     }
     pub fn edit(
+        &mut self,
+        path: &str,
+        revision: u64,
+        row_id: &str,
+        value_path: &[String],
+        value: &Value,
+    ) -> Result<bool> {
+        let (table, types) = self.batch_context(path, revision, self.generation)?;
+        let field = value_path
+            .first()
+            .and_then(|name| table.fields.iter().find(|f| &f.name == name))
+            .ok_or_else(|| Error::new("E-FIELD-MISSING", "resolved field required"))?;
+        semantic::shape(field, &types)?;
+        self.apply_value(path, revision, row_id, value_path, value)
+    }
+    fn apply_value(
         &mut self,
         path: &str,
         revision: u64,
@@ -562,11 +740,7 @@ impl Workspace {
                 "fresh observation and recovery required",
             ));
         }
-        let i = d
-            .row_ids
-            .iter()
-            .position(|id| id == row_id)
-            .ok_or_else(|| Error::new("E-LOCATOR-STALE", "record occurrence no longer exists"))?;
+        let i = d.active_index(row_id)?;
         let candidate = d.document.edit_occurrence(i + 1, value_path, value)?;
         let changed = d.apply(candidate, d.row_ids.clone());
         if changed {
@@ -583,21 +757,14 @@ impl Workspace {
         field: &str,
         text: &str,
     ) -> Result<bool> {
-        let table_name = self
-            .read
-            .sources
-            .get(path)
-            .and_then(|s| s.binding.as_ref())
-            .ok_or_else(|| Error::new("E-TABLE-MISSING", "source Table missing"))?;
-        let table = self.current_table(table_name)?;
-        let types = self.current_types()?;
+        let (table, types) = self.batch_context(path, revision, self.generation)?;
         let f = table
             .fields
             .iter()
             .find(|f| f.name == field)
             .ok_or_else(|| Error::new("E-FIELD-MISSING", field))?;
         let shape = semantic::shape(f, &types)?;
-        self.edit(
+        self.apply_value(
             path,
             revision,
             row_id,
@@ -626,10 +793,18 @@ impl Workspace {
                 "Nullable and Array are mutually exclusive",
             ));
         }
+        self.check_config()?;
+        self.refresh_source(path)?;
         self.ensure_draft(path)?;
         let d = self.drafts.get_mut(path).unwrap();
         if d.revision != revision {
             return Err(Error::new("E-DRAFT-STALE", "schema revision changed"));
+        }
+        if d.outcome == Some(Outcome::OutcomeUnknown) {
+            return Err(Error::new(
+                "E-OUTCOME-UNKNOWN",
+                "fresh observation required",
+            ));
         }
         let fields = d.document.root.required("fields")?.items()?;
         let field = fields
@@ -705,6 +880,10 @@ impl Workspace {
         }
         d.document = state.document;
         d.row_ids = state.rows;
+        d.pending = state.pending;
+        d.added = state.added;
+        d.origin = state.origin;
+        d.arrays = state.arrays;
         d.revision += 1;
         self.diagnostics_pending = true;
         self.generation += 1;
@@ -800,6 +979,7 @@ impl Workspace {
                 let doc = d.document.clone();
                 let d = self.drafts.get_mut(&path).unwrap();
                 d.base = snapshot.clone();
+                d.saved();
                 d.undo.clear();
                 d.redo.clear();
                 d.outcome = None;
@@ -862,6 +1042,7 @@ impl Workspace {
             let doc = d.document.clone();
             let d = self.drafts.get_mut(path).unwrap();
             d.base = snapshot.clone();
+            d.saved();
             d.undo.clear();
             d.redo.clear();
             d.outcome = None;
@@ -882,6 +1063,18 @@ impl Workspace {
         self.snapshots.insert(path.into(), snapshot);
         self.ensure_draft(path)
     }
+    pub fn uncertain_paths(&self) -> Vec<String> {
+        self.drafts
+            .iter()
+            .filter(|(_, draft)| {
+                matches!(
+                    draft.outcome,
+                    Some(Outcome::OutcomeUnknown | Outcome::RecoveryRequired)
+                )
+            })
+            .map(|(path, _)| path.clone())
+            .collect()
+    }
     pub fn diagnostic_input(&self) -> Project {
         let mut p = (*self.read).clone();
         p.generation = self.generation;
@@ -900,9 +1093,21 @@ impl Workspace {
         p.rebuild_declarations();
         p
     }
-    pub fn accept_diagnostics(&mut self, generation: u64, problems: Vec<Diagnostic>) -> bool {
+    pub fn accept_diagnostics(&mut self, generation: u64, mut problems: Vec<Diagnostic>) -> bool {
         if generation != self.generation || problems.iter().any(|d| d.generation != generation) {
             return false;
+        }
+        for problem in &mut problems {
+            if let Some(d) = self.drafts.get(&problem.source)
+                && let Some(occurrence) = problem.occurrence
+                && let Some(id) = d
+                    .row_ids
+                    .iter()
+                    .filter(|id| !d.pending.contains_key(*id))
+                    .nth(occurrence.saturating_sub(1))
+            {
+                problem.occurrence = d.row_ids.iter().position(|row| row == id).map(|i| i + 1);
+            }
         }
         self.diagnostics = problems;
         self.diagnostics_generation = generation;

@@ -253,6 +253,13 @@ class Desktop {
       epoch: intent.epoch ?? this.surface.status.epoch,
     });
   }
+  async refreshInventory() {
+    const epoch = this.surface.status.epoch;
+    const reply = await this.rpc<Inventory>({kind:"inventory",epoch});
+    if (epoch !== this.surface.status.epoch || reply.host.epoch !== epoch) return null;
+    this.publish({inventory:reply.data});
+    return reply.data;
+  }
   bindEditor(commit: () => Promise<boolean>, inputPreview?: () => TemporaryInput | null) {
     this.commitActive = commit;
     this.inputPreview = inputPreview ?? null;
@@ -953,7 +960,7 @@ class Desktop {
       if (
         !latest.data.dirty.length &&
         !latest.data.uncertain.length &&
-        !this.surface.status.recoveryRequired
+        !latest.data.recoveryRequired
       )
         return "saved" as const;
       const choice = await this.choose(
@@ -973,6 +980,13 @@ class Desktop {
             .map((s) => `${s.source}: ${s.outcome} ${s.message}`)
             .join("\n"),
         );
+        return "cancel" as const;
+      }
+      // Save All advances drafts, not uncertain creation or structural outcomes.
+      // Read current protection again before allowing a Project session to end.
+      const remaining = await this.rpc<Inventory>({ kind: "inventory", epoch: latest.host.epoch });
+      if (remaining.data.dirty.length || remaining.data.uncertain.length || remaining.data.recoveryRequired) {
+        this.showError("未確定の書き込みが残っています。Recheckで結果を確認してください。");
         return "cancel" as const;
       }
       return "saved" as const;

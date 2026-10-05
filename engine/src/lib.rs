@@ -1,5 +1,6 @@
 //! YAML source authority and shared MasterData semantics.
 pub mod clipboard;
+pub mod creation;
 pub mod instrument;
 pub mod native;
 pub mod project;

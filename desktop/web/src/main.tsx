@@ -83,6 +83,8 @@ if (boot.evidence) {
       ? await import("./authoring-evidence")
       : boot.evidenceKind === "external"
         ? await import("./external-evidence")
+      : boot.evidenceKind === "creation"
+        ? await import("./creation-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

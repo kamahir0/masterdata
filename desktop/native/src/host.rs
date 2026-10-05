@@ -132,6 +132,7 @@ pub fn run() {
     let evidence_kind = match (output.is_some(), argument("--evidence-kind").as_deref()) {
         (true, Some("authoring")) => "authoring",
         (true, Some("external")) => "external",
+        (true, Some("creation")) => "creation",
         _ => "navigation",
     }
     .to_string();

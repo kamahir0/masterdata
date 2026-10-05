@@ -114,7 +114,7 @@ pub fn checked_path(root: &Path, roots: &[PathBuf], logical: &str) -> Result<Pat
     for part in relative.components() {
         p.push(part);
         let m = fs::symlink_metadata(&p).map_err(io_error)?;
-        if m.file_type().is_symlink() {
+        if path_alias(&m) {
             return Err(Error::new(
                 "E-PATH-ALIAS",
                 "symlink source path cannot authorize writes",
@@ -126,6 +126,172 @@ pub fn checked_path(root: &Path, roots: &[PathBuf], logical: &str) -> Result<Pat
         return Err(Error::new("E-PATH-SCOPE", "source escaped configured root"));
     }
     Ok(p)
+}
+fn path_alias(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes()
+            & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
+            != 0
+    }
+    #[cfg(not(windows))]
+    {
+        metadata.file_type().is_symlink()
+    }
+}
+
+/// A new destination has no source snapshot. Authorize its existing parent and
+/// selected root freshly, and commit exclusively instead of reusing Save replace.
+pub fn creation_path(root: &Path, selected_root: &Path, logical: &str) -> Result<PathBuf> {
+    if logical.contains(['\\', ':'])
+        || logical
+            .split('/')
+            .any(|part| part.is_empty() || matches!(part, "." | ".."))
+    {
+        return Err(Error::new(
+            "E-PATH-SCOPE",
+            "logical paths use relative slash-separated components",
+        ));
+    }
+    let relative = relative_safe(logical)?;
+    let filename = relative
+        .file_name()
+        .ok_or_else(|| Error::new("E-PATH-SCOPE", "destination name required"))?;
+    if filename.to_string_lossy().ends_with(['.', ' ']) {
+        return Err(Error::new("E-PATH-ALIAS", "ambiguous destination name"));
+    }
+    let parent = relative
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let parent = checked_path(
+        root,
+        &[selected_root.to_path_buf()],
+        &parent.to_string_lossy(),
+    )?;
+    if !parent.is_dir() {
+        return Err(Error::new(
+            "E-PATH-KIND",
+            "existing destination parent directory required",
+        ));
+    }
+    Ok(parent.join(filename))
+}
+
+pub fn create_exclusive(
+    root: &Path,
+    selected_root: &Path,
+    logical: &str,
+    candidate: Option<&str>,
+    fault: Fault,
+    authorize: impl FnOnce() -> Result<()>,
+) -> WriteResult {
+    let failure = |e: Error| WriteResult::new(logical, Outcome::Failure, e.to_string());
+    let target = match creation_path(root, selected_root, logical) {
+        Ok(p) => p,
+        Err(e) => return failure(e),
+    };
+    let parent = target.parent().unwrap();
+    let parent_identity = match path_identity(parent) {
+        Ok(i) => i,
+        Err(e) => return failure(io_error(e)),
+    };
+    match fs::symlink_metadata(&target) {
+        Ok(_) => {
+            return WriteResult::new(
+                logical,
+                Outcome::Conflict,
+                "E-CREATE-CONFLICT: destination already exists",
+            );
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return failure(io_error(e)),
+    }
+    let mut stage = if let Some(bytes) = candidate {
+        let prepare = || -> Result<tempfile::NamedTempFile> {
+            let mut file = tempfile::NamedTempFile::new_in(parent).map_err(io_error)?;
+            file.write_all(bytes.as_bytes()).map_err(io_error)?;
+            file.as_file().sync_all().map_err(io_error)?;
+            Ok(file)
+        };
+        match prepare() {
+            Ok(file) => Some(file),
+            Err(e) => return failure(e),
+        }
+    } else {
+        None
+    };
+    #[cfg(feature = "oracle-faults")]
+    if matches!(fault, Fault::BeforeCommit) {
+        return failure(Error::new("E-CREATE-FAULT", "injected precommit failure"));
+    }
+    if let Err(e) = authorize() {
+        return WriteResult::new(logical, Outcome::Conflict, format!("E-CREATE-STALE: {e}"));
+    }
+    let current_path = creation_path(root, selected_root, logical);
+    if !current_path.as_ref().is_ok_and(|path| path == &target)
+        || path_identity(parent).ok().as_ref() != Some(&parent_identity)
+    {
+        return WriteResult::new(
+            logical,
+            Outcome::Conflict,
+            "E-CREATE-STALE: destination parent identity changed",
+        );
+    }
+    let commit = if let Some(file) = stage.take() {
+        file.persist_noclobber(&target)
+            .map(|_| ())
+            .map_err(|e| e.error)
+    } else {
+        fs::create_dir(&target)
+    };
+    if let Err(e) = commit {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            return WriteResult::new(
+                logical,
+                Outcome::Conflict,
+                "E-CREATE-CONFLICT: destination appeared before exclusive commit",
+            );
+        }
+        let missing =
+            fs::symlink_metadata(&target).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+        return WriteResult::new(
+            logical,
+            if missing {
+                Outcome::Failure
+            } else {
+                Outcome::OutcomeUnknown
+            },
+            io_error(e).to_string(),
+        );
+    }
+    #[cfg(feature = "oracle-faults")]
+    if matches!(fault, Fault::AfterCommitObservation) {
+        return WriteResult::new(
+            logical,
+            Outcome::OutcomeUnknown,
+            "E-CREATE-FAULT: observation failed after exclusive commit",
+        );
+    }
+    let _ = fault;
+    let observed = if let Some(bytes) = candidate {
+        capture(root, &[selected_root.to_path_buf()], logical)
+            .is_ok_and(|s| s.bytes.as_ref() == bytes && s.parent.as_ref() == &parent_identity)
+    } else {
+        checked_path(root, &[selected_root.to_path_buf()], logical)
+            .is_ok_and(|p| p == target && p.is_dir())
+            && path_identity(parent).ok().as_ref() == Some(&parent_identity)
+    };
+    if observed {
+        WriteResult::new(logical, Outcome::Success, "Created")
+    } else {
+        WriteResult::new(
+            logical,
+            Outcome::OutcomeUnknown,
+            "E-CREATE-OBSERVATION: destination cannot be confirmed",
+        )
+    }
 }
 pub fn capture(root: &Path, roots: &[PathBuf], logical: &str) -> Result<Snapshot> {
     let path = checked_path(root, roots, logical)?;

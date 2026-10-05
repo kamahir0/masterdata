@@ -95,6 +95,7 @@ export interface Inventory {
   types: string[];
   dirty: string[];
   uncertain: string[];
+  recoveryRequired: boolean;
   generation: number;
   externalVersion: number;
   environmentError: string | null;

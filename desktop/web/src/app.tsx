@@ -2,9 +2,11 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
+  type ComponentRef,
 } from "react";
 import {
   App as AntApp,
@@ -49,6 +51,7 @@ import {
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
 import { ComplexPanel } from "./complex";
+import { useCreation } from "./creation";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -288,28 +291,57 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
 }
 function Explorer({ s }: { s: Surface }) {
   const [expanded, setExpanded] = useState(true);
+  const [keys,setKeys]=useState<string[]>(()=>s.inventory!.folders.map(p=>`folder:${p||"."}`));
+  const [selected,setSelected]=useState(s.target);
+  const [activeKey,setActiveKey]=useState<string|null>(null);
+  const [focusRequest,setFocusRequest]=useState<{key:string;intent:number}|null>(null);
+  const tree=useRef<ComponentRef<typeof Tree>>(null);
+  const container=useRef<HTMLElement|null>(null);
+  useEffect(()=>setSelected(s.target),[s.target]);
+  const ancestors=(path:string)=>path.split("/").map((_,i,parts)=>`folder:${parts.slice(0,i+1).join("/")||"."}`);
+  const creation=useCreation(s.inventory!,s.status.epoch,selected||s.target,async(path,folder,inputIntent)=>{
+    if(inputIntent!==desktop.inputIntent)return;
+    const key=folder?`folder:${path}`:path;
+    setKeys(old=>[...new Set([...old,...ancestors(folder?path:path.split("/").slice(0,-1).join("/"))])]);
+    setSelected(key);
+    if(!folder)await desktop.selectTarget(path,"creation").catch(desktop.showError);
+    if(inputIntent===desktop.inputIntent) {
+      setActiveKey(key);
+      setFocusRequest({key,intent:inputIntent});
+    }
+  });
+  const creationPending=useRef(false);creationPending.current=!!creation.draft;
+  useLayoutEffect(()=>{
+    if(!focusRequest)return;
+    const frame=requestAnimationFrame(()=>{
+      if(focusRequest.intent!==desktop.inputIntent||creationPending.current)return;
+      tree.current?.scrollTo({key:focusRequest.key});
+      // Ant Tree owns keyboard focus through aria-activedescendant. Its visual
+      // node wrapper is not focusable; focus the tree with the accepted new key.
+      container.current?.querySelector<HTMLElement>('[role="tree"]')?.focus();
+    });
+    return()=>cancelAnimationFrame(frame);
+  },[focusRequest]);
+  useEffect(()=>{
+    if(creation.draft)setKeys(old=>[...new Set([...old,...ancestors(creation.draft!.folder)])]);
+  },[creation.draft?.id]);
   const nodes = useMemo(() => {
     const roots: TreeDataNode[] = [],
       folders = new Map<string, TreeDataNode>();
-    for (const source of s.inventory?.sources ?? []) {
-      let children = roots,
-        path = "";
-      for (const part of source.path.split("/").slice(0, -1)) {
-        path = path ? `${path}/${part}` : part;
-        let folder = folders.get(path);
-        if (!folder) {
-          folder = {
-            key: `folder:${path}`,
-            title: part,
-            icon: <FolderOpenOutlined />,
-            children: [],
-            selectable: false,
-          };
-          folders.set(path, folder);
-          children.push(folder);
-        }
-        children = folder.children!;
+    function ensureFolder(logical:string) {
+      let children=roots,path="";
+      for(const part of (logical||".").split("/")) {
+        path=path?`${path}/${part}`:part;
+        let folder=folders.get(path);
+        if(!folder){folder={key:`folder:${path}`,title:part,icon:<FolderOpenOutlined/>,children:[]};folders.set(path,folder);children.push(folder);}
+        children=folder.children!;
       }
+      return children;
+    }
+    for(const folder of s.inventory?.folders??[])ensureFolder(folder);
+    for (const source of s.inventory?.sources ?? []) {
+      const parent=source.path.split("/").slice(0,-1).join("/");
+      const children=parent?ensureFolder(parent):folders.get(".")?.children??roots;
       children.push({
         key: source.path,
         title: basename(source.path),
@@ -317,10 +349,11 @@ function Explorer({ s }: { s: Surface }) {
         isLeaf: true,
       });
     }
+    if(creation.draft)ensureFolder(creation.draft.folder).push({key:"creation:temporary",title:creation.draft.filename,isLeaf:true,selectable:false});
     return roots;
-  }, [s.inventory]);
+  }, [s.inventory,creation.draft?.folder,creation.draft?.filename,creation.draft?.id]);
   return (
-    <aside id="explorer">
+    <aside id="explorer" ref={container}>
       <div className="pane-heading">
         <Button
           type="text"
@@ -330,21 +363,29 @@ function Explorer({ s }: { s: Surface }) {
         >
           Sources
         </Button>
+        <Dropdown menu={creation.menu} trigger={["click"]}>
+          <Button type="text" icon={<PlusOutlined/>} aria-label="New source artifact" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft}>New</Button>
+        </Dropdown>
       </div>
       {expanded && (
         <Tree
+          ref={tree}
+          aria-label="Sources"
+          activeKey={activeKey}
+          onActiveChange={key=>setActiveKey(key===null?null:String(key))}
           treeData={nodes}
           blockNode
           showIcon
-          defaultExpandAll
-          selectedKeys={[s.target]}
+          expandedKeys={keys}
+          onExpand={next=>setKeys(next.map(String))}
+          selectedKeys={[selected]}
           onSelect={(keys) => {
-            if (keys[0])
-              void desktop
-                .selectTarget(String(keys[0]))
-                .catch(desktop.showError);
+            if(keys[0]) {
+              const key=String(keys[0]);setSelected(key);setActiveKey(key);
+              if(!key.startsWith("folder:"))void desktop.selectTarget(key).catch(desktop.showError);
+            }
           }}
-          titleRender={(node) => (
+          titleRender={(node) => node.key==="creation:temporary"?creation.inline:(
             <span
               className="source"
               title={String(node.key)}
@@ -365,6 +406,7 @@ function Explorer({ s }: { s: Surface }) {
           )}
         />
       )}
+      {creation.modal}
     </aside>
   );
 }

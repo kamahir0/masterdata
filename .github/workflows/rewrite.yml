@@ -72,6 +72,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case external --output verification/results/external.json
+      - name: Native source creation through inline and Advanced authoring
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case creation --output verification/results/creation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -73,6 +73,16 @@ def check_external(report):
     assert report['mountedRows'] <= 64
     return {'checks': len(report['checks']), 'automaticFilesystemObservation': True}
 
+def check_creation(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['inline-cancel-composition', 'inline-table-exclusive-create',
+                               'empty-folder-selection', 'explicit-data-binding-yml',
+                               'advanced-lossless-member', 'dirty-revisit-after-creation']
+    assert report['dirty'] == ['sources/catalog-data.yaml']
+    assert not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'singleArtifactCreation': True}
+
 
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
@@ -148,12 +158,20 @@ def run(binary: Path, output: Path, case: str):
                 }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2))
-                report['summary'] = check(report) if case == 'navigation' else check_external(report) if case == 'external' else check_authoring(report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring}[case](report)
                 if case == 'external':
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == expected, 'local draft silently overwrote external source'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
+                if case == 'creation':
+                    new_sources = {str(path.relative_to(project)).replace('\\', '/') for pattern in ('*.yaml', '*.yml') for path in project.rglob(pattern)} - {str(path).replace('\\', '/') for path in initial_sources}
+                    assert new_sources == set(report['created']), 'implicit / missing created source'
+                    assert not (project / 'sources/cancelled.yaml').exists()
+                    assert 'table: fresh-table' in (project / 'sources/fresh-table.yaml').read_text()
+                    assert 'table: fresh-table' in (project / 'sources/catalog-new/storage-name.yml').read_text()
+                    assert 'value: 18446744073709551615' in (project / 'sources/catalog-new/huge-token.yaml').read_text()
+                    assert not (project / 'artifacts').exists(), 'creation implicitly built artifacts'
                 output.write_text(json.dumps(report, indent=2))
                 print(json.dumps(report['summary'], indent=2))
             finally:
@@ -165,7 +183,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation'], default='navigation')
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     run(args.binary, args.output, args.case)

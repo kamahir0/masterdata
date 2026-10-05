@@ -54,6 +54,24 @@ pub enum Intent {
         discard: bool,
     },
     Inventory,
+    CreationChoices,
+    CreationDefaults {
+        category: String,
+        path: String,
+        table: Option<String>,
+    },
+    CreationPreview {
+        request: masterdata_engine::creation::Request,
+    },
+    CreationField {
+        fields: Vec<masterdata_engine::creation::Declaration>,
+    },
+    Create {
+        request: masterdata_engine::creation::Request,
+    },
+    RecheckCreation {
+        path: String,
+    },
     AuthoringState {
         source: String,
         revision: u64,
@@ -520,7 +538,7 @@ fn watch(
     Ok(watcher)
 }
 fn inventory(w: &Workspace) -> Value {
-    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
+    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
 }
 fn execute(
     workspace: &mut Option<Workspace>,
@@ -528,10 +546,9 @@ fn execute(
     intent: Intent,
 ) -> Result<Value, UiError> {
     if let Intent::Open { path, discard } = intent {
-        if workspace
-            .as_ref()
-            .is_some_and(|w| !w.dirty_paths().is_empty())
-            && !discard
+        if workspace.as_ref().is_some_and(|w| {
+            !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()
+        }) && !discard
         {
             return Err(UiError::new(
                 "E-PROJECT-DIRTY",
@@ -549,6 +566,18 @@ fn execute(
     match intent {
         Intent::Open { .. } => unreachable!(),
         Intent::Inventory => Ok(inventory(w)),
+        Intent::CreationChoices => Ok(w.creation_choices()),
+        Intent::CreationDefaults {
+            category,
+            path,
+            table,
+        } => convert(w.creation_defaults(&category, &path, table.as_deref())?),
+        Intent::CreationPreview { request } => Ok(w.creation_preview(&request)),
+        Intent::CreationField { fields } => {
+            convert(masterdata_engine::creation::suggest_field(&fields)?)
+        }
+        Intent::Create { request } => convert(w.create_source(&request)?),
+        Intent::RecheckCreation { path } => convert(w.recheck_creation(&path)?),
         Intent::AuthoringState {
             source,
             revision,

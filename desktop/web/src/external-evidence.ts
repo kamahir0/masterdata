@@ -77,7 +77,9 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     checks.push("missing-dependency-refresh");
     await getCurrentWindow().close();
     await until(() => !!desktop.surface.choice, "native window close bypassed authoring guard");
-    const cancel = [...document.querySelectorAll<HTMLButtonElement>(".ant-modal button")].find(button => button.textContent === "Cancel");
+    const cancelButton = () => [...document.querySelectorAll<HTMLButtonElement>(".ant-modal button")].find(button => button.textContent === "Cancel");
+    await until(() => !!cancelButton(), "close guard did not render");
+    const cancel = cancelButton();
     assert(cancel, "close guard Cancel missing");
     cancel.click();
     await until(() => !desktop.surface.choice, "window guard did not cancel");

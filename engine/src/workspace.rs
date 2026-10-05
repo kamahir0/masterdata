@@ -16,6 +16,7 @@ use std::{
 
 mod batch;
 pub mod complex;
+mod creation;
 pub struct FieldShapeEdit<'a> {
     pub nullable: bool,
     pub array: bool,
@@ -217,6 +218,7 @@ pub struct Workspace {
     pub environment_error: Option<Error>,
     pub external_version: u64,
     authoring_views: BTreeMap<String, Vec<(u64, u64, AuthoringView)>>,
+    creations: BTreeMap<String, creation::PendingCreation>,
     pub recovery_required: bool,
     pub diagnostics: Vec<Diagnostic>,
     pub diagnostics_generation: u64,
@@ -250,6 +252,7 @@ impl Workspace {
             environment_error: None,
             external_version: 0,
             authoring_views: BTreeMap::new(),
+            creations: BTreeMap::new(),
             recovery_required: false,
             diagnostics: vec![],
             diagnostics_generation: 0,
@@ -441,9 +444,21 @@ impl Workspace {
         // Failed observations invalidate the read generation, while an authoring
         // overlay and its history remain intact. They must not mask a deleted,
         // malformed or rebound dependency in the next diagnostic snapshot.
-        let document = match Document::parse(snapshot.bytes.clone()) {
-            Ok(document) => document,
-            Err(error) => return Err(self.unavailable_source(path, Some(snapshot), error)),
+        // Initial Project reads already own the syntax tree. A fresh actual
+        // capture with equal bytes can reuse it; parsing the same 2k-row source
+        // again delayed first selection by hundreds of ms in native evidence.
+        // The captured file/parent identity still becomes the physical base, and
+        // every write independently preflights actual disk through native::commit.
+        let document = if previous.bytes == snapshot.bytes
+            && previous.physical == snapshot.physical
+            && let Some(document) = &previous.document
+        {
+            document.clone()
+        } else {
+            match Document::parse(snapshot.bytes.clone()) {
+                Ok(document) => Arc::new(document),
+                Err(error) => return Err(self.unavailable_source(path, Some(snapshot), error)),
+            }
         };
         let source_shape = || -> Result<()> {
             match document.root.get("kind").and_then(|n| n.text().ok()) {
@@ -488,7 +503,7 @@ impl Workspace {
                 .get(path)
                 .is_some_and(|old| !old.matches(&snapshot));
         if changed {
-            self.replace_read(path, &snapshot, Some(Arc::new(document)), None);
+            self.replace_read(path, &snapshot, Some(document), None);
             self.external_version += 1;
             if !protected {
                 self.drafts.remove(path);
@@ -1313,6 +1328,7 @@ impl Workspace {
                 )
             })
             .map(|(path, _)| path.clone())
+            .chain(self.creations.keys().cloned())
             .collect()
     }
     pub fn diagnostic_input(&self) -> Project {

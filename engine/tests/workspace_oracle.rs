@@ -18,6 +18,32 @@ fn copy(src: &Path, dst: &Path) {
 fn oracle() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/rewrite-oracle/v1")
 }
+#[test]
+fn first_source_reuses_project_syntax_only_after_fresh_actual_byte_comparison() {
+    let temp = tempfile::tempdir().unwrap();
+    copy(&oracle().join("save-both/input"), temp.path());
+    let mut w = Workspace::open(temp.path()).unwrap();
+    let (_, measurement) = instrument::measure(|| w.select("sources/data.yaml", 0, 32).unwrap());
+    assert_eq!(measurement.work.local_parse, 0);
+    assert_eq!(measurement.work.project_yaml_parse, 0);
+    let mut fresh = Workspace::open(temp.path()).unwrap();
+    let file = temp.path().join("sources/data.yaml");
+    let external = fs::read_to_string(&file)
+        .unwrap()
+        .replace("'old'", "'actual before first selection'");
+    fs::write(file, &external).unwrap();
+    let (_, measurement) =
+        instrument::measure(|| fresh.select("sources/data.yaml", 0, 32).unwrap());
+    assert_eq!(
+        fresh
+            .current_doc("sources/data.yaml")
+            .unwrap()
+            .bytes
+            .as_ref(),
+        external
+    );
+    assert_eq!(measurement.work.local_parse, 1);
+}
 fn compare(expected: &Path, actual: &Path) {
     for e in fs::read_dir(expected).unwrap() {
         let e = e.unwrap();

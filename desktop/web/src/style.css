@@ -117,6 +117,21 @@ html[data-theme="dark"] body {
   color: var(--md-accent);
   font-size: 8px;
 }
+.pane-heading > .ant-dropdown-trigger { margin-left: auto; }
+.creation-inline { padding: 2px 0 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; width: 100%; line-height: 1.4; }
+.creation-inline .ant-input-affix-wrapper, .creation-inline > .ant-select { width: 100%; }
+.creation-pending { width: 16px; min-height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.creation-inline .ant-alert { font-size: 11px; padding: 5px 6px; white-space: normal; }
+.creation-destination { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.creation-form { padding-top: 8px; }
+.creation-form > .ant-flex > .ant-form-item { flex: 1; min-width: 0; }
+.creation-form .ant-form-item { margin-bottom: 12px; }
+.creation-list-heading { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+.creation-list-row, .creation-field { padding: 6px 0; }
+.creation-field .creation-key { width: 76px; flex: 0 0 76px; }
+.creation-field .ant-select { width: 145px; flex: 0 0 145px; }
+.creation-list-row > .ant-select { flex: 1; min-width: 0; }
+.creation-field > .ant-space { margin: 5px 0 0 84px; }
 main {
   flex: 1;
   min-width: 0;

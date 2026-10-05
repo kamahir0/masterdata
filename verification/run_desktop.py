@@ -127,7 +127,7 @@ def run(binary: Path, output: Path, case: str):
         else:
             shutil.copytree(ROOT / 'fixtures/full', project)
             data = project / 'sources/catalog-data.yaml'
-            data.write_text(data.read_text().replace('numbers: [1, -2]', 'numbers: [1, "1", -2]'), encoding='utf-8')
+            data.write_text(data.read_text(encoding='utf-8').replace('numbers: [1, -2]', 'numbers: [1, "1", -2]'), encoding='utf-8')
             if case == 'external':
                 (project / 'sources/unrelated-data.yaml').write_text('kind: data\ntable: item\nrecords: []\n', encoding='utf-8')
             if case == 'path':
@@ -180,7 +180,7 @@ def run(binary: Path, output: Path, case: str):
                     if time.monotonic() >= deadline:
                         raise RuntimeError('native Desktop evidence unavailable: visible focused window did not complete')
                     if report_path.exists():
-                        try: report = json.loads(report_path.read_text())
+                        try: report = json.loads(report_path.read_text(encoding='utf-8'))
                         except json.JSONDecodeError: report = None
                         if report is not None:
                             if case in ['external', 'type'] and report.get('phase'):
@@ -206,7 +206,7 @@ def run(binary: Path, output: Path, case: str):
                         } for path, before in initial_sources.items()
                     }
                 # A failed assertion must retain the measurements that caused it.
-                output.write_text(json.dumps(report, indent=2))
+                output.write_text(json.dumps(report, indent=2), encoding='utf-8')
                 report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type}[case](report)
                 if case == 'external':
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
@@ -247,11 +247,11 @@ def run(binary: Path, output: Path, case: str):
                     new_sources = {str(path.relative_to(project)).replace('\\', '/') for pattern in ('*.yaml', '*.yml') for path in project.rglob(pattern)} - {str(path).replace('\\', '/') for path in initial_sources}
                     assert new_sources == set(report['created']), 'implicit / missing created source'
                     assert not (project / 'sources/cancelled.yaml').exists()
-                    assert 'table: fresh-table' in (project / 'sources/fresh-table.yaml').read_text()
-                    assert 'table: fresh-table' in (project / 'sources/catalog-new/storage-name.yml').read_text()
-                    assert 'value: 18446744073709551615' in (project / 'sources/catalog-new/huge-token.yaml').read_text()
+                    assert 'table: fresh-table' in (project / 'sources/fresh-table.yaml').read_text(encoding='utf-8')
+                    assert 'table: fresh-table' in (project / 'sources/catalog-new/storage-name.yml').read_text(encoding='utf-8')
+                    assert 'value: 18446744073709551615' in (project / 'sources/catalog-new/huge-token.yaml').read_text(encoding='utf-8')
                     assert not (project / 'artifacts').exists(), 'creation implicitly built artifacts'
-                output.write_text(json.dumps(report, indent=2))
+                output.write_text(json.dumps(report, indent=2), encoding='utf-8')
                 print(json.dumps(report['summary'], indent=2))
             finally:
                 process.terminate()

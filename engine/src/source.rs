@@ -112,6 +112,7 @@ pub struct Document {
     pub subset_issues: Vec<(Range<usize>, String)>,
     syntax: tree_sitter::Tree,
     line_offsets: Arc<Vec<usize>>,
+    newline: &'static str,
     pub(crate) edits: Vec<Vec<(Range<usize>, usize)>>,
 }
 
@@ -172,6 +173,9 @@ impl Document {
                 .filter(|(_, b)| *b == b'\n')
                 .map(|(i, _)| i + 1),
         );
+        // This metadata follows the immutable parsed bytes. Re-scanning a large
+        // source for every paste cell makes localization cost grow with cells × bytes.
+        let newline = if bytes.contains("\r\n") { "\r\n" } else { "\n" };
         Ok(Self {
             identity: content_identity(bytes.as_bytes()),
             bytes,
@@ -179,6 +183,7 @@ impl Document {
             subset_issues: issues,
             syntax: tree,
             line_offsets: Arc::new(line_offsets),
+            newline,
             edits: vec![],
         })
     }
@@ -287,6 +292,7 @@ impl Document {
         }
         // Construct the candidate once. Replacing every cell in a large paste in
         // reverse order would repeatedly copy the tail of the same source file.
+        let patch_stage = crate::instrument::span("patchBytes");
         let capacity = patches.iter().fold(self.bytes.len(), |n, p| {
             n - (p.span.end - p.span.start) + p.text.len()
         });
@@ -298,6 +304,8 @@ impl Document {
             cursor = patch.span.end;
         }
         output.push_str(&self.bytes[cursor..]);
+        drop(patch_stage);
+        let tree_stage = crate::instrument::span("treeEdits");
         let mut syntax = self.syntax.clone();
         let offsets = patches
             .iter()
@@ -323,6 +331,7 @@ impl Document {
                 new_end_position: new_end,
             });
         }
+        drop(tree_stage);
         let mut candidate = Self::parse_with_tree(Arc::<str>::from(output), Some(&syntax))?;
         candidate.edits = self.edits.clone();
         candidate.edits.push(offsets);
@@ -330,11 +339,7 @@ impl Document {
     }
 
     pub fn newline(&self) -> &str {
-        if self.bytes.contains("\r\n") {
-            "\r\n"
-        } else {
-            "\n"
-        }
+        self.newline
     }
     pub fn column(&self, at: usize) -> usize {
         self.point(at).column

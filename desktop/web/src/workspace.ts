@@ -467,6 +467,7 @@ class Desktop {
       input: performance.now(),
       selectionPublication: 0,
     };
+    this.sampleForeground(sample, "input");
     this.samples.push(sample);
     if (!this.evidence && this.samples.length > 256) this.samples.shift();
     this.currentSample = sample;
@@ -637,6 +638,13 @@ class Desktop {
       })]);
     } finally {clearTimeout(deadline!);this.paintResolve.delete(token);}
   }
+  private sampleForeground(sample: SelectionSample, boundary: "input" | "paint" | "interaction") {
+    if (!this.evidence) return;
+    const observed = { visibility: document.visibilityState, focused: document.hasFocus() };
+    (sample.observations ??= {})[boundary] = observed;
+    if (observed.visibility !== "visible" || !observed.focused)
+      sample.invalid ??= `measurement unavailable: foreground at ${boundary}`;
+  }
   currentType(p: TypeProjection) {
     const current=this.surface.typeProjection;
     return !this.surface.pending && this.surface.target===p.clicked && current===p && p.sessionEpoch===this.surface.status.epoch;
@@ -647,13 +655,16 @@ class Desktop {
     sample.domCommit??=performance.now();sample.reactCommit??=sample.domCommit;
     element.getBoundingClientRect();sample.layout=performance.now();
     requestAnimationFrame(()=>{
-      if(sample.token===this.token && this.currentType(p)) {sample.paintOpportunity??=performance.now();sample.mountedRows=element.querySelectorAll('.ant-table-row').length;}
+      if(sample.token===this.token && this.currentType(p)) {sample.paintOpportunity??=performance.now();sample.mountedRows=element.querySelectorAll('.ant-table-row').length;this.sampleForeground(sample,"paint");}
       else sample.invalid="obsolete before paint";
       this.paintResolve.get(sample.token)?.();this.paintResolve.delete(sample.token);
     });
   }
   acceptedType(p: TypeProjection) {
-    if(this.currentType(p) && this.currentSample?.target===p.clicked)this.currentSample.firstAccepted??=performance.now();
+    if(this.currentType(p) && this.currentSample?.target===p.clicked && !this.currentSample.firstAccepted) {
+      this.currentSample.firstAccepted=performance.now();
+      this.sampleForeground(this.currentSample,"interaction");
+    }
   }
   migrationUncertain(token:string,epoch:number,target:string) {
     if(epoch===this.surface.status.epoch)this.publish({uncertainField:{token,epoch,target}});
@@ -680,6 +691,7 @@ class Desktop {
         current.revision === projection.revision
       ) {
         sample.paintOpportunity ??= performance.now();
+        this.sampleForeground(sample, "paint");
         sample.mountedRows =
           this.viewport?.querySelectorAll(".grid-row").length ?? 0;
       } else sample.invalid = "obsolete before paint";
@@ -743,8 +755,10 @@ class Desktop {
       !sample.firstAccepted &&
       sample.target === p.clicked &&
       sample.token === this.token
-    )
+    ) {
       sample.firstAccepted = performance.now();
+      this.sampleForeground(sample, "interaction");
+    }
   }
   move(rows: number, columns: number, extend = false) {
     const p = this.surface.projection;

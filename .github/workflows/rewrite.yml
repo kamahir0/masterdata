@@ -52,6 +52,34 @@ jobs:
       - name: Shared semantics and independent oracle adapters
         run: cargo test --workspace --locked --features masterdata-engine/oracle-faults
 
+  capacity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: capacity
+      - run: cargo build -p masterdata-engine --locked --release --example capacity
+      - name: Fixed 100k corpus, all candidate cells and exact 10k paste bytes
+        shell: bash
+        run: |
+          executable=target/release/examples/capacity
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_capacity.py --binary "$executable" --output verification/results/capacity-native.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capacity-${{ matrix.os }}
+          path: verification/results
+
   desktop:
     strategy:
       fail-fast: false
@@ -87,6 +115,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --output verification/results/desktop.json
+      - name: Native Desktop 100k capacity, bounded long/wide grid and ordinary 10k paste
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case capacity --output verification/results/capacity-desktop.json
       - name: Native Desktop Build and explicit receipt-only Publish confirmation
         shell: bash
         run: |

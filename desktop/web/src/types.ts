@@ -207,4 +207,5 @@ export interface SelectionSample {
   host?: HostTiming;
   engine?: Measurement;
   invalid?: string;
+  observations?: Partial<Record<"input" | "paint" | "interaction", { visibility: string; focused: boolean }>>;
 }

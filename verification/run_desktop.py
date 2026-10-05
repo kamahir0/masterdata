@@ -11,7 +11,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from generate_corpus import navigation
+from generate_corpus import capacity, navigation
+from process_memory import child_peak, windows_peak
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +32,8 @@ def check(report):
         if sample['caseName'] in ['dirtySetup', 'dirtyAway']:
             continue
         assert 'firstAccepted' in sample, sample
+        for boundary in ['input', 'paint', 'interaction']:
+            assert sample['observations'][boundary] == {'visibility': 'visible', 'focused': True}, (boundary, sample)
         assert sample['selectionPublication'] <= sample['ipcReturn'] <= sample['statePublication'] <= sample['reactCommit'] <= sample['layout'] <= sample['paintOpportunity'] <= sample['firstAccepted'], sample
         assert sample['mountedRows'] <= 64, sample
         for counter in ['projectDiscovery', 'projectEnumeration', 'projectYamlParse', 'projectValidation']:
@@ -130,12 +133,36 @@ def check_delivery(report):
     return {'checks': len(report['checks']), 'nativeBuildAndReceiptOnlyPublish': True}
 
 
+def check_capacity(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['long-wide-bounded-projection', 'find-exact-empty-without-dirty',
+                                'ordinary-paste-exact-visible-targets', 'paste-one-undo-restores-clean-source',
+                                'redo-restores-paste-candidate']
+    assert report['bounds']['mountedRows'] <= 64 and report['bounds']['mountedCells'] <= 64 * 20
+    assert report['bounds']['activeEditors'] == 1 and not report['startup']['browserErrors']
+    assert report['dirty'] == ['sources/data00.yaml'] and report['diagnostics'] == []
+    samples = [sample for sample in report['samples'] if sample['caseName'] == 'capacityWarm']
+    assert len(samples) == 100
+    for sample in samples:
+        assert not sample.get('invalid'), sample
+        for boundary in ['input', 'paint', 'interaction']:
+            assert sample['observations'][boundary] == {'visibility': 'visible', 'focused': True}, (boundary, sample)
+        assert sample['selectionPublication'] <= sample['ipcReturn'] <= sample['statePublication'] <= sample['reactCommit'] <= sample['layout'] <= sample['paintOpportunity'] <= sample['firstAccepted'], sample
+        assert sample['mountedRows'] <= 64
+        for counter in ['projectDiscovery', 'projectEnumeration', 'projectYamlParse', 'projectValidation']:
+            assert sample['host']['work'][counter] == 0, (counter, sample)
+    values = sorted(sample['firstAccepted'] - sample['input'] for sample in samples)
+    return {'checks': len(report['checks']), 'warm': {'n': len(values), 'medianMs': values[len(values)//2],
+            'p95Ms': values[math.ceil(len(values)*.95)-1], 'maxMs': values[-1]}, 'boundedRendering': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
         project = temporary / 'project'
-        if case == 'navigation':
-            navigation(project)
+        if case in ['navigation', 'capacity']:
+            {'navigation': navigation, 'capacity': capacity}[case](project)
         else:
             shutil.copytree(ROOT / 'fixtures/full', project)
             data = project / 'sources/catalog-data.yaml'
@@ -158,7 +185,10 @@ def run(binary: Path, output: Path, case: str):
             (app / 'MacOS').mkdir(parents=True)
             shutil.copy2(executable, app / 'MacOS' / 'masterdata-desktop')
             (app / 'Info.plist').write_bytes(plistlib.dumps({
-                'CFBundleIdentifier': 'dev.masterdata.desktop', 'CFBundleName': 'MasterData Rewrite',
+                # Concurrent installed review bundles must not own this run's
+                # activation/focus. Domain identity still comes from Project.
+                'CFBundleIdentifier': 'dev.masterdata.evidence.run-' + hashlib.sha256(str(temporary).encode()).hexdigest()[:12],
+                'CFBundleName': 'MasterData Rewrite',
                 'CFBundleExecutable': 'masterdata-desktop', 'CFBundlePackageType': 'APPL',
                 'NSHighResolutionCapable': True,
             }))
@@ -196,12 +226,16 @@ def run(binary: Path, output: Path, case: str):
                 assert not (project / 'delivery').exists(), 'preview created destination'
             else: raise AssertionError(f'unknown external evidence phase {phase}')
         with (output.parent / 'desktop-process.log').open('w') as log:
+            peak = 0
+            report = None
             process = subprocess.Popen([str(executable), '--project', str(project),
                                         '--evidence-output', str(report_path), '--evidence-kind', case], stdout=log, stderr=log)
             try:
                 deadline = time.monotonic() + 240
                 while True:
                     assert process.poll() is None, f'native host exited: {process.returncode}'
+                    if case == 'capacity' and platform.system() == 'Windows':
+                        peak = max(peak, windows_peak(process))
                     if time.monotonic() >= deadline:
                         raise RuntimeError('native Desktop evidence unavailable: visible focused window did not complete')
                     if report_path.exists():
@@ -224,6 +258,10 @@ def run(binary: Path, output: Path, case: str):
                     'workingTreeChanged': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True)),
                     'binarySha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
                 }
+                if case == 'capacity':
+                    oracle = ROOT / 'fixtures/rewrite-oracle/v1/capacity.json'
+                    report['implementation']['oracleSha256'] = hashlib.sha256(oracle.read_bytes()).hexdigest()
+                    report['dimensions'] = json.loads(oracle.read_text())['input']
                 if case in ['migration', 'type']:
                     report['sourceByteEvidence'] = {
                         str(path).replace('\\', '/'): {
@@ -233,7 +271,7 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity}[case](report)
                 if case == 'delivery':
                     artifact = project / '.masterdata/output'
                     receipt = json.loads((artifact / '.masterdata-artifact-set.json').read_text(encoding='utf-8'))
@@ -281,6 +319,9 @@ def run(binary: Path, output: Path, case: str):
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == b'kind: [\n', 'Publish touched externally invalid YAML'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
+                if case == 'capacity':
+                    assert not (project / '.masterdata/output').exists(), 'capacity interaction implicitly built artifacts'
+                    report['diskUnchanged'] = True
                 if case == 'creation':
                     new_sources = {str(path.relative_to(project)).replace('\\', '/') for pattern in ('*.yaml', '*.yml') for path in project.rglob(pattern)} - {str(path).replace('\\', '/') for path in initial_sources}
                     assert new_sources == set(report['created']), 'implicit / missing created source'
@@ -292,15 +333,25 @@ def run(binary: Path, output: Path, case: str):
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
                 print(json.dumps(report['summary'], indent=2))
             finally:
+                if case == 'capacity' and platform.system() == 'Windows':
+                    peak = max(peak, windows_peak(process))
                 process.terminate()
                 process.wait(timeout=10)
+                if case == 'capacity' and report is not None:
+                    peak, boundary = child_peak(peak)
+                    report['peakRssBytes'] = peak
+                    report['peakRssBoundary'] = boundary
+                    output.write_text(json.dumps(report, indent=2), encoding='utf-8')
+                    assert peak > 0, 'peak RSS unavailable'
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity'], default='navigation')
     args = parser.parse_args()
+    if args.output.resolve().is_relative_to(ROOT / 'fixtures'):
+        parser.error('frozen fixture cannot be output')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     run(args.binary, args.output, args.case)

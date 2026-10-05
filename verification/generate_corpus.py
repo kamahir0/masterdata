@@ -28,10 +28,34 @@ def navigation(destination: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
+
+def capacity(destination: Path):
+    spec = json.loads((ORACLE / 'capacity.json').read_text())['input']
+    assert spec['recordId'] == 'fileIndex * 10000 + rowIndex'
+    assert spec['fieldValue'] == 'recordId + columnIndex'
+    destination.mkdir(parents=True, exist_ok=True)
+    (destination / 'masterdata.toml').write_text('[project]\nid = "oracle.capacity"\nname = "Capacity Oracle"\nversion = "0.1.0"\n\n[sources]\nroots = ["sources"]\n\n[build]\nartifact_dir = ".masterdata/output"\ncache = ".masterdata/cache"\n', encoding='utf-8', newline='\n')
+    directory = destination / 'sources'
+    directory.mkdir(exist_ok=True)
+    fields = [f'field{column:02}' for column in range(spec['columns'])]
+    schema = ['kind: schema', 'table: capacity', 'fields:']
+    for column, field in enumerate(fields):
+        schema.extend([f'  - key: {column}', f'    name: {field}', '    type: int'])
+    schema.extend(['primaryKey:', '  fields: [field00]'])
+    (directory / 'schema.yaml').write_text('\n'.join(schema) + '\n', encoding='utf-8', newline='\n')
+    for file in range(spec['dataFiles']):
+        lines = ['kind: data', 'table: capacity', 'records:']
+        for row in range(spec['recordsPerFile']):
+            identity = file * spec['recordsPerFile'] + row
+            for column, field in enumerate(fields):
+                lines.append(f'{"  - " if column == 0 else "    "}{field}: {identity + column}')
+        (directory / f'data{file:02}.yaml').write_text('\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('destination', type=Path)
+    parser.add_argument('--case', choices=['navigation', 'capacity'], default='navigation')
     args = parser.parse_args()
     if args.destination.resolve().is_relative_to(ROOT / 'fixtures'):
         parser.error('frozen fixtureを出力先にできない')
-    navigation(args.destination)
+    {'navigation': navigation, 'capacity': capacity}[args.case](args.destination)

@@ -131,6 +131,7 @@ impl Workspace {
         }
         let (table, types) = self.batch_context(path, revision, generation)?;
         let draft = &self.drafts[path];
+        let preflight_stage = crate::instrument::span("pastePreflight");
         let mut patches = vec![];
         let mut expected = vec![];
         for (row, values) in rows.iter().zip(values) {
@@ -160,8 +161,10 @@ impl Workspace {
                 expected.push((index + 1, field.clone(), value));
             }
         }
+        drop(preflight_stage);
         // All localization and codec checks finish before touching the physical draft.
         let candidate = draft.document.patched(patches)?;
+        let postcondition_stage = crate::instrument::span("pastePostcondition");
         for (index, field, value) in expected {
             if !matches_value(candidate.occurrence_value(index, &[field])?, &value) {
                 return Err(Error::new(
@@ -170,6 +173,7 @@ impl Workspace {
                 ));
             }
         }
+        drop(postcondition_stage);
         let draft = self.drafts.get_mut(path).unwrap();
         let changed = draft.apply(candidate, draft.row_ids.clone());
         if changed {

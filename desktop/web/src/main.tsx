@@ -93,6 +93,8 @@ if (boot.evidence) {
         ? await import("./type-evidence")
       : boot.evidenceKind === "delivery"
         ? await import("./delivery-evidence")
+      : boot.evidenceKind === "capacity"
+        ? await import("./capacity-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

@@ -125,6 +125,8 @@ export interface Surface {
   pending: boolean;
   externalPending: boolean;
   busy: boolean;
+  deliveryMutating: boolean;
+  deliveryCapturing: boolean;
   error: string | null;
   status: Status;
   query: string;
@@ -172,6 +174,8 @@ class Desktop {
     pending: false,
     externalPending: false,
     busy: false,
+    deliveryMutating: false,
+    deliveryCapturing: false,
     error: null,
     status: initialStatus,
     query: "",
@@ -249,6 +253,10 @@ class Desktop {
   }
   showError = (e: unknown) => this.publish({ error: errorText(e) });
   dismissError = () => this.publish({ error: null });
+  deliveryGate(mutating: boolean, capturing: boolean) {
+    if(mutating !== this.surface.deliveryMutating || capturing !== this.surface.deliveryCapturing)
+      this.publish({deliveryMutating:mutating,deliveryCapturing:capturing});
+  }
   setTheme = async (theme: Preference) => {
     this.publish({ theme });
     try {
@@ -383,6 +391,8 @@ class Desktop {
       pending: false,
       externalPending: false,
       busy: false,
+      deliveryMutating: false,
+      deliveryCapturing: false,
       query: "",
       queryPending: false,
       error: null,
@@ -1075,6 +1085,7 @@ class Desktop {
   };
   private async saveIntent(intent: Record<string, unknown>) {
     if (this.surface.busy) return;
+    if (this.surface.deliveryCapturing) {this.showError("保存済みinputの取得中です。完了後にSaveを再操作してください。");return;}
     const epoch = this.surface.status.epoch;
     this.publish({ busy: true, error: null });
     try {
@@ -1106,6 +1117,7 @@ class Desktop {
     }
   };
   guard(): Promise<"saved" | "discard" | "cancel"> {
+    if(this.surface.deliveryMutating) {this.showError("実行中のBuild / Publishが確定してからProjectを切り替えるか終了してください。");return Promise.resolve("cancel");}
     if (this.guardRunning) return this.guardRunning;
     this.guardRunning = (async () => {
       if (this.unconfirmedWriteViews.size) {
@@ -1319,10 +1331,33 @@ class Desktop {
       });
       const target = resolved.data;
       const current = () =>
-        this.currentFor(p) &&
+        !!this.currentFor(p) &&
         this.surface.status.generation === problem.generation &&
         this.interaction.focusIntent === intent;
       if (!current() || !target) return;
+      await this.focusResolved(p,target,current,()=>this.surface.status.generation===problem.generation);
+    } catch (e) {
+      if (
+        this.surface.target === problem.source &&
+        this.surface.status.generation === problem.generation
+      )
+        this.showError(e);
+    }
+  }
+  async focusBuildProblem(id:number,index:number,source:string) {
+    const epoch=this.surface.status.epoch;
+    try {
+      await this.selectTarget(source,"build-problem",true);
+      const intent=this.interaction.focusIntent;
+      const resolved=await this.rpc<{source:string;target:ProblemTarget|null;generation:number}>({kind:"deliveryProblemTarget",epoch,id,index});
+      const p=this.surface.projection;
+      const valid=()=>epoch===this.surface.status.epoch&&this.surface.status.generation===resolved.data.generation;
+      const current=()=>!!p&&!!this.currentFor(p)&&this.interaction.focusIntent===intent&&valid();
+      if(!p||!resolved.data.target||!current())return;
+      await this.focusResolved(p,resolved.data.target,current,valid);
+    } catch(error) {if(epoch===this.surface.status.epoch)this.showError(error);}
+  }
+  private async focusResolved(p:Projection,target:ProblemTarget,current:()=>boolean,valid:()=>boolean) {
       let at = target.viewIndex;
       if (at === null) {
         const answer = await this.choose(
@@ -1366,7 +1401,7 @@ class Desktop {
       if (
         !this.currentFor(p) ||
         applied !== this.interaction.focusIntent ||
-        this.surface.status.generation !== problem.generation
+        !valid()
       )
         return;
       this.viewport?.focus();
@@ -1384,13 +1419,6 @@ class Desktop {
           },
         });
       else if (target.field) this.beginEditor();
-    } catch (e) {
-      if (
-        this.surface.target === problem.source &&
-        this.surface.status.generation === problem.generation
-      )
-        this.showError(e);
-    }
   }
   search = (text: string) => {
     const p = this.surface.projection;

@@ -59,6 +59,7 @@ pub struct Draft {
     pub document: Arc<Document>,
     pub revision: u64,
     pub row_ids: Arc<Vec<String>>,
+    saved_rows: Arc<Vec<String>>,
     pending: Arc<BTreeMap<String, PendingRecord>>,
     added: Arc<BTreeSet<String>>,
     origin: Option<Arc<AdditionOrigin>>,
@@ -110,6 +111,7 @@ impl Draft {
                 .collect(),
         );
         self.pending = Arc::new(BTreeMap::new());
+        self.saved_rows = self.row_ids.clone();
         self.added = Arc::new(BTreeSet::new());
         self.origin = None;
     }
@@ -602,7 +604,7 @@ impl Workspace {
             .transpose()?
             .unwrap_or(0);
         let base = self.snapshots[path].clone();
-        let row_ids = Arc::new(
+        let row_ids: Arc<Vec<String>> = Arc::new(
             (0..rows)
                 .map(|i| format!("{}:{}", base.content, i + 1))
                 .collect(),
@@ -613,6 +615,7 @@ impl Workspace {
                 base,
                 document,
                 revision: 0,
+                saved_rows: row_ids.clone(),
                 row_ids,
                 pending: Arc::new(BTreeMap::new()),
                 added: Arc::new(BTreeSet::new()),

@@ -452,13 +452,14 @@ impl PublishPlan {
         &self.preview
     }
     pub fn execute(&self, fault: PublishFault) -> Result<Report> {
-        self.saved.fresh()?;
-        self.artifact.fresh()?;
         // Confirm keeps exactly the reviewed config/artifact/managed set. All
         // destinations are witnessed again before any parent creation or write.
-        for target in &self.targets {
-            target.fresh(&[])?;
-        }
+        (|| {
+            self.saved.fresh()?;
+            self.artifact.fresh()?;
+            for target in &self.targets {target.fresh(&[])?;}
+            Ok(())
+        })().map_err(|error:Error|Error::new("E-PUBLISH-STALE",format!("Publish preview is no longer authorized; request and confirm a new preview: {error}")))?;
         let mut created = vec![];
         let mut results = vec![];
         for (index, target) in self.targets.iter().enumerate() {

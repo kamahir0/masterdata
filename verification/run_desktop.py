@@ -118,6 +118,18 @@ def check_type(report):
     return {'checks': len(report['checks']), 'typedOperationsAndExplicitApply': True}
 
 
+def check_delivery(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['contextual-drawer-saved-input', 'build-live-navigation-draft-and-warm-zero',
+                                'native-build-then-preview-cancel-retains-artifacts', 'missing-profile-publish-independent',
+                                'stale-preview-fresh-confirm-no-write', 'confirmed-receipt-publish-invalid-source']
+    assert report['state']['result']['unityVerification'] == 'not_observed'
+    assert report['dirty'] == ['sources/catalog-data.yaml']
+    assert not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'nativeBuildAndReceiptOnlyPublish': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
@@ -127,7 +139,11 @@ def run(binary: Path, output: Path, case: str):
         else:
             shutil.copytree(ROOT / 'fixtures/full', project)
             data = project / 'sources/catalog-data.yaml'
-            data.write_text(data.read_text(encoding='utf-8').replace('numbers: [1, -2]', 'numbers: [1, "1", -2]'), encoding='utf-8')
+            if case != 'delivery':
+                data.write_text(data.read_text(encoding='utf-8').replace('numbers: [1, -2]', 'numbers: [1, "1", -2]'), encoding='utf-8')
+            else:
+                config = project / 'masterdata.toml'
+                config.write_text(config.read_text(encoding='utf-8') + '\n[build.profiles.development]\ninclude_tags = ["development"]\n', encoding='utf-8')
             if case == 'external':
                 (project / 'sources/unrelated-data.yaml').write_text('kind: data\ntable: item\nrecords: []\n', encoding='utf-8')
             if case == 'path':
@@ -169,6 +185,15 @@ def run(binary: Path, output: Path, case: str):
             elif phase == 'type-stale':
                 file = project / 'sources/ranges.yaml'
                 file.write_bytes(file.read_bytes() + b'\n# External type change\n')
+            elif phase == 'delivery-target':
+                config = project / 'masterdata.toml'
+                text = config.read_text(encoding='utf-8').split('\n[build.profiles.development]')[0]
+                config.write_text(text + '\n[[publish.targets]]\nkind = "csharp"\npath = "delivery/generated"\n\n[[publish.targets]]\nkind = "binary"\npath = "delivery/masterdata.bytes"\n', encoding='utf-8')
+                data.write_bytes(b'kind: [\n')
+            elif phase == 'delivery-stale':
+                config = project / 'masterdata.toml'
+                config.write_bytes(config.read_bytes() + b'\n# External change after preview\n')
+                assert not (project / 'delivery').exists(), 'preview created destination'
             else: raise AssertionError(f'unknown external evidence phase {phase}')
         with (output.parent / 'desktop-process.log').open('w') as log:
             process = subprocess.Popen([str(executable), '--project', str(project),
@@ -183,11 +208,12 @@ def run(binary: Path, output: Path, case: str):
                         try: report = json.loads(report_path.read_text(encoding='utf-8'))
                         except json.JSONDecodeError: report = None
                         if report is not None:
-                            if case in ['external', 'type'] and report.get('phase'):
+                            if case in ['external', 'type', 'delivery'] and report.get('phase'):
                                 phase = report['phase']
                                 if phase not in handled:
                                     external_phase(phase)
                                     handled.add(phase)
+                                    report_path.with_suffix('.ack').write_text(json.dumps({'phase': phase, 'complete': True}), encoding='utf-8')
                             else: break
                     time.sleep(.1)
                 report['environment'] = {'os': platform.system(), 'release': platform.release(),
@@ -207,7 +233,17 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery}[case](report)
+                if case == 'delivery':
+                    artifact = project / '.masterdata/output'
+                    receipt = json.loads((artifact / '.masterdata-artifact-set.json').read_text(encoding='utf-8'))
+                    assert (project / 'delivery/masterdata.bytes').read_bytes() == (artifact / 'masterdata.bytes').read_bytes()
+                    assert hashlib.sha256((artifact / 'masterdata.bytes').read_bytes()).hexdigest() == receipt['binary']['hash']
+                    for entry in receipt['csharp']:
+                        canonical = artifact / 'csharp' / entry['path']
+                        assert hashlib.sha256(canonical.read_bytes()).hexdigest() == entry['hash']
+                        assert (project / 'delivery/generated' / entry['path']).read_bytes() == canonical.read_bytes()
+                    assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path != Path('sources/catalog-data.yaml')), 'delivery changed source'
                 if case == 'external':
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == expected, 'local draft silently overwrote external source'
@@ -241,6 +277,8 @@ def run(binary: Path, output: Path, case: str):
                     assert (project / ranges).read_bytes() == initial_sources[ranges] + b'\n# External type change\n', 'stale Plan overwrote the external change'
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path not in [source, ranges]), 'inverse Type operations failed exact restoration or wrote a draft'
                     assert not (project / '.masterdata/output').exists(), 'Type Apply implicitly built artifacts'
+                elif case == 'delivery':
+                    assert (project / 'sources/catalog-data.yaml').read_bytes() == b'kind: [\n', 'Publish touched externally invalid YAML'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
                 if case == 'creation':
@@ -262,7 +300,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery'], default='navigation')
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     run(args.binary, args.output, args.case)

@@ -50,6 +50,7 @@ import {
   PlusOutlined,
   CopyOutlined,
   EditOutlined,
+  BuildOutlined,
 } from "@ant-design/icons";
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
@@ -57,6 +58,8 @@ import { ComplexPanel } from "./complex";
 import { useCreation } from "./creation";
 import { useSourcePath } from "./source-path";
 import { TypeSurface } from "./type-editor";
+import { DeliveryDrawer } from "./delivery";
+import { delivery } from "./delivery-state";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -132,7 +135,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   const { token } = theme.useToken();
   const [recoveryOpen,setRecoveryOpen]=useState(false);
   useEffect(()=>{if(s.status.recoveryRequired)void desktop.refreshInventory().catch(desktop.showError);},[s.status.recoveryRequired]);
-  const variables = {
+  const variables = useMemo(() => ({
     "--md-bg": token.colorBgContainer,
     "--md-app": token.colorBgLayout,
     "--md-panel": token.colorFillAlter,
@@ -153,7 +156,12 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     "--md-motion": token.motionDurationMid,
     "--md-ease": token.motionEaseInOut,
     "--md-hover": token.colorFillTertiary,
-  } as CSSProperties;
+  }) as CSSProperties, [token]);
+  useLayoutEffect(() => {
+    // Ant overlays use body portals. The same semantic token layer must reach
+    // those portals as well as the application frame.
+    for(const [name,value] of Object.entries(variables))document.documentElement.style.setProperty(name,String(value));
+  }, [variables]);
   const projectItems: MenuProps["items"] = [
     {
       key: "saveAll",
@@ -161,7 +169,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       icon: <SaveOutlined />,
       disabled:
         !s.inventory ||
-        s.busy ||
+        s.busy || s.deliveryCapturing ||
         s.status.recoveryRequired ||
         !!s.status.uncertain.length,
     },
@@ -169,9 +177,10 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       key: "reload",
       label: "Reload Project",
       icon: <ReloadOutlined />,
-      disabled: !s.inventory || s.busy,
+      disabled: !s.inventory || s.busy || s.deliveryMutating,
     },
     { type: "divider" },
+    {key:"delivery",label:"Build / Publish…",icon:<BuildOutlined/>,disabled:!s.inventory},
     {
       key: "appearance",
       label: "Application Settings",
@@ -196,6 +205,8 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
             <Button
               type="text"
               icon={<FolderOpenOutlined />}
+              disabled={s.deliveryMutating}
+              title={s.deliveryMutating?"Build / Publishの完了後にProjectを開いてください。":undefined}
               onClick={desktop.pickProject}
             >
               Open Project
@@ -208,7 +219,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                   disabled={
                     !s.projection ||
                     s.pending ||
-                    s.busy ||
+                    s.busy || s.deliveryCapturing ||
                     s.status.recoveryRequired ||
                     s.projection.writeStates.some(
                       (w) =>
@@ -237,6 +248,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                   if (key === "saveAll") void desktop.saveAll();
                   else if (key === "reload")
                     void desktop.reloadProject().catch(desktop.showError);
+                  else if (key === "delivery") delivery.open();
                   else desktop.appearance(true);
                 },
               }}
@@ -294,6 +306,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       <ChoiceModal s={s} />
       <CompareModal s={s} />
       <AppearanceModal s={s} />
+      <DeliveryDrawer s={s} />
       <RecoveryDrawer s={s} open={recoveryOpen && s.status.recoveryRequired} close={()=>setRecoveryOpen(false)} />
     </div>
   );
@@ -454,6 +467,7 @@ function TableSurface({ s }: { s: Surface }) {
     s.status.recoveryRequired ||
     !!uncertain;
   const items: MenuProps["items"] = [
+    {key:"delivery",label:"Build / Publish…",icon:<BuildOutlined/>},
     {
       key: "compare",
       label: "Compare save candidate",
@@ -528,7 +542,7 @@ function TableSurface({ s }: { s: Surface }) {
           />
           <Dropdown
             trigger={["click"]}
-            menu={{ items, onClick: () => void desktop.compare() }}
+            menu={{ items, onClick: ({key}) => key==="delivery"?delivery.open():void desktop.compare() }}
           >
             <Button
               type="text"

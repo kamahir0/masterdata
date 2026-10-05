@@ -77,12 +77,33 @@ fn finish_exit(
     state: tauri::State<'_, Host>,
     discard: bool,
 ) -> Result<(), String> {
+    if state.session.mutating() {
+        return Err("running mutation must finish before closing Project".into());
+    }
     if state.session.protected.load(Ordering::Acquire) && !discard {
         return Err("unsaved state remains".into());
     }
     state.exit_allowed.store(true, Ordering::Release);
     app.exit(0);
     Ok(())
+}
+#[tauri::command]
+async fn evidence_phase(state: tauri::State<'_, Host>) -> Result<Value, String> {
+    if !cfg!(feature = "desktop-evidence") {
+        return Err("evidence disabled".into());
+    }
+    let path = state
+        .evidence_output
+        .as_ref()
+        .ok_or("evidence output not configured")?
+        .with_extension("ack");
+    tauri::async_runtime::spawn_blocking(move || match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| e.to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+        Err(error) => Err(error.to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 fn evidence_write(
@@ -136,6 +157,7 @@ pub fn run() {
         (true, Some("path")) => "path",
         (true, Some("migration")) => "migration",
         (true, Some("type")) => "type",
+        (true, Some("delivery")) => "delivery",
         _ => "navigation",
     }
     .to_string();
@@ -177,7 +199,8 @@ pub fn run() {
             boot,
             application_preferences,
             finish_exit,
-            evidence_write
+            evidence_write,
+            evidence_phase
         ])
         .build(tauri::generate_context!())
         .expect("MasterData Desktop host");

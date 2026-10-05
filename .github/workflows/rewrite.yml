@@ -32,6 +32,8 @@ jobs:
         run: cargo test -p masterdata-engine --locked --features native-consumer --test build_consumer -- --nocapture --test-threads=1
       - name: CLI Build, receipt-only Publish and combined result boundary
         run: cargo test -p masterdata-command --locked --features native-consumer --test cli_delivery -- --nocapture --test-threads=1
+      - name: Long-lived Desktop delivery, live navigation and captured saved inputs
+        run: cargo test -p masterdata-desktop --locked --features native-consumer --test delivery -- --nocapture --test-threads=1
 
   shared-engine:
     strategy:
@@ -58,6 +60,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -82,6 +87,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --output verification/results/desktop.json
+      - name: Native Desktop Build and explicit receipt-only Publish confirmation
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case delivery --output verification/results/delivery.json
       - name: Native WebView authoring events, spatial previews, cancellation and nested Problems
         shell: bash
         run: |

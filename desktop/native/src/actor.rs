@@ -34,7 +34,7 @@ impl From<Error> for UiError {
     }
 }
 impl UiError {
-    fn new(code: &str, message: &str) -> Self {
+    pub(crate) fn new(code: &str, message: &str) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -49,6 +49,19 @@ type Reply = Result<String, UiError>;
     rename_all_fields = "camelCase"
 )]
 pub enum Intent {
+    DeliveryStart {
+        request: crate::delivery::Request,
+    },
+    DeliveryState,
+    DeliveryProblems {
+        id: u64,
+        start: usize,
+        count: usize,
+    },
+    DeliveryProblemTarget {
+        id: u64,
+        index: usize,
+    },
     Open {
         path: String,
         discard: bool,
@@ -289,6 +302,26 @@ pub enum Intent {
     },
 }
 impl Intent {
+    fn operation_flags(&self) -> Option<(bool, bool)> {
+        match self {
+            Self::DeliveryStart { request } => Some(request.flags()),
+            Self::MigrationApply { .. }
+            | Self::MigrationRecovery { .. }
+            | Self::FieldOperation { .. } => Some((true, true)),
+            _ => None,
+        }
+    }
+    fn source_write(&self) -> bool {
+        matches!(
+            self,
+            Self::Save { .. }
+                | Self::SaveAll
+                | Self::SaveSource { .. }
+                | Self::Overwrite { .. }
+                | Self::Create { .. }
+                | Self::MoveSource { .. }
+        )
+    }
     fn token(&self) -> Option<u64> {
         if let Self::Select { token, .. } = self {
             Some(*token)
@@ -353,6 +386,7 @@ pub struct Status {
 pub struct Session {
     queue: Arc<Queue>,
     pub protected: Arc<AtomicBool>,
+    delivery: crate::delivery::Session,
 }
 impl Default for Session {
     fn default() -> Self {
@@ -404,6 +438,8 @@ impl Session {
                 }
             })
             .expect("diagnostics worker");
+        let delivery = crate::delivery::Session::default();
+        let jobs = delivery.clone();
         let q = queue.clone();
         let guard = protected.clone();
         thread::Builder::new().name("masterdata-workspace".into()).spawn(move || {
@@ -438,6 +474,7 @@ impl Session {
                     }
                     Work::Job(job) => {
                         if job.epoch.is_some_and(|expected| expected != epoch) {
+                            if job.intent.operation_flags().is_some() {jobs.gate.release();}
                             let _ = job.reply.send(Err(UiError::new("E-PROJECT-OBSOLETE", "request belongs to a previous Project session")));
                             continue;
                         }
@@ -449,8 +486,11 @@ impl Session {
                         let queued_ms = job.enqueued.elapsed().as_secs_f64() * 1000.0;
                         let start = Instant::now();
                         let previous_epoch = epoch;
+                        let operation=job.intent.operation_flags().is_some();
+                        let background=matches!(job.intent,Intent::DeliveryStart{..});
                         if matches!(job.intent, Intent::Validate) { scheduled = 0; }
-                        let (result, measurement) = instrument::measure(|| execute(&mut workspace, &mut epoch, job.intent));
+                        let (result, measurement) = instrument::measure(|| execute(&mut workspace, &mut epoch, &jobs, job.intent));
+                        if operation && (!background || result.is_err()) {jobs.gate.release();}
                         if epoch != previous_epoch {
                             scheduled = 0;
                             _watcher = None;
@@ -461,7 +501,7 @@ impl Session {
                                 }
                             }
                         }
-                        guard.store(workspace.as_ref().is_some_and(|w| !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()), Ordering::Release);
+                        guard.store(jobs.gate.mutating() || workspace.as_ref().is_some_and(|w| !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()), Ordering::Release);
                         let reply = if token.is_some_and(|t| t != q.latest.load(Ordering::Acquire)) {
                             Err(UiError::new("E-SELECTION-OBSOLETE", "selection superseded"))
                         } else {
@@ -477,7 +517,7 @@ impl Session {
                     }
                 }
                 if let Some(w) = workspace.as_ref() {
-                    guard.store(!w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty(), Ordering::Release);
+                    guard.store(jobs.gate.mutating() || !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty(), Ordering::Release);
                     publish(Status { open:true, epoch, generation:w.generation, dirty:w.dirty_paths(), recovery_required:w.recovery_required, diagnostics_pending:w.diagnostics_pending, problem_count:w.diagnostics.len(), uncertain:w.uncertain_paths(), external_version:w.external_version, environment_error:w.environment_error.as_ref().map(ToString::to_string) });
                     if w.diagnostics_pending && scheduled != w.generation {
                         let mut p = validator.pending.lock().unwrap();
@@ -491,14 +531,54 @@ impl Session {
             p.stopped = true;
             validator.wake.notify_one();
         }).expect("workspace worker");
-        Self { queue, protected }
+        Self {
+            queue,
+            protected,
+            delivery,
+        }
     }
     pub fn submit(&self, intent: Intent) -> oneshot::Receiver<Reply> {
         self.submit_at(intent, None)
     }
     fn submit_at(&self, intent: Intent, epoch: Option<u64>) -> oneshot::Receiver<Reply> {
         let (tx, rx) = oneshot::channel();
+        if matches!(intent, Intent::Open { .. }) && self.delivery.gate.mutating() {
+            let _ = tx.send(Err(UiError::new(
+                "E-DELIVERY-BUSY",
+                "wait for the running mutation to finish, then switch Project explicitly",
+            )));
+            return rx;
+        }
+        if intent.source_write() && self.delivery.gate.capturing() {
+            let _ = tx.send(Err(UiError::new(
+                "E-DELIVERY-CAPTURING",
+                "saved input capture / structural operation is running; Save was not queued",
+            )));
+            return rx;
+        }
+        let reserved = if let Some((mutation, capture)) = intent.operation_flags() {
+            if let Err(error) = self.delivery.gate.reserve(mutation, capture) {
+                let _ = tx.send(Err(error));
+                return rx;
+            }
+            if mutation {
+                self.protected.store(true, Ordering::Release);
+            }
+            true
+        } else {
+            false
+        };
         let mut pending = self.queue.pending.lock().unwrap();
+        if pending.stopped {
+            if reserved {
+                self.delivery.gate.release();
+            }
+            let _ = tx.send(Err(UiError::new(
+                "E-WORKSPACE-CLOSED",
+                "workspace worker closed",
+            )));
+            return rx;
+        }
         if let Some(token) = intent.token() {
             let latest = self.queue.latest.fetch_max(token, Ordering::AcqRel);
             if token < latest {
@@ -521,6 +601,9 @@ impl Session {
                 )));
             }
         } else if pending.commands.len() >= 64 {
+            if reserved {
+                self.delivery.gate.release();
+            }
             let _ = tx.send(Err(UiError::new(
                 "E-WORKSPACE-BUSY",
                 "pending authoring operations are bounded; try after current operation",
@@ -556,6 +639,9 @@ impl Session {
         let mut p = self.queue.pending.lock().unwrap();
         p.stopped = true;
         self.queue.wake.notify_one();
+    }
+    pub fn mutating(&self) -> bool {
+        self.delivery.gate.mutating()
     }
 }
 fn convert<T: Serialize>(v: T) -> Result<Value, UiError> {
@@ -605,9 +691,16 @@ fn inventory(w: &Workspace) -> Value {
 fn execute(
     workspace: &mut Option<Workspace>,
     epoch: &mut u64,
+    delivery: &crate::delivery::Session,
     intent: Intent,
 ) -> Result<Value, UiError> {
     if let Intent::Open { path, discard } = intent {
+        if delivery.gate.mutating() {
+            return Err(UiError::new(
+                "E-DELIVERY-BUSY",
+                "running mutation must finish before Project switch",
+            ));
+        }
         if workspace.as_ref().is_some_and(|w| {
             !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()
         }) && !discard
@@ -626,7 +719,35 @@ fn execute(
         .as_mut()
         .ok_or_else(|| UiError::new("E-PROJECT-NOT-OPEN", "Open Project required"))?;
     w.detect_recovery();
+    if intent.source_write() && delivery.gate.capturing() {
+        return Err(UiError::new(
+            "E-DELIVERY-CAPTURING",
+            "saved input capture / structural operation is running; Save was not queued",
+        ));
+    }
     match intent {
+        Intent::DeliveryStart { request } => {
+            if matches!(request, crate::delivery::Request::Build { .. }) && w.recovery_required {
+                return Err(UiError::new(
+                    "E-RECOVERY-REQUIRED",
+                    "Build is blocked until source-set Recovery is established",
+                ));
+            }
+            delivery.start(*epoch, &w.read, request)
+        }
+        Intent::DeliveryState => delivery.snapshot(*epoch),
+        Intent::DeliveryProblems { id, start, count } => {
+            delivery.problems(*epoch, id, start, count)
+        }
+        Intent::DeliveryProblemTarget { id, index } => {
+            let (diagnostic, captured) = delivery.problem(*epoch, id, index)?;
+            let target = w.saved_problem_target(
+                &diagnostic,
+                &captured.config_identity,
+                &captured.input_identity,
+            )?;
+            Ok(json!({"source":diagnostic.source,"target":target,"generation":w.generation}))
+        }
         Intent::Open { .. } => unreachable!(),
         Intent::Inventory => Ok(inventory(w)),
         Intent::CreationChoices => Ok(w.creation_choices()),

@@ -18,6 +18,7 @@ pub mod workspace;
 pub struct Error {
     pub code: &'static str,
     pub message: String,
+    pub diagnostics: Option<std::sync::Arc<[project::Diagnostic]>>,
 }
 
 impl Error {
@@ -25,7 +26,12 @@ impl Error {
         Self {
             code,
             message: message.into(),
+            diagnostics: None,
         }
+    }
+    pub fn with_diagnostics(mut self, diagnostics: Vec<project::Diagnostic>) -> Self {
+        self.diagnostics = Some(diagnostics.into());
+        self
     }
 }
 

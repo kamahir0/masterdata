@@ -18,6 +18,8 @@ Desktop hostにはTauri 2を使う。macOSのWKWebView / WindowsのWebView2でna
 
 CLIは同じengineをshort-livedに使用する。.NET process invocationはnative delivery boundaryに集約し、validated Rust valuesとgenerated C#をnative MasterMemoryへ渡す。YAMLを.NETで再解釈しない。
 
+Desktop delivery jobはworkspace actorから分離したnative workerで実行する。長いcompile / destination I/Oがsource selectionやdraft authoringを待たせないためである。immutable BuildPlanを確定するまでのinput取得と、その後のartifact / structural mutationの排他を別に扱い、Project epochに対応した結果を保持する。
+
 session内history / projection / diagnosticsは永続sourceではない。shared configはproject、reconstructable project UI stateはproject-local、theme / recent projectsはOS per-user application storageへ置く。
 
 ## 結果（Consequences）

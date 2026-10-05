@@ -366,6 +366,7 @@ impl Workspace {
                         let changed = draft.document.bytes != document.bytes;
                         draft.document = document.clone();
                         draft.base = actual.clone();
+                        draft.saved_rows = draft.row_ids.clone();
                         draft.revision += 1;
                         draft.outcome = None;
                         draft.external = None;

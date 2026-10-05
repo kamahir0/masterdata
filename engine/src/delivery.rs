@@ -17,6 +17,9 @@ pub struct SavedConfig {
     pub(crate) snapshot: crate::native::Snapshot,
 }
 impl SavedConfig {
+    pub fn identity(&self) -> &str {
+        &self.snapshot.content
+    }
     /// Publish loads configuration without inspecting source YAML or requiring
     /// a still-existing source tree. The receipt owns artifact eligibility.
     pub fn load(root: &Path) -> Result<Self> {
@@ -65,10 +68,22 @@ pub struct BuildReport {
 }
 
 pub fn build(root: &Path, options: &BuildOptions) -> Result<BuildReport> {
-    let plan = BuildPlan::capture(root, options.profile.as_deref())?;
+    build_observed(root, options, |_| Ok(()))
+}
+pub enum BuildStage<'a> {
+    Snapshot(&'a Project),
+    Ready,
+}
+pub fn build_observed(
+    root: &Path,
+    options: &BuildOptions,
+    mut observe: impl FnMut(BuildStage<'_>) -> Result<()>,
+) -> Result<BuildReport> {
+    let plan = BuildPlan::capture_observed(root, options.profile.as_deref(), &mut observe)?;
     // Capture actual output/config identity before compilation. A successful
     // native process cannot grant permission to replace another concurrent set.
     let guard = artifact::Guard::prepare(&plan)?;
+    observe(BuildStage::Ready)?;
     let built = dotnet::build(&plan)?;
     let receipt = artifact::receipt(&plan.project.config.project.id, &plan.csharp, &built.binary);
     let committed = if options.dry_run {
@@ -110,6 +125,13 @@ pub struct BuildPlan {
 }
 impl BuildPlan {
     pub fn capture(root: &Path, profile: Option<&str>) -> Result<Self> {
+        Self::capture_observed(root, profile, &mut |_| Ok(()))
+    }
+    fn capture_observed(
+        root: &Path,
+        profile: Option<&str>,
+        observe: &mut impl FnMut(BuildStage<'_>) -> Result<()>,
+    ) -> Result<Self> {
         let project = Project::open(root)?;
         if crate::native::has_pending_recovery(&project.root)? {
             return Err(Error::new(
@@ -118,6 +140,7 @@ impl BuildPlan {
             ));
         }
         crate::native::confirm_saved_input(&project)?;
+        observe(BuildStage::Snapshot(&project))?;
         let (diagnostics, rows) = project.validate(profile)?;
         if let Some(error) = diagnostics
             .iter()
@@ -129,7 +152,8 @@ impl BuildPlan {
                     "{}:{}:{} {}: {}",
                     error.source, error.line, error.column, error.code, error.message
                 ),
-            ));
+            )
+            .with_diagnostics(diagnostics));
         }
         let csharp = codegen::generate(&project)?;
         Ok(Self {

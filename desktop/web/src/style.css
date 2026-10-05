@@ -733,3 +733,15 @@ main {
     scroll-behavior: auto !important;
   }
 }
+/* Delivery is contextual, with a stable nonmodal boundary to the authoring grid. */
+.delivery-drawer .ant-typography { margin-bottom: 6px; }
+.delivery-label { display: block; margin-bottom: 6px; color: var(--md-muted); }
+.delivery-progress { display: flex; gap: 12px; align-items: flex-start; }
+.delivery-caption { margin: 4px 0; font-size: 12px; color: var(--md-muted); }
+.delivery-target { width: 100%; min-width: 0; }
+.delivery-path { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.delivery-path small, .delivery-problem small { display: block; color: var(--md-muted); font-size: 11px; }
+.delivery-preview { padding: 12px; border: 1px solid var(--md-border); border-radius: var(--md-radius); background: var(--md-panel); }
+.delivery-artifact { margin-bottom: 12px; }
+.delivery-confirm { margin-top: 12px; }
+.delivery-problem.ant-btn { display: flex; width: 100%; height: auto; text-align: left; white-space: normal; align-items: flex-start; padding: 6px 4px; }

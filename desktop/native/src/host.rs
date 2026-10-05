@@ -133,6 +133,7 @@ pub fn run() {
         (true, Some("authoring")) => "authoring",
         (true, Some("external")) => "external",
         (true, Some("creation")) => "creation",
+        (true, Some("path")) => "path",
         _ => "navigation",
     }
     .to_string();

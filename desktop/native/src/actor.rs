@@ -72,6 +72,25 @@ pub enum Intent {
     RecheckCreation {
         path: String,
     },
+    PathMoveChoices {
+        source: String,
+    },
+    PathMovePreview {
+        source: String,
+        destination: String,
+    },
+    MoveSource {
+        token: String,
+    },
+    RecheckMove {
+        token: String,
+    },
+    SaveSource {
+        source: String,
+    },
+    DiscardSource {
+        source: String,
+    },
     AuthoringState {
         source: String,
         revision: u64,
@@ -578,6 +597,20 @@ fn execute(
         }
         Intent::Create { request } => convert(w.create_source(&request)?),
         Intent::RecheckCreation { path } => convert(w.recheck_creation(&path)?),
+        Intent::PathMoveChoices { source } => Ok(w.path_move_choices(&source)?),
+        Intent::PathMovePreview {
+            source,
+            destination,
+        } => convert(w.prepare_path_move(&source, &destination)?),
+        Intent::MoveSource { token } => convert(w.apply_path_move(&token)?),
+        Intent::RecheckMove { token } => convert(w.recheck_path_move(&token)?),
+        Intent::SaveSource { source } => {
+            convert(w.save_paths(vec![source], masterdata_engine::native::Fault::None)?)
+        }
+        Intent::DiscardSource { source } => {
+            w.discard_source(&source)?;
+            Ok(Value::Null)
+        }
         Intent::AuthoringState {
             source,
             revision,

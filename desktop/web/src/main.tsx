@@ -85,6 +85,8 @@ if (boot.evidence) {
         ? await import("./external-evidence")
       : boot.evidenceKind === "creation"
         ? await import("./creation-evidence")
+      : boot.evidenceKind === "path"
+        ? await import("./path-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

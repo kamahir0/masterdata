@@ -47,11 +47,13 @@ import {
   WarningOutlined,
   PlusOutlined,
   CopyOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
 import { ComplexPanel } from "./complex";
 import { useCreation } from "./creation";
+import { useSourcePath } from "./source-path";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -311,6 +313,13 @@ function Explorer({ s }: { s: Surface }) {
     }
   });
   const creationPending=useRef(false);creationPending.current=!!creation.draft;
+  const pathMutation=useSourcePath(s.status.epoch,(source,destination,inputIntent)=>{
+    setKeys(old=>[...new Set([...old,...ancestors(destination.split("/").slice(0,-1).join("/"))])]);
+    if(inputIntent!==desktop.inputIntent)return;
+    setSelected(old=>old===source?destination:old);
+    setActiveKey(destination);setFocusRequest({key:destination,intent:inputIntent});
+  });
+  const sourceItems:MenuProps={items:[{key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selected||selected.startsWith("folder:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selected)}],onClick:()=>void pathMutation.begin(selected)};
   useLayoutEffect(()=>{
     if(!focusRequest)return;
     const frame=requestAnimationFrame(()=>{
@@ -363,11 +372,15 @@ function Explorer({ s }: { s: Surface }) {
         >
           Sources
         </Button>
-        <Dropdown menu={creation.menu} trigger={["click"]}>
-          <Button type="text" icon={<PlusOutlined/>} aria-label="New source artifact" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft}>New</Button>
-        </Dropdown>
+        <Space size={0}>
+          <Dropdown menu={creation.menu} trigger={["click"]}>
+            <Button type="text" icon={<PlusOutlined/>} aria-label="New source artifact" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft||pathMutation.open}>New</Button>
+          </Dropdown>
+          <Dropdown menu={sourceItems} trigger={["click"]}><Button type="text" icon={<MoreOutlined/>} aria-label="Source actions" title="Source actions"/></Dropdown>
+        </Space>
       </div>
       {expanded && (
+        <Dropdown menu={sourceItems} trigger={["contextMenu"]}>
         <Tree
           ref={tree}
           aria-label="Sources"
@@ -379,6 +392,8 @@ function Explorer({ s }: { s: Surface }) {
           expandedKeys={keys}
           onExpand={next=>setKeys(next.map(String))}
           selectedKeys={[selected]}
+          onRightClick={({node})=>{const key=String(node.key);setSelected(key);setActiveKey(key);}}
+          onKeyDown={event=>{if(event.key==="F2"&&!event.nativeEvent.isComposing){event.preventDefault();if(selected&&!selected.startsWith("folder:"))void pathMutation.begin(selected);}}}
           onSelect={(keys) => {
             if(keys[0]) {
               const key=String(keys[0]);setSelected(key);setActiveKey(key);
@@ -405,8 +420,10 @@ function Explorer({ s }: { s: Surface }) {
             </span>
           )}
         />
+        </Dropdown>
       )}
       {creation.modal}
+      {pathMutation.modal}
     </aside>
   );
 }

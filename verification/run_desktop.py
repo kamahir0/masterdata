@@ -83,6 +83,16 @@ def check_creation(report):
     assert not report['startup']['browserErrors']
     return {'checks': len(report['checks']), 'singleArtifactCreation': True}
 
+def check_path(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['path-cancel-composition', 'target-dirty-cancel', 'target-only-save-rename',
+                                'case-only-rename', 'target-only-discard-move', 'destination-conflict-no-overwrite']
+    assert report['dirty'] == ['sources/catalog-schema.yaml']
+    assert report['destination'] == 'sources/moved/Renamed-data.yml'
+    assert not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'scopedGuardAndExactMove': True}
+
 
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
@@ -96,6 +106,8 @@ def run(binary: Path, output: Path, case: str):
             data.write_text(data.read_text().replace('numbers: [1, -2]', 'numbers: [1, "1", -2]'), encoding='utf-8')
             if case == 'external':
                 (project / 'sources/unrelated-data.yaml').write_text('kind: data\ntable: item\nrecords: []\n', encoding='utf-8')
+            if case == 'path':
+                (project / 'sources/moved').mkdir()
         initial_sources = {path.relative_to(project): path.read_bytes() for path in project.rglob('*.yaml')}
         executable = binary.resolve()
         if platform.system() == 'Darwin':
@@ -158,10 +170,17 @@ def run(binary: Path, output: Path, case: str):
                 }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2))
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path}[case](report)
                 if case == 'external':
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == expected, 'local draft silently overwrote external source'
+                elif case == 'path':
+                    original = Path('sources/catalog-data.yaml')
+                    assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path != original), 'Move saved unrelated source'
+                    assert not (project / original).exists()
+                    assert (project / report['destination']).read_bytes() == initial_sources[original].replace(b'name: Debug Sword', b'name: Saved before move'), 'Move rewrote source or saved discarded draft'
+                    assert not (project / 'sources/cancelled.yaml').exists()
+                    assert not (project / '.masterdata').exists(), 'Move implicitly built artifacts'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
                 if case == 'creation':
@@ -183,7 +202,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path'], default='navigation')
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     run(args.binary, args.output, args.case)

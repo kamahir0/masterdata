@@ -78,6 +78,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case creation --output verification/results/creation.json
+      - name: Native source path mutation with physical-source Save / Discard guard
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case path --output verification/results/path.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -221,6 +221,7 @@ class Desktop {
   private externalRunning = false;
   private externalPending = false;
   private guardRunning: Promise<"saved" | "discard" | "cancel"> | null = null;
+  private unconfirmedWriteViews = new Set<string>();
   currentSample: SelectionSample | null = null;
   samples: SelectionSample[] = [];
   evidence = false;
@@ -269,6 +270,55 @@ class Desktop {
   }
   async commit() {
     return this.commitActive ? this.commitActive() : true;
+  }
+  protectWriteView(key: string, pending: boolean) {
+    if (pending) this.unconfirmedWriteViews.add(key);
+    else this.unconfirmedWriteViews.delete(key);
+  }
+  async guardSource(source: string, epoch: number) {
+    const current = () => epoch === this.surface.status.epoch;
+    const inventory = await this.rpc<Inventory>({kind: "inventory", epoch});
+    if (!current()) return false;
+    const input = this.inputPreview?.();
+    const held = this.surface.heldInputs.some(input => input.source === source);
+    if (inventory.data.recoveryRequired || inventory.data.uncertain.includes(source)) {
+      this.showError("書き込み結果のRecheckが必要です。");
+      return false;
+    }
+    const temporary = input?.source === source && input.dirty;
+    if (temporary || held || inventory.data.dirty.includes(source)) {
+      const choice = await this.choose("Rename / Move前の未保存変更", `${source} の変更をどう扱いますか。`, held ? ["Don't Save", "Cancel"] : ["Save", "Don't Save", "Cancel"]);
+      if (!current() || choice === "Cancel") return false;
+      if (choice === "Save") {
+        if (this.inputPreview?.()?.source === source && !(await this.commit())) return false;
+        if (!current() || this.surface.heldInputs.some(input => input.source === source)) return false;
+        const saved = await this.rpc<WriteResult[]>({kind: "saveSource", epoch, source});
+        const failures = saved.data.filter(result => result.outcome !== "Success");
+        if (!current()) return false;
+        if (failures.length) { this.showError(failures.map(result => `${result.outcome}: ${result.message}`).join("\n")); return false; }
+      } else {
+        await this.rpc({kind: "discardSource", epoch, source});
+        if (!current()) return false;
+        // The explicit guard authorizes only this physical source's input and
+        // history. Other open inputs/drafts are independent authoring lifetimes.
+        if (this.inputPreview?.()?.source === source) this.inputPreview()?.cancel();
+        this.publish({heldInputs: this.surface.heldInputs.filter(input => input.source !== source)});
+      }
+      await this.refreshInventory();
+      if (current() && (this.surface.projection?.source === source || this.surface.projection?.table.source === source)) await this.refresh();
+    } else if (input?.source === source) input.cancel();
+    return current();
+  }
+  async sourceMoved(source: string, destination: string, epoch: number) {
+    if (epoch !== this.surface.status.epoch) return;
+    const p = this.surface.projection;
+    if (p?.source === source || p?.clicked === source) this.saveView();
+    const view = this.local.get(source);
+    if (view) { this.local.delete(source); this.local.set(destination, view); }
+    if (this.historySource === source) this.historySource = destination;
+    const clicked = this.surface.target;
+    if (clicked === source) await this.selectTarget(destination, "source-path", true);
+    else if (p?.source === source || p?.table.source === source) await this.selectTarget(clicked, "source-path", true);
   }
   choose = (title: string, description: string, actions: string[]) => {
     if (this.surface.choice) return Promise.resolve("Cancel");
@@ -950,6 +1000,10 @@ class Desktop {
   guard(): Promise<"saved" | "discard" | "cancel"> {
     if (this.guardRunning) return this.guardRunning;
     this.guardRunning = (async () => {
+      if (this.unconfirmedWriteViews.size) {
+        this.showError("書き込みの完了またはRecheckで結果を確認してから続けてください。");
+        return "cancel" as const;
+      }
       if (this.surface.heldInputs.length) {
         const choice = await this.choose("保持中の入力と未保存の変更", "保持中の入力は変更後のsourceへ安全に適用できません。保持中の入力とsourceの未保存変更を破棄して続けますか。", ["Don't Save", "Cancel"]);
         return choice === "Don't Save" ? "discard" as const : "cancel" as const;

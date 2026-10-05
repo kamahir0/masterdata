@@ -1,9 +1,11 @@
 //! Fresh native source identity and single-file commit authority.
+mod path;
 use crate::{
     Error, Result,
     project::{io_error, relative_safe},
     source::content_identity,
 };
+pub use path::{MovePlan, commit_move, observe_move, prepare_move};
 #[cfg(not(windows))]
 use same_file::Handle;
 use serde::Serialize;

@@ -17,6 +17,8 @@ use std::{
 mod batch;
 pub mod complex;
 mod creation;
+mod path;
+pub use path::MoveReview;
 pub struct FieldShapeEdit<'a> {
     pub nullable: bool,
     pub array: bool,
@@ -219,6 +221,9 @@ pub struct Workspace {
     pub external_version: u64,
     authoring_views: BTreeMap<String, Vec<(u64, u64, AuthoringView)>>,
     creations: BTreeMap<String, creation::PendingCreation>,
+    move_plans: BTreeMap<u64, native::MovePlan>,
+    move_observations: BTreeMap<u64, native::MovePlan>,
+    pending_moves: BTreeMap<u64, native::MovePlan>,
     pub recovery_required: bool,
     pub diagnostics: Vec<Diagnostic>,
     pub diagnostics_generation: u64,
@@ -253,6 +258,9 @@ impl Workspace {
             external_version: 0,
             authoring_views: BTreeMap::new(),
             creations: BTreeMap::new(),
+            move_plans: BTreeMap::new(),
+            move_observations: BTreeMap::new(),
+            pending_moves: BTreeMap::new(),
             recovery_required: false,
             diagnostics: vec![],
             diagnostics_generation: 0,
@@ -513,6 +521,7 @@ impl Workspace {
         Ok(())
     }
     fn ensure_draft(&mut self, path: &str) -> Result<()> {
+        self.check_pending_move(path)?;
         if let Some(error) = self.unavailable.get(path) {
             return Err(error.clone());
         }
@@ -1188,6 +1197,7 @@ impl Workspace {
         self.check_config()?;
         let mut preflight = BTreeMap::new();
         for path in &paths {
+            self.check_pending_move(path)?;
             let d = self
                 .drafts
                 .get(path)
@@ -1311,6 +1321,13 @@ impl Workspace {
         Ok(result)
     }
     pub fn reload_source(&mut self, path: &str) -> Result<()> {
+        self.check_pending_move(path)?;
+        if self.recovery_required {
+            return Err(Error::new(
+                "E-RECOVERY-REQUIRED",
+                "authoring mutations are gated",
+            ));
+        }
         let snapshot = native::capture(&self.read.root, &self.read.roots, path)?;
         let doc = Document::parse(snapshot.bytes.clone())?;
         self.drafts.remove(path);
@@ -1329,6 +1346,13 @@ impl Workspace {
             })
             .map(|(path, _)| path.clone())
             .chain(self.creations.keys().cloned())
+            .chain(
+                self.pending_moves
+                    .values()
+                    .flat_map(|plan| [plan.source.clone(), plan.destination.clone()]),
+            )
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect()
     }
     pub fn diagnostic_input(&self) -> Project {

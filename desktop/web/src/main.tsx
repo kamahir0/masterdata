@@ -97,6 +97,8 @@ if (boot.evidence) {
         ? await import("./capacity-evidence")
       : boot.evidenceKind === "tags"
         ? await import("./tags-evidence")
+      : boot.evidenceKind === "settings"
+        ? await import("./settings-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

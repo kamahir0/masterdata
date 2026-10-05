@@ -168,6 +168,18 @@ def check_tags(report):
     return {'checks': len(report['checks']), 'exactTagHistoryAndNoImplicitWrite': True}
 
 
+def check_settings(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['config-open-clean-yaml-independent', 'profile-compose-explicit-identity',
+                                'settings-active-save-domain-invalid', 'section-target-draft-navigation',
+                                'config-conflict-compare-reload', 'config-unknown-reply-recheck', 'all-dirty-guard-cancel-discard']
+    assert report['source']['before'] == report['source']['after']
+    assert report['config']['before'] == report['config']['after']
+    assert report['mountedRows'] <= 64 and not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'configSaveAndIndependentYamlDraft': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
@@ -190,6 +202,7 @@ def run(binary: Path, output: Path, case: str):
                 (project / 'sources/ranges.yaml').write_text('kind: type\nname: Range\nenum:\n  underlying: ulong\n  members:\n    - name: Zero\n      value: 0\n', encoding='utf-8')
                 (project / 'sources/independent.yaml').write_text('kind: schema\ntable: independent\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n', encoding='utf-8')
         initial_sources = {path.relative_to(project): path.read_bytes() for path in project.rglob('*.yaml')}
+        initial_config = (project / 'masterdata.toml').read_bytes()
         executable = binary.resolve()
         if platform.system() == 'Darwin':
             app = temporary / 'MasterData Rewrite.app' / 'Contents'
@@ -235,6 +248,9 @@ def run(binary: Path, output: Path, case: str):
                 config = project / 'masterdata.toml'
                 config.write_bytes(config.read_bytes() + b'\n# External change after preview\n')
                 assert not (project / 'delivery').exists(), 'preview created destination'
+            elif phase == 'settings-external':
+                config = project / 'masterdata.toml'
+                config.write_bytes(config.read_bytes() + b'\n# External settings change\n')
             else: raise AssertionError(f'unknown external evidence phase {phase}')
         with (output.parent / 'desktop-process.log').open('w') as log:
             peak = 0
@@ -253,7 +269,7 @@ def run(binary: Path, output: Path, case: str):
                         try: report = json.loads(report_path.read_text(encoding='utf-8'))
                         except json.JSONDecodeError: report = None
                         if report is not None:
-                            if case in ['external', 'type', 'delivery'] and report.get('phase'):
+                            if case in ['external', 'type', 'delivery', 'settings'] and report.get('phase'):
                                 phase = report['phase']
                                 if phase not in handled:
                                     external_phase(phase)
@@ -282,7 +298,14 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings}[case](report)
+                if case == 'settings':
+                    for path, before in initial_sources.items():
+                        assert (project / path).read_bytes() == before, path
+                    expected = initial_config + b'\n[build.profiles.production]\nexclude_tags = ["debug"]\n\n[[publish.targets]]\nkind = "binary"\npath = "delivery/latest.bytes"\n\n# External settings change\n'
+                    assert (project / 'masterdata.toml').read_bytes() == expected
+                    assert not (project / 'delivery').exists(), 'settings implicitly published'
+                    assert not (project / '.masterdata').exists(), 'settings implicitly built'
                 if case == 'delivery':
                     artifact = project / '.masterdata/output'
                     receipt = json.loads((artifact / '.masterdata-artifact-set.json').read_text(encoding='utf-8'))
@@ -360,7 +383,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings'], default='navigation')
     args = parser.parse_args()
     if args.output.resolve().is_relative_to(ROOT / 'fixtures'):
         parser.error('frozen fixture cannot be output')

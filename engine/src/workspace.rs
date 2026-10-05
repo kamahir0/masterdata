@@ -16,6 +16,7 @@ use std::{
 
 mod batch;
 pub mod complex;
+mod config;
 mod creation;
 mod migration;
 mod path;
@@ -222,6 +223,8 @@ pub struct Projection {
 #[derive(Clone, Debug)]
 pub struct Workspace {
     pub read: Arc<Project>,
+    pub configuration: crate::config::Editor,
+    config_binding_available: bool,
     pub drafts: BTreeMap<String, Draft>,
     pub views: BTreeMap<String, SourceViewState>,
     search_indexes: BTreeMap<String, search::SearchIndex>,
@@ -261,7 +264,26 @@ impl AuthoringView {
 }
 impl Workspace {
     pub fn open(path: &std::path::Path) -> Result<Self> {
-        let read = Arc::new(Project::open(path)?);
+        let root = project::discover(
+            Some(path),
+            &std::env::current_dir().map_err(project::io_error)?,
+        )?
+        .canonicalize()
+        .map_err(project::io_error)?;
+        let configuration = crate::config::Editor::open(root.clone())?;
+        let (read, environment_error, config_binding_available) =
+            match Project::from_saved_config(root.clone(), configuration.base.bytes.clone()) {
+                Ok(p) => (Arc::new(p), None, true),
+                Err(e) if project::config(&configuration.base.bytes).is_err() => (
+                    Arc::new(Project::unavailable_config(
+                        root,
+                        configuration.base.bytes.clone(),
+                    )),
+                    Some(e),
+                    false,
+                ),
+                Err(e) => return Err(e),
+            };
         let recovery_information = native::pending_recovery(&read.root).unwrap_or_else(|e| {
             vec![native::RecoveryInfo {
                 snapshots: BTreeMap::new(),
@@ -277,13 +299,15 @@ impl Workspace {
         });
         Ok(Self {
             read,
+            configuration,
+            config_binding_available,
             drafts: BTreeMap::new(),
             views: BTreeMap::new(),
             search_indexes: BTreeMap::new(),
             snapshots: BTreeMap::new(),
             last_source: BTreeMap::new(),
             unavailable: BTreeMap::new(),
-            environment_error: None,
+            environment_error,
             external_version: 0,
             authoring_views: BTreeMap::new(),
             creations: BTreeMap::new(),
@@ -1303,7 +1327,7 @@ impl Workspace {
         )
     }
     pub fn save_all(&mut self) -> Result<Vec<WriteResult>> {
-        self.save_paths(self.dirty_paths(), Fault::None)
+        self.save_all_with_config_fault(Fault::None, Fault::None)
     }
     pub fn save_paths(&mut self, paths: Vec<String>, fault: Fault) -> Result<Vec<WriteResult>> {
         if self.recovery_required || native::has_pending_recovery(&self.read.root)? {

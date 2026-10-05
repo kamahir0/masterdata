@@ -145,6 +145,8 @@ export interface Surface {
   choice: Choice | null;
   comparison: Compare | null;
   appearance: boolean;
+  settingsOpen: boolean;
+  settingsInputDirty: boolean;
   theme: Preference;
   heldInputs: HeldInput[];
   uncertainField: { token: string; epoch: number; target: string } | null;
@@ -160,6 +162,9 @@ const initialStatus: Status = {
   epoch: 0,
   generation: 0,
   dirty: [],
+  configDirty: false,
+  configUncertain: false,
+  configIdentity: "",
   uncertain: [],
   recoveryRequired: false,
   diagnosticsPending: false,
@@ -194,6 +199,8 @@ class Desktop {
     choice: null,
     comparison: null,
     appearance: false,
+    settingsOpen: false,
+    settingsInputDirty: false,
     theme: "system",
     heldInputs: [],
     uncertainField: null,
@@ -240,6 +247,7 @@ class Desktop {
   private paintResolve = new Map<number, () => void>();
   private historySource: string | null = null;
   private commitActive: (() => Promise<boolean>) | null = null;
+  private settingsHooks: {commit:()=>Promise<boolean>;dirty:()=>boolean;save:()=>Promise<void>} | null = null;
   private inputPreview: (() => TemporaryInput | null) | null = null;
   private clipboardBusy = false;
   private externalRunning = false;
@@ -276,6 +284,12 @@ class Desktop {
     }
   };
   appearance = (open: boolean) => this.publish({ appearance: open });
+  projectSettings = (open: boolean) => this.publish({settingsOpen:open});
+  settingsTyping = (dirty: boolean) => {if(dirty!==this.surface.settingsInputDirty)this.publish({settingsInputDirty:dirty});};
+  bindSettings(hooks: NonNullable<typeof this.settingsHooks>) {
+    this.settingsHooks=hooks;
+    return ()=>{if(this.settingsHooks===hooks)this.settingsHooks=null;};
+  }
   async rpc<T>(intent: Record<string, unknown>): Promise<Reply<T>> {
     return invoke<Reply<T>>("workspace", {
       intent,
@@ -411,12 +425,17 @@ class Desktop {
       uncertainField: null,
       problems: [],
       heldInputs: [],
+      settingsOpen: false,
+      settingsInputDirty: false,
       status: {
         ...initialStatus,
         open: true,
         epoch: r.host.epoch,
         generation: r.data.generation,
         dirty: r.data.dirty,
+        configDirty: r.data.configDirty,
+        configUncertain: r.data.configUncertain,
+        configIdentity: r.data.configIdentity,
         uncertain: r.data.uncertain,
         recoveryRequired: r.data.recoveryRequired,
         externalVersion: r.data.externalVersion,
@@ -1126,6 +1145,7 @@ class Desktop {
       });
   };
   save = async () => {
+    if(this.surface.settingsOpen) {await this.settingsHooks?.save();return;}
     const p = this.surface.projection;
     if (!p || !(await this.commit())) return;
     await this.saveIntent({
@@ -1137,7 +1157,7 @@ class Desktop {
   };
   saveAll = async () => {
     const epoch = this.surface.status.epoch;
-    if (await this.commit()) await this.saveIntent({ kind: "saveAll", epoch });
+    if (await (this.settingsHooks?.commit()??Promise.resolve(true)) && await this.commit()) await this.saveIntent({ kind: "saveAll", epoch });
   };
   private async saveIntent(intent: Record<string, unknown>) {
     if (this.surface.busy) return;
@@ -1189,17 +1209,19 @@ class Desktop {
       const latest = await this.rpc<Inventory>({ kind: "inventory" });
       if (
         !latest.data.dirty.length &&
+        !latest.data.configDirty && !latest.data.configUncertain && !this.settingsHooks?.dirty() &&
         !latest.data.uncertain.length &&
         !latest.data.recoveryRequired
       )
         return "saved" as const;
       const choice = await this.choose(
         "未保存の変更",
-        "開いているsourceの変更をどう扱いますか。",
+        "sourceとProject Settingsの変更をどう扱いますか。",
         ["Save All", "Don't Save", "Cancel"],
       );
       if (choice === "Cancel") return "cancel" as const;
       if (choice === "Don't Save") return "discard" as const;
+      if (!(await (this.settingsHooks?.commit()??Promise.resolve(true)))) return "cancel" as const;
       const saved = await this.rpc<
         { source: string; outcome: string; message: string }[]
       >({ kind: "saveAll", epoch: latest.host.epoch });
@@ -1215,7 +1237,7 @@ class Desktop {
       // Save All advances drafts, not uncertain creation or structural outcomes.
       // Read current protection again before allowing a Project session to end.
       const remaining = await this.rpc<Inventory>({ kind: "inventory", epoch: latest.host.epoch });
-      if (remaining.data.dirty.length || remaining.data.uncertain.length || remaining.data.recoveryRequired) {
+      if (remaining.data.dirty.length || remaining.data.configDirty || remaining.data.configUncertain || remaining.data.uncertain.length || remaining.data.recoveryRequired) {
         this.showError("未確定の書き込みが残っています。Recheckで結果を確認してください。");
         return "cancel" as const;
       }
@@ -1788,6 +1810,7 @@ class Desktop {
         next.recoveryRequired === current.recoveryRequired &&
         next.diagnosticsPending === current.diagnosticsPending &&
         next.problemCount === current.problemCount &&
+        next.configDirty === current.configDirty && next.configUncertain === current.configUncertain && next.configIdentity === current.configIdentity &&
         next.externalVersion === current.externalVersion &&
         next.environmentError === current.environmentError &&
         samePaths(next.dirty, current.dirty) &&

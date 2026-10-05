@@ -13,6 +13,7 @@ export function DeliveryDrawer({s}:{s:Surface}) {
   useEffect(()=>{setStart(0);setPage(null);},[v.snapshot?.lastBuild?.id]);
   const state=v.snapshot,context=state?.context,preview=state?.preview,attempt=state?.lastBuild;
   const busy=v.pending||!!state?.running;
+  useEffect(()=>{delivery.invalidateConfig(s.status.configIdentity);},[s.status.configIdentity,busy]);
   const missing=v.profile!==null&&!!context&&!context.profiles.includes(v.profile);
   const buildReason=s.status.recoveryRequired?"sourceのRecoveryを完了してからBuildしてください。":
     context?.buildCapability.available===false?context.buildCapability.reason:missing?"選択したProfileがありません。別のProfileを明示的に選択してください。":null;
@@ -35,7 +36,7 @@ export function DeliveryDrawer({s}:{s:Surface}) {
       <Descriptions column={1} size="small" items={[
         {key:"project",label:"Project",children:context?.project.name??s.inventory?.project.name},
         {key:"dirty",label:"未保存source",children:<Space><Tag>{dirty}</Tag><Typography.Text type="secondary">Buildには含めません</Typography.Text><Button icon={<SaveOutlined/>} disabled={s.busy||s.deliveryCapturing||s.status.recoveryRequired||!!s.status.uncertain.length} onClick={()=>void desktop.saveAll()}>Save All</Button></Space>},
-        {key:"config",label:"Config",children:"保存済みmasterdata.toml"},
+        {key:"config",label:"Config",children:<Typography.Text>保存済みmasterdata.toml{(s.status.configDirty||s.settingsInputDirty)&&" · 未保存設定は使用しません"}</Typography.Text>},
       ]}/>
       <div><Typography.Text className="delivery-label">Build Profile</Typography.Text><Select aria-label="Build Profile" style={{width:"100%"}} value={v.profile??""} status={missing?"error":undefined} disabled={busy}
         options={[{value:"",label:"Unfiltered — 全record"},...(context?.profiles??[]).map(value=>({value,label:value})),...(missing?[{value:v.profile!,label:`${v.profile} — missing`}]:[])]}

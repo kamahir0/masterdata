@@ -43,6 +43,8 @@ class Delivery {
   private listeners=new Set<()=>void>();
   private poll:ReturnType<typeof setTimeout>|null=null;
   private sequence=0;
+  private configIdentity="";
+  private configRefresh=false;
   private origin:HTMLElement|null=null;
   subscribe=(f:()=>void)=>{this.listeners.add(f);return()=>{this.listeners.delete(f);};};
   snapshot=()=>this.view;
@@ -60,6 +62,15 @@ class Delivery {
   };
   close=()=>{this.publish({open:false});if(this.origin?.isConnected)this.origin.focus();};
   profile=(profile:string|null)=>this.publish({profile});
+  invalidateConfig=(identity:string)=>{
+    if(!identity)return;
+    if(identity!==this.configIdentity){this.configIdentity=identity;this.configRefresh=true;}
+    const snapshot=this.view.snapshot;
+    if(snapshot?.running||this.view.pending||!this.configRefresh)return;
+    this.configRefresh=false;
+    if(snapshot)this.publish({snapshot:{...snapshot,context:null,preview:null}});
+    if(this.view.open)void this.refresh();
+  };
   private accept(snapshot:Snapshot){
     if(snapshot.epoch!==this.view.epoch||snapshot.epoch!==desktop.surface.status.epoch)return;
     desktop.deliveryGate(snapshot.mutating,snapshot.capturing);

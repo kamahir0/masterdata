@@ -17,6 +17,7 @@ struct Host {
     initial_project: Option<String>,
     evidence_output: Option<PathBuf>,
     evidence_kind: String,
+    evidence_bad_config_reply: AtomicBool,
     preferences_path: PathBuf,
     preferences: Arc<Mutex<crate::preferences::Preferences>>,
 }
@@ -53,11 +54,29 @@ async fn workspace(
     epoch: u64,
     state: tauri::State<'_, Host>,
 ) -> Result<tauri::ipc::Response, UiError> {
+    let bad_reply = cfg!(feature = "desktop-evidence")
+        && matches!(intent, Intent::ConfigSave { .. })
+        && state
+            .evidence_bad_config_reply
+            .swap(false, Ordering::AcqRel);
+    let response = state.session.request_at(intent, epoch).await?;
+    // Fault evidence crosses the real native commit/IPC boundary: the disk and
+    // native base advance, but the view receives no usable acknowledgement.
+    Ok(tauri::ipc::Response::new(if bad_reply {
+        "null".into()
+    } else {
+        response
+    }))
+}
+#[tauri::command]
+fn evidence_bad_config_reply(state: tauri::State<'_, Host>) -> Result<(), String> {
+    if !cfg!(feature = "desktop-evidence") || state.evidence_output.is_none() {
+        return Err("evidence disabled".into());
+    }
     state
-        .session
-        .request_at(intent, epoch)
-        .await
-        .map(tauri::ipc::Response::new)
+        .evidence_bad_config_reply
+        .store(true, Ordering::Release);
+    Ok(())
 }
 #[tauri::command]
 async fn pick_project(app: tauri::AppHandle) -> Result<Option<String>, String> {
@@ -160,6 +179,7 @@ pub fn run() {
         (true, Some("delivery")) => "delivery",
         (true, Some("capacity")) => "capacity",
         (true, Some("tags")) => "tags",
+        (true, Some("settings")) => "settings",
         _ => "navigation",
     }
     .to_string();
@@ -179,6 +199,7 @@ pub fn run() {
                 initial_project: initial,
                 evidence_output: output,
                 evidence_kind,
+                evidence_bad_config_reply: AtomicBool::new(false),
                 preferences_path,
                 preferences,
             });
@@ -202,6 +223,7 @@ pub fn run() {
             application_preferences,
             finish_exit,
             evidence_write,
+            evidence_bad_config_reply,
             evidence_phase
         ])
         .build(tauri::generate_context!())

@@ -139,6 +139,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case tags --output verification/results/tags.json
+      - name: Native Project Settings, config-only Save and all-dirty guards
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case settings --output verification/results/settings.json
       - name: Native filesystem observation and current authoring view lifetime
         shell: bash
         run: |

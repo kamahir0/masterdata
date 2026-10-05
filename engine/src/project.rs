@@ -284,6 +284,9 @@ impl Project {
         let config_bytes: Arc<str> = fs::read_to_string(root.join("masterdata.toml"))
             .map_err(io_error)?
             .into();
+        Self::from_saved_config(root, config_bytes)
+    }
+    pub(crate) fn from_saved_config(root: PathBuf, config_bytes: Arc<str>) -> Result<Self> {
         let config = config(&config_bytes)?;
         let roots = config
             .sources
@@ -342,6 +345,48 @@ impl Project {
         };
         p.rebuild_declarations();
         Ok(p)
+    }
+    // An authoring session can retain a safely established root when TOML is
+    // domain-invalid. This empty read base has no source/binding authority;
+    // Workspace's environment gate allows only config repair and read feedback.
+    pub(crate) fn unavailable_config(root: PathBuf, bytes: Arc<str>) -> Self {
+        let raw: toml::Value =
+            toml::from_str(&bytes).unwrap_or(toml::Value::Table(Default::default()));
+        let text = |key: &str| {
+            raw.get("project")
+                .and_then(|v| v.get(key))
+                .and_then(toml::Value::as_str)
+                .unwrap_or("")
+                .to_owned()
+        };
+        Self {
+            root,
+            config: Config {
+                project: Metadata {
+                    id: text("id"),
+                    name: text("name"),
+                    version: text("version"),
+                },
+                sources: Sources { roots: vec![] },
+                build: BuildConfig {
+                    artifact_dir: String::new(),
+                    cache: String::new(),
+                    profiles: Default::default(),
+                },
+                publish: PublishConfig::default(),
+            },
+            config_identity: content_identity(bytes.as_bytes()),
+            config_bytes: bytes,
+            roots: vec![],
+            sources: Default::default(),
+            folders: Default::default(),
+            tables: Default::default(),
+            types: Arc::new(Default::default()),
+            type_sources: Default::default(),
+            type_declarations: Default::default(),
+            generation: 1,
+            declaration_problems: vec![],
+        }
     }
 
     pub fn rebuild_declarations(&mut self) {

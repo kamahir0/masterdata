@@ -67,6 +67,26 @@ pub enum Intent {
         discard: bool,
     },
     Inventory,
+    ConfigView {
+        profile: Option<String>,
+        #[serde(default)]
+        starts: [usize; 4],
+    },
+    ConfigEdit {
+        revision: u64,
+        operation: masterdata_engine::config::Operation,
+    },
+    ConfigSave {
+        revision: u64,
+    },
+    ConfigCompare {
+        external: bool,
+    },
+    ConfigReload {
+        revision: u64,
+        discard_authorized: bool,
+    },
+    ConfigRecheck,
     CreationChoices,
     CreationDefaults {
         category: String,
@@ -329,6 +349,7 @@ impl Intent {
         matches!(
             self,
             Self::Save { .. }
+                | Self::ConfigSave { .. }
                 | Self::SaveAll
                 | Self::SaveSource { .. }
                 | Self::Overwrite { .. }
@@ -389,6 +410,9 @@ pub struct Status {
     pub epoch: u64,
     pub generation: u64,
     pub dirty: Vec<String>,
+    pub config_dirty: bool,
+    pub config_uncertain: bool,
+    pub config_identity: String,
     pub recovery_required: bool,
     pub diagnostics_pending: bool,
     pub problem_count: usize,
@@ -515,7 +539,7 @@ impl Session {
                                 }
                             }
                         }
-                        guard.store(jobs.gate.mutating() || workspace.as_ref().is_some_and(|w| !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()), Ordering::Release);
+                        guard.store(jobs.gate.mutating() || workspace.as_ref().is_some_and(Workspace::protected), Ordering::Release);
                         let reply = if token.is_some_and(|t| t != q.latest.load(Ordering::Acquire)) {
                             Err(UiError::new("E-SELECTION-OBSOLETE", "selection superseded"))
                         } else {
@@ -531,8 +555,8 @@ impl Session {
                     }
                 }
                 if let Some(w) = workspace.as_ref() {
-                    guard.store(jobs.gate.mutating() || !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty(), Ordering::Release);
-                    publish(Status { open:true, epoch, generation:w.generation, dirty:w.dirty_paths(), recovery_required:w.recovery_required, diagnostics_pending:w.diagnostics_pending, problem_count:w.diagnostics.len(), uncertain:w.uncertain_paths(), external_version:w.external_version, environment_error:w.environment_error.as_ref().map(ToString::to_string) });
+                    guard.store(jobs.gate.mutating() || w.protected(), Ordering::Release);
+                    publish(Status { open:true, epoch, generation:w.generation, dirty:w.dirty_paths(), config_dirty:w.config_dirty(),config_uncertain:w.config_uncertain(),config_identity:w.configuration.base.content.clone(), recovery_required:w.recovery_required, diagnostics_pending:w.diagnostics_pending, problem_count:w.diagnostics.len(), uncertain:w.uncertain_paths(), external_version:w.external_version, environment_error:w.environment_error.as_ref().map(ToString::to_string) });
                     if w.diagnostics_pending && scheduled != w.generation {
                         let mut p = validator.pending.lock().unwrap();
                         p.snapshot = Some((epoch, w.diagnostic_input()));
@@ -700,7 +724,7 @@ fn watch(
     Ok(watcher)
 }
 fn inventory(w: &Workspace) -> Value {
-    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"recovery":w.recovery_information,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
+    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"configDirty":w.config_dirty(),"configUncertain":w.config_uncertain(),"configIdentity":w.configuration.base.content,"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"recovery":w.recovery_information,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
 }
 fn execute(
     workspace: &mut Option<Workspace>,
@@ -715,10 +739,7 @@ fn execute(
                 "running mutation must finish before Project switch",
             ));
         }
-        if workspace.as_ref().is_some_and(|w| {
-            !w.dirty_paths().is_empty() || w.recovery_required || !w.uncertain_paths().is_empty()
-        }) && !discard
-        {
+        if workspace.as_ref().is_some_and(Workspace::protected) && !discard {
             return Err(UiError::new(
                 "E-PROJECT-DIRTY",
                 "Save All / Don't Save / Cancel required",
@@ -764,6 +785,38 @@ fn execute(
         }
         Intent::Open { .. } => unreachable!(),
         Intent::Inventory => Ok(inventory(w)),
+        Intent::ConfigView { profile, starts } => {
+            convert(w.config_view(profile.as_deref(), starts))
+        }
+        Intent::ConfigEdit {
+            revision,
+            operation,
+        } => {
+            w.edit_config(revision, operation)?;
+            Ok(Value::Null)
+        }
+        Intent::ConfigSave { revision } => {
+            convert(w.save_config(revision, masterdata_engine::native::Fault::None)?)
+        }
+        Intent::ConfigCompare { external } => {
+            let (identity, before, after) = if external {
+                w.configuration.compare()?
+            } else {
+                let (before, after) = w.configuration.saved_compare();
+                (w.configuration.base.content.clone(), before, after)
+            };
+            Ok(
+                json!({"source":"masterdata.toml","identity":identity,"before":before,"after":after,"conflict":external}),
+            )
+        }
+        Intent::ConfigReload {
+            revision,
+            discard_authorized,
+        } => {
+            w.reload_config(revision, discard_authorized)?;
+            Ok(Value::Null)
+        }
+        Intent::ConfigRecheck => convert(w.recheck_config()?),
         Intent::CreationChoices => Ok(w.creation_choices()),
         Intent::CreationDefaults {
             category,

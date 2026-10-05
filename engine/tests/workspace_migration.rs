@@ -245,6 +245,13 @@ fn recovery_survives_reopen_blocks_all_mutations_allows_read_and_requires_fresh_
         .unwrap();
     assert_eq!(result.outcome, Outcome::RecoveryRequired);
     assert!(w.recovery_required);
+    assert_eq!(
+        w.save_config(w.configuration.revision, native::Fault::None)
+            .unwrap_err()
+            .code,
+        "E-RECOVERY-REQUIRED"
+    );
+    assert!(w.configuration.saved_compare().0.contains("[project]"));
     let id = w.recovery_information[0].id.clone();
     let p = w.select("sources/one.yaml", 0, 64).unwrap();
     assert!(!p.rows[0].cells[1].editable);

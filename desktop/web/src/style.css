@@ -756,3 +756,17 @@ main {
 .tag-add .ant-select {flex:1;min-width:0;}
 .tag-paging {justify-content:space-between;}
 .tag-partial {font-size:12px;}
+.settings-file { font-family: var(--md-font); }
+.settings-pending { display: inline-flex; width: 18px; height: 18px; align-items: center; }
+.settings-state { min-height: 22px; }
+.settings-sections { border-bottom: 1px solid var(--md-border); padding-bottom: 10px; }
+.settings-tag-list { border-top: 1px solid var(--md-border); padding-top: 8px; }
+.settings-entry { display: flex; align-items: center; gap: 4px; min-height: 30px; }
+.settings-value { text-align: left; justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; white-space: pre; }
+.settings-entry-state { width: 16px; flex-shrink: 0; color: var(--md-warning); }
+.settings-target { border-top: 1px solid var(--md-border); padding: 10px 0; }
+.settings-path { width: 100%; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.settings-problems { max-height: 160px; overflow: auto; overflow-wrap: anywhere; }
+.settings-problems .ant-typography { margin-bottom: 4px; }
+.comparison-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.comparison-columns textarea { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; margin-top: 8px; }

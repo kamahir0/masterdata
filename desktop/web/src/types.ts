@@ -120,6 +120,9 @@ export interface Inventory {
   }[];
   types: string[];
   dirty: string[];
+  configDirty: boolean;
+  configUncertain: boolean;
+  configIdentity: string;
   uncertain: string[];
   recoveryRequired: boolean;
   recovery: RecoveryInfo[];
@@ -156,6 +159,9 @@ export interface Status {
   epoch: number;
   generation: number;
   dirty: string[];
+  configDirty: boolean;
+  configUncertain: boolean;
+  configIdentity: string;
   recoveryRequired: boolean;
   diagnosticsPending: boolean;
   problemCount: number;

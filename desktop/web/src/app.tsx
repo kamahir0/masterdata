@@ -51,6 +51,7 @@ import {
   CopyOutlined,
   EditOutlined,
   BuildOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
@@ -61,6 +62,7 @@ import { useSourcePath } from "./source-path";
 import { TypeSurface } from "./type-editor";
 import { DeliveryDrawer } from "./delivery";
 import { delivery } from "./delivery-state";
+import { ProjectSettings } from "./settings";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -181,6 +183,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       disabled: !s.inventory || s.busy || s.deliveryMutating,
     },
     { type: "divider" },
+    {key:"projectSettings",label:<Space>Project Settings…{(s.status.configDirty||s.settingsInputDirty)&&<Badge status="processing"/>}</Space>,icon:<SettingOutlined/>,disabled:!s.inventory},
     {key:"delivery",label:"Build / Publish…",icon:<BuildOutlined/>,disabled:!s.inventory},
     {
       key: "appearance",
@@ -218,15 +221,14 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                   type="text"
                   icon={<SaveOutlined />}
                   disabled={
-                    !s.projection ||
-                    s.pending ||
+                    (!s.settingsOpen && (!s.projection || s.pending)) ||
                     s.busy || s.deliveryCapturing ||
                     s.status.recoveryRequired ||
-                    s.projection.writeStates.some(
+                    (s.settingsOpen?s.status.configUncertain:s.projection?.writeStates.some(
                       (w) =>
                         w.outcome === "OutcomeUnknown" ||
                         w.outcome === "RecoveryRequired",
-                    )
+                    ))
                   }
                   onClick={desktop.save}
                 >
@@ -250,6 +252,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                   else if (key === "reload")
                     void desktop.reloadProject().catch(desktop.showError);
                   else if (key === "delivery") delivery.open();
+                  else if (key === "projectSettings") void desktop.commit().then(ok=>{if(ok)desktop.projectSettings(true);});
                   else desktop.appearance(true);
                 },
               }}
@@ -296,10 +299,13 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
             (s.typeProjection?.clicked===s.target||s.inventory.sources.find(source=>source.path===s.target)?.kind==="type") ? <TypeSurface s={s} footer={<ProblemsBar s={s}/>}/> : <TableSurface s={s} />
           ) : (
             <div className="select-source">
-              <Empty
+              {s.status.environmentError?<Alert type="warning" showIcon title="Project serviceを利用できません"
+                description={<Space direction="vertical"><Typography.Text>{s.status.environmentError}</Typography.Text>
+                <Space><Button icon={<SettingOutlined/>} onClick={()=>desktop.projectSettings(true)}>Project Settings…</Button>
+                <Button icon={<ReloadOutlined/>} onClick={()=>void desktop.reloadProject()}>Reload Project…</Button></Space></Space>}/>:<Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description="Explorerからsourceを選択"
-              />
+              />}
             </div>
           )}
         </main>
@@ -308,6 +314,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       <CompareModal s={s} />
       <AppearanceModal s={s} />
       <DeliveryDrawer s={s} />
+      <ProjectSettings s={s}/>
       <RecoveryDrawer s={s} open={recoveryOpen && s.status.recoveryRequired} close={()=>setRecoveryOpen(false)} />
     </div>
   );

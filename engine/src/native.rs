@@ -107,6 +107,9 @@ fn path_identity(path: &Path) -> std::io::Result<Identity> {
     }
 }
 impl Snapshot {
+    pub fn same_binding(&self, other: &Self) -> bool {
+        self.physical == other.physical && self.parent == other.parent
+    }
     pub fn observed_identity(&self) -> ObservedIdentity {
         ObservedIdentity {
             physical: self.physical.clone(),

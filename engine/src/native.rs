@@ -5,6 +5,7 @@ mod namespace;
 mod path;
 pub mod publish;
 mod set;
+mod setup;
 use crate::{
     Error, Result,
     project::{io_error, relative_safe},
@@ -19,6 +20,7 @@ pub use set::{
     RecoveryInfo, SetFault, SetResult, SourceSetPlan, has_pending_recovery, pending_recovery,
     recheck_recovery, restore_recovery,
 };
+pub use setup::{InitReport, initialize_project};
 use std::{
     fs::{self, File},
     io::{Read, Write},

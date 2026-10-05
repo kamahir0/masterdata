@@ -14,6 +14,20 @@ pub struct Built {
     pub binary: Vec<u8>,
     pub native_evidence: String,
 }
+pub fn environment() -> Result<String> {
+    let staged = tempfile::Builder::new()
+        .prefix("masterdata-dotnet-doctor-")
+        .tempdir()
+        .map_err(io)?;
+    let sdks = invoke(staged.path(), &["--list-sdks".as_ref()], "sdks")?;
+    if sdks.trim().is_empty() {
+        return Err(Error::new(
+            "E-DOTNET-UNAVAILABLE",
+            "no .NET SDK is installed",
+        ));
+    }
+    Ok(sdks)
+}
 fn io(error: std::io::Error) -> Error {
     Error::new("E-DOTNET-IO", error.to_string())
 }
@@ -74,8 +88,14 @@ fn invoke(root: &Path, arguments: &[&std::ffi::OsStr], label: &str) -> Result<St
         .map_err(|error| Error::new("E-DOTNET-UNAVAILABLE", error.to_string()))?;
     let start = Instant::now();
     let status = loop {
-        if let Some(status) = child.try_wait().map_err(io)? {
-            break status;
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(io(e));
+            }
         }
         if start.elapsed() > Duration::from_secs(300) {
             let _ = child.kill();

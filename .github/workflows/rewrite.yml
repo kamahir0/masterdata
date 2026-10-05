@@ -27,7 +27,11 @@ jobs:
         with:
           key: native-consumer
       - name: Generated C# compilation, actual MasterMemory reload and independent queries
-        run: cargo test -p masterdata-engine --locked --features native-consumer --test build_consumer -- --nocapture
+        # .NET 8 first-use NuGet migration has shared named-mutex initialization.
+        # Keep native process cases sequential; shared Rust tests stay parallel.
+        run: cargo test -p masterdata-engine --locked --features native-consumer --test build_consumer -- --nocapture --test-threads=1
+      - name: CLI Build, receipt-only Publish and combined result boundary
+        run: cargo test -p masterdata-command --locked --features native-consumer --test cli_delivery -- --nocapture --test-threads=1
 
   shared-engine:
     strategy:

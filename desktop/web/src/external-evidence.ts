@@ -39,8 +39,8 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     const input = document.querySelector<HTMLInputElement>(".active-cell-editor input")!;
     input.focus();
     text(input, "unfinished input");
-    await phase("unrelated");
     const version = desktop.surface.status.externalVersion;
+    await phase("unrelated");
     await until(() => desktop.surface.status.externalVersion > version && !desktop.surface.pending, "unrelated source refresh missing");
     assert(document.querySelector<HTMLInputElement>(".active-cell-editor input")?.value === "unfinished input", "background refresh lost typing");
     assert(!desktop.surface.projection!.dirty, "background refresh committed typing");

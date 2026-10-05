@@ -62,7 +62,9 @@ fn creation_rejects_windows_junction_destination_without_touching_its_target() {
     let mut w = Workspace::open(temp.path()).unwrap();
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("sentinel"), b"preserved").unwrap();
-    let junction = temp.path().join("sources/junction");
+    // cmd's mklink treats embedded forward slashes as switches. Pass native
+    // Windows path components, not the portable logical source path.
+    let junction = temp.path().join("sources").join("junction");
     let result = std::process::Command::new("cmd")
         .args(["/C", "mklink", "/J"])
         .arg(&junction)
@@ -241,8 +243,11 @@ fn exclusive_commit_preserves_a_target_created_after_preflight_and_a_replaced_pa
     let result = native::create_exclusive(
         &root,
         &source_root,
-        "sources/group/new.yaml",
-        Some("complete candidate\n"),
+        "sources/group/new-folder",
+        // Windows locks a directory while its staged child file is open.
+        // Folder creation has no staged child and exercises an actual parent
+        // replacement on every supported platform.
+        None,
         Fault::None,
         || {
             fs::rename(root.join("sources/group"), root.join("sources/prior-group")).unwrap();
@@ -251,8 +256,8 @@ fn exclusive_commit_preserves_a_target_created_after_preflight_and_a_replaced_pa
         },
     );
     assert_eq!(result.outcome, Outcome::Conflict);
-    assert!(!root.join("sources/group/new.yaml").exists());
-    assert!(!root.join("sources/prior-group/new.yaml").exists());
+    assert!(!root.join("sources/group/new-folder").exists());
+    assert!(!root.join("sources/prior-group/new-folder").exists());
 }
 
 #[cfg(unix)]

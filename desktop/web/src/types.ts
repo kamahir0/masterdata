@@ -96,9 +96,33 @@ export interface Inventory {
   dirty: string[];
   uncertain: string[];
   recoveryRequired: boolean;
+  recovery: RecoveryInfo[];
   generation: number;
   externalVersion: number;
   environmentError: string | null;
+}
+export interface RecoveryInfo {
+  id: string;
+  directory: string;
+  message: string;
+  files: { source: string; state: string; oldCopy: string; newCopy: string }[];
+}
+export type FieldOperation =
+  | { kind: "rename"; field: string; newName: string }
+  | { kind: "add"; neighbor: string | null; after: boolean }
+  | { kind: "drop"; field: string };
+export interface MigrationReview {
+  token: string;
+  command: { operation: string; table?: string; declaration?: { name: string }; newName?: string };
+  destructive: boolean;
+  affectedRecords: number;
+  files: { source: string; beforeIdentity: string; afterIdentity: string; beforeBytes: number; afterBytes: number }[];
+}
+export interface SetResult {
+  outcome: string;
+  message: string;
+  files: { source: string; state: string; commit: { outcome: string; message: string } | null; rollback: { outcome: string; message: string } | null }[];
+  recovery: RecoveryInfo | null;
 }
 export interface Status {
   open: boolean;

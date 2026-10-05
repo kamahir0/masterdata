@@ -26,6 +26,7 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   DeleteOutlined,
+  WarningOutlined,
   PlusOutlined,
   UndoOutlined,
 } from "@ant-design/icons";
@@ -66,6 +67,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
     frame = useRef<number | null>(null);
   const [columns, setColumns] = useState({ first: 0, last: 8 });
   const [menu, setMenu] = useState<MenuTarget | null>(null);
+  const [rename, setRename] = useState<string | null>(null);
   useLayoutEffect(() => {
     desktop.viewport = viewport.current;
     if (p && !pending) desktop.committed(p);
@@ -88,6 +90,11 @@ export const AuthoringGrid = memo(function AuthoringGrid({
   useEffect(() => {
     setMenu(null);
   }, [p?.clicked, p?.revision, p?.schemaRevision, p?.generation, pending]);
+  useEffect(()=>setRename(null),[p?.clicked]);
+  const beginRename=useCallback(async (field: string | null) => {
+    if(field && !(await desktop.commit())) return;
+    setRename(field);
+  },[]);
   const onScroll = () => {
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
@@ -160,7 +167,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
       desktop.move(...moves[e.key], e.shiftKey && e.key !== "Tab");
     }
   };
-  const width = GRID.identity + (p?.columns.length ?? 0) * GRID.column;
+  const width = GRID.identity + (p?.columns.length ?? 0) * GRID.column + 44;
   const style = {
     "--row-height": `${GRID.row}px`,
     "--header-height": `${GRID.header}px`,
@@ -196,7 +203,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
           role="row"
           style={{
             width,
-            gridTemplateColumns: `${GRID.identity}px repeat(${p?.columns.length ?? 0}, ${GRID.column}px)`,
+            gridTemplateColumns: `${GRID.identity}px repeat(${p?.columns.length ?? 0}, ${GRID.column}px) 44px`,
           }}
         >
           <div className="corner" role="columnheader">
@@ -211,8 +218,11 @@ export const AuthoringGrid = memo(function AuthoringGrid({
               active={index >= columns.first && index < columns.last}
               busy={busy}
               menu={openColumnMenu}
+              renaming={rename===col.field.name}
+              rename={beginRename}
             />
           ))}
+          <div className="add-column"><Tooltip title="Add nullable string field"><Button type="text" icon={<PlusOutlined />} aria-label="Add column" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>
         </div>
         <div
           id="grid-body"
@@ -252,6 +262,8 @@ const ColumnHeader = memo(
     types,
     busy,
     menu,
+    renaming,
+    rename,
   }: {
     field: Field;
     index: number;
@@ -259,6 +271,8 @@ const ColumnHeader = memo(
     types: string[];
     busy: boolean;
     menu: (column: number, x: number, y: number) => void;
+    renaming: boolean;
+    rename: (field: string | null) => Promise<void>;
   }) {
     const options = [
       ...new Set([
@@ -297,9 +311,7 @@ const ColumnHeader = memo(
           >
             <HolderOutlined />
           </button>
-          <span className="field-name" title={field.name}>
-            {field.name}
-          </span>
+          <HeaderName field={field} active={active} editing={renaming} busy={busy} change={rename} />
           <button
             className="spatial-handle column-actions"
             aria-label={`${field.name} actions`}
@@ -373,6 +385,8 @@ const ColumnHeader = memo(
     a.types === b.types &&
     a.busy === b.busy &&
     a.menu === b.menu &&
+    a.renaming === b.renaming &&
+    a.rename === b.rename &&
     a.field.name === b.field.name &&
     a.field.key === b.field.key &&
     a.field.typeName === b.field.typeName &&
@@ -648,6 +662,57 @@ function CellInput({ editor }: { editor: Editor }) {
     </div>
   );
 }
+function HeaderName({field,active,editing,busy,change}:{field:Field;active:boolean;editing:boolean;busy:boolean;change:(field:string|null)=>Promise<void>}) {
+  const input=useRef<InputRef>(null), text=useRef(field.name), origin=useRef<Projection|null>(null), running=useRef<Promise<boolean>|null>(null), composing=useRef(false);
+  const [value,setValue]=useState(field.name),[reason,setReason]=useState<string|null>(null);
+  const cancel=useCallback(()=>{text.current=field.name;setValue(field.name);setReason(null);void change(null);},[field.name,change]);
+  const commit=useCallback(():Promise<boolean>=>{
+    if(composing.current)return Promise.resolve(false);
+    if(running.current) return running.current;
+    if(text.current===field.name){void change(null);return Promise.resolve(true);}
+    const previous=origin.current,current=desktop.surface.projection;
+    if(!previous || !current || current.clicked!==previous.clicked || current.sessionEpoch!==previous.sessionEpoch)return Promise.resolve(false);
+    const expected=current;
+    const intent=desktop.inputIntent;
+    running.current=(async()=>{
+      try {
+        const review=await desktop.fieldOperation({kind:"rename",field:field.name,newName:text.current},expected,true);
+        if(!review)return false;
+        void change(null);
+        const name=review.command.newName;
+        if(name && desktop.surface.target===expected.clicked && intent===desktop.inputIntent) requestAnimationFrame(()=>{if(desktop.surface.target===expected.clicked && intent===desktop.inputIntent)desktop.viewport?.querySelector<HTMLButtonElement>(`.column[data-field="${CSS.escape(name)}"] .field-name-button`)?.focus();});
+        return true;
+      } catch(e) {
+        setReason(typeof e==="object" && e && "message" in e ? String(e.message) : String(e));
+        if(desktop.surface.target===expected.clicked && intent===desktop.inputIntent)requestAnimationFrame(()=>{if(desktop.surface.target===expected.clicked && intent===desktop.inputIntent)input.current?.focus({preventScroll:true});});
+        return false;
+      }
+      finally {running.current=null;}
+    })();
+    return running.current;
+  },[field.name,change]);
+  useLayoutEffect(()=>{
+    if(!editing)return;
+    origin.current=desktop.surface.projection; text.current=field.name;setValue(field.name);setReason(null);
+    input.current?.focus({cursor:"all"});
+  },[editing,field.name]);
+  useEffect(()=>{
+    if(!editing)return;
+    return desktop.bindEditor(commit,()=>{
+      const p=origin.current;
+      return p ? {source:p.table.source,revision:p.schemaRevision,generation:p.generation,label:`${field.name} name`,text:text.current,dirty:text.current!==field.name,cancel} : null;
+    });
+  },[editing,field.name,commit,cancel]);
+  // Keep the Input and suffix DOM stable during pending/error feedback: replacing
+  // Ant's affix structure or disabling the input loses the user's keyboard focus.
+  return <span className="field-name" title={field.name}>
+    {editing ? <Tooltip title={reason}><Input ref={input} aria-label={`Rename ${field.name}`} aria-invalid={!!reason} aria-busy={busy} status={reason ? "error" : undefined} value={value} readOnly={busy} suffix={<span>{reason && <WarningOutlined/>}</span>} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;}} onChange={e=>{text.current=e.target.value;setValue(e.target.value);setReason(null);}} onKeyDown={e=>{
+      if(e.nativeEvent.isComposing || e.keyCode===229)return;
+      if(e.key==="Escape"){e.preventDefault();e.stopPropagation();const clicked=origin.current?.clicked,intent=desktop.inputIntent;cancel();requestAnimationFrame(()=>{if(desktop.surface.target===clicked&&!desktop.surface.pending&&intent===desktop.inputIntent)desktop.viewport?.querySelector<HTMLButtonElement>(`.column[data-field="${CSS.escape(field.name)}"] .field-name-button`)?.focus();});}
+      else if(e.key==="Enter" || e.key==="Tab"){e.preventDefault();e.stopPropagation();void commit();}
+    }} /></Tooltip> : active ? <Button type="text" className="field-name-button" aria-label={`Rename ${field.name}`} disabled={busy} onClick={()=>void change(field.name)}>{field.name}</Button> : field.name}
+  </span>;
+}
 function GridMenu({
   target,
   close,
@@ -703,12 +768,17 @@ function GridMenu({
       );
   } else if (target?.column !== undefined) {
     items.push(
+      {key:"insertLeft",label:"Insert Left",icon:<PlusOutlined/>},
+      {key:"insertRight",label:"Insert Right",icon:<PlusOutlined/>},
+      {type:"divider"},
       { key: "left", label: "Move Left", disabled: target.column === 0 },
       {
         key: "right",
         label: "Move Right",
         disabled: target.column === target.p.columns.length - 1,
       },
+      {type:"divider"},
+      {key:"drop",label:"Drop Field…",icon:<DeleteOutlined/>,danger:true},
     );
   }
   return (
@@ -726,6 +796,9 @@ function GridMenu({
           close();
           if (target.row) void desktop.rowAction(key, target.p, target.row.id);
           else if (target.column !== undefined) {
+            const field=target.p.columns[target.column].field.name;
+            if(key==="drop") {void desktop.fieldAction({kind:"drop",field},target.p);return;}
+            if(key==="insertLeft" || key==="insertRight") {void desktop.fieldAction({kind:"add",neighbor:field,after:key==="insertRight"},target.p);return;}
             const order = target.p.columns.map((c) => c.field.name),
               at = target.column,
               next = at + (key === "left" ? -1 : 1);

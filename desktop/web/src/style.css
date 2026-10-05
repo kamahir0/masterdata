@@ -268,6 +268,13 @@ main {
   overflow: hidden;
   white-space: nowrap;
 }
+.field-name .field-name-button { width: 100%; min-width: 0; padding-inline: 0; text-align: left; justify-content: flex-start; font-weight: inherit; height: 22px; }
+.field-name .field-name-button > span { overflow: hidden; text-overflow: ellipsis; }
+.field-name .ant-input-affix-wrapper, .field-name .ant-input { height: 22px; padding-block: 0; }
+.add-column { display: grid; place-items: center; border-right: 1px solid var(--md-border); }
+.recovery-detail { width: 100%; }
+.recovery-file { border-bottom: 1px solid var(--md-border); padding-block: 8px; }
+.recovery-file .ant-typography { overflow-wrap: anywhere; margin-block: 6px; }
 .column-actions {
   opacity: 0;
 }

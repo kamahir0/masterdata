@@ -9,6 +9,9 @@ import type {
   Diagnostic,
   SelectionSample,
   Shape,
+  FieldOperation,
+  MigrationReview,
+  SetResult,
 } from "./types";
 
 export const GRID = {
@@ -31,8 +34,10 @@ export type Compare = {
   before: string;
   after: string;
   conflict: boolean;
+  migration?: { token: string; sources: string[] };
 };
 type WriteResult = { source: string; outcome: string; message: string };
+type FieldScope = {token: string; sources: string[]; dirty: string[]; affectedRecords: number; destructive: boolean};
 export interface EditorNode {
   path: string[];
   label: string;
@@ -129,6 +134,7 @@ export interface Surface {
   appearance: boolean;
   theme: Preference;
   heldInputs: HeldInput[];
+  uncertainField: { token: string; epoch: number; target: string } | null;
 }
 type SavedView = {
   top: number;
@@ -174,6 +180,7 @@ class Desktop {
     appearance: false,
     theme: "system",
     heldInputs: [],
+    uncertainField: null,
   };
   interaction: Interaction = {
     selection: { row: 0, column: 0, id: null, field: null },
@@ -275,11 +282,11 @@ class Desktop {
     if (pending) this.unconfirmedWriteViews.add(key);
     else this.unconfirmedWriteViews.delete(key);
   }
-  async guardSource(source: string, epoch: number) {
+  async guardSource(source: string, epoch: number, title = "Rename / Move前の未保存変更", ignoreTemporary = false) {
     const current = () => epoch === this.surface.status.epoch;
     const inventory = await this.rpc<Inventory>({kind: "inventory", epoch});
     if (!current()) return false;
-    const input = this.inputPreview?.();
+    const input = ignoreTemporary ? null : this.inputPreview?.();
     const held = this.surface.heldInputs.some(input => input.source === source);
     if (inventory.data.recoveryRequired || inventory.data.uncertain.includes(source)) {
       this.showError("書き込み結果のRecheckが必要です。");
@@ -287,10 +294,10 @@ class Desktop {
     }
     const temporary = input?.source === source && input.dirty;
     if (temporary || held || inventory.data.dirty.includes(source)) {
-      const choice = await this.choose("Rename / Move前の未保存変更", `${source} の変更をどう扱いますか。`, held ? ["Don't Save", "Cancel"] : ["Save", "Don't Save", "Cancel"]);
+      const choice = await this.choose(title, `${source} の変更をどう扱いますか。`, held ? ["Don't Save", "Cancel"] : ["Save", "Don't Save", "Cancel"]);
       if (!current() || choice === "Cancel") return false;
       if (choice === "Save") {
-        if (this.inputPreview?.()?.source === source && !(await this.commit())) return false;
+        if (!ignoreTemporary && this.inputPreview?.()?.source === source && !(await this.commit())) return false;
         if (!current() || this.surface.heldInputs.some(input => input.source === source)) return false;
         const saved = await this.rpc<WriteResult[]>({kind: "saveSource", epoch, source});
         const failures = saved.data.filter(result => result.outcome !== "Success");
@@ -301,7 +308,7 @@ class Desktop {
         if (!current()) return false;
         // The explicit guard authorizes only this physical source's input and
         // history. Other open inputs/drafts are independent authoring lifetimes.
-        if (this.inputPreview?.()?.source === source) this.inputPreview()?.cancel();
+        if (!ignoreTemporary && this.inputPreview?.()?.source === source) this.inputPreview()?.cancel();
         this.publish({heldInputs: this.surface.heldInputs.filter(input => input.source !== source)});
       }
       await this.refreshInventory();
@@ -356,6 +363,7 @@ class Desktop {
     this.queryVersion++;
     this.queuedQuery = null;
     this.local.clear();
+    this.unconfirmedWriteViews.clear();
     this.historySource = null;
     this.interact({
       selection: { row: 0, column: 0, id: null, field: null },
@@ -375,6 +383,7 @@ class Desktop {
       queryPending: false,
       error: null,
       comparison: null,
+      uncertainField: null,
       problems: [],
       heldInputs: [],
       status: {
@@ -384,6 +393,7 @@ class Desktop {
         generation: r.data.generation,
         dirty: r.data.dirty,
         uncertain: r.data.uncertain,
+        recoveryRequired: r.data.recoveryRequired,
         externalVersion: r.data.externalVersion,
         environmentError: r.data.environmentError,
       },
@@ -459,10 +469,16 @@ class Desktop {
     );
     sample.selectionPublication = performance.now();
     try {
-      if (!same && !(await this.commit()))
+      if (!same && !(await this.commit())) {
+        const input=this.inputPreview?.();
+        if(input?.dirty) {
+          this.publish({heldInputs:[...this.surface.heldInputs,{source:input.source,label:input.label,text:input.text,reason:"入力を確定できませんでした。元のsourceで確認してください。"}]});
+          input.cancel();
+        }
         throw new Error(
           "入力を確定できません。元のsourceに戻って確認してください。",
         );
+      }
       if (mine !== this.token) {
         sample.invalid = "obsolete";
         return sample;
@@ -923,6 +939,73 @@ class Desktop {
       array: change.array ?? (change.nullable ? false : f.array),
     });
   }
+  async fieldOperation(operation: FieldOperation, expected: Projection, ignoreTemporary = false) {
+    const epoch = expected.sessionEpoch;
+    if (this.surface.busy || this.surface.status.recoveryRequired || this.surface.uncertainField || epoch !== this.surface.status.epoch) throw new Error("現在この操作を開始できません。未確定の結果はRecheckで確認してください。");
+    if (!ignoreTemporary && !(await this.commit())) throw new Error("入力を確定できません。");
+    const p = this.surface.projection;
+    if (!p || p.clicked !== expected.clicked || p.sessionEpoch !== epoch) throw new Error("対象が変更されています。もう一度確定してください。");
+    const context = { epoch, source: p.table.source, revision: p.schemaRevision, generation: p.generation };
+    this.publish({busy: true, error: null});
+    let scope: FieldScope | null = null;
+    let attempted = false;
+    try {
+      scope = (await this.rpc<FieldScope>({kind:"fieldScope", ...context, operation})).data;
+      if (epoch !== this.surface.status.epoch) throw new Error("Projectが変更されています。");
+      for (const source of scope.sources) {
+        if (!(await this.guardSource(source, epoch, "構造変更前の未保存変更", ignoreTemporary))) return null;
+      }
+      if (scope.dirty.length) throw new Error("未保存変更を処理しました。変更後のTableで、もう一度確定してください。");
+      if (scope.destructive) {
+        let answer: string;
+        do {
+          answer = await this.choose("Drop Field", `${operation.kind === "drop" ? operation.field : "Field"}を${scope.affectedRecords}件のrecord、${scope.sources.length}個のsourceから削除します。`, ["Delete", "Compare", "Cancel"]);
+          if (answer === "Compare") {
+            await this.migrationCompare(scope.token,scope.sources[0],scope.sources);
+            const shown = this.surface.comparison;
+            if (shown) await new Promise<void>(resolve => { const unsubscribe=this.subscribe(() => {if(!this.surface.comparison){unsubscribe();resolve();}}); });
+          }
+        } while(answer === "Compare" && epoch === this.surface.status.epoch);
+        if(answer !== "Delete") return null;
+      }
+      if (epoch !== this.surface.status.epoch) return null;
+      attempted = true;
+      this.protectWriteView(`field:${scope.token}`,true);
+      const [review,result] = (await this.rpc<[MigrationReview,SetResult]>({kind:"fieldOperation", ...context, request:{token:scope.token,operation,authorizeDestructive:scope.destructive}})).data;
+      this.protectWriteView(`field:${scope.token}`,false);
+      await this.refreshInventory();
+      if(this.surface.target === expected.clicked && !this.surface.pending) await this.refresh();
+      if(result.outcome !== "Success") throw new Error(`${result.outcome}: ${result.message}`);
+      return review;
+    } catch(e) {
+      if (scope && attempted && typeof e === "object" && e && "code" in e) this.protectWriteView(`field:${scope.token}`,false);
+      if (scope && attempted && this.unconfirmedWriteViews.has(`field:${scope.token}`)) {
+        this.publish({uncertainField:{token:scope.token,epoch,target:expected.clicked}});
+        this.showError(`結果を確認できません。自動再試行は止めています。${errorText(e)}`);
+      }
+      throw e;
+    } finally {
+      if(epoch === this.surface.status.epoch) this.publish({busy:false});
+    }
+  }
+  async fieldAction(operation: FieldOperation, expected: Projection) {
+    const intent=this.inputIntent;
+    try {
+      const review=await this.fieldOperation(operation,expected);
+      const name=review?.command.declaration?.name;
+      if(name && this.surface.target===expected.clicked && this.inputIntent===intent) {
+        const column=this.surface.projection?.columns.findIndex(c=>c.field.name===name) ?? -1, viewport=this.viewport;
+        if(viewport && column>=0) {
+          const left=GRID.identity+column*GRID.column;
+          if(left<viewport.scrollLeft)viewport.scrollLeft=left;
+          else if(left+GRID.column>viewport.scrollLeft+viewport.clientWidth)viewport.scrollLeft=left+GRID.column-viewport.clientWidth;
+        }
+        requestAnimationFrame(()=>requestAnimationFrame(() => {
+          if(this.surface.target===expected.clicked && this.inputIntent===intent) this.viewport?.querySelector<HTMLButtonElement>(`.column[data-field="${CSS.escape(name)}"] .field-name-button`)?.focus();
+        }));
+      }
+    } catch(e) { this.showError(e); }
+  }
   focusSchema = () => {
     const source = this.surface.projection?.table.source ?? null;
     if (source === this.historySource) return;
@@ -1082,6 +1165,34 @@ class Desktop {
     }
   }
   closeCompare = () => this.publish({ comparison: null });
+  async migrationCompare(token: string, source: string, sources: string[]) {
+    const epoch=this.surface.status.epoch;
+    const r=await this.rpc<[string,string]>({kind:"migrationCompare",epoch,token,source});
+    if(epoch===this.surface.status.epoch) this.publish({comparison:{source,identity:"",before:r.data[0],after:r.data[1],conflict:false,migration:{token,sources}}});
+  }
+  async recoverMigration(id: string, restoreOld: boolean) {
+    const epoch=this.surface.status.epoch;
+    if(restoreOld && await this.choose("Restore OLD", "このMigrationが書いたとfreshに確認できるsourceだけを、保存したOLD bytesへ戻します。",["Restore OLD","Cancel"])!=="Restore OLD") return;
+    this.publish({busy:true,error:null});
+    try {
+      await this.rpc({kind:"migrationRecovery",epoch,id,restoreOld,authorized:restoreOld});
+      if(epoch!==this.surface.status.epoch) return;
+      await this.refreshInventory(); await this.refresh();
+    } catch(e) {if(epoch===this.surface.status.epoch)this.showError(e);}
+    finally {if(epoch===this.surface.status.epoch)this.publish({busy:false});}
+  }
+  async recheckFieldOperation() {
+    const attempt=this.surface.uncertainField;
+    if(!attempt || attempt.epoch!==this.surface.status.epoch) return;
+    this.publish({busy:true});
+    try {
+      const reply=await this.rpc<SetResult>({kind:"migrationResult",epoch:attempt.epoch,token:attempt.token});
+      this.protectWriteView(`field:${attempt.token}`,false);
+      this.publish({uncertainField:null,error:reply.data.outcome==="Success" ? null : `${reply.data.outcome}: ${reply.data.message}`});
+      await this.refreshInventory(); if(!this.surface.pending) await this.refresh();
+    } catch(e) {this.showError(e);}
+    finally {if(attempt.epoch===this.surface.status.epoch)this.publish({busy:false});}
+  }
   overwrite = async () => {
     const compared = this.surface.comparison,
       epoch = this.surface.status.epoch;

@@ -84,6 +84,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case path --output verification/results/path.json
+      - name: Native direct column authoring and reviewed destructive migration
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case migration --output verification/results/migration.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

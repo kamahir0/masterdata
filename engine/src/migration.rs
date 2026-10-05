@@ -233,6 +233,11 @@ fn expected_tables(
         Command::RenameField {
             field, new_name, ..
         } => {
+            if new_name != field && changed.fields.iter().any(|f| f.name == *new_name) {
+                return Err(precondition(format!(
+                    "{new_name}: field name already exists"
+                )));
+            }
             let current = changed
                 .fields
                 .iter_mut()

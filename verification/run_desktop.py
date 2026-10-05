@@ -54,7 +54,7 @@ def check_authoring(report):
     assert report['visibility'] == 'visible' and report['focused'], 'native window not usable'
     assert [item['name'] for item in report['checks']] == [
         'scalar-composition', 'pointer-range', 'row-drag-cancel', 'row-drag-drop',
-        'column-drag-drop', 'array-drag-drop', 'complex-typing-add', 'complex-focus-intent', 'nested-problem-focus', 'complex-navigation',
+        'between-frame-row-drop', 'column-drag-drop', 'array-drag-drop', 'complex-typing-add', 'complex-focus-intent', 'nested-problem-focus', 'complex-navigation',
     ], report['checks']
     assert report['source']['before'] == report['source']['after']
     assert report['schema']['before'] == report['schema']['after']
@@ -92,6 +92,17 @@ def check_path(report):
     assert report['destination'] == 'sources/moved/Renamed-data.yml'
     assert not report['startup']['browserErrors']
     return {'checks': len(report['checks']), 'scopedGuardAndExactMove': True}
+
+
+def check_migration(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['inline-rename-composition-cancel', 'failed-rename-preserves-input',
+                                'direct-rename-exact-occurrences', 'tail-add-explicit-null-focus',
+                                'relative-column-insert', 'drop-compare-explicit-authorization']
+    assert not report['startup']['browserErrors']
+    assert report['dirty'] == []
+    return {'checks': len(report['checks']), 'directStructuralAuthoring': True}
 
 
 def run(binary: Path, output: Path, case: str):
@@ -170,7 +181,7 @@ def run(binary: Path, output: Path, case: str):
                 }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2))
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration}[case](report)
                 if case == 'external':
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == expected, 'local draft silently overwrote external source'
@@ -181,6 +192,17 @@ def run(binary: Path, output: Path, case: str):
                     assert (project / report['destination']).read_bytes() == initial_sources[original].replace(b'name: Debug Sword', b'name: Saved before move'), 'Move rewrote source or saved discarded draft'
                     assert not (project / 'sources/cancelled.yaml').exists()
                     assert not (project / '.masterdata').exists(), 'Move implicitly built artifacts'
+                elif case == 'migration':
+                    schema = Path('sources/catalog-schema.yaml')
+                    data = Path('sources/catalog-data.yaml')
+                    assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path not in [schema, data]), 'Migration changed unrelated physical sources'
+                    old_schema = initial_sources[schema].replace(b'    name: name\n', b'    name: title\n')
+                    expected_schema = old_schema.replace(b'primaryKey:\n', b'  - key: 18\n    name: field\n    type: string\n    nullable: true\nprimaryKey:\n')
+                    assert (project / schema).read_bytes() == expected_schema, 'structural authoring rewrote schema presentation or changed MessagePack keys'
+                    old_data = initial_sources[data].replace(b'    name:', b'    title:')
+                    expected_data = old_data.replace(b'    $tags: [development]\n', b'    $tags: [development]\n    field: null\n').replace(b'    $tags: [production]\n', b'    $tags: [production]\n    field: null\n')
+                    assert (project / data).read_bytes() == expected_data, 'structural authoring changed non-target record bytes'
+                    assert not (project / '.masterdata/output').exists(), 'Migration implicitly built artifacts'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
                 if case == 'creation':
@@ -202,7 +224,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration'], default='navigation')
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     run(args.binary, args.output, args.case)

@@ -134,6 +134,7 @@ pub fn run() {
         (true, Some("external")) => "external",
         (true, Some("creation")) => "creation",
         (true, Some("path")) => "path",
+        (true, Some("migration")) => "migration",
         _ => "navigation",
     }
     .to_string();

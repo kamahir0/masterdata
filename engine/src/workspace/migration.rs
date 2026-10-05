@@ -402,9 +402,19 @@ impl Workspace {
         Ok(())
     }
     pub fn recheck_migration_result(&self, token: &str) -> Result<native::SetResult> {
+        let token = plan_token(token)?;
+        if !self.migration_results.contains_key(&token) {
+            return self
+                .migration_plans
+                .get(&token)
+                .ok_or_else(|| {
+                    Error::new("E-MIGRATION-RESULT", "attempt information is unavailable")
+                })?
+                .confirm_unattempted();
+        }
         let result = self
             .migration_results
-            .get(&plan_token(token)?)
+            .get(&token)
             .ok_or_else(|| Error::new("E-MIGRATION-RESULT", "no completed attempt is available"))?;
         for (path, observed) in &result.snapshots {
             native::preflight(&self.read.root, &self.read.roots, path, observed)?;

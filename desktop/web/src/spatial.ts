@@ -414,6 +414,12 @@ function begin(
   const up = (e: PointerEvent) => {
     if (e.pointerId !== pointer) return;
     point = { x: e.clientX, y: e.clientY };
+    // Native input can finish between frames. A visible preview frame is not
+    // authorization for a drop; derive its final bounded geometry on release.
+    if (gesture && !moved && Math.hypot(point.x - first.x, point.y - first.y) >= 4) {
+      cancelAnimationFrame(frame);
+      paint();
+    }
     if (!moved || !gesture || !ghost) {
       finish();
       return;

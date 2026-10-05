@@ -165,6 +165,10 @@ fn migration_preserves_unrelated_draft_history_search_and_exact_occurrence_selec
         .or_default()
         .selected_row = Some(row.clone());
     let review = w.prepare_migration(add()).unwrap();
+    assert_eq!(
+        w.recheck_migration_result(&review.token).unwrap().outcome,
+        Outcome::NotAttempted
+    );
     assert_eq!(review.files.len(), 3);
     assert_eq!(review.affected_records, 2);
     assert_eq!(w.dirty_paths(), ["sources/other.yaml"]);

@@ -15,6 +15,7 @@ import {
   Button,
   ConfigProvider,
   Dropdown,
+  Drawer,
   Empty,
   Flex,
   Input,
@@ -26,6 +27,7 @@ import {
   Spin,
   Tree,
   Typography,
+  Tag,
   theme,
   type MenuProps,
   type TreeDataNode,
@@ -127,6 +129,8 @@ export function Application({ platform }: { platform: string }) {
 }
 function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   const { token } = theme.useToken();
+  const [recoveryOpen,setRecoveryOpen]=useState(false);
+  useEffect(()=>{if(s.status.recoveryRequired)void desktop.refreshInventory().catch(desktop.showError);},[s.status.recoveryRequired]);
   const variables = {
     "--md-bg": token.colorBgContainer,
     "--md-app": token.colorBgLayout,
@@ -244,6 +248,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                 title="Project menu"
               />
             </Dropdown>
+            {s.status.recoveryRequired && <Button danger type="text" icon={<WarningOutlined/>} onClick={()=>setRecoveryOpen(true)}>Recovery Required</Button>}
           </Space>
         </nav>
       </header>
@@ -288,6 +293,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       <ChoiceModal s={s} />
       <CompareModal s={s} />
       <AppearanceModal s={s} />
+      <RecoveryDrawer s={s} open={recoveryOpen && s.status.recoveryRequired} close={()=>setRecoveryOpen(false)} />
     </div>
   );
 }
@@ -618,6 +624,7 @@ function TableSurface({ s }: { s: Surface }) {
             description={<span className="error-detail">{s.error}</span>}
           />
         )}
+        {s.uncertainField && <Alert className="context-alert" type="warning" showIcon title="構造変更の結果を確認できません" description={<Button disabled={s.busy} onClick={()=>void desktop.recheckFieldOperation()}>Recheck actual source set</Button>} />}
         {s.heldInputs.length > 0 && <HeldInputs s={s} />}
         <ComplexPanel />
       </div>
@@ -717,7 +724,7 @@ function ChoiceModal({ s }: { s: Surface }) {
           key={action}
           autoFocus={i === c.actions.length - 1}
           type={i === 0 ? "primary" : "default"}
-          danger={action === "Overwrite"}
+          danger={["Overwrite", "Delete", "Restore OLD"].includes(action)}
           onClick={() => c.finish(action)}
         >
           {action}
@@ -731,12 +738,12 @@ function ChoiceModal({ s }: { s: Surface }) {
 function CompareModal({ s }: { s: Surface }) {
   const c = s.comparison,
     p = s.projection;
-  const sources = p
+  const sources = c?.migration?.sources ?? (p
     ? [...new Set([p.table.source, ...(p.source ? [p.source] : [])])]
-    : [];
+    : []);
   return (
     <Modal
-      title="Compare save candidate"
+      title={c?.migration ? "Compare structural change" : "Compare save candidate"}
       open={!!c}
       onCancel={desktop.closeCompare}
       width="min(1000px, 94vw)"
@@ -761,12 +768,12 @@ function CompareModal({ s }: { s: Surface }) {
               value: source,
               label: source,
             }))}
-            onChange={(source) => void desktop.compare(source)}
+            onChange={(source) => {if(c.migration)void desktop.migrationCompare(c.migration.token,source,c.migration.sources).catch(desktop.showError);else void desktop.compare(source);}}
             className="compare-source"
           />
           <div className="compare-panes">
             <label>
-              現在のdisk
+              {c.migration ? "レビューしたsource" : "現在のdisk"}
               <Input.TextArea
                 aria-label="Current disk source"
                 readOnly
@@ -774,7 +781,7 @@ function CompareModal({ s }: { s: Surface }) {
               />
             </label>
             <label>
-              保存候補
+              {c.migration ? "変更候補" : "保存候補"}
               <Input.TextArea
                 aria-label="Save candidate"
                 readOnly
@@ -786,6 +793,18 @@ function CompareModal({ s }: { s: Surface }) {
       )}
     </Modal>
   );
+}
+function RecoveryDrawer({s,open,close}:{s:Surface;open:boolean;close:()=>void}) {
+  const information=s.inventory?.recovery ?? [],[index,setIndex]=useState(0),info=information[Math.min(index,Math.max(0,information.length-1))];
+  return <Drawer title="Migration Recovery Required" open={open} onClose={close} size={520} destroyOnHidden footer={<Space><Button disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,false);}}>Recheck actual source set</Button><Button danger disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,true);}}>Restore OLD…</Button></Space>}>
+    <Space direction="vertical" size={12} className="recovery-detail">
+      <Alert type="error" showIcon title="Source変更とBuildを停止しています" description="OLD／NEWの状態を確認してください。閉じてもgateは解除されません。"/>
+      {information.length>1 && <Select aria-label="Recovery operation" value={index} options={information.map((record,i)=>({value:i,label:record.id || record.directory}))} onChange={setIndex}/>}
+      <Typography.Paragraph>{info?.message}</Typography.Paragraph>
+      {info?.files.map(file=><div className="recovery-file" key={file.source}><Space><Tag>{file.state}</Tag><Typography.Text strong>{file.source}</Typography.Text></Space><Typography.Paragraph type="secondary" copyable>{file.oldCopy}</Typography.Paragraph><Typography.Paragraph type="secondary" copyable>{file.newCopy}</Typography.Paragraph></div>)}
+      <Typography.Text type="secondary" copyable>{info?.directory}</Typography.Text>
+    </Space>
+  </Drawer>;
 }
 function AppearanceModal({ s }: { s: Surface }) {
   return (

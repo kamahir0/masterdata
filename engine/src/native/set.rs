@@ -385,6 +385,30 @@ fn recovery_info(
     }
 }
 impl SourceSetPlan {
+    pub(crate) fn confirm_unattempted(&self) -> Result<SetResult> {
+        self.closure.verify(&BTreeMap::new())?;
+        Ok(SetResult {
+            outcome: Outcome::NotAttempted,
+            message: "No commit attempt was accepted for this Plan".into(),
+            files: self
+                .plan
+                .candidates
+                .keys()
+                .map(|source| SetFileState {
+                    source: source.clone(),
+                    state: "OLD".into(),
+                    commit: Some(WriteResult::new(
+                        source,
+                        Outcome::NotAttempted,
+                        "no accepted attempt",
+                    )),
+                    rollback: None,
+                })
+                .collect(),
+            recovery: None,
+            snapshots: self.closure.sources.clone(),
+        })
+    }
     pub fn prepare(project: &Project, plan: migration::Plan) -> Result<Self> {
         if !pending_recovery(&project.root)?.is_empty() {
             return Err(Error::new(

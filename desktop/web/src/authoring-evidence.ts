@@ -252,6 +252,17 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       "row drop was not one Undo",
     );
     record("row-drag-drop", { oneUndo: true });
+    const quickStart = point(find(".grid-row .row-grip")),
+      quickEnd = point(find(".grid-row:nth-child(2) .row-identity"));
+    pointer(find(".grid-row .row-grip"), "pointerdown", quickStart);
+    await Promise.resolve();
+    pointer(document, "pointermove", quickEnd);
+    pointer(document, "pointerup", quickEnd);
+    await until(() => desktop.surface.projection!.rows[1].id === originalRows[0], "between-frame drop was lost");
+    await settle();
+    await undo();
+    assert((await bytes()).after === base.after && !desktop.surface.projection!.canUndo, "quick drop was not one Undo");
+    record("between-frame-row-drop", { oneUndo: true });
     const originalColumns = desktop.surface.projection!.columns.map(
       (c) => c.field.name,
     );

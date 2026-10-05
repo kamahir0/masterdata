@@ -12,6 +12,7 @@ import type {
   FieldOperation,
   MigrationReview,
   SetResult,
+  TypeProjection,
 } from "./types";
 
 export const GRID = {
@@ -119,6 +120,7 @@ export interface Interaction {
 export interface Surface {
   inventory: Inventory | null;
   projection: Projection | null;
+  typeProjection: TypeProjection | null;
   target: string;
   pending: boolean;
   externalPending: boolean;
@@ -165,6 +167,7 @@ class Desktop {
   surface: Surface = {
     inventory: null,
     projection: null,
+    typeProjection: null,
     target: "",
     pending: false,
     externalPending: false,
@@ -375,6 +378,7 @@ class Desktop {
     this.publish({
       inventory: r.data,
       projection: null,
+      typeProjection: null,
       target: "",
       pending: false,
       externalPending: false,
@@ -465,6 +469,7 @@ class Desktop {
         queryPending: searching,
         error: same ? this.surface.error : null,
         comparison: null,
+        typeProjection: same ? this.surface.typeProjection : null,
       }),
     );
     sample.selectionPublication = performance.now();
@@ -499,7 +504,7 @@ class Desktop {
           Math.max(640, this.viewport?.clientHeight ?? 640) / GRID.row,
         ) + 10,
       );
-      const r = await this.rpc<Projection>({
+      const r = await this.rpc<Projection | TypeProjection>({
         kind: "select",
         path,
         start,
@@ -517,6 +522,16 @@ class Desktop {
         r.host.epoch !== this.surface.status.epoch
       ) {
         sample.invalid = "obsolete";
+        return sample;
+      }
+      if ("kind" in r.data) {
+        const p = r.data;
+        this.historySource = null;
+        this.interact({editor:null,complex:null,anchor:null});
+        sample.statePublication = performance.now();
+        const paint = new Promise<void>(resolve => this.paintResolve.set(mine,resolve));
+        flushSync(()=>this.publish({projection:null,typeProjection:p,pending:external,externalPending:external,query:"",queryPending:false}));
+        if (!same && this.evidence) await this.waitSelectionPaint(mine,paint);
         return sample;
       }
       const p = r.data,
@@ -573,6 +588,7 @@ class Desktop {
       flushSync(() =>
         this.publish({
           projection: p,
+          typeProjection: null,
           pending: external,
           externalPending: external,
           queryPending: false,
@@ -584,28 +600,7 @@ class Desktop {
         this.viewport.scrollLeft = saved?.left ?? 0;
       }
       // Paint is evidence, never authorization or a mutation completion lock.
-      if (!same && this.evidence) {
-        let deadline: ReturnType<typeof setTimeout>;
-        try {
-          await Promise.race([
-            paint,
-            new Promise<never>((_, reject) => {
-              deadline = setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      "target paint opportunity was not observed within 1s",
-                    ),
-                  ),
-                1000,
-              );
-            }),
-          ]);
-        } finally {
-          clearTimeout(deadline!);
-          this.paintResolve.delete(mine);
-        }
-      }
+      if (!same && this.evidence) await this.waitSelectionPaint(mine,paint);
       return sample;
     } catch (e) {
       if (mine !== this.token) {
@@ -615,6 +610,7 @@ class Desktop {
       sample.invalid = errorText(e);
       this.publish({
         projection: null,
+        typeProjection: null,
         pending: false,
         externalPending: false,
         queryPending: false,
@@ -622,6 +618,35 @@ class Desktop {
       });
       throw e;
     }
+  }
+  private async waitSelectionPaint(token: number, paint: Promise<void>) {
+    let deadline: ReturnType<typeof setTimeout>;
+    try {
+      await Promise.race([paint,new Promise<never>((_,reject)=>{
+        deadline=setTimeout(()=>reject(new Error("target paint opportunity was not observed within 1s")),1000);
+      })]);
+    } finally {clearTimeout(deadline!);this.paintResolve.delete(token);}
+  }
+  currentType(p: TypeProjection) {
+    const current=this.surface.typeProjection;
+    return !this.surface.pending && this.surface.target===p.clicked && current===p && p.sessionEpoch===this.surface.status.epoch;
+  }
+  committedType(p: TypeProjection, element: HTMLElement) {
+    const sample=this.currentSample;
+    if(!sample || sample.token!==this.token || !this.currentType(p) || sample.paintOpportunity)return;
+    sample.domCommit??=performance.now();sample.reactCommit??=sample.domCommit;
+    element.getBoundingClientRect();sample.layout=performance.now();
+    requestAnimationFrame(()=>{
+      if(sample.token===this.token && this.currentType(p)) {sample.paintOpportunity??=performance.now();sample.mountedRows=element.querySelectorAll('.ant-table-row').length;}
+      else sample.invalid="obsolete before paint";
+      this.paintResolve.get(sample.token)?.();this.paintResolve.delete(sample.token);
+    });
+  }
+  acceptedType(p: TypeProjection) {
+    if(this.currentType(p) && this.currentSample?.target===p.clicked)this.currentSample.firstAccepted??=performance.now();
+  }
+  migrationUncertain(token:string,epoch:number,target:string) {
+    if(epoch===this.surface.status.epoch)this.publish({uncertainField:{token,epoch,target}});
   }
   committed(projection: Projection) {
     const sample = this.currentSample;
@@ -1729,7 +1754,7 @@ class Desktop {
           this.publish({ inventory: inventory.data });
           if (this.surface.status.environmentError) {
             await this.recheckInput(inputPreview, epoch);
-            this.publish({ pending: false, externalPending: false, projection: null, error: this.surface.status.environmentError });
+            this.publish({ pending: false, externalPending: false, projection: null, typeProjection:null, error: this.surface.status.environmentError });
           } else if (this.surface.target) {
             const selected = await this.selectTarget(this.surface.target, "external-change", true);
             await this.recheckInput(inputPreview, epoch);
@@ -1737,11 +1762,11 @@ class Desktop {
               this.publish({ pending: false, externalPending: false });
           }
         }
-        if (operationEpoch === this.surface.status.epoch && input === this.inputIntent && element?.isConnected && this.surface.projection)
+        if (operationEpoch === this.surface.status.epoch && input === this.inputIntent && element?.isConnected && (this.surface.projection||this.surface.typeProjection))
           element.focus({ preventScroll: true });
       } catch (error) {
         if (operationEpoch === this.surface.status.epoch) {
-          this.publish({ projection: null, pending: false, externalPending: false });
+          this.publish({ projection: null, typeProjection:null, pending: false, externalPending: false });
           this.showError(error);
           await this.recheckInput(inputPreview, operationEpoch);
         }

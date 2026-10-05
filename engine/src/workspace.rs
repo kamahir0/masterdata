@@ -19,8 +19,10 @@ pub mod complex;
 mod creation;
 mod migration;
 mod path;
+mod types;
 pub use migration::{FieldIntent, FieldOperation, MigrationReview};
 pub use path::MoveReview;
+pub use types::{SelectionProjection, TypeProjection};
 pub struct FieldShapeEdit<'a> {
     pub nullable: bool,
     pub array: bool,
@@ -355,6 +357,9 @@ impl Workspace {
     fn install_read(&mut self, source: Source) {
         let path = &source.path;
         let mut p = (*self.read).clone();
+        for paths in p.type_declarations.values_mut() {
+            paths.remove(path);
+        }
         p.tables.retain(|_, table| table.source != *path);
         let removed = p
             .type_sources
@@ -362,16 +367,24 @@ impl Workspace {
             .filter(|(_, source)| *source == path)
             .map(|(name, _)| name.clone())
             .collect::<Vec<_>>();
-        for name in removed {
-            Arc::make_mut(&mut p.types).remove(&name);
+        for name in &removed {
+            Arc::make_mut(&mut p.types).remove(name);
             // Keep an unavailable type's physical dependency locator. Its
             // semantics are absent, but a later repair must remain discoverable
             // without project-wide discovery during selection.
             if source.document.is_some() {
-                p.type_sources.remove(&name);
+                p.type_sources.remove(name);
             }
         }
         if let Some(doc) = &source.document {
+            if source.kind.as_deref() == Some("type")
+                && let Some(name) = doc.root.get("name").and_then(|node| node.text().ok())
+            {
+                p.type_declarations
+                    .entry(name.into())
+                    .or_default()
+                    .insert(path.clone());
+            }
             match source.kind.as_deref() {
                 Some("schema") => {
                     if let Ok(t) = semantic::parse_table(doc, path) {
@@ -388,6 +401,27 @@ impl Workspace {
             }
         }
         p.sources.insert(path.clone(), Arc::new(source));
+        // A duplicate's former locator may disappear while another declaration
+        // survives. Promote only that indexed source; otherwise every selection
+        // would keep refreshing the deleted duplicate or require a Project reopen.
+        // Required freshness is still checked by selection, never by this cache.
+        for name in removed {
+            let Some(paths) = p
+                .type_declarations
+                .get(&name)
+                .filter(|paths| paths.len() == 1)
+            else {
+                continue;
+            };
+            let remaining = paths.first().unwrap();
+            p.type_sources.insert(name.clone(), remaining.clone());
+            if let Some(document) = p.sources[remaining].document.as_ref()
+                && let Ok((current, declaration)) = semantic::parse_type(document)
+                && current == name
+            {
+                Arc::make_mut(&mut p.types).insert(name, declaration);
+            }
+        }
         p.generation += 1;
         self.read = Arc::new(p);
         self.generation += 1;
@@ -619,6 +653,12 @@ impl Workspace {
     }
     pub fn current_types(&self) -> Result<semantic::Types> {
         let mut types = (*self.read.types).clone();
+        types.retain(|name, _| {
+            self.read
+                .type_declarations
+                .get(name)
+                .is_some_and(|paths| paths.len() == 1)
+        });
         for (path, d) in &self.drafts {
             if !self.unavailable.contains_key(path)
                 && self.read.sources[path].kind.as_deref() == Some("type")
@@ -701,10 +741,45 @@ impl Workspace {
             v
         })
     }
+    pub fn select_view(
+        &mut self,
+        clicked: &str,
+        start: usize,
+        count: usize,
+    ) -> Result<SelectionProjection> {
+        let (result, measurement) = instrument::measure(|| {
+            let freshness = instrument::span("freshness");
+            self.check_config()?;
+            self.refresh_source(clicked)?;
+            if self.read.sources[clicked].kind.as_deref() == Some("type") {
+                return self
+                    .type_projection_current(clicked, freshness)
+                    .map(SelectionProjection::Type);
+            }
+            self.table_projection_current(clicked, start, count, freshness)
+                .map(SelectionProjection::Table)
+        });
+        result.map(|mut view| {
+            match &mut view {
+                SelectionProjection::Table(p) => p.measurement = measurement,
+                SelectionProjection::Type(p) => p.measurement = measurement,
+            }
+            view
+        })
+    }
     fn select_inner(&mut self, clicked: &str, start: usize, count: usize) -> Result<Projection> {
         let freshness = instrument::span("freshness");
         self.check_config()?;
         self.refresh_source(clicked)?;
+        self.table_projection_current(clicked, start, count, freshness)
+    }
+    fn table_projection_current(
+        &mut self,
+        clicked: &str,
+        start: usize,
+        count: usize,
+        freshness: instrument::Span,
+    ) -> Result<Projection> {
         let selected = self.read.sources[clicked].clone();
         if !matches!(selected.kind.as_deref(), Some("schema" | "data")) {
             return Err(Error::new("E-EDITOR-KIND", "Table source required"));

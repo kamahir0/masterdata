@@ -89,6 +89,8 @@ if (boot.evidence) {
         ? await import("./path-evidence")
       : boot.evidenceKind === "migration"
         ? await import("./migration-evidence")
+      : boot.evidenceKind === "type"
+        ? await import("./type-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

@@ -94,6 +94,18 @@ pub enum Intent {
     MigrationPlan {
         command: masterdata_engine::migration::Command,
     },
+    TypeMigrationPlan {
+        source: String,
+        identity: String,
+        command: masterdata_engine::type_migration::Command,
+        #[serde(default)]
+        input: Option<masterdata_engine::initializer::Input>,
+    },
+    TypeInitializer {
+        source: String,
+        identity: String,
+        declaration: masterdata_engine::creation::Declaration,
+    },
     FieldScope {
         source: String,
         revision: u64,
@@ -637,6 +649,17 @@ fn execute(
         Intent::MoveSource { token } => convert(w.apply_path_move(&token)?),
         Intent::RecheckMove { token } => convert(w.recheck_path_move(&token)?),
         Intent::MigrationPlan { command } => convert(w.prepare_migration(command)?),
+        Intent::TypeMigrationPlan {
+            source,
+            identity,
+            command,
+            input,
+        } => convert(w.prepare_type_migration_input(&source, &identity, command, input)?),
+        Intent::TypeInitializer {
+            source,
+            identity,
+            declaration,
+        } => convert(w.type_initializer_shape(&source, &identity, &declaration)?),
         Intent::FieldScope {
             source,
             revision,
@@ -680,7 +703,7 @@ fn execute(
         Intent::Select {
             path, start, count, ..
         } => {
-            let mut value = convert(w.select(&path, start, count)?)?;
+            let mut value = convert(w.select_view(&path, start, count)?)?;
             value
                 .as_object_mut()
                 .unwrap()

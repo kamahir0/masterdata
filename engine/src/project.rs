@@ -115,6 +115,7 @@ pub struct Project {
     pub tables: BTreeMap<String, Arc<Table>>,
     pub types: Arc<Types>,
     pub type_sources: BTreeMap<String, String>,
+    pub type_declarations: BTreeMap<String, BTreeSet<String>>,
     pub generation: u64,
     pub declaration_problems: Vec<Diagnostic>,
 }
@@ -335,6 +336,7 @@ impl Project {
             tables: BTreeMap::new(),
             types: Arc::new(BTreeMap::new()),
             type_sources: BTreeMap::new(),
+            type_declarations: BTreeMap::new(),
             generation: 1,
             declaration_problems: vec![],
         };
@@ -345,10 +347,19 @@ impl Project {
     pub fn rebuild_declarations(&mut self) {
         self.tables.clear();
         self.type_sources.clear();
+        self.type_declarations.clear();
         self.declaration_problems.clear();
         let mut types = BTreeMap::new();
         for (path, s) in &self.sources {
             if let Some(doc) = &s.document {
+                if s.kind.as_deref() == Some("type")
+                    && let Some(name) = doc.root.get("name").and_then(|node| node.text().ok())
+                {
+                    self.type_declarations
+                        .entry(name.into())
+                        .or_default()
+                        .insert(path.clone());
+                }
                 for (span, message) in &doc.subset_issues {
                     let mut d = Diagnostic::error(
                         path,
@@ -616,30 +627,35 @@ impl Project {
     }
 
     pub fn dependencies(&self, table: &Table) -> Vec<String> {
-        fn collect(
-            name: &str,
-            p: &Project,
-            set: &mut BTreeSet<String>,
-            seen: &mut BTreeSet<String>,
-        ) {
-            if !seen.insert(name.into()) {
-                return;
-            }
-            if let Some(path) = p.type_sources.get(name) {
-                set.insert(path.clone());
-            }
-            if let Some(Type::Custom { fields }) = p.types.get(name) {
-                for f in fields {
-                    collect(&f.type_name, p, set, seen);
-                }
-            }
-        }
         let mut paths = BTreeSet::from([table.source.clone()]);
         let mut seen = BTreeSet::new();
         for f in &table.fields {
-            collect(&f.type_name, self, &mut paths, &mut seen);
+            Self::collect_type_sources(&f.type_name, self, &mut paths, &mut seen);
         }
         paths.into_iter().collect()
+    }
+    pub fn type_dependencies(&self, name: &str) -> Vec<String> {
+        let mut paths = BTreeSet::new();
+        Self::collect_type_sources(name, self, &mut paths, &mut BTreeSet::new());
+        paths.into_iter().collect()
+    }
+    fn collect_type_sources(
+        name: &str,
+        p: &Project,
+        set: &mut BTreeSet<String>,
+        seen: &mut BTreeSet<String>,
+    ) {
+        if !seen.insert(name.into()) {
+            return;
+        }
+        if let Some(path) = p.type_sources.get(name) {
+            set.insert(path.clone());
+        }
+        if let Some(Type::Custom { fields }) = p.types.get(name) {
+            for f in fields {
+                Self::collect_type_sources(&f.type_name, p, set, seen);
+            }
+        }
     }
 
     pub fn profile(&self, name: Option<&str>) -> Result<Profile> {

@@ -56,6 +56,7 @@ import { AuthoringGrid } from "./grid";
 import { ComplexPanel } from "./complex";
 import { useCreation } from "./creation";
 import { useSourcePath } from "./source-path";
+import { TypeSurface } from "./type-editor";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -279,7 +280,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               )}
             </section>
           ) : s.target ? (
-            <TableSurface s={s} />
+            (s.typeProjection?.clicked===s.target||s.inventory.sources.find(source=>source.path===s.target)?.kind==="type") ? <TypeSurface s={s} footer={<ProblemsBar s={s}/>}/> : <TableSurface s={s} />
           ) : (
             <div className="select-source">
               <Empty

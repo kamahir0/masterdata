@@ -16,6 +16,9 @@ use std::{collections::BTreeMap, sync::Arc};
     rename_all_fields = "camelCase"
 )]
 pub enum Command {
+    Type {
+        command: crate::type_migration::Command,
+    },
     AddField {
         table: String,
         declaration: Declaration,
@@ -40,16 +43,21 @@ pub enum Command {
     },
 }
 impl Command {
-    pub fn table(&self) -> &str {
+    pub fn table(&self) -> Result<&str> {
         match self {
             Self::AddField { table, .. }
             | Self::RenameField { table, .. }
             | Self::DropField { table, .. }
-            | Self::SetFieldDeclaration { table, .. } => table,
+            | Self::SetFieldDeclaration { table, .. } => Ok(table),
+            Self::Type { .. } => Err(resolution("Table operation required")),
         }
     }
     pub fn destructive(&self) -> bool {
-        matches!(self, Self::DropField { .. })
+        match self {
+            Self::Type { command } => command.destructive(),
+            Self::DropField { .. } => true,
+            _ => false,
+        }
     }
 }
 #[derive(Clone, Debug)]
@@ -71,7 +79,7 @@ fn precondition(message: impl Into<String>) -> Error {
     Error::new("E-MIGRATION-PRECONDITION", message)
 }
 
-fn declaration_value(d: &Declaration) -> Value {
+pub(crate) fn declaration_value(d: &Declaration) -> Value {
     let mut members = vec![
         ("key".into(), Value::Literal(d.key.clone())),
         ("name".into(), Value::Text(d.name.clone())),
@@ -85,7 +93,7 @@ fn declaration_value(d: &Declaration) -> Value {
     }
     Value::Mapping(members)
 }
-fn field_declaration(d: &Declaration, types: &semantic::Types) -> Result<Field> {
+pub(crate) fn field_declaration(d: &Declaration, types: &semantic::Types) -> Result<Field> {
     let doc = Document::parse(source::render_block(
         &Value::Mapping(vec![(
             "fields".into(),
@@ -98,22 +106,19 @@ fn field_declaration(d: &Declaration, types: &semantic::Types) -> Result<Field> 
     semantic::shape(&field, types)?;
     Ok(field)
 }
-fn field_resolution(project: &Project, field: &Field) -> Result<()> {
+pub(crate) fn field_resolution(project: &Project, field: &Field) -> Result<()> {
     semantic::shape(field, &project.types)?;
     fn names(project: &Project, name: &str) -> Result<()> {
         if semantic::primitive(name) {
             return Ok(());
         }
+        // Project opening / changed-source installation maintains this locator
+        // index. Ordinary type selection never enumerates the project to prove
+        // a required declaration's uniqueness.
         let declarations = project
-            .sources
-            .values()
-            .filter(|source| {
-                source.kind.as_deref() == Some("type")
-                    && source.document.as_ref().is_some_and(|doc| {
-                        doc.root.get("name").and_then(|node| node.text().ok()) == Some(name)
-                    })
-            })
-            .count();
+            .type_declarations
+            .get(name)
+            .map_or(0, |paths| paths.len());
         if declarations != 1 {
             return Err(resolution(format!(
                 "{name}: type declaration is ambiguous or missing"
@@ -128,7 +133,7 @@ fn field_resolution(project: &Project, field: &Field) -> Result<()> {
     }
     names(project, &field.type_name)
 }
-fn constant(field: &Field, value: &Value, types: &semantic::Types) -> Result<()> {
+pub(crate) fn constant(field: &Field, value: &Value, types: &semantic::Types) -> Result<()> {
     let doc = Document::parse(source::render_block(
         &Value::Mapping(vec![("value".into(), value.clone())]),
         0,
@@ -210,6 +215,7 @@ fn expected_tables(
     let mut expected = project.tables.clone();
     let changed = Arc::make_mut(expected.get_mut(&target.name).unwrap());
     match command {
+        Command::Type { .. } => return Err(resolution("Table operation required")),
         Command::AddField {
             declaration,
             position,
@@ -314,7 +320,7 @@ fn expected_tables(
     }
     Ok(expected)
 }
-fn scalar_patch(
+pub(crate) fn scalar_patch(
     doc: &Document,
     node: &Node,
     value: &Value,
@@ -376,7 +382,7 @@ fn reference_patches(
     }
     Ok(())
 }
-fn ordered_value(node: &Node, expected: &Value) -> bool {
+pub(crate) fn ordered_value(node: &Node, expected: &Value) -> bool {
     match (&node.raw, expected) {
         (Raw::Mapping(members), Value::Mapping(values)) => {
             members.len() == values.len()
@@ -412,6 +418,7 @@ fn expected_records(doc: &Document, command: &Command) -> Result<Value> {
             return Err(resolution("record mapping required"));
         };
         match command {
+            Command::Type { .. } => return Err(resolution("Table operation required")),
             Command::AddField {
                 declaration,
                 initializer,
@@ -444,9 +451,12 @@ fn expected_records(doc: &Document, command: &Command) -> Result<Value> {
     Ok(expected)
 }
 pub fn derive(project: &Project, command: Command) -> Result<Plan> {
+    if let Command::Type { command } = &command {
+        return crate::type_migration::derive(project, command.clone());
+    }
     let target = project
         .tables
-        .get(command.table())
+        .get(command.table()?)
         .ok_or_else(|| resolution("logical Table cannot be resolved"))?;
     classification(project, &target.name)?;
     let expected = expected_tables(project, target, &command)?;
@@ -458,6 +468,7 @@ pub fn derive(project: &Project, command: Command) -> Result<Plan> {
     let schema = &documents[&target.source];
     let fields = schema.root.required("fields")?;
     let schema = match &command {
+        Command::Type { .. } => return Err(resolution("Table operation required")),
         Command::AddField {
             declaration,
             position,
@@ -545,6 +556,7 @@ pub fn derive(project: &Project, command: Command) -> Result<Plan> {
             affected_records += records.len();
             for record in records {
                 match &command {
+                    Command::Type { .. } => return Err(resolution("Table operation required")),
                     Command::AddField {
                         declaration,
                         initializer,
@@ -634,6 +646,7 @@ pub fn derive(project: &Project, command: Command) -> Result<Plan> {
     }
     let changed = transformed.tables[&target.name].as_ref();
     let selected_name = match &command {
+        Command::Type { .. } => None,
         Command::AddField { declaration, .. } => Some(&declaration.name),
         Command::RenameField { new_name, .. } => Some(new_name),
         Command::SetFieldDeclaration { field, .. } => Some(field),

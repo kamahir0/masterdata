@@ -105,6 +105,19 @@ def check_migration(report):
     return {'checks': len(report['checks']), 'directStructuralAuthoring': True}
 
 
+def check_type(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['resolved-type-selection-warm-zero', 'type-keyboard-menu-cancel-focus', 'value-object-plan-diff-apply',
+                               'flags-none-protected', 'external-stale-plan-explicit-replan', 'enum-ulong-lossless-add',
+                               'enum-rename-preserves-number', 'unused-member-authorized-drop',
+                               'custom-long-min-guided-initializer', 'custom-rename-occurrences',
+                               'custom-authorized-drop', 'affected-dirty-plan-apply-gate', 'unrelated-draft-history-survives-apply']
+    assert report['dirty'] == ['sources/catalog-data.yaml', 'sources/independent.yaml']
+    assert not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'typedOperationsAndExplicitApply': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
@@ -119,6 +132,9 @@ def run(binary: Path, output: Path, case: str):
                 (project / 'sources/unrelated-data.yaml').write_text('kind: data\ntable: item\nrecords: []\n', encoding='utf-8')
             if case == 'path':
                 (project / 'sources/moved').mkdir()
+            if case == 'type':
+                (project / 'sources/ranges.yaml').write_text('kind: type\nname: Range\nenum:\n  underlying: ulong\n  members:\n    - name: Zero\n      value: 0\n', encoding='utf-8')
+                (project / 'sources/independent.yaml').write_text('kind: schema\ntable: independent\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n', encoding='utf-8')
         initial_sources = {path.relative_to(project): path.read_bytes() for path in project.rglob('*.yaml')}
         executable = binary.resolve()
         if platform.system() == 'Darwin':
@@ -150,6 +166,9 @@ def run(binary: Path, output: Path, case: str):
                 data.write_bytes(initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored'))
             elif phase == 'delete-schema': schema.unlink()
             elif phase == 'restore-schema': schema.write_bytes(initial_sources[Path('sources/catalog-schema.yaml')])
+            elif phase == 'type-stale':
+                file = project / 'sources/ranges.yaml'
+                file.write_bytes(file.read_bytes() + b'\n# External type change\n')
             else: raise AssertionError(f'unknown external evidence phase {phase}')
         with (output.parent / 'desktop-process.log').open('w') as log:
             process = subprocess.Popen([str(executable), '--project', str(project),
@@ -164,7 +183,7 @@ def run(binary: Path, output: Path, case: str):
                         try: report = json.loads(report_path.read_text())
                         except json.JSONDecodeError: report = None
                         if report is not None:
-                            if case == 'external' and report.get('phase'):
+                            if case in ['external', 'type'] and report.get('phase'):
                                 phase = report['phase']
                                 if phase not in handled:
                                     external_phase(phase)
@@ -179,7 +198,7 @@ def run(binary: Path, output: Path, case: str):
                     'workingTreeChanged': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True)),
                     'binarySha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
                 }
-                if case == 'migration':
+                if case in ['migration', 'type']:
                     report['sourceByteEvidence'] = {
                         str(path).replace('\\', '/'): {
                             'before': before.decode('utf-8'),
@@ -188,7 +207,7 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2))
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type}[case](report)
                 if case == 'external':
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == expected, 'local draft silently overwrote external source'
@@ -212,6 +231,16 @@ def run(binary: Path, output: Path, case: str):
                     expected_data = old_data.replace(b'    $tags: [development]' + data_nl, b'    $tags: [development]' + data_nl + b'    field: null' + data_nl).replace(b'    $tags: [production]' + data_nl, b'    $tags: [production]' + data_nl + b'    field: null' + data_nl)
                     assert (project / data).read_bytes() == expected_data, 'structural authoring changed non-target record bytes'
                     assert not (project / '.masterdata/output').exists(), 'Migration implicitly built artifacts'
+                elif case == 'type':
+                    source = Path('sources/item-id.yaml')
+                    before = initial_sources[source]
+                    nl = b'\r\n' if b'\r\n' in before else b'\n'
+                    expected = before + nl.join([b'  conversions:', b'    fromUnderlyingImplicit: true', b'    toUnderlyingImplicit: false', b''])
+                    assert (project / source).read_bytes() == expected, 'conversion change altered source representation'
+                    ranges = Path('sources/ranges.yaml')
+                    assert (project / ranges).read_bytes() == initial_sources[ranges] + b'\n# External type change\n', 'stale Plan overwrote the external change'
+                    assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path not in [source, ranges]), 'inverse Type operations failed exact restoration or wrote a draft'
+                    assert not (project / '.masterdata/output').exists(), 'Type Apply implicitly built artifacts'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
                 if case == 'creation':
@@ -233,7 +262,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type'], default='navigation')
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     run(args.binary, args.output, args.case)

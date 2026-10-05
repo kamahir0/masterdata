@@ -47,6 +47,7 @@ pub struct MigrationReview {
     pub destructive: bool,
     pub affected_records: usize,
     pub files: Vec<MigrationFile>,
+    pub dirty_sources: Vec<String>,
 }
 fn plan_token(token: &str) -> Result<u64> {
     token
@@ -71,6 +72,7 @@ fn migration_review(token: u64, plan: &native::SourceSetPlan) -> MigrationReview
                 after_bytes: candidate.after.bytes.len(),
             })
             .collect(),
+        dirty_sources: vec![],
     }
 }
 impl Workspace {
@@ -218,7 +220,7 @@ impl Workspace {
         let result = self.apply_migration(&review.token, request.authorize_destructive)?;
         Ok((review, result))
     }
-    fn migration_gate(&self, paths: impl Iterator<Item = String>) -> Result<()> {
+    pub(super) fn migration_gate(&self, paths: impl Iterator<Item = String>) -> Result<()> {
         if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
@@ -261,9 +263,16 @@ impl Workspace {
         let plan = native::SourceSetPlan::prepare(&project, plan)?;
         Ok(self.register_migration(plan))
     }
-    fn register_migration(&mut self, plan: native::SourceSetPlan) -> MigrationReview {
+    pub(super) fn register_migration(&mut self, plan: native::SourceSetPlan) -> MigrationReview {
         let token = NEXT_PLAN.fetch_add(1, Ordering::Relaxed);
-        let review = migration_review(token, &plan);
+        let mut review = migration_review(token, &plan);
+        review.dirty_sources = plan
+            .plan
+            .candidates
+            .keys()
+            .filter(|path| self.drafts.get(*path).is_some_and(Draft::dirty))
+            .cloned()
+            .collect();
         self.migration_plans.insert(token, plan);
         while self.migration_plans.len() > 4 {
             self.migration_plans.pop_first();

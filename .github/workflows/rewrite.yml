@@ -90,6 +90,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case migration --output verification/results/migration.json
+      - name: Native Type Editor, typed initializer and reviewed source-set Apply
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case type --output verification/results/type.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -81,6 +81,32 @@ export interface Projection {
   };
   measurement: Measurement;
 }
+export type TypeDeclaration =
+  | {category:"valueObject";underlying:string;from_implicit:boolean;to_implicit:boolean}
+  | {category:"enum";underlying:string;flags:boolean;members:[string,string][]}
+  | {category:"custom";fields:Field[]};
+export interface TypeProjection {
+  kind:"type";
+  sessionEpoch:number;
+  clicked:string;
+  source:string;
+  name:string;
+  identity:string;
+  declaration:TypeDeclaration;
+  protectedMembers:string[];
+  generation:number;
+  measurement:Measurement;
+}
+export interface DeclarationInput {key:string;name:string;typeName:string;nullable:boolean;array:boolean;}
+export type ConstantInput = {kind:"unset"} | {kind:"null"} | {kind:"scalar";text:string} | {kind:"sequence";value:ConstantInput[]} | {kind:"mapping";value:[string,ConstantInput][]};
+export type TypeOperation =
+  | {operation:"setValueObjectConversions";typeName:string;fromImplicit:boolean;toImplicit:boolean}
+  | {operation:"addEnumMember";typeName:string;name:string;value:string}
+  | {operation:"renameEnumMember";typeName:string;member:string;newName:string}
+  | {operation:"dropEnumMember";typeName:string;member:string}
+  | {operation:"addCustomField";typeName:string;declaration:DeclarationInput;initializer:null}
+  | {operation:"renameCustomField";typeName:string;field:string;newName:string}
+  | {operation:"dropCustomField";typeName:string;field:string};
 export interface Inventory {
   project: { id: string; name: string; version: string };
   root: string;
@@ -117,6 +143,7 @@ export interface MigrationReview {
   destructive: boolean;
   affectedRecords: number;
   files: { source: string; beforeIdentity: string; afterIdentity: string; beforeBytes: number; afterBytes: number }[];
+  dirtySources:string[];
 }
 export interface SetResult {
   outcome: string;

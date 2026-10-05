@@ -1,12 +1,14 @@
 //! YAML source authority and shared MasterData semantics.
 pub mod clipboard;
 pub mod creation;
+pub mod initializer;
 pub mod instrument;
 pub mod migration;
 pub mod native;
 pub mod project;
 pub mod semantic;
 pub mod source;
+pub mod type_migration;
 pub mod workspace;
 
 #[derive(Clone, Debug, thiserror::Error)]

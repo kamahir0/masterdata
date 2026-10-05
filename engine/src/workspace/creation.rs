@@ -11,7 +11,7 @@ pub(super) struct PendingCreation {
 impl Workspace {
     fn creation_root(&self, request: &Request) -> Result<PathBuf> {
         self.check_config()?;
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "source creation is gated",

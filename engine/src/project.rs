@@ -1,7 +1,7 @@
 //! Project inventory and immutable semantic snapshots. No authoring state lives here.
 use crate::{
     Error, Result,
-    semantic::{self, KeyPart, Table, Type, Typed, Types},
+    semantic::{self, KeyPart, Reference, Table, Type, Typed, Types},
     source::{Document, Raw, content_identity},
 };
 use serde::{Deserialize, Serialize};
@@ -132,6 +132,14 @@ pub struct Row {
 
 pub type Dataset = BTreeMap<String, Vec<Row>>;
 pub type Validation = (Vec<Diagnostic>, Dataset);
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedReference {
+    pub target_table: String,
+    pub target_fields: Vec<String>,
+    pub multi: bool,
+    pub optional: bool,
+}
 
 pub fn discover(explicit: Option<&Path>, cwd: &Path) -> Result<PathBuf> {
     crate::instrument::count(crate::instrument::Kind::Discovery);
@@ -488,37 +496,9 @@ impl Project {
                     ));
                     continue;
                 };
-                let components = r
-                    .fields
-                    .iter()
-                    .filter_map(|n| t.fields.iter().find(|f| &f.name == n))
-                    .collect::<Vec<_>>();
-                let target_fields = r
-                    .target_fields
-                    .iter()
-                    .filter_map(|n| target.fields.iter().find(|f| &f.name == n))
-                    .collect::<Vec<_>>();
-                let target_key = std::iter::once(&target.primary)
-                    .chain(&target.secondary)
-                    .any(|k| k.fields == r.target_fields);
-                let valid = !components.is_empty()
-                    && components.len() == r.fields.len()
-                    && components.len() == target_fields.len()
-                    && components.len() == r.target_fields.len()
-                    && r.fields.iter().collect::<BTreeSet<_>>().len() == r.fields.len()
-                    && target_key
-                    && components.iter().all(|f| {
-                        !f.array && f.nullable == components[0].nullable && {
-                            let mut required = (*f).clone();
-                            required.nullable = false;
-                            semantic::key_capable(&required, &self.types)
-                        }
-                    })
-                    && components
-                        .iter()
-                        .zip(target_fields)
-                        .all(|(a, b)| a.type_name == b.type_name)
+                let valid = self.resolve_reference(t, r).is_ok()
                     && helper_names.insert(r.csharp_name.clone());
+                let _ = target;
                 if !valid {
                     self.declaration_problems.push(Diagnostic::error(
                         &t.source,
@@ -541,6 +521,85 @@ impl Project {
                 ));
             }
         }
+    }
+
+    pub fn resolve_reference(
+        &self,
+        table: &Table,
+        reference: &Reference,
+    ) -> Result<ResolvedReference> {
+        let target = self
+            .tables
+            .get(&reference.target_table)
+            .ok_or_else(|| Error::new("E-REFERENCE-TARGET", &reference.target_table))?;
+        let source_fields = reference
+            .fields
+            .iter()
+            .filter_map(|name| table.fields.iter().find(|field| &field.name == name))
+            .collect::<Vec<_>>();
+        let target_fields = reference
+            .target_fields
+            .iter()
+            .filter_map(|name| target.fields.iter().find(|field| &field.name == name))
+            .collect::<Vec<_>>();
+        let key = std::iter::once(&target.primary)
+            .chain(&target.secondary)
+            .find(|key| key.fields == reference.target_fields);
+        let valid = !source_fields.is_empty()
+            && self
+                .sources
+                .values()
+                .filter(|source| {
+                    source.kind.as_deref() == Some("schema")
+                        && source.binding.as_deref() == Some(&reference.target_table)
+                })
+                .count()
+                == 1
+            && source_fields.len() == reference.fields.len()
+            && source_fields.len() == target_fields.len()
+            && target_fields.len() == reference.target_fields.len()
+            && reference.fields.iter().collect::<BTreeSet<_>>().len() == reference.fields.len()
+            && reference
+                .target_fields
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
+                == reference.target_fields.len()
+            && key.is_some()
+            && source_fields.iter().all(|field| {
+                !field.array && field.nullable == source_fields[0].nullable && {
+                    let mut required = (*field).clone();
+                    required.nullable = false;
+                    semantic::key_capable(&required, &self.types)
+                }
+            })
+            && target_fields
+                .iter()
+                .all(|field| semantic::key_capable(field, &self.types))
+            && source_fields
+                .iter()
+                .zip(&target_fields)
+                .all(|(source, target)| source.type_name == target.type_name)
+            && !table
+                .fields
+                .iter()
+                .any(|field| semantic::public_name(&field.name) == reference.csharp_name)
+            && reference.csharp_name != table.csharp_name
+            && table
+                .references
+                .iter()
+                .filter(|r| r.csharp_name == reference.csharp_name)
+                .count()
+                == 1;
+        if !valid {
+            return Err(Error::new("E-REFERENCE-SHAPE", &reference.name));
+        }
+        Ok(ResolvedReference {
+            target_table: target.name.clone(),
+            target_fields: reference.target_fields.clone(),
+            multi: key.unwrap().non_unique,
+            optional: source_fields[0].nullable,
+        })
     }
 
     pub fn record_sources(&self, table: &str) -> Vec<String> {

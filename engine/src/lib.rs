@@ -2,6 +2,7 @@
 pub mod clipboard;
 pub mod creation;
 pub mod instrument;
+pub mod migration;
 pub mod native;
 pub mod project;
 pub mod semantic;

@@ -106,10 +106,13 @@ impl Workspace {
             &types,
         );
         root.start = start;
-        if self.recovery_required || d.outcome == Some(crate::native::Outcome::OutcomeUnknown) {
+        if self.recovery_required
+            || native::has_pending_recovery(&self.read.root)?
+            || d.outcome == Some(crate::native::Outcome::OutcomeUnknown)
+        {
             root.editable = false;
             root.reason = Some(
-                if self.recovery_required {
+                if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
                     "Recovery Required"
                 } else {
                     "Outcome Unknown: source observation required"

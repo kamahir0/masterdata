@@ -30,7 +30,7 @@ impl Workspace {
         generation: u64,
         mutation: bool,
     ) -> Result<(Arc<Table>, semantic::Types)> {
-        if mutation && self.recovery_required {
+        if mutation && (self.recovery_required || native::has_pending_recovery(&self.read.root)?) {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "source mutation is gated",

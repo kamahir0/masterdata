@@ -91,6 +91,37 @@ pub enum Intent {
     DiscardSource {
         source: String,
     },
+    MigrationPlan {
+        command: masterdata_engine::migration::Command,
+    },
+    FieldScope {
+        source: String,
+        revision: u64,
+        generation: u64,
+        operation: masterdata_engine::workspace::FieldOperation,
+    },
+    FieldOperation {
+        source: String,
+        revision: u64,
+        generation: u64,
+        request: masterdata_engine::workspace::FieldIntent,
+    },
+    MigrationCompare {
+        token: String,
+        source: String,
+    },
+    MigrationApply {
+        token: String,
+        authorize_destructive: bool,
+    },
+    MigrationResult {
+        token: String,
+    },
+    MigrationRecovery {
+        id: String,
+        restore_old: bool,
+        authorized: bool,
+    },
     AuthoringState {
         source: String,
         revision: u64,
@@ -557,7 +588,7 @@ fn watch(
     Ok(watcher)
 }
 fn inventory(w: &Workspace) -> Value {
-    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
+    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"recovery":w.recovery_information,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
 }
 fn execute(
     workspace: &mut Option<Workspace>,
@@ -582,6 +613,7 @@ fn execute(
     let w = workspace
         .as_mut()
         .ok_or_else(|| UiError::new("E-PROJECT-NOT-OPEN", "Open Project required"))?;
+    w.detect_recovery();
     match intent {
         Intent::Open { .. } => unreachable!(),
         Intent::Inventory => Ok(inventory(w)),
@@ -604,6 +636,32 @@ fn execute(
         } => convert(w.prepare_path_move(&source, &destination)?),
         Intent::MoveSource { token } => convert(w.apply_path_move(&token)?),
         Intent::RecheckMove { token } => convert(w.recheck_path_move(&token)?),
+        Intent::MigrationPlan { command } => convert(w.prepare_migration(command)?),
+        Intent::FieldScope {
+            source,
+            revision,
+            generation,
+            operation,
+        } => Ok(w.field_operation_scope(&source, revision, generation, operation)?),
+        Intent::FieldOperation {
+            source,
+            revision,
+            generation,
+            request,
+        } => convert(w.direct_field_operation(&source, revision, generation, request)?),
+        Intent::MigrationCompare { token, source } => {
+            convert(w.migration_compare(&token, &source)?)
+        }
+        Intent::MigrationApply {
+            token,
+            authorize_destructive,
+        } => convert(w.apply_migration(&token, authorize_destructive)?),
+        Intent::MigrationResult { token } => convert(w.recheck_migration_result(&token)?),
+        Intent::MigrationRecovery {
+            id,
+            restore_old,
+            authorized,
+        } => convert(w.recheck_migration_recovery(&id, restore_old, authorized)?),
         Intent::SaveSource { source } => {
             convert(w.save_paths(vec![source], masterdata_engine::native::Fault::None)?)
         }

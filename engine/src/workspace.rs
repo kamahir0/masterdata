@@ -17,7 +17,9 @@ use std::{
 mod batch;
 pub mod complex;
 mod creation;
+mod migration;
 mod path;
+pub use migration::{FieldIntent, FieldOperation, MigrationReview};
 pub use path::MoveReview;
 pub struct FieldShapeEdit<'a> {
     pub nullable: bool,
@@ -224,6 +226,10 @@ pub struct Workspace {
     move_plans: BTreeMap<u64, native::MovePlan>,
     move_observations: BTreeMap<u64, native::MovePlan>,
     pending_moves: BTreeMap<u64, native::MovePlan>,
+    migration_plans: BTreeMap<u64, native::SourceSetPlan>,
+    migration_results: BTreeMap<u64, native::SetResult>,
+    completed_recoveries: BTreeMap<String, (native::RecoveryInfo, bool)>,
+    pub recovery_information: Vec<native::RecoveryInfo>,
     pub recovery_required: bool,
     pub diagnostics: Vec<Diagnostic>,
     pub diagnostics_generation: u64,
@@ -246,8 +252,22 @@ impl AuthoringView {
 }
 impl Workspace {
     pub fn open(path: &std::path::Path) -> Result<Self> {
+        let read = Arc::new(Project::open(path)?);
+        let recovery_information = native::pending_recovery(&read.root).unwrap_or_else(|e| {
+            vec![native::RecoveryInfo {
+                snapshots: BTreeMap::new(),
+                id: String::new(),
+                directory: read
+                    .root
+                    .join(".masterdata/migrations")
+                    .to_string_lossy()
+                    .into(),
+                message: e.to_string(),
+                files: vec![],
+            }]
+        });
         Ok(Self {
-            read: Arc::new(Project::open(path)?),
+            read,
             drafts: BTreeMap::new(),
             views: BTreeMap::new(),
             search_indexes: BTreeMap::new(),
@@ -261,7 +281,11 @@ impl Workspace {
             move_plans: BTreeMap::new(),
             move_observations: BTreeMap::new(),
             pending_moves: BTreeMap::new(),
-            recovery_required: false,
+            migration_plans: BTreeMap::new(),
+            migration_results: BTreeMap::new(),
+            completed_recoveries: BTreeMap::new(),
+            recovery_required: !recovery_information.is_empty(),
+            recovery_information,
             diagnostics: vec![],
             diagnostics_generation: 0,
             diagnostics_pending: true,
@@ -856,7 +880,7 @@ impl Workspace {
             Some("record source required; create/select a physical source".into())
         } else if columns.iter().any(|c| c.shape.is_none()) {
             Some("all field shapes must resolve before Add Row".into())
-        } else if self.recovery_required {
+        } else if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             Some("Recovery Required".into())
         } else if let Some(source) = &record_source
             && self.drafts[source].outcome == Some(Outcome::OutcomeUnknown)
@@ -949,7 +973,7 @@ impl Workspace {
         value_path: &[String],
         value: &Value,
     ) -> Result<bool> {
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "source mutation is gated",
@@ -1044,7 +1068,7 @@ impl Workspace {
             type_name,
         } = declaration;
         self.check_authoring_generation(path, generation)?;
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "source mutation is gated",
@@ -1125,6 +1149,12 @@ impl Workspace {
         Ok(changed)
     }
     pub fn undo(&mut self, path: &str, redo: bool) -> Result<bool> {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
+            return Err(Error::new(
+                "E-RECOVERY-REQUIRED",
+                "source mutation is gated",
+            ));
+        }
         let d = self
             .drafts
             .get_mut(path)
@@ -1191,7 +1221,7 @@ impl Workspace {
         self.save_paths(self.dirty_paths(), Fault::None)
     }
     pub fn save_paths(&mut self, paths: Vec<String>, fault: Fault) -> Result<Vec<WriteResult>> {
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new("E-RECOVERY-REQUIRED", "writes are gated"));
         }
         self.check_config()?;
@@ -1273,7 +1303,7 @@ impl Workspace {
         ))
     }
     pub fn overwrite(&mut self, path: &str, reviewed_identity: &str) -> Result<WriteResult> {
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new("E-RECOVERY-REQUIRED", "writes are gated"));
         }
         self.check_config()?;
@@ -1322,7 +1352,7 @@ impl Workspace {
     }
     pub fn reload_source(&mut self, path: &str) -> Result<()> {
         self.check_pending_move(path)?;
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "authoring mutations are gated",

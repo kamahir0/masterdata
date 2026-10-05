@@ -310,7 +310,7 @@ impl Workspace {
         order: &[String],
     ) -> Result<bool> {
         self.check_authoring_generation(path, generation)?;
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "source mutation is gated",

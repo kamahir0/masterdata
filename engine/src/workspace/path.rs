@@ -26,7 +26,7 @@ impl Workspace {
     fn path_gate(&self, source: &str) -> Result<()> {
         self.check_config()?;
         self.check_pending_move(source)?;
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "path mutations are gated",
@@ -239,7 +239,7 @@ impl Workspace {
                 "Recheck source outcome before discard",
             ));
         }
-        if self.recovery_required {
+        if self.recovery_required || native::has_pending_recovery(&self.read.root)? {
             return Err(Error::new(
                 "E-RECOVERY-REQUIRED",
                 "authoring mutations are gated",

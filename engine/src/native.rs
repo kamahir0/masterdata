@@ -1,5 +1,6 @@
 //! Fresh native source identity and single-file commit authority.
 mod path;
+mod set;
 use crate::{
     Error, Result,
     project::{io_error, relative_safe},
@@ -9,6 +10,10 @@ pub use path::{MovePlan, commit_move, observe_move, prepare_move};
 #[cfg(not(windows))]
 use same_file::Handle;
 use serde::Serialize;
+pub use set::{
+    RecoveryInfo, SetFault, SetResult, SourceSetPlan, has_pending_recovery, pending_recovery,
+    recheck_recovery, restore_recovery,
+};
 use std::{
     fs::{self, File},
     io::{Read, Write},

@@ -16,14 +16,14 @@ pub struct Field {
     pub array: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Key {
     pub fields: Vec<String>,
     pub non_unique: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Reference {
     pub name: String,
@@ -33,7 +33,7 @@ pub struct Reference {
     pub csharp_name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Table {
     pub name: String,
@@ -45,7 +45,7 @@ pub struct Table {
     pub references: Vec<Reference>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "category", rename_all = "camelCase")]
 pub enum Type {
     ValueObject {

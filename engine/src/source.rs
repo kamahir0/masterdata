@@ -6,6 +6,7 @@ use std::{collections::HashSet, ops::Range, sync::Arc};
 use tree_sitter::{Node as SyntaxNode, Parser};
 use yaml_rust2::parser::{Event, EventReceiver};
 
+mod mapping;
 mod structure;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

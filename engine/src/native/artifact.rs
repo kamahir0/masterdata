@@ -302,18 +302,21 @@ impl Guard {
             file.write_all(bytes.as_bytes()).map_err(io_error)?;
             file.sync_all().map_err(io_error)?;
         }
-        fs::write(stage.path().join("masterdata.bytes"), binary).map_err(io_error)?;
-        fs::write(
-            stage.path().join(RECEIPT),
-            serde_json::to_vec_pretty(receipt)
-                .map_err(|error| Error::new("E-ARTIFACT-RECEIPT", error.to_string()))?,
-        )
-        .map_err(io_error)?;
-        for file in ["masterdata.bytes", RECEIPT] {
-            File::open(stage.path().join(file))
-                .map_err(io_error)?
-                .sync_all()
+        let receipt_bytes = serde_json::to_vec_pretty(receipt)
+            .map_err(|error| Error::new("E-ARTIFACT-RECEIPT", error.to_string()))?;
+        for (name, bytes) in [
+            ("masterdata.bytes", binary),
+            (RECEIPT, receipt_bytes.as_slice()),
+        ] {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(stage.path().join(name))
                 .map_err(io_error)?;
+            file.write_all(bytes).map_err(io_error)?;
+            // Windows FlushFileBuffers requires GENERIC_WRITE. Keep the staging
+            // writer for sync rather than reopening a read-only witness handle.
+            file.sync_all().map_err(io_error)?;
         }
         let new_tree = tree(stage.path())?;
         self.fresh()?;

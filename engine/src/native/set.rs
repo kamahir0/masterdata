@@ -12,6 +12,14 @@ struct Closure {
     config: Snapshot,
     sources: BTreeMap<String, Snapshot>,
 }
+pub(crate) fn confirm_saved_input(project: &Project) -> Result<()> {
+    Closure::capture(project).map(|_| ()).map_err(|error| {
+        Error::new(
+            "E-BUILD-SNAPSHOT",
+            format!("saved input changed during capture: {error}"),
+        )
+    })
+}
 fn stale(message: impl Into<String>) -> Error {
     Error::new("E-MIGRATION-STALE", message)
 }

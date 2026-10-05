@@ -1,5 +1,9 @@
 //! Fresh native source identity and single-file commit authority.
+pub mod artifact;
+pub mod dotnet;
+mod namespace;
 mod path;
+pub mod publish;
 mod set;
 use crate::{
     Error, Result,
@@ -10,6 +14,7 @@ pub use path::{MovePlan, commit_move, observe_move, prepare_move};
 #[cfg(not(windows))]
 use same_file::Handle;
 use serde::Serialize;
+pub(crate) use set::confirm_saved_input;
 pub use set::{
     RecoveryInfo, SetFault, SetResult, SourceSetPlan, has_pending_recovery, pending_recovery,
     recheck_recovery, restore_recovery,
@@ -468,5 +473,74 @@ pub fn commit(
             ),
             None,
         ),
+    }
+}
+
+/// Exclusive native rename for owned staging/backup slots. Existing destinations
+/// are never replaced; callers separately witness both actual parent identities.
+fn rename_slots(
+    from: &Path,
+    from_parent: &Identity,
+    to: &Path,
+    to_parent: &Identity,
+) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::{
+            ffi::CString,
+            os::{fd::AsRawFd, unix::ffi::OsStrExt},
+        };
+        let source = CString::new(from.file_name().unwrap().as_bytes())
+            .map_err(|e| Error::new("E-PATH-SCOPE", e.to_string()))?;
+        let target = CString::new(to.file_name().unwrap().as_bytes())
+            .map_err(|e| Error::new("E-PATH-SCOPE", e.to_string()))?;
+        let Identity::Unix(source_parent) = from_parent;
+        let Identity::Unix(target_parent) = to_parent;
+        #[cfg(target_os = "macos")]
+        let status = unsafe {
+            libc::renameatx_np(
+                source_parent.as_raw_fd(),
+                source.as_ptr(),
+                target_parent.as_raw_fd(),
+                target.as_ptr(),
+                libc::RENAME_EXCL,
+            )
+        };
+        #[cfg(target_os = "linux")]
+        let status = unsafe {
+            libc::renameat2(
+                source_parent.as_raw_fd(),
+                source.as_ptr(),
+                target_parent.as_raw_fd(),
+                target.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        return Err(Error::new("E-PATH-SCOPE", "exclusive rename unavailable"));
+        if status != 0 {
+            return Err(io_error(std::io::Error::last_os_error()));
+        }
+        Ok(())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+        let _ = (from_parent, to_parent);
+        let source = from
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        let target = to
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 0) } == 0 {
+            return Err(io_error(std::io::Error::last_os_error()));
+        }
+        Ok(())
     }
 }

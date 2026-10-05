@@ -1,0 +1,28 @@
+using System.Text.Json;
+using MasterMemory;
+[assembly: MasterMemoryGeneratorOptions(Namespace = "Masterdata.Generated")]
+namespace Masterdata.Native
+{
+    internal static class Entry
+    {
+        public static int Main(string[] args)
+        {
+            using var document = JsonDocument.Parse(global::System.IO.File.ReadAllBytes(args[0]));
+            if (document.RootElement.GetProperty("version").GetInt32() != 1) throw new global::System.InvalidOperationException("Unsupported builder request");
+            global::MessagePack.MessagePackSerializer.DefaultOptions = global::MessagePack.MessagePackSerializerOptions.Standard.WithResolver(
+                global::MessagePack.Resolvers.CompositeResolver.Create(global::Masterdata.Generated.MasterMemoryResolver.Instance, global::MessagePack.Resolvers.StandardResolver.Instance));
+            var builder = new global::Masterdata.Generated.DatabaseBuilder();
+$BODY$
+            global::System.Console.WriteLine("PASS native MasterMemory Build / actual reload / every selected row");
+            return 0;
+        }
+        private static bool IsNull(JsonElement input) => input.GetProperty("kind").GetString() == "null";
+        private static global::System.Collections.Generic.Dictionary<string, JsonElement> Map(JsonElement pairs)
+        {
+            var fields = new global::System.Collections.Generic.Dictionary<string, JsonElement>(global::System.StringComparer.Ordinal);
+            foreach (var pair in pairs.EnumerateArray()) fields.Add(pair[0].GetString()!, pair[1]);
+            return fields;
+        }
+$READERS$
+    }
+}

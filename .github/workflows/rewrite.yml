@@ -11,6 +11,24 @@ permissions:
   contents: read
 
 jobs:
+  native-consumer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: native-consumer
+      - name: Generated C# compilation, actual MasterMemory reload and independent queries
+        run: cargo test -p masterdata-engine --locked --features native-consumer --test build_consumer -- --nocapture
+
   shared-engine:
     strategy:
       fail-fast: false

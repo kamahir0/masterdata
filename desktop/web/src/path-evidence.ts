@@ -5,7 +5,8 @@ const SOURCE="sources/catalog-data.yaml",SCHEMA="sources/catalog-schema.yaml";
 const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
 async function until(test:()=>boolean,message:string) {const deadline=performance.now()+8000;while(!test()){if(performance.now()>deadline)throw new Error(message);await frame();}}
 function assert(test:unknown,message:string):asserts test {if(!test)throw new Error(message);}
-function button(label:string) {const value=[...document.querySelectorAll<HTMLButtonElement>('.ant-modal:not(.ant-modal-hidden) button, #explorer button')].find(button=>button.getAttribute('aria-label')===label||button.textContent===label);assert(value,`missing button ${label}`);return value;}
+function findButton(label:string) {return [...document.querySelectorAll<HTMLButtonElement>('.ant-modal:not(.ant-modal-hidden) button, #explorer button')].find(button=>button.getAttribute('aria-label')===label||button.textContent===label);}
+function button(label:string) {const value=findButton(label);assert(value,`missing button ${label}`);return value;}
 function input() {const value=document.querySelector<HTMLInputElement>('input[aria-label="Move source filename"]');assert(value,"Move filename missing");return value;}
 function text(value:string) {const field=input();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}));}
 async function begin(choice?:string) {
@@ -13,7 +14,7 @@ async function begin(choice?:string) {
   await until(()=>[...document.querySelectorAll<HTMLElement>('.ant-dropdown:not(.ant-dropdown-hidden) [role="menuitem"]')].some(item=>item.textContent==='Rename / Move source'),"Source menu missing");
   [...document.querySelectorAll<HTMLElement>('.ant-dropdown:not(.ant-dropdown-hidden) [role="menuitem"]')].find(item=>item.textContent==='Rename / Move source')!.click();
   if(choice) {
-    await until(()=>!!desktop.surface.choice&&[...document.querySelectorAll('button')].some(button=>button.textContent===choice),"scoped guard missing");
+    await until(()=>!!desktop.surface.choice&&!!findButton(choice),"rendered scoped guard missing");
     button(choice).click();
     if(choice==='Cancel'){await until(()=>!desktop.surface.choice,"guard Cancel pending");return;}
   }

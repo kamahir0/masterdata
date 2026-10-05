@@ -179,6 +179,13 @@ def run(binary: Path, output: Path, case: str):
                     'workingTreeChanged': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True)),
                     'binarySha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
                 }
+                if case == 'migration':
+                    report['sourceByteEvidence'] = {
+                        str(path).replace('\\', '/'): {
+                            'before': before.decode('utf-8'),
+                            'after': (project / path).read_bytes().decode('utf-8'),
+                        } for path, before in initial_sources.items()
+                    }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2))
                 report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration}[case](report)
@@ -196,11 +203,13 @@ def run(binary: Path, output: Path, case: str):
                     schema = Path('sources/catalog-schema.yaml')
                     data = Path('sources/catalog-data.yaml')
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path not in [schema, data]), 'Migration changed unrelated physical sources'
-                    old_schema = initial_sources[schema].replace(b'    name: name\n', b'    name: title\n')
-                    expected_schema = old_schema.replace(b'primaryKey:\n', b'  - key: 18\n    name: field\n    type: string\n    nullable: true\nprimaryKey:\n')
+                    schema_nl = b'\r\n' if b'\r\n' in initial_sources[schema] else b'\n'
+                    data_nl = b'\r\n' if b'\r\n' in initial_sources[data] else b'\n'
+                    old_schema = initial_sources[schema].replace(b'    name: name' + schema_nl, b'    name: title' + schema_nl)
+                    expected_schema = old_schema.replace(b'primaryKey:' + schema_nl, schema_nl.join([b'  - key: 18', b'    name: field', b'    type: string', b'    nullable: true', b'primaryKey:', b'']))
                     assert (project / schema).read_bytes() == expected_schema, 'structural authoring rewrote schema presentation or changed MessagePack keys'
                     old_data = initial_sources[data].replace(b'    name:', b'    title:')
-                    expected_data = old_data.replace(b'    $tags: [development]\n', b'    $tags: [development]\n    field: null\n').replace(b'    $tags: [production]\n', b'    $tags: [production]\n    field: null\n')
+                    expected_data = old_data.replace(b'    $tags: [development]' + data_nl, b'    $tags: [development]' + data_nl + b'    field: null' + data_nl).replace(b'    $tags: [production]' + data_nl, b'    $tags: [production]' + data_nl + b'    field: null' + data_nl)
                     assert (project / data).read_bytes() == expected_data, 'structural authoring changed non-target record bytes'
                     assert not (project / '.masterdata/output').exists(), 'Migration implicitly built artifacts'
                 else:

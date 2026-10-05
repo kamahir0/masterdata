@@ -14,14 +14,37 @@ pub enum Theme {
 pub struct Preferences {
     #[serde(default)]
     pub theme: Theme,
+    #[serde(default, rename = "recentProjects")]
+    pub recent_projects: Vec<RecentProject>,
     #[serde(flatten)]
     other: BTreeMap<String, serde_json::Value>,
 }
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RecentProject {
+    pub root: String,
+    pub name: String,
+}
+impl Preferences {
+    pub fn opened(&mut self, root: String, name: String) {
+        self.recent_projects.retain(|p| p.root != root);
+        self.recent_projects.insert(0, RecentProject { root, name });
+        self.recent_projects.truncate(10);
+    }
+    pub fn remove_recent(&mut self, root: &str) {
+        self.recent_projects.retain(|p| p.root != root);
+    }
+}
 pub fn read(path: &Path) -> Preferences {
-    std::fs::read(path)
+    let mut preferences: Preferences = std::fs::read(path)
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let mut seen = std::collections::BTreeSet::new();
+    preferences
+        .recent_projects
+        .retain(|p| seen.insert(p.root.clone()));
+    preferences.recent_projects.truncate(10);
+    preferences
 }
 pub fn write(path: &Path, value: &Preferences) -> Result<(), String> {
     let directory = path
@@ -54,5 +77,35 @@ mod tests {
         assert_eq!(read(&path).theme, Theme::System);
         std::fs::write(&path, br#"{"theme":"unknown"}"#).unwrap();
         assert_eq!(read(&path).theme, Theme::System);
+    }
+    #[test]
+    fn recent_roots_are_local_bounded_ordered_and_removal_never_touches_project_files() {
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("user/preferences.json");
+        let mut p = Preferences::default();
+        for index in 0..12 {
+            let root = t.path().join(format!("project-{index}"));
+            std::fs::create_dir(&root).unwrap();
+            std::fs::write(root.join("notes"), b"user bytes").unwrap();
+            p.opened(root.to_string_lossy().into(), format!("Project {index}"));
+        }
+        assert_eq!(p.recent_projects.len(), 10);
+        let old = p.recent_projects[9].root.clone();
+        p.opened(old.clone(), "Renamed display name".into());
+        assert_eq!(p.recent_projects[0].root, old);
+        assert_eq!(p.recent_projects.len(), 10);
+        write(&path, &p).unwrap();
+        let mut loaded = read(&path);
+        assert_eq!(loaded.recent_projects, p.recent_projects);
+        loaded.remove_recent(&old);
+        write(&path, &loaded).unwrap();
+        assert_eq!(read(&path).recent_projects.len(), 9);
+        assert_eq!(
+            std::fs::read(Path::new(&old).join("notes")).unwrap(),
+            b"user bytes"
+        );
+        assert!(!Path::new(&old).join("masterdata.toml").exists());
+        loaded.remove_recent("already missing");
+        assert_eq!(loaded.recent_projects.len(), 9);
     }
 }

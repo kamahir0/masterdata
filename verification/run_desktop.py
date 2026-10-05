@@ -302,7 +302,9 @@ def run(binary: Path, output: Path, case: str):
                 if case == 'settings':
                     for path, before in initial_sources.items():
                         assert (project / path).read_bytes() == before, path
-                    expected = initial_config + b'\n[build.profiles.production]\nexclude_tags = ["debug"]\n\n[[publish.targets]]\nkind = "binary"\npath = "delivery/latest.bytes"\n\n# External settings change\n'
+                    newline = b'\r\n' if b'\r\n' in initial_config else b'\n'
+                    addition = b'\n[build.profiles.production]\nexclude_tags = ["debug"]\n\n[[publish.targets]]\nkind = "binary"\npath = "delivery/latest.bytes"\n'
+                    expected = initial_config + addition.replace(b'\n', newline) + b'\n# External settings change\n'
                     assert (project / 'masterdata.toml').read_bytes() == expected
                     assert not (project / 'delivery').exists(), 'settings implicitly published'
                     assert not (project / '.masterdata').exists(), 'settings implicitly built'

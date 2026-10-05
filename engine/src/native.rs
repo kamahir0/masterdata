@@ -20,7 +20,10 @@ pub use set::{
     RecoveryInfo, SetFault, SetResult, SourceSetPlan, has_pending_recovery, pending_recovery,
     recheck_recovery, restore_recovery,
 };
-pub use setup::{InitReport, initialize_project};
+pub use setup::{
+    InitFault, InitReport, ProjectCreation, create_project, create_project_with_fault,
+    initialize_project,
+};
 use std::{
     fs::{self, File},
     io::{Read, Write},

@@ -29,7 +29,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
   try {
     await until(()=>document.hasFocus(),"native window was not focused");
     await desktop.selectTarget(SOURCE,"settings-setup",false);
-    const base=await config(),originalYaml=await yaml(),root=desktop.surface.inventory!.root;
+    const base=await config(),originalYaml=await yaml(),root=desktop.surface.inventory!.root,nl=base.before.includes('\r\n')?'\r\n':'\n';
     desktop.setSelection(0,desktop.surface.projection!.columns.findIndex(c=>c.field.name==="name"));desktop.beginEditor();
     await until(()=>!!document.querySelector('.active-cell-editor input'),"YAML scalar editor missing");
     let input=find('.active-cell-editor input') as HTMLInputElement;text(input,"Settings keep this draft");key(input,"Enter");
@@ -44,7 +44,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     assert(input.value==="Debug"&&(await config()).after===base.after,"invalid new Profile identity was repaired or lost");
     text(input,"production");key(input,"Enter");await until(()=>!shown('.ant-modal input[aria-label="New Profile name"]'),"Profile form did not commit");await ready();
     await until(()=>document.activeElement?.getAttribute('aria-label')==="New Build Profile","Profile creation lost keyboard focus");
-    assert((await config()).after===base.after+"\n[build.profiles.production]\n","Profile addition rewrote unrelated bytes");checks.push("profile-compose-explicit-identity");
+    assert((await config()).after===base.after+`${nl}[build.profiles.production]${nl}`,"Profile addition rewrote unrelated bytes");checks.push("profile-compose-explicit-identity");
     find('button[aria-label="Add Exclude tags"]').click();await until(()=>!!document.querySelector('input[aria-label="New Exclude tags"]'),"Tag input missing");
     input=find('input[aria-label="New Exclude tags"]') as HTMLInputElement;text(input," Debug ");key(input,"s",{ctrlKey:true});
     await until(()=>!desktop.surface.status.configDirty&&!desktop.surface.settingsInputDirty&&!!desktop.surface.status.environmentError,"active settings Save did not retain invalid domain input");

@@ -29,6 +29,7 @@ import {
   WarningOutlined,
   PlusOutlined,
   UndoOutlined,
+  TagsOutlined,
 } from "@ant-design/icons";
 import type { Field, Projection, Row } from "./types";
 import { desktop, GRID, type Editor } from "./workspace";
@@ -121,6 +122,16 @@ export const AuthoringGrid = memo(function AuthoringGrid({
   }, []);
   const keydown = (e: KeyboardEvent) => {
     if (isInput(e.target) || e.nativeEvent.isComposing || pending) return;
+    if (p && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
+      e.preventDefault();
+      const selected = p.rows.find(row => row.viewIndex === desktop.interaction.selection.row);
+      const anchor = viewport.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(selected?.id ?? "")}"] .row-actions`);
+      if(selected && anchor) {
+        const rect = anchor.getBoundingClientRect();
+        openRowMenu(selected, rect.left, rect.bottom);
+      }
+      return;
+    }
     const command = e.metaKey || e.ctrlKey;
     if (command && e.key.toLowerCase() === "z") {
       e.preventDefault();
@@ -408,11 +419,13 @@ const GridRow = memo(function GridRow({
 }) {
   const choose = (column: number, extend: boolean) => {
     const previousComplex = desktop.interaction.complex;
+    const previousTags = desktop.interaction.tags;
     desktop.setSelection(row.viewIndex, column, extend);
     desktop.viewport?.focus();
     void desktop.commit().then((ok) => {
       if (ok && desktop.interaction.complex === previousComplex)
         desktop.closeComplex();
+      if (ok && desktop.interaction.tags === previousTags) desktop.closeTags();
     });
   };
   return (
@@ -733,6 +746,8 @@ function GridMenu({
       });
     else
       items.push(
+        {key: "tags", label: "Tags…", icon: <TagsOutlined />},
+        {type: "divider"},
         {
           key: "above",
           label: "Insert Above",

@@ -259,6 +259,20 @@ pub enum Intent {
         path: Vec<String>,
         operation: masterdata_engine::workspace::complex::Operation,
     },
+    Tags {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        start: usize,
+    },
+    TagEdit {
+        source: String,
+        revision: u64,
+        generation: u64,
+        row: String,
+        operation: masterdata_engine::workspace::tags::TagOperation,
+    },
     Schema {
         source: String,
         revision: u64,
@@ -950,6 +964,27 @@ fn execute(
             path,
             operation,
         } => convert(w.complex_operation(&source, revision, generation, &row, &path, operation)?),
+        Intent::Tags {
+            source,
+            revision,
+            generation,
+            row,
+            start,
+        } => {
+            let mut value = convert(w.tag_view(&source, revision, generation, &row, start)?)?;
+            value
+                .as_object_mut()
+                .unwrap()
+                .insert("sessionEpoch".into(), json!(*epoch));
+            Ok(value)
+        }
+        Intent::TagEdit {
+            source,
+            revision,
+            generation,
+            row,
+            operation,
+        } => convert(w.edit_tag(&source, revision, generation, &row, operation)?),
         Intent::Schema {
             source,
             revision,

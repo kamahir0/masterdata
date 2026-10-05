@@ -138,6 +138,24 @@ impl Document {
             .map(|item| item.value.value())
             .collect::<Vec<_>>();
         expected.insert(at, value.clone());
+        if items.is_empty()
+            && sequence.style == Style::Flow
+            && !matches!(value, Value::Mapping(_) | Value::Sequence(_))
+        {
+            // Empty existing flow sequences still own their delimiters. Scalar
+            // insertion preserves that style, including inside a flow record;
+            // newly materialized compound values continue to require block syntax.
+            return self.sequence_candidate(
+                sequence,
+                vec![Patch {
+                    span: sequence.span.end - 1..sequence.span.end - 1,
+                    text: inline_render(value, self.newline())?
+                        .trim_start()
+                        .to_owned(),
+                }],
+                expected,
+            );
+        }
         if items.is_empty() {
             let mut patches = vec![];
             derive_patch_materialization(

@@ -159,6 +159,7 @@ pub fn run() {
         (true, Some("type")) => "type",
         (true, Some("delivery")) => "delivery",
         (true, Some("capacity")) => "capacity",
+        (true, Some("tags")) => "tags",
         _ => "navigation",
     }
     .to_string();

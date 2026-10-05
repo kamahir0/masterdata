@@ -157,6 +157,17 @@ def check_capacity(report):
             'p95Ms': values[math.ceil(len(values)*.95)-1], 'maxMs': values[-1]}, 'boundedRendering': True}
 
 
+def check_tags(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['keyboard-context-open-clean-known-tags', 'composition-and-lossless-invalid-tag',
+                                'close-retains-one-undo-redo', 'replace-duplicate-and-explicit-empty',
+                                'problems-resolves-tag-editor', 'added-row-tags-delete-composition']
+    assert report['source']['before'] == report['source']['after']
+    assert report['mountedRows'] <= 64 and not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'exactTagHistoryAndNoImplicitWrite': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
@@ -271,7 +282,7 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags}[case](report)
                 if case == 'delivery':
                     artifact = project / '.masterdata/output'
                     receipt = json.loads((artifact / '.masterdata-artifact-set.json').read_text(encoding='utf-8'))
@@ -349,7 +360,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags'], default='navigation')
     args = parser.parse_args()
     if args.output.resolve().is_relative_to(ROOT / 'fixtures'):
         parser.error('frozen fixture cannot be output')

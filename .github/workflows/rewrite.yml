@@ -133,6 +133,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case authoring --output verification/results/authoring.json
+      - name: Native contextual Tag authoring, lossless entries and Problems focus
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case tags --output verification/results/tags.json
       - name: Native filesystem observation and current authoring view lifetime
         shell: bash
         run: |

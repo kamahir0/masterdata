@@ -32,6 +32,7 @@ mod external;
 mod problems;
 mod records;
 mod search;
+pub mod tags;
 
 #[derive(Clone, Debug)]
 struct State {
@@ -41,6 +42,7 @@ struct State {
     added: Arc<BTreeSet<String>>,
     origin: Option<Arc<AdditionOrigin>>,
     arrays: Arc<BTreeMap<Vec<String>, Vec<String>>>,
+    tag_origins: Arc<BTreeMap<String, bool>>,
 }
 #[derive(Clone, Debug)]
 struct PendingRecord {
@@ -64,6 +66,7 @@ pub struct Draft {
     added: Arc<BTreeSet<String>>,
     origin: Option<Arc<AdditionOrigin>>,
     arrays: Arc<BTreeMap<Vec<String>, Vec<String>>>,
+    tag_origins: Arc<BTreeMap<String, bool>>,
     undo: Vec<State>,
     redo: Vec<State>,
     pub outcome: Option<Outcome>,
@@ -87,6 +90,7 @@ impl Draft {
             added: self.added.clone(),
             origin: self.origin.clone(),
             arrays: self.arrays.clone(),
+            tag_origins: self.tag_origins.clone(),
         }
     }
     fn active_index(&self, id: &str) -> Result<usize> {
@@ -114,6 +118,7 @@ impl Draft {
         self.saved_rows = self.row_ids.clone();
         self.added = Arc::new(BTreeSet::new());
         self.origin = None;
+        self.tag_origins = Arc::new(BTreeMap::new());
     }
     fn apply(&mut self, mut document: Document, rows: Arc<Vec<String>>) -> bool {
         if self.document.bytes == document.bytes && self.row_ids == rows {
@@ -621,6 +626,7 @@ impl Workspace {
                 added: Arc::new(BTreeSet::new()),
                 origin: None,
                 arrays: Arc::new(BTreeMap::new()),
+                tag_origins: Arc::new(BTreeMap::new()),
                 undo: vec![],
                 redo: vec![],
                 outcome: None,
@@ -1256,6 +1262,7 @@ impl Workspace {
         d.added = state.added;
         d.origin = state.origin;
         d.arrays = state.arrays;
+        d.tag_origins = state.tag_origins;
         d.revision += 1;
         self.diagnostics_pending = true;
         self.generation += 1;

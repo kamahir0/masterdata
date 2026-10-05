@@ -745,3 +745,14 @@ main {
 .delivery-artifact { margin-bottom: 12px; }
 .delivery-confirm { margin-top: 12px; }
 .delivery-problem.ant-btn { display: flex; width: 100%; height: auto; text-align: left; white-space: normal; align-items: flex-start; padding: 6px 4px; }
+.tag-panel-body {padding:14px !important;}
+.tag-panel {display:flex;flex-direction:column;gap:12px;}
+.tag-entry-list {display:flex;flex-direction:column;gap:4px;}
+.tag-entry {display:flex;align-items:center;gap:6px;min-height:30px;}
+.tag-entry-value {flex:1;min-width:0;text-align:left;justify-content:flex-start;overflow:hidden;}
+.tag-entry-value[aria-invalid=true] {color:var(--md-warning);}
+.tag-entry .ant-input {flex:1;min-width:0;}
+.tag-add {width:100%;}
+.tag-add .ant-select {flex:1;min-width:0;}
+.tag-paging {justify-content:space-between;}
+.tag-partial {font-size:12px;}

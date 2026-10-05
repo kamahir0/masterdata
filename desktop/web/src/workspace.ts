@@ -71,6 +71,14 @@ interface ProblemTarget {
   editorPath: string[] | null;
   focusPath: string[];
   editorStart: number;
+  tags: boolean;
+}
+export interface TagTarget { epoch: number; source: string; row: string; start: number; inputIntent: number; }
+export interface TagView {
+  sessionEpoch: number; source: string; row: string; revision: number; generation: number;
+  entries: {index: number; text: string; valid: boolean; reason: string | null}[];
+  start: number; total: number; editable: boolean; reason: string | null;
+  known: string[]; partial: boolean;
 }
 export interface ComplexTarget {
   epoch: number;
@@ -115,6 +123,7 @@ export interface Interaction {
   anchor: Selection | null;
   editor: Editor | null;
   complex: ComplexTarget | null;
+  tags: TagTarget | null;
   focusIntent: number;
 }
 export interface Surface {
@@ -194,6 +203,7 @@ class Desktop {
     anchor: null,
     editor: null,
     complex: null,
+    tags: null,
     focusIntent: 0,
   };
   private surfaces = new Set<() => void>();
@@ -381,6 +391,7 @@ class Desktop {
       anchor: null,
       editor: null,
       complex: null,
+      tags: null,
       focusIntent: this.interaction.focusIntent + 1,
     });
     this.publish({
@@ -499,7 +510,7 @@ class Desktop {
         sample.invalid = "obsolete";
         return sample;
       }
-      if (!same) this.interact({ editor: null, complex: null });
+      if (!same) this.interact({ editor: null, complex: null, tags: null });
       const read = ++this.readToken,
         previous = restore ? this.local.get(path) : undefined;
       const start =
@@ -844,6 +855,15 @@ class Desktop {
       this.interaction.editor
     )
       return;
+    if (this.interaction.tags) {
+      const target = this.interaction.tags, intent = this.inputIntent;
+      void this.commit().then(ok => {
+        if(ok && this.interaction.tags === target && this.currentFor(p) && this.inputIntent === intent) {
+          this.closeTags(); this.beginEditor();
+        }
+      });
+      return;
+    }
     const r = p.rows.find((r) => r.viewIndex === s.row),
       cell = r?.cells[s.column],
       column = p.columns[s.column];
@@ -964,6 +984,28 @@ class Desktop {
       path,
       operation,
     });
+  }
+  closeTags = () => this.interact({tags: null});
+  async openTags(p: Projection, row: string) {
+    if (!(await this.commit())) return;
+    const current = this.currentFor(p);
+    if (!current?.source || this.surface.pending) return;
+    this.interact({editor: null, complex: null, tags: {epoch: current.sessionEpoch, source: current.source, row, start: 0, inputIntent: this.inputIntent}});
+  }
+  tagsPage(start: number) {
+    const target = this.interaction.tags;
+    if(target) this.interact({tags: {...target, start, inputIntent: this.inputIntent}});
+  }
+  async tagView(target: TagTarget): Promise<TagView | null> {
+    const p = this.surface.projection;
+    if (!p || p.source !== target.source || p.sessionEpoch !== target.epoch || this.surface.pending) return null;
+    return (await this.rpc<TagView>({kind: "tags", ...this.scope(p), row: target.row, start: target.start})).data;
+  }
+  async tagEdit(view: TagView, operation: Record<string, unknown>) {
+    const current = this.surface.projection;
+    if(!current || current.source !== view.source || current.sessionEpoch !== view.sessionEpoch || current.revision !== view.revision) return false;
+    this.historySource = view.source;
+    return this.operation({kind: "tagEdit", epoch: view.sessionEpoch, source: view.source, revision: view.revision, generation: view.generation, row: view.row, operation});
   }
   async schema(
     field: string,
@@ -1419,7 +1461,8 @@ class Desktop {
       )
         return;
       this.viewport?.focus();
-      if (target.editorPath)
+      if (target.tags) await this.openTags(this.surface.projection!, target.row);
+      else if (target.editorPath)
         this.interact({
           complex: {
             epoch: p.sessionEpoch,
@@ -1643,6 +1686,7 @@ class Desktop {
     if (!current) return;
     p = current;
     this.historySource = p.source;
+    if (action === "tags") return this.openTags(p, row);
     if (action === "above") return this.addRow(row, p);
     if (action === "below") {
       const next = await this.rpc<string | null>({
@@ -1831,7 +1875,7 @@ class Desktop {
   discardHeldInput = (index: number) => this.publish({heldInputs: this.surface.heldInputs.filter((_input, at) => at !== index)});
   copyHeldInput = async (index: number) => {
     const input = this.surface.heldInputs[index];
-    if (input) await invoke("clipboard_text", {write: input.text});
+    if (input) await invoke("clipboard_text", {text: input.text});
   };
 }
 export const desktop = new Desktop();

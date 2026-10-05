@@ -55,6 +55,7 @@ import {
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
 import { ComplexPanel } from "./complex";
+import { TagPanel } from "./tags";
 import { useCreation } from "./creation";
 import { useSourcePath } from "./source-path";
 import { TypeSurface } from "./type-editor";
@@ -642,6 +643,7 @@ function TableSurface({ s }: { s: Surface }) {
         {s.uncertainField && <Alert className="context-alert" type="warning" showIcon title="構造変更の結果を確認できません" description={<Button disabled={s.busy} onClick={()=>void desktop.recheckFieldOperation()}>Recheck actual source set</Button>} />}
         {s.heldInputs.length > 0 && <HeldInputs s={s} />}
         <ComplexPanel />
+        <TagPanel />
       </div>
       <ProblemsBar s={s} />
     </section>

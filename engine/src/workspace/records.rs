@@ -192,6 +192,7 @@ impl Workspace {
         let changed = d.apply(candidate, Arc::new(rows));
         if added {
             Arc::make_mut(&mut d.added).remove(row);
+            Arc::make_mut(&mut d.tag_origins).remove(row);
             if d.added.is_empty() {
                 d.origin = None;
             }

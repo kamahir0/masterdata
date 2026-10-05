@@ -10,6 +10,7 @@ pub struct ProblemTarget {
     pub editor_path: Option<Vec<String>>,
     pub focus_path: Vec<String>,
     pub editor_start: usize,
+    pub tags: bool,
 }
 
 impl Workspace {
@@ -151,6 +152,7 @@ impl Workspace {
             editor_path,
             focus_path,
             editor_start,
+            tags: !pending && field_path.first().is_some_and(|field| field == "$tags"),
         }))
     }
 }

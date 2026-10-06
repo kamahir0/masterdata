@@ -26,7 +26,17 @@ pub struct RecentProject {
 }
 impl Preferences {
     pub fn opened(&mut self, root: String, name: String) {
-        self.recent_projects.retain(|p| p.root != root);
+        let accepted = Path::new(&root);
+        // Old preferences may contain an ordinary Windows path while the newly
+        // accepted workspace uses a verbatim canonical path. Resolve only the
+        // bounded recent list on successful Open; Welcome never discovers data.
+        self.recent_projects.retain(|p| {
+            p.root != root
+                && Path::new(&p.root)
+                    .canonicalize()
+                    .ok()
+                    .is_none_or(|old| old != accepted)
+        });
         self.recent_projects.insert(0, RecentProject { root, name });
         self.recent_projects.truncate(10);
     }
@@ -107,5 +117,32 @@ mod tests {
         assert!(!Path::new(&old).join("masterdata.toml").exists());
         loaded.remove_recent("already missing");
         assert_eq!(loaded.recent_projects.len(), 9);
+    }
+    #[test]
+    fn successful_open_deduplicates_canonical_path_aliases_and_preserves_missing_entries() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(root.join("nested")).unwrap();
+        std::fs::write(root.join("notes"), b"preserve").unwrap();
+        let missing = t.path().join("missing").to_string_lossy().into_owned();
+        let mut preferences = Preferences::default();
+        for alias in [&root, &root.join("nested/.."), &root] {
+            preferences.recent_projects.push(RecentProject {
+                root: alias.to_string_lossy().into_owned(),
+                name: "Old name".into(),
+            });
+        }
+        preferences.recent_projects.push(RecentProject {
+            root: missing.clone(),
+            name: "Unavailable".into(),
+        });
+        let canonical = root.canonicalize().unwrap().to_string_lossy().into_owned();
+        preferences.opened(canonical.clone(), "Current name".into());
+        assert_eq!(preferences.recent_projects.len(), 2);
+        assert_eq!(preferences.recent_projects[0].root, canonical);
+        assert_eq!(preferences.recent_projects[0].name, "Current name");
+        assert_eq!(preferences.recent_projects[1].root, missing);
+        assert_eq!(std::fs::read(root.join("notes")).unwrap(), b"preserve");
     }
 }

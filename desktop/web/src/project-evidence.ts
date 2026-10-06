@@ -93,6 +93,6 @@ export async function run({startup}:{startup:Record<string,unknown>}){
 
     const recent=desktop.surface.recentProjects;assert(recent.length===2&&recent[0].root===newRoot&&recent[1].root===oldRoot,'recents were not canonical-root deduplicated in successful order');
     checks.push('recent-canonical-root-order-dedup');
-  }catch(error){await invoke('evidence_write',{report:{error:String(error),checks,startup,visibleDialogs:[...document.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(shown).map(e=>e.textContent?.slice(0,600)),focus:document.activeElement?.getAttribute('aria-label')}});return;}
+  }catch(error){await invoke('evidence_write',{report:{error:String(error),checks,startup,oldRoot,newRoot,recentProjects:desktop.surface.recentProjects,visibleDialogs:[...document.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(shown).map(e=>e.textContent?.slice(0,600)),focus:document.activeElement?.getAttribute('aria-label')}});return;}
   await invoke('evidence_write',{report:{checks,oldRoot,newRoot,visibility:document.visibilityState,focused:document.hasFocus(),startup}});
 }

@@ -19,3 +19,5 @@
 [formal inputs](rewrite-preparation/README.md)、[constitution](rewrite-preparation/constitution.md)、[domain / safety](rewrite-preparation/domain-safety.md)、[handoff](rewrite-preparation/clean-room-handoff.md)。
 
 旧production code / topologyをdefault input、template、copy sourceにしない。mainへのmerge、release、scope外featureの追加は行わない。
+
+2026-10-07 Human completion decisionにより、completion boundaryは現在のApproved canonical requirements / oracle / acceptance matrix / Human decisionsへ固定する。required target、stretch、non-blocking polishを区別し、未取得の外部環境証拠はspecific Human gateへrouteする。

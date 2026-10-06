@@ -272,6 +272,27 @@ fn migration_plan_is_read_only_and_apply_matches_independent_exact_bytes() {
     }
 }
 #[test]
+fn table_declaration_authoring_does_not_extend_migration_v1_cli_operations() {
+    let temp = fixture("migration-add");
+    let before = source_bytes(temp.path());
+    let command = temp.path().join("declaration.json");
+    fs::write(&command,serde_json::to_vec(&json!({"operation":"tableDeclaration","command":{"table":"item","source":"sources/schema.yaml","identity":"captured","change":{"kind":"setFieldKey","occurrence":0,"key":"7"}}})).unwrap()).unwrap();
+    let report = result(
+        temp.path(),
+        &[
+            "migrate".as_ref(),
+            "--command".as_ref(),
+            command.as_os_str(),
+            "--apply".as_ref(),
+            "--json".as_ref(),
+        ],
+        false,
+    );
+    assert_eq!(report["diagnostic"]["code"], "E-CLI-ARGUMENT");
+    assert_eq!(source_bytes(temp.path()), before);
+    assert!(!temp.path().join(".masterdata").exists());
+}
+#[test]
 fn doctor_reports_environment_failure_without_building_or_mutating() {
     let temp = fixture("migration-add");
     let before = source_bytes(temp.path());

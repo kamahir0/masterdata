@@ -20,6 +20,7 @@ struct Host {
     evidence_bad_config_reply: AtomicBool,
     evidence_bad_project_reply: AtomicBool,
     evidence_bad_open_reply: AtomicBool,
+    evidence_bad_migration_reply: AtomicBool,
     preferences_path: PathBuf,
     preferences: Arc<Mutex<crate::preferences::Preferences>>,
 }
@@ -73,7 +74,11 @@ async fn workspace(
                     .evidence_bad_project_reply
                     .swap(false, Ordering::AcqRel))
             || (matches!(intent, Intent::Open { .. })
-                && state.evidence_bad_open_reply.swap(false, Ordering::AcqRel)));
+                && state.evidence_bad_open_reply.swap(false, Ordering::AcqRel))
+            || (matches!(intent, Intent::MigrationApply { .. })
+                && state
+                    .evidence_bad_migration_reply
+                    .swap(false, Ordering::AcqRel)));
     let mut response = state.session.request_at(intent, epoch).await?;
     if opened {
         let mut reply: Value = serde_json::from_str(&response)
@@ -127,6 +132,16 @@ fn evidence_bad_config_reply(state: tauri::State<'_, Host>) -> Result<(), String
     }
     state
         .evidence_bad_config_reply
+        .store(true, Ordering::Release);
+    Ok(())
+}
+#[tauri::command]
+fn evidence_bad_migration_reply(state: tauri::State<'_, Host>) -> Result<(), String> {
+    if !cfg!(feature = "desktop-evidence") || state.evidence_output.is_none() {
+        return Err("evidence disabled".into());
+    }
+    state
+        .evidence_bad_migration_reply
         .store(true, Ordering::Release);
     Ok(())
 }
@@ -254,6 +269,7 @@ pub fn run() {
         (true, Some("tags")) => "tags",
         (true, Some("settings")) => "settings",
         (true, Some("project")) => "project",
+        (true, Some("declaration")) => "declaration",
         (true, Some("manual")) => "manual",
         _ => "navigation",
     }
@@ -283,6 +299,7 @@ pub fn run() {
                 evidence_bad_config_reply: AtomicBool::new(false),
                 evidence_bad_project_reply: AtomicBool::new(false),
                 evidence_bad_open_reply: AtomicBool::new(false),
+                evidence_bad_migration_reply: AtomicBool::new(false),
                 preferences_path,
                 preferences,
             });
@@ -309,6 +326,7 @@ pub fn run() {
             evidence_write,
             evidence_bad_config_reply,
             evidence_bad_project_reply,
+            evidence_bad_migration_reply,
             evidence_phase
         ])
         .build(tauri::generate_context!())

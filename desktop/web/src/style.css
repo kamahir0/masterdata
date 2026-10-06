@@ -182,6 +182,8 @@ main {
 .type-source {font-size:12px;overflow-wrap:anywhere;}
 .type-field-name {flex:1;}
 .type-plan-file {padding:8px 0;border-bottom:1px solid var(--md-border);}
+.declaration-section {width:100%;}
+.table-declarations > .ant-alert {margin-block-start:12px;}
 .type-plan-file .ant-typography {flex:1;min-width:0;overflow-wrap:anywhere;}
 .type-plan .ant-alert,.type-operation+.ant-alert {margin-top:14px;}
 .typed-initializer {border:1px solid var(--md-border);border-radius:var(--md-radius);padding:12px;}

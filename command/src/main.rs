@@ -206,6 +206,11 @@ fn migration_operation(root: &Path, args: &Arguments) -> Result<Value> {
     let bytes = std::fs::read(args.path("--command").unwrap()).map_err(project::io_error)?;
     let command: migration::Command = serde_json::from_slice(&bytes)
         .map_err(|e| argument(format!("invalid Migration command: {e}")))?;
+    if matches!(command, migration::Command::TableDeclaration { .. }) {
+        return Err(argument(
+            "Table declaration authoring is not a Migration v1 CLI operation",
+        ));
+    }
     let project = Project::open(root)?;
     let plan = migration::derive(&project, command)?;
     let preview = plan_preview(&plan);

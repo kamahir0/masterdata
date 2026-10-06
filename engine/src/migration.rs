@@ -16,6 +16,9 @@ use std::{collections::BTreeMap, sync::Arc};
     rename_all_fields = "camelCase"
 )]
 pub enum Command {
+    TableDeclaration {
+        command: crate::table_declaration::Command,
+    },
     Type {
         command: crate::type_migration::Command,
     },
@@ -49,12 +52,14 @@ impl Command {
             | Self::RenameField { table, .. }
             | Self::DropField { table, .. }
             | Self::SetFieldDeclaration { table, .. } => Ok(table),
+            Self::TableDeclaration { command } => Ok(&command.table),
             Self::Type { .. } => Err(resolution("Table operation required")),
         }
     }
     pub fn destructive(&self) -> bool {
         match self {
             Self::Type { command } => command.destructive(),
+            Self::TableDeclaration { command } => command.change.destructive(),
             Self::DropField { .. } => true,
             _ => false,
         }
@@ -215,7 +220,9 @@ fn expected_tables(
     let mut expected = project.tables.clone();
     let changed = Arc::make_mut(expected.get_mut(&target.name).unwrap());
     match command {
-        Command::Type { .. } => return Err(resolution("Table operation required")),
+        Command::Type { .. } | Command::TableDeclaration { .. } => {
+            return Err(resolution("Table operation required"));
+        }
         Command::AddField {
             declaration,
             position,
@@ -418,7 +425,9 @@ fn expected_records(doc: &Document, command: &Command) -> Result<Value> {
             return Err(resolution("record mapping required"));
         };
         match command {
-            Command::Type { .. } => return Err(resolution("Table operation required")),
+            Command::Type { .. } | Command::TableDeclaration { .. } => {
+                return Err(resolution("Table operation required"));
+            }
             Command::AddField {
                 declaration,
                 initializer,
@@ -451,6 +460,9 @@ fn expected_records(doc: &Document, command: &Command) -> Result<Value> {
     Ok(expected)
 }
 pub fn derive(project: &Project, command: Command) -> Result<Plan> {
+    if let Command::TableDeclaration { command } = &command {
+        return crate::table_declaration::derive(project, command.clone());
+    }
     if let Command::Type { command } = &command {
         return crate::type_migration::derive(project, command.clone());
     }
@@ -468,7 +480,9 @@ pub fn derive(project: &Project, command: Command) -> Result<Plan> {
     let schema = &documents[&target.source];
     let fields = schema.root.required("fields")?;
     let schema = match &command {
-        Command::Type { .. } => return Err(resolution("Table operation required")),
+        Command::Type { .. } | Command::TableDeclaration { .. } => {
+            return Err(resolution("Table operation required"));
+        }
         Command::AddField {
             declaration,
             position,
@@ -556,7 +570,9 @@ pub fn derive(project: &Project, command: Command) -> Result<Plan> {
             affected_records += records.len();
             for record in records {
                 match &command {
-                    Command::Type { .. } => return Err(resolution("Table operation required")),
+                    Command::Type { .. } | Command::TableDeclaration { .. } => {
+                        return Err(resolution("Table operation required"));
+                    }
                     Command::AddField {
                         declaration,
                         initializer,
@@ -646,7 +662,7 @@ pub fn derive(project: &Project, command: Command) -> Result<Plan> {
     }
     let changed = transformed.tables[&target.name].as_ref();
     let selected_name = match &command {
-        Command::Type { .. } => None,
+        Command::Type { .. } | Command::TableDeclaration { .. } => None,
         Command::AddField { declaration, .. } => Some(&declaration.name),
         Command::RenameField { new_name, .. } => Some(new_name),
         Command::SetFieldDeclaration { field, .. } => Some(field),

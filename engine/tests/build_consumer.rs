@@ -148,6 +148,151 @@ System.Console.WriteLine("PASS ImmutableArray / constructor guards / Ordinal com
 "#;
 
 #[test]
+fn authored_messagepack_keys_primary_secondary_and_reference_helpers_reload_in_native_consumer() {
+    use masterdata_engine::{
+        table_declaration::{Change, Command, ReferenceInput},
+        workspace::Workspace,
+    };
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let oracle = repository.join("fixtures/rewrite-oracle/v1/consumer");
+    let project = copy_project(&repository.join("fixtures/full"));
+    for file in ["probe-schema.yaml", "probe-data.yaml"] {
+        fs::copy(oracle.join(file), project.path().join("sources").join(file)).unwrap();
+    }
+    let before = bytes(project.path());
+    let mut workspace = Workspace::open(project.path()).unwrap();
+    let changes = [
+        Change::SetFieldKey {
+            occurrence: 0,
+            key: "25".into(),
+        },
+        Change::AddSecondaryKey {
+            fields: vec!["name".into()],
+            non_unique: true,
+        },
+        Change::AddReference {
+            declaration: ReferenceInput {
+                name: "peers".into(),
+                fields: vec!["code".into()],
+                target_table: "item".into(),
+                target_fields: vec!["code".into()],
+                csharp_name: Some("FindPeers".into()),
+            },
+        },
+    ];
+    let apply = |workspace: &mut Workspace, change| {
+        let detail = workspace
+            .table_declaration_detail("sources/catalog-schema.yaml", "item")
+            .unwrap()
+            .detail;
+        let review = workspace
+            .prepare_table_declaration(Command {
+                table: detail.table,
+                source: detail.source,
+                identity: detail.identity,
+                change,
+            })
+            .unwrap();
+        assert_eq!(
+            workspace
+                .apply_migration(&review.plan.token, false)
+                .unwrap()
+                .outcome,
+            Outcome::Success
+        );
+    };
+    for change in changes {
+        apply(&mut workspace, change);
+    }
+    let plan = BuildPlan::capture(project.path(), None).unwrap();
+    let built = dotnet::build(&plan).unwrap();
+    let extra = r#"
+var db=new Masterdata.Generated.MemoryDatabase(System.IO.File.ReadAllBytes("masterdata.bytes"));
+var row=db.ItemMasterTable.FindById(1001);
+var matches=0;foreach(var peer in row.FindPeers(db)){if(peer.Code.Value!="sword")throw new System.Exception("wrong relation");matches++;}
+if(matches!=2)throw new System.Exception("authored nonunique Reference lost matches");
+matches=0;foreach(var named in db.ItemMasterTable.FindByName("Sword")){if(named.Id!=1001)throw new System.Exception("wrong authored key");matches++;}
+if(matches!=1)throw new System.Exception("authored secondary lookup failed");
+System.Console.WriteLine("PASS authored sparse MessagePack key / nonunique SK / exact helper override / relation");
+"#;
+    let result = dotnet::verify_consumer(
+        plan.csharp(),
+        &built.binary,
+        &oracle.join("Consumer.cs"),
+        extra,
+    )
+    .unwrap();
+    assert!(result.contains("PASS authored sparse MessagePack key"));
+    // Removing the old PK would invalidate the probe's incoming Reference.
+    // Remove that relationship explicitly; preserve every record byte.
+    let detail = workspace
+        .table_declaration_detail("sources/probe-schema.yaml", "probe")
+        .unwrap()
+        .detail;
+    let removal = workspace
+        .prepare_table_declaration(Command {
+            table: detail.table,
+            source: detail.source,
+            identity: detail.identity,
+            change: Change::RemoveReference { occurrence: 0 },
+        })
+        .unwrap();
+    assert_eq!(
+        workspace
+            .apply_migration(&removal.plan.token, true)
+            .unwrap()
+            .outcome,
+        Outcome::Success
+    );
+    apply(
+        &mut workspace,
+        Change::SetPrimaryKey {
+            fields: vec!["intValue".into()],
+        },
+    );
+    apply(
+        &mut workspace,
+        Change::EditSecondaryKey {
+            occurrence: 2,
+            fields: vec!["rarity".into(), "code".into()],
+            non_unique: false,
+        },
+    );
+    let plan = BuildPlan::capture(project.path(), None).unwrap();
+    let built = dotnet::build(&plan).unwrap();
+    let consumer = project.path().join("AuthoredConsumer.cs");
+    fs::write(&consumer, r#"
+using System;
+using MasterMemory;
+using Masterdata.Generated;
+[assembly: MasterMemoryGeneratorOptions(Namespace="Masterdata.Generated")]
+namespace RewriteOracle { public static class Consumer { public static void Check(byte[] bytes) {
+var db=new MemoryDatabase(bytes);
+var first=db.ItemMasterTable.FindByIntValue(int.MaxValue);var second=db.ItemMasterTable.FindByIntValue(int.MinValue);
+if(first.Id!=1001||second.Id!=1002||first.Reward.ItemId.Value!=2001||first.LongValue!=long.MinValue||first.UlongValue!=ulong.MaxValue)throw new Exception("authored PK or preserved values corrupted");
+if(db.ItemMasterTable.FindByRarityAndCode((Rarity.Common,new ItemCode("sword"))).Id!=1001)throw new Exception("authored composite order corrupted");
+if(db.ProbeTable.FindById(1).ParentId!=1001||typeof(Probe).GetMethod("GetParent")!=null)throw new Exception("explicit relationship removal changed records or retained helper");
+Console.WriteLine("PASS authored PK / ordered composite SK / nested Value Object / lossless values / explicit Reference removal");
+} } }
+"#).unwrap();
+    let result = dotnet::verify_consumer(plan.csharp(), &built.binary, &consumer, "").unwrap();
+    assert!(result.contains("PASS authored PK / ordered composite SK"));
+    for (path, original) in before {
+        if !["catalog-schema.yaml", "probe-schema.yaml"]
+            .iter()
+            .any(|name| path.file_name().unwrap() == *name)
+        {
+            assert_eq!(
+                fs::read(path).unwrap(),
+                original,
+                "declaration authoring changed non-target bytes"
+            );
+        }
+    }
+    println!("PASS authored declarations / independent oracle / actual MasterMemory reload");
+}
+
+#[test]
 fn empty_table_preserves_generated_api_and_profiles_use_the_same_canonical_dataset() {
     let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let minimal = copy_project(&repository.join("fixtures/rewrite-oracle/v1/consumer/minimal"));

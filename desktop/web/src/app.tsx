@@ -65,6 +65,7 @@ import { DeliveryDrawer } from "./delivery";
 import { delivery } from "./delivery-state";
 import { ProjectSettings } from "./settings";
 import { CreateProjectModal } from "./project";
+import { useTableDeclaration } from "./table-declaration";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -496,6 +497,7 @@ function Explorer({ s }: { s: Surface }) {
   );
 }
 function TableSurface({ s }: { s: Surface }) {
+  const declaration=useTableDeclaration(s);
   const p = s.projection,
     history = desktop.history(),
     types = s.inventory?.types ?? [];
@@ -515,6 +517,7 @@ function TableSurface({ s }: { s: Surface }) {
     s.status.recoveryRequired ||
     !!uncertain;
   const items: MenuProps["items"] = [
+    {key:"declaration",label:"Table detail…",icon:<SettingOutlined/>,disabled:disabled||!p||!!s.uncertainField},
     {key:"delivery",label:"Build / Publish…",icon:<BuildOutlined/>},
     {
       key: "compare",
@@ -590,7 +593,7 @@ function TableSurface({ s }: { s: Surface }) {
           />
           <Dropdown
             trigger={["click"]}
-            menu={{ items, onClick: ({key}) => key==="delivery"?delivery.open():void desktop.compare() }}
+            menu={{ items, onClick: ({key}) => key==="declaration"?void declaration.open():key==="delivery"?delivery.open():void desktop.compare() }}
           >
             <Button
               type="text"
@@ -693,6 +696,7 @@ function TableSurface({ s }: { s: Surface }) {
         <TagPanel />
       </div>
       <ProblemsBar s={s} />
+      {declaration.drawer}
     </section>
   );
 }
@@ -791,6 +795,7 @@ function ChoiceModal({ s }: { s: Surface }) {
       afterOpenChange={open=>{
         const request=closed.current,current=desktop.surface;
         if(open||!request||request.input!==desktop.inputIntent||request.epoch!==current.status.epoch||request.target!==current.target||current.choice||current.projectCreation||current.openingProject)return;
+        if(document.querySelector('.ant-drawer-open,.type-operation'))return;
         const active=document.activeElement;
         if(active instanceof HTMLElement&&active.matches('button,input,select,textarea,a[href],[tabindex]')&&!active.closest('.ant-modal-wrap,[role="dialog"],[role="menu"]')&&active.getClientRects().length)return;
         // Menu actions can open a guard after their trigger has disappeared.
@@ -818,6 +823,10 @@ function ChoiceModal({ s }: { s: Surface }) {
 function CompareModal({ s }: { s: Surface }) {
   const c = s.comparison,
     p = s.projection;
+  const origin=useRef<{element:HTMLElement|null;epoch:number;target:string}|null>(null);
+  const closing=useRef<{input:number;epoch:number;target:string}|null>(null);
+  useEffect(()=>{if(c)origin.current={element:document.activeElement as HTMLElement,epoch:s.status.epoch,target:s.target};},[!!c]);
+  const close=()=>{closing.current={input:desktop.inputIntent,epoch:s.status.epoch,target:s.target};desktop.closeCompare();};
   const sources = c?.migration?.sources ?? (p
     ? [...new Set([p.table.source, ...(p.source ? [p.source] : [])])]
     : []);
@@ -825,12 +834,23 @@ function CompareModal({ s }: { s: Surface }) {
     <Modal
       title={c?.migration ? "Compare structural change" : "Compare save candidate"}
       open={!!c}
-      onCancel={desktop.closeCompare}
+      onCancel={close}
+      focusable={{focusTriggerAfterClose:false}}
+      afterOpenChange={open=>{
+        const request=closing.current,current=desktop.surface;
+        if(open||!request||request.input!==desktop.inputIntent||request.epoch!==current.status.epoch||request.target!==current.target||current.comparison||current.choice||current.projectCreation||current.openingProject)return;
+        // The structural editor owns its reopened overlay's focus. Ant's
+        // unconditional return could otherwise beat that or a newer input.
+        if(document.querySelector('.ant-drawer-open,.type-operation'))return;
+        const saved=origin.current,element=saved?.element;
+        if(saved?.epoch===current.status.epoch&&saved.target===current.target&&element?.isConnected&&element.matches('button,input,select,textarea,a[href],[tabindex]')&&!element.closest('.ant-modal-wrap,[role="dialog"],[role="menu"]')&&element.getClientRects().length)element.focus();
+        else if(!current.pending){if(current.projection)desktop.viewport?.focus();else document.querySelector<HTMLElement>('[aria-label="Type Editor"],button[aria-label="Table actions"]')?.focus();}
+      }}
       width="min(1000px, 94vw)"
       destroyOnHidden
       footer={
         <Space>
-          <Button onClick={desktop.closeCompare}>Close</Button>
+          <Button onClick={close}>Close</Button>
           {c?.conflict && (
             <Button danger onClick={desktop.overwrite}>
               Overwrite…

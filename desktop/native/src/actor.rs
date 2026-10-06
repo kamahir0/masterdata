@@ -132,6 +132,13 @@ pub enum Intent {
     MigrationPlan {
         command: masterdata_engine::migration::Command,
     },
+    TableDeclarationDetail {
+        source: String,
+        table: String,
+    },
+    TableDeclarationPlan {
+        command: masterdata_engine::table_declaration::Command,
+    },
     TypeMigrationPlan {
         source: String,
         identity: String,
@@ -902,6 +909,10 @@ fn execute(
         Intent::MoveSource { token } => convert(w.apply_path_move(&token)?),
         Intent::RecheckMove { token } => convert(w.recheck_path_move(&token)?),
         Intent::MigrationPlan { command } => convert(w.prepare_migration(command)?),
+        Intent::TableDeclarationDetail { source, table } => {
+            convert(w.table_declaration_detail(&source, &table)?)
+        }
+        Intent::TableDeclarationPlan { command } => convert(w.prepare_table_declaration(command)?),
         Intent::TypeMigrationPlan {
             source,
             identity,

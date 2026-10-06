@@ -181,6 +181,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case type --output verification/results/type.json
+      - name: Native Table declarations, Key / Reference review and uncertain commit recovery
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case declaration --output verification/results/declaration.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

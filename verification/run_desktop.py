@@ -190,6 +190,17 @@ def check_project(report):
     return {'checks': len(report['checks']), 'explicitProjectAndArtifactLifecycles': True}
 
 
+def check_declaration(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['open-close-physical-draft-focus', 'messagepack-review-compare-composition',
+        'primary-key-direct-ordered-components', 'secondary-key-composite-order', 'reference-add-rust-resolved-feedback',
+        'reference-helper-override', 'incoming-reference-key-removal-rejected', 'reference-remove-explicit-authorization',
+        'stale-plan-no-auto-replan-apply', 'unknown-reply-explicit-recheck', 'dirty-revisit-undo-warm-zero-stable-grid']
+    assert not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'exactPhysicalSchemaAndPreservedRecordHistory': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
@@ -211,6 +222,9 @@ def run(binary: Path, output: Path, case: str):
             if case == 'type':
                 (project / 'sources/ranges.yaml').write_text('kind: type\nname: Range\nenum:\n  underlying: ulong\n  members:\n    - name: Zero\n      value: 0\n', encoding='utf-8')
                 (project / 'sources/independent.yaml').write_text('kind: schema\ntable: independent\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n', encoding='utf-8')
+            if case == 'declaration':
+                schema = project / 'sources/catalog-schema.yaml'
+                schema.write_bytes(schema.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
         initial_sources = {path.relative_to(project): path.read_bytes() for path in project.rglob('*.yaml')}
         if case == 'settings':
             # Exercise preservation of CRLF plus the external LF comment on both
@@ -274,6 +288,8 @@ def run(binary: Path, output: Path, case: str):
             elif phase == 'settings-external':
                 config = project / 'masterdata.toml'
                 config.write_bytes(config.read_bytes() + b'\n# External settings change\n')
+            elif phase == 'declaration-stale':
+                schema.write_bytes(schema.read_bytes() + b'\n# External table declaration change\n')
             else: raise AssertionError(f'unknown external evidence phase {phase}')
         with (output.parent / 'desktop-process.log').open('w') as log:
             peak = 0
@@ -293,7 +309,7 @@ def run(binary: Path, output: Path, case: str):
                         try: report = json.loads(report_path.read_text(encoding='utf-8'))
                         except json.JSONDecodeError: report = None
                         if report is not None:
-                            if case in ['external', 'type', 'delivery', 'settings'] and report.get('phase'):
+                            if case in ['external', 'type', 'delivery', 'settings', 'declaration'] and report.get('phase'):
                                 phase = report['phase']
                                 if phase not in handled:
                                     external_phase(phase)
@@ -313,7 +329,7 @@ def run(binary: Path, output: Path, case: str):
                     oracle = ROOT / 'fixtures/rewrite-oracle/v1/capacity.json'
                     report['implementation']['oracleSha256'] = hashlib.sha256(oracle.read_bytes()).hexdigest()
                     report['dimensions'] = json.loads(oracle.read_text())['input']
-                if case in ['migration', 'type']:
+                if case in ['migration', 'type', 'declaration']:
                     report['sourceByteEvidence'] = {
                         str(path).replace('\\', '/'): {
                             'before': before.decode('utf-8'),
@@ -322,7 +338,7 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings, 'project': check_project}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings, 'project': check_project, 'declaration': check_declaration}[case](report)
                 if case == 'project':
                     assert not (temporary / 'cancelled').exists() and not (temporary / 'welcome-cancel').exists(), 'Cancel created a Project'
                     assert (removed / 'notes').read_bytes() == b'user bytes', 'Recent removal modified disk'
@@ -336,7 +352,15 @@ def run(binary: Path, output: Path, case: str):
                     assert len(files) == 2 and sum(b'kind: data' in path.read_bytes() for path in files) == 1
                     assert all(b'records:\n  -' not in path.read_bytes() for path in files), 'Add Row implicitly saved'
                     preferences = json.loads((temporary / 'preferences.json').read_text(encoding='utf-8'))
-                    assert [entry['root'] for entry in preferences['recentProjects']] == [str(created.resolve()), str(project.resolve())]
+                    recent = preferences['recentProjects']
+                    assert len(recent) == 2 and Path(recent[0]['root']).samefile(created) and Path(recent[1]['root']).samefile(project), 'recent Project order / physical identity mismatch'
+                if case == 'declaration':
+                    schema = Path('sources/catalog-schema.yaml')
+                    nl = b'\r\n' if b'\r\n' in initial_sources[schema] else b'\n'
+                    expected = initial_sources[schema].replace(b'key: 0' + nl, b'key: 26' + nl, 1).replace(b'fields: [code, rarity]', b'fields: [rarity, code]')
+                    expected += b'references:' + nl + b'  []' + nl + b'\n# External table declaration change\n'
+                    assert (project / schema).read_bytes() == expected, 'declaration changed non-target schema bytes'
+                    assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path != schema), 'declaration saved record/dependency bytes'
                 if case == 'settings':
                     for path, before in initial_sources.items():
                         assert (project / path).read_bytes() == before, path
@@ -391,6 +415,8 @@ def run(binary: Path, output: Path, case: str):
                     assert not (project / '.masterdata/output').exists(), 'Type Apply implicitly built artifacts'
                 elif case == 'delivery':
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == b'kind: [\n', 'Publish touched externally invalid YAML'
+                elif case == 'declaration':
+                    assert not (project / '.masterdata/output').exists(), 'declaration Apply implicitly built artifacts'
                 else:
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items()), 'interaction implicitly wrote source'
                 if case == 'capacity':
@@ -423,7 +449,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings', 'project'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings', 'project', 'declaration'], default='navigation')
     args = parser.parse_args()
     if args.output.resolve().is_relative_to(ROOT / 'fixtures'):
         parser.error('frozen fixture cannot be output')

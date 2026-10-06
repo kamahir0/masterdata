@@ -101,6 +101,8 @@ if (boot.evidence) {
         ? await import("./settings-evidence")
       : boot.evidenceKind === "project"
         ? await import("./project-evidence")
+      : boot.evidenceKind === "declaration"
+        ? await import("./declaration-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

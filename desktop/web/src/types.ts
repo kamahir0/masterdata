@@ -150,6 +150,25 @@ export interface MigrationReview {
   files: { source: string; beforeIdentity: string; afterIdentity: string; beforeBytes: number; afterBytes: number }[];
   dirtySources:string[];
 }
+export interface DeclarationKey {fields:string[];nonUnique:boolean}
+export interface ReferenceInput {name:string;fields:string[];targetTable:string;targetFields:string[];csharpName:string|null}
+export interface ReferenceDetail {table:string;source:string;occurrence:number;declaration:ReferenceInput;helper:string;selectedKey:number|null;multi:boolean|null;optional:boolean|null;problem:string|null}
+export interface TableDeclarationDetail {
+  table:string;source:string;identity:string;fields:Field[];keyFields:string[];referenceFields:string[];
+  primary:DeclarationKey;secondary:DeclarationKey[];references:ReferenceDetail[];dependents:ReferenceDetail[];
+  targets:{table:string;keys:DeclarationKey[]}[];dependencySources:string[];diagnostics:Diagnostic[];
+}
+export type TableDeclarationChange =
+  | {kind:"setFieldKey";occurrence:number;key:string}
+  | {kind:"setPrimaryKey";fields:string[]}
+  | {kind:"addSecondaryKey";fields:string[];nonUnique:boolean}
+  | {kind:"editSecondaryKey";occurrence:number;fields:string[];nonUnique:boolean}
+  | {kind:"removeSecondaryKey";occurrence:number}
+  | {kind:"addReference";declaration:ReferenceInput}
+  | {kind:"editReference";occurrence:number;declaration:ReferenceInput}
+  | {kind:"removeReference";occurrence:number};
+export interface TableDeclarationSnapshot {detail:TableDeclarationDetail;dirtySources:string[];configDirty:boolean}
+export interface TableDeclarationReview {plan:MigrationReview;before:TableDeclarationDetail;after:TableDeclarationDetail;dirtyDependencies:string[];configDirty:boolean}
 export interface SetResult {
   outcome: string;
   message: string;

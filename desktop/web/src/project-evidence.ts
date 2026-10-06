@@ -19,11 +19,14 @@ async function fill(path:string,name='New Project'){
 }
 async function readyArtifact(){await until(()=>!!document.querySelector('.creation-inline')&&!document.querySelector('.creation-inline .ant-spin')&&!document.querySelector('.creation-inline .ant-alert'),'artifact preview did not become valid');}
 export async function run({startup}:{startup:Record<string,unknown>}){
-  const checks:string[]=[];let oldRoot='',newRoot='';
+  const checks:string[]=[];let oldRoot='',newRoot='',fixtureRoot='';
   try {
     await until(()=>document.hasFocus(),'native window not focused');
     assert(!desktop.surface.inventory&&desktop.surface.recentProjects.length===2,'Welcome auto-opened a Project or lost recent entries');
-    button('Create Project').click();await fill(`${desktop.surface.recentProjects[0].root}/../welcome-cancel`);
+    // Use the caller-selected test path for new destinations. Windows native
+    // canonical roots are verbatim paths, where '/..' is not a path component.
+    fixtureRoot=desktop.surface.recentProjects[0].root;
+    button('Create Project').click();await fill(`${fixtureRoot}/../welcome-cancel`);
     key(input('Project name'),'ArrowLeft');projectButton('Cancel').click();
     await until(()=>!desktop.surface.projectCreation&&document.activeElement?.getAttribute('aria-label')==='Create Project','Welcome Cancel did not return keyboard focus to Create Project');
     assert(!desktop.surface.inventory&&desktop.surface.recentProjects.length===2,'Welcome Cancel changed Project / recent state');
@@ -45,7 +48,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     await until(()=>document.activeElement?.getAttribute('role')==='grid','guard Cancel did not restore authoring keyboard focus');
     checks.push('create-all-dirty-guard-cancel');
 
-    await startCreate();await guard("Don't Save");await fill(`${oldRoot}/../cancelled`);
+    await startCreate();await guard("Don't Save");await fill(`${fixtureRoot}/../cancelled`);
     key(input('Project name'),'Enter',{isComposing:true});await frame();assert(!desktop.surface.openingProject,'composition Enter created Project');
     projectButton('Cancel').click();await until(()=>!desktop.surface.projectCreation,'creation Cancel failed');
     await until(()=>document.activeElement?.getAttribute('aria-label')==='Project menu'||document.activeElement?.getAttribute('role')==='grid','form Cancel did not restore a usable authoring/action focus');
@@ -57,7 +60,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     assert(desktop.surface.inventory!.root===oldRoot&&desktop.surface.status.dirty.includes(SOURCE),'creation failure replaced the old workspace');
     checks.push('nonempty-failure-retains-workspace');
 
-    text(input('Project destination'),`${oldRoot}/../created`);await until(()=>!projectButton('Create Project').disabled,'new destination not ready');
+    text(input('Project destination'),`${fixtureRoot}/../created`);await until(()=>!projectButton('Create Project').disabled,'new destination not ready');
     await invoke('evidence_bad_project_reply');projectButton('Create Project').click();
     await until(()=>desktop.surface.projectCreationUncertain&&!desktop.surface.openingProject,'lost creation reply did not become uncertain');
     await until(()=>[...document.querySelectorAll<HTMLButtonElement>('button')].some(e=>shown(e)&&e.textContent==='Open destination…'),'unknown creation report did not reach the rendered dialog');

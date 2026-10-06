@@ -20,9 +20,11 @@ mod config;
 mod creation;
 mod migration;
 mod path;
+mod table_declaration;
 mod types;
 pub use migration::{FieldIntent, FieldOperation, MigrationReview};
 pub use path::MoveReview;
+pub use table_declaration::{TableDeclarationDetail, TableDeclarationReview};
 pub use types::{SelectionProjection, TypeProjection};
 pub struct FieldShapeEdit<'a> {
     pub nullable: bool,

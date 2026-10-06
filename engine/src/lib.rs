@@ -11,6 +11,7 @@ pub mod native;
 pub mod project;
 pub mod semantic;
 pub mod source;
+pub mod table_declaration;
 pub mod type_migration;
 pub mod workspace;
 

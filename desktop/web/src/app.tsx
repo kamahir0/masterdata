@@ -513,6 +513,8 @@ function Explorer({ s }: { s: Surface }) {
               {String(node.title)}
               <span
                 className="source-dirty"
+                role="img"
+                aria-hidden={!s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key))}
                 aria-label={
                   s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key))
                     ? "未保存"
@@ -590,6 +592,8 @@ function TableSurface({ s }: { s: Surface }) {
         )}
         <span
           className="dirty-slot"
+          role="img"
+          aria-hidden={s.pending || !(p?.dirty || p?.schemaDirty)}
           aria-label={
             !s.pending && (p?.dirty || p?.schemaDirty) ? "未保存" : undefined
           }

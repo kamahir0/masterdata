@@ -272,6 +272,7 @@ pub fn run() {
         (true, Some("project")) => "project",
         (true, Some("declaration")) => "declaration",
         (true, Some("focus")) => "focus",
+        (true, Some("geometry")) => "geometry",
         (true, Some("manual")) => "manual",
         (true, Some("manual-input")) => "manual-input",
         _ => "navigation",

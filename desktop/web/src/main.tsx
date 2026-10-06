@@ -127,6 +127,8 @@ if (boot.evidence) {
         ? await import("./declaration-evidence")
       : boot.evidenceKind === "focus"
         ? await import("./focus-evidence")
+      : boot.evidenceKind === "geometry"
+        ? await import("./geometry-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

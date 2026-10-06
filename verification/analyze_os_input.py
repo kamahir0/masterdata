@@ -13,6 +13,8 @@ STAGES = ('input', 'selectionPublication', 'ipcReturn', 'statePublication', 'rea
 
 def distribution(values, unit='Ms'):
     values = sorted(values)
+    if len(values) == 1:
+        return {'n': 1, 'single' + unit: values[0]}
     return {'n': len(values), 'median' + unit: statistics.median(values),
             'p95' + unit: values[math.ceil(len(values) * .95) - 1], 'max' + unit: values[-1]} if values else {'n': 0}
 
@@ -71,11 +73,26 @@ def analyze(reports, max_probe_gap):
     summaries = {}
     for name, case in cases.items():
         samples = case['samples']
-        metrics = {'selectionFeedback': [], 'backend': [], 'serialization': [], 'queue': [], 'bytes': [],
+        metrics = {'selectionFeedback': [], 'eventToSelectionFeedback': [], 'eventDelivery': [], 'backend': [], 'serialization': [], 'queue': [], 'bytes': [],
                    'stateAfterIpc': [], 'reactCommit': [], 'layout': [], 'paintOpportunity': [],
-                   'firstAcceptedObservedUpperBound': [], 'firstAcceptedTimelyProbe': [], 'probeGap': []}
+                   'eventToPaintOpportunity': [], 'firstAcceptedObservedUpperBound': [],
+                   'eventToFirstAcceptedObservedUpperBound': [], 'firstAcceptedTimelyProbe': [], 'probeGap': []}
         no_probe = 0
+        event_clock_missing = 0
         for sample, timely, gap in samples:
+            # DOM Event.timeStamp and performance.now share the Window's time
+            # origin. Keep event creation → handler queueing visible; measuring
+            # only from the handler can hide a busy UI thread. Older/unavailable
+            # event clocks are explicitly excluded, never guessed from OS wall.
+            # https://developer.mozilla.org/en-US/docs/Web/API/Event/timeStamp
+            timestamp = sample.get('eventTimestamp')
+            event_clock = isinstance(timestamp, (int, float)) and math.isfinite(timestamp) and 0 < timestamp <= sample['input'] + 1
+            if event_clock:
+                metrics['eventDelivery'].append(sample['input'] - timestamp)
+                metrics['eventToSelectionFeedback'].append(sample['selectionPublication'] - timestamp)
+                metrics['eventToPaintOpportunity'].append(sample['paintOpportunity'] - timestamp)
+            else:
+                event_clock_missing += 1
             metrics['selectionFeedback'].append(sample['selectionPublication'] - sample['input'])
             metrics['backend'].append(sample['host']['backendMs'])
             metrics['serialization'].append(sample['host']['serializationMs'])
@@ -90,17 +107,21 @@ def analyze(reports, max_probe_gap):
             else:
                 latency = sample['firstAccepted'] - sample['input']
                 metrics['firstAcceptedObservedUpperBound'].append(latency)
-                if timely:
-                    metrics['firstAcceptedTimelyProbe'].append(latency)
+                if event_clock:
+                    event_latency = sample['firstAccepted'] - timestamp
+                    metrics['eventToFirstAcceptedObservedUpperBound'].append(event_latency)
+                    if timely:
+                        metrics['firstAcceptedTimelyProbe'].append(event_latency)
             if gap is not None:
                 metrics['probeGap'].append(gap)
         summaries[name] = {'n': len(samples), 'runs': len(case['runs']), 'invalid': dict(case['invalid']),
                            'superseded': case['superseded'], 'programmatic': case['programmatic'], 'missingFirstInteraction': no_probe,
+                           'missingEventClock': event_clock_missing,
                            'workCounts': {key: 0 for key in COUNTERS},
                            'metrics': {key: distribution(values, 'Bytes' if key == 'bytes' else 'Ms') for key, values in metrics.items()}}
     complete = all(case in summaries and summaries[case]['metrics']['firstAcceptedTimelyProbe']['n'] >= 100
                    and summaries[case]['runs'] >= 2 for case in WARM)
-    return {'format': 1, 'measurement': 'actual OS input; rAF is paint opportunity, not GPU presentation',
+    return {'format': 1, 'measurement': 'actual OS input; event creation / handler start / first acceptance are separate; rAF is paint opportunity, not GPU presentation',
             'probeMaximumGapMs': max_probe_gap, 'warmDistributionComplete': complete,
             'finalCandidateAttested': bool(runs) and all(run['metadata'] and run['metadata'].get('finalCandidate')
                 and not run['metadata'].get('workingTreeChanged', True) for run in runs)

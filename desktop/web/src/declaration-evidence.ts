@@ -22,7 +22,8 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
  try {
   await until(()=>!!desktop.surface.inventory&&document.hasFocus(),'native Project not ready');await desktop.selectTarget(SOURCE,'declaration-setup',false);
   const row=desktop.surface.projection!.rows[0].id,originalIds=desktop.surface.projection!.rows.map(r=>r.id),top=desktop.viewport!.getBoundingClientRect().top;
-  desktop.viewport!.scrollLeft=11*160;await frame();await frame();
+  desktop.viewport!.scrollLeft=11*160;
+  await until(()=>!!desktop.viewport!.querySelector(`[data-row="${CSS.escape(row)}"] [data-column="11"]`),'scrolled name cell did not become visible');
   const cell=desktop.viewport!.querySelector<HTMLElement>(`[data-row="${CSS.escape(row)}"] [data-column="11"]`);assert(cell,'name cell missing');
   const rect=cell.getBoundingClientRect(),pointer={bubbles:true,button:0,pointerId:1,pointerType:'mouse',isPrimary:true,clientX:rect.left+rect.width/2,clientY:rect.top+rect.height/2};
   cell.dispatchEvent(new PointerEvent('pointerdown',{...pointer,buttons:1}));document.dispatchEvent(new PointerEvent('pointerup',{...pointer,buttons:0}));

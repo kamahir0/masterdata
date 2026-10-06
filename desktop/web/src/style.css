@@ -281,6 +281,10 @@ main {
   background: var(--md-panel);
 }
 .column {
+  /* Ant controls may establish descendant stacking levels. Keep every field
+     below the sticky corner, including controls scrolled behind row context. */
+  position: relative;
+  z-index: 0;
   min-width: 0;
   border-right: 1px solid var(--md-border);
   display: flex;
@@ -362,7 +366,7 @@ main {
 .row-identity {
   position: sticky;
   left: 0;
-  z-index: 3;
+  z-index: 4;
   background: var(--md-panel);
   color: var(--md-muted);
   display: flex;
@@ -513,7 +517,7 @@ main {
 }
 .active-cell-editor {
   position: absolute;
-  z-index: 4;
+  z-index: 3;
 }
 .active-cell-editor .ant-input {
   height: 100%;

@@ -2,7 +2,6 @@
 import argparse
 import hashlib
 import json
-import math
 import platform
 import plistlib
 import shutil
@@ -13,6 +12,7 @@ from pathlib import Path
 
 from generate_corpus import capacity, navigation
 from process_memory import child_peak, windows_peak
+from analyze_os_input import distribution
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,9 +47,7 @@ def check(report):
     assert dark['shellBackground'] != light['shellBackground'], 'shell theme did not change'
     assert dark['buttonColor'] != light['buttonColor'], 'standard control theme did not change'
     assert dark['explorerColor'] != light['explorerColor'], 'Explorer theme did not change'
-    return {case: {'n': len(values), 'medianMs': sorted(values)[len(values)//2],
-                   'p95Ms': sorted(values)[math.ceil(len(values)*.95)-1], 'maxMs': max(values)}
-            for case, values in cases.items()}
+    return {case: distribution(values) for case, values in cases.items()}
 
 
 def check_authoring(report):
@@ -153,8 +151,7 @@ def check_capacity(report):
         for counter in ['projectDiscovery', 'projectEnumeration', 'projectYamlParse', 'projectValidation']:
             assert sample['host']['work'][counter] == 0, (counter, sample)
     values = sorted(sample['firstAccepted'] - sample['input'] for sample in samples)
-    return {'checks': len(report['checks']), 'warm': {'n': len(values), 'medianMs': values[len(values)//2],
-            'p95Ms': values[math.ceil(len(values)*.95)-1], 'maxMs': values[-1]}, 'boundedRendering': True}
+    return {'checks': len(report['checks']), 'warm': distribution(values), 'boundedRendering': True}
 
 
 def check_tags(report):
@@ -212,12 +209,22 @@ def check_focus(report):
     return {'checks': len(report['checks']), 'keyboardPaneFocus': True, 'osInputNeverForged': True}
 
 
+def check_geometry(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['header-name-handle-action-separate', 'sticky-corner-occludes-scrolled-controls',
+                               'sticky-row-context-occludes-active-editor', 'long-wide-sticky-context-and-exact-value',
+                               'contextual-popup-remains-interactive']
+    assert report['mountedRows'] <= 64 and not report['dirty'] and not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'stickyHitAreasProtected': True}
+
+
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
         temporary = Path(work)
         project = temporary / 'project'
-        if case in ['navigation', 'capacity']:
-            {'navigation': navigation, 'capacity': capacity}[case](project)
+        if case in ['navigation', 'capacity', 'geometry']:
+            {'navigation': navigation, 'capacity': capacity, 'geometry': navigation}[case](project)
         else:
             shutil.copytree(ROOT / 'fixtures/full', project)
             data = project / 'sources/catalog-data.yaml'
@@ -349,7 +356,7 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings, 'project': check_project, 'declaration': check_declaration, 'focus': check_focus}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings, 'project': check_project, 'declaration': check_declaration, 'focus': check_focus, 'geometry': check_geometry}[case](report)
                 if case == 'project':
                     assert not (temporary / 'cancelled').exists() and not (temporary / 'welcome-cancel').exists(), 'Cancel created a Project'
                     assert (removed / 'notes').read_bytes() == b'user bytes', 'Recent removal modified disk'
@@ -460,7 +467,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings', 'project', 'declaration', 'focus'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings', 'project', 'declaration', 'focus', 'geometry'], default='navigation')
     args = parser.parse_args()
     if args.output.resolve().is_relative_to(ROOT / 'fixtures'):
         parser.error('frozen fixture cannot be output')

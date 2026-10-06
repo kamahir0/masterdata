@@ -144,7 +144,10 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   const variables = useMemo(() => ({
     "--md-bg": token.colorBgContainer,
     "--md-app": token.colorBgLayout,
-    "--md-panel": token.colorFillAlter,
+    // Ant fill tokens are translucent. Sticky surfaces must also paint an
+    // opaque theme base, otherwise scrolled controls remain visible through
+    // them even when pointer hit testing reports the correct topmost layer.
+    "--md-panel": `linear-gradient(${token.colorFillAlter}, ${token.colorFillAlter}), ${token.colorBgContainer}`,
     "--md-elevated": token.colorBgElevated,
     "--md-text": token.colorText,
     "--md-muted": token.colorTextSecondary,

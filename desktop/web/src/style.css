@@ -155,7 +155,16 @@ main {
   height: 100%;
   display: grid;
   place-items: center;
+  align-content:center;
+  gap:18px;
 }
+.project-guides {text-align:center;padding:0 20px;}
+.recent-projects {margin-top:28px;}
+.recent-project {height:36px;}
+.recent-project>.ant-btn:first-child {flex:1;min-width:0;justify-content:flex-start;}
+.recent-project>.ant-btn:first-child span:last-child {overflow:hidden;text-overflow:ellipsis;}
+.project-pending {position:absolute;inset:42px 0 0;z-index:50;background:var(--md-bg);display:flex;align-items:center;justify-content:center;gap:12px;padding:20px;}
+.project-pending .ant-typography:last-child {max-width:360px;}
 #table-surface {
   height: 100%;
   position: relative;

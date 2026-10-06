@@ -179,6 +179,16 @@ def check_settings(report):
     assert report['mountedRows'] <= 64 and not report['startup']['browserErrors']
     return {'checks': len(report['checks']), 'configSaveAndIndependentYamlDraft': True}
 
+def check_project(report):
+    assert not report.get('error'), report.get('error')
+    assert report['visibility'] == 'visible' and report['focused']
+    assert report['checks'] == ['welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen', 'create-all-dirty-guard-cancel',
+                               'create-form-cancel-composition', 'nonempty-failure-retains-workspace',
+                               'unknown-creation-reply-explicit-open', 'guided-schema-explicit-no-record-source',
+                               'explicit-data-logical-navigation-shared-draft', 'recent-canonical-root-order-dedup']
+    assert not report['startup']['browserErrors']
+    return {'checks': len(report['checks']), 'explicitProjectAndArtifactLifecycles': True}
+
 
 def run(binary: Path, output: Path, case: str):
     with tempfile.TemporaryDirectory(prefix='masterdata-desktop-') as work:
@@ -202,6 +212,11 @@ def run(binary: Path, output: Path, case: str):
                 (project / 'sources/ranges.yaml').write_text('kind: type\nname: Range\nenum:\n  underlying: ulong\n  members:\n    - name: Zero\n      value: 0\n', encoding='utf-8')
                 (project / 'sources/independent.yaml').write_text('kind: schema\ntable: independent\nfields:\n  - key: 0\n    name: id\n    type: int\nprimaryKey:\n  fields: [id]\nrecords:\n  - id: 1\n', encoding='utf-8')
         initial_sources = {path.relative_to(project): path.read_bytes() for path in project.rglob('*.yaml')}
+        if case == 'settings':
+            # Exercise preservation of CRLF plus the external LF comment on both
+            # hosts. Fixture files themselves remain immutable.
+            config = project / 'masterdata.toml'
+            config.write_bytes(config.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
         initial_config = (project / 'masterdata.toml').read_bytes()
         executable = binary.resolve()
         if platform.system() == 'Darwin':
@@ -218,6 +233,14 @@ def run(binary: Path, output: Path, case: str):
             }))
             executable = app / 'MacOS' / 'masterdata-desktop'
         report_path = temporary / 'measurement.json'
+        if case == 'project':
+            removed = temporary / 'remove-entry'
+            removed.mkdir()
+            (removed / 'notes').write_bytes(b'user bytes')
+            (temporary / 'preferences.json').write_text(json.dumps({'recentProjects': [
+                {'root': str(project.resolve()), 'name': 'Workspace'},
+                {'root': str(removed.resolve()), 'name': 'Remove entry'},
+            ]}), encoding='utf-8')
         handled = set()
         def external_phase(phase):
             # Only these fixture mutations are allowed; WebView content cannot
@@ -255,7 +278,8 @@ def run(binary: Path, output: Path, case: str):
         with (output.parent / 'desktop-process.log').open('w') as log:
             peak = 0
             report = None
-            process = subprocess.Popen([str(executable), '--project', str(project),
+            project_args = [] if case == 'project' else ['--project', str(project)]
+            process = subprocess.Popen([str(executable), *project_args,
                                         '--evidence-output', str(report_path), '--evidence-kind', case], stdout=log, stderr=log)
             try:
                 deadline = time.monotonic() + 240
@@ -298,7 +322,21 @@ def run(binary: Path, output: Path, case: str):
                     }
                 # A failed assertion must retain the measurements that caused it.
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings}[case](report)
+                report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings, 'project': check_project}[case](report)
+                if case == 'project':
+                    assert not (temporary / 'cancelled').exists(), 'Cancel created a Project'
+                    assert (removed / 'notes').read_bytes() == b'user bytes', 'Recent removal modified disk'
+                    assert (project / 'masterdata.toml').read_bytes() == initial_config
+                    for path, before in initial_sources.items():
+                        assert (project / path).read_bytes() == before, path
+                    created = temporary / 'created'
+                    assert (created / '.gitignore').read_bytes() == b'/.masterdata/\n'
+                    assert not (created / '.masterdata').exists() and not (created / '.git').exists() and not (created / 'Assets').exists()
+                    files = list((created / 'sources').rglob('*.yaml'))
+                    assert len(files) == 2 and sum(b'kind: data' in path.read_bytes() for path in files) == 1
+                    assert all(b'records:\n  -' not in path.read_bytes() for path in files), 'Add Row implicitly saved'
+                    preferences = json.loads((temporary / 'preferences.json').read_text(encoding='utf-8'))
+                    assert [entry['root'] for entry in preferences['recentProjects']] == [str(created.resolve()), str(project.resolve())]
                 if case == 'settings':
                     for path, before in initial_sources.items():
                         assert (project / path).read_bytes() == before, path
@@ -385,7 +423,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings'], default='navigation')
+    parser.add_argument('--case', choices=['navigation', 'authoring', 'external', 'creation', 'path', 'migration', 'type', 'delivery', 'capacity', 'tags', 'settings', 'project'], default='navigation')
     args = parser.parse_args()
     if args.output.resolve().is_relative_to(ROOT / 'fixtures'):
         parser.error('frozen fixture cannot be output')

@@ -119,6 +119,8 @@ export interface Inventory {
     error: string | null;
   }[];
   types: string[];
+  logicalTables: {name:string;source:string}[];
+  logicalTypes: {name:string;source:string}[];
   dirty: string[];
   configDirty: boolean;
   configUncertain: boolean;
@@ -195,6 +197,8 @@ export interface HostTiming {
 export interface Reply<T> {
   data: T;
   host: HostTiming;
+  preferences?: {recentProjects: {root:string;name:string}[]};
+  preferencesError?: string | null;
 }
 export interface SelectionSample {
   target: string;

@@ -23,6 +23,9 @@ export const GRID = {
   overscan: 4,
 };
 export type Preference = "system" | "light" | "dark";
+export type RecentProject = {root:string;name:string};
+export type ProjectCreationResult = {outcome:string;root:string;remaining:string[];unconfirmed:string[];message:string};
+export const unknownProjectReply=(error:unknown)=>!error||typeof error!=="object"||!("code" in error)||["E-IPC","E-WORKSPACE-CLOSED"].includes(String(error.code));
 export type Choice = {
   title: string;
   description: string;
@@ -128,6 +131,12 @@ export interface Interaction {
 }
 export interface Surface {
   inventory: Inventory | null;
+  openingProject: string | null;
+  projectCreation: {epoch:number;discard:boolean} | null;
+  projectCreationUncertain: boolean;
+  projectOpenUncertain: {path:string;discard:boolean} | null;
+  recentProjects: RecentProject[];
+  canCreateSource: boolean;
   projection: Projection | null;
   typeProjection: TypeProjection | null;
   target: string;
@@ -182,6 +191,12 @@ export const basename = (path: string) => path.split("/").at(-1) ?? path;
 class Desktop {
   surface: Surface = {
     inventory: null,
+    openingProject: null,
+    projectCreation: null,
+    projectCreationUncertain: false,
+    projectOpenUncertain:null,
+    recentProjects: [],
+    canCreateSource: false,
     projection: null,
     typeProjection: null,
     target: "",
@@ -254,6 +269,8 @@ class Desktop {
   private externalPending = false;
   private guardRunning: Promise<"saved" | "discard" | "cancel"> | null = null;
   private unconfirmedWriteViews = new Set<string>();
+  private openingStatus: Status | null = null;
+  private createSource: ((category:import('./creation').Artifact['category'])=>void) | null = null;
   currentSample: SelectionSample | null = null;
   samples: SelectionSample[] = [];
   evidence = false;
@@ -290,6 +307,56 @@ class Desktop {
     this.settingsHooks=hooks;
     return ()=>{if(this.settingsHooks===hooks)this.settingsHooks=null;};
   }
+  bindSourceCreation(begin:NonNullable<typeof this.createSource>) {
+    this.createSource=begin;
+    if(!this.surface.canCreateSource)this.publish({canCreateSource:true});
+    return ()=>{if(this.createSource===begin){this.createSource=null;this.publish({canCreateSource:false});}};
+  }
+  newSource = (category:import('./creation').Artifact['category']) => {
+    if(!this.surface.openingProject&&!this.surface.status.environmentError&&!this.surface.status.recoveryRequired)this.createSource?.(category);
+  };
+  beginProjectCreation = async () => {
+    if(this.surface.projectCreation||this.surface.openingProject)return;
+    const epoch=this.surface.status.epoch;
+    const guard=await this.guard();
+    if(guard!=="cancel"&&epoch===this.surface.status.epoch)this.publish({projectCreation:{epoch,discard:guard==="discard"},error:null});
+  };
+  cancelProjectCreation = () => {if(!this.surface.openingProject&&!this.surface.projectCreationUncertain)this.publish({projectCreation:null});};
+  async createProject(path:string,metadata:Inventory['project']):Promise<ProjectCreationResult> {
+    const form=this.surface.projectCreation;
+    if(!form||form.epoch!==this.surface.status.epoch||this.surface.openingProject)throw new Error("Projectの作成画面を開き直してください。");
+    this.publish({openingProject:path,error:null});
+    try {
+      const reply=await this.rpc<{creation:ProjectCreationResult;inventory:Inventory|null}>({kind:"createProject",epoch:form.epoch,path,metadata,discard:form.discard});
+      if(reply.data.creation.outcome==="Success"&&reply.data.inventory)this.acceptProject({...reply,data:reply.data.inventory});
+      return reply.data.creation;
+    } catch(error) {
+      if(unknownProjectReply(error))this.publish({projectCreationUncertain:true});
+      throw error;
+    } finally {if(!this.surface.projectCreationUncertain)this.openingStatus=null;this.publish({openingProject:null});}
+  }
+  async resolveProjectCreation(path:string) {
+    // This read supplies only the session scope after a lost creation reply.
+    // Explicit Open still resolves actual disk and checks protected drafts; an
+    // epoch observation cannot authorize source writes or creation retries.
+    const epoch=await invoke<number>("project_epoch");
+    await this.openProject(path,this.surface.projectCreation?.discard??false,epoch);
+  }
+  async resolveProjectOpen(path:string) {
+    const attempt=this.surface.projectOpenUncertain;if(!attempt)return;
+    const epoch=await invoke<number>("project_epoch");
+    await this.openProject(path,attempt.discard,epoch);
+  }
+  async openRecent(path:string) {
+    try {const guard=await this.guard();if(guard!=="cancel")await this.openProject(path,guard==="discard");}
+    catch(error){this.showError(error);}
+  }
+  async removeRecent(root:string) {
+    try {
+      const preferences=await invoke<{recentProjects:RecentProject[]}>("application_preferences",{removeRecent:root});
+      this.publish({recentProjects:preferences.recentProjects});
+    } catch(error){this.showError(error);}
+  }
   async rpc<T>(intent: Record<string, unknown>): Promise<Reply<T>> {
     return invoke<Reply<T>>("workspace", {
       intent,
@@ -311,6 +378,7 @@ class Desktop {
     };
   }
   async commit() {
+    if(this.surface.openingProject||this.surface.projectCreation||this.surface.projectOpenUncertain)return false;
     return this.commitActive ? this.commitActive() : true;
   }
   protectWriteView(key: string, pending: boolean) {
@@ -390,9 +458,21 @@ class Desktop {
     if (p?.source && p.clicked !== p.source && this.viewport)
       this.local.set(p.clicked, this.local.get(p.source)!);
   }
-  async openProject(path: string, discard = false) {
+  async openProject(path: string, discard = false, epoch=this.surface.status.epoch) {
+    if(this.surface.openingProject)throw new Error("Projectを開いています。完了後に操作してください。");
     if (this.surface.heldInputs.length && !discard) throw new Error("保持中の入力の確認が必要です。");
-    const r = await this.rpc<Inventory>({ kind: "open", path, discard });
+    this.publish({openingProject:path,error:null});
+    try {
+      const r = await this.rpc<Inventory>({ kind: "open", path, discard,epoch });
+      this.acceptProject(r);
+      return r;
+    } catch(error) {
+      if(unknownProjectReply(error))this.publish({projectOpenUncertain:{path,discard}});
+      throw error;
+    } finally {if(!this.surface.projectOpenUncertain)this.openingStatus=null;this.publish({openingProject:null});}
+  }
+  private acceptProject(r:Reply<Inventory>) {
+    if(!r||typeof r.data?.root!=="string"||!r.data.project||!Array.isArray(r.data.sources)||!Array.isArray(r.data.dirty)||!Number.isSafeInteger(r.host?.epoch))throw new Error("Project応答を確認できません。");
     this.token++;
     this.readToken++;
     this.queryVersion++;
@@ -410,6 +490,10 @@ class Desktop {
     });
     this.publish({
       inventory: r.data,
+      projectCreation:null,
+      projectCreationUncertain:false,
+      projectOpenUncertain:null,
+      recentProjects:r.preferences?.recentProjects??this.surface.recentProjects,
       projection: null,
       typeProjection: null,
       target: "",
@@ -420,14 +504,14 @@ class Desktop {
       deliveryCapturing: false,
       query: "",
       queryPending: false,
-      error: null,
+      error: r.preferencesError?`Recent Projectsを保存できません: ${r.preferencesError}`:null,
       comparison: null,
       uncertainField: null,
       problems: [],
       heldInputs: [],
       settingsOpen: false,
       settingsInputDirty: false,
-      status: {
+      status: this.openingStatus?.epoch===r.host.epoch&&this.openingStatus.generation>=r.data.generation?this.openingStatus:{
         ...initialStatus,
         open: true,
         epoch: r.host.epoch,
@@ -442,7 +526,6 @@ class Desktop {
         environmentError: r.data.environmentError,
       },
     });
-    return r;
   }
   pickProject = async () => {
     try {
@@ -478,6 +561,7 @@ class Desktop {
     restore = true,
     startOverride?: number,
   ): Promise<SelectionSample> {
+    if(this.surface.openingProject||this.surface.projectCreation||this.surface.projectOpenUncertain)throw new Error("ProjectのOpen / Createを完了してから操作してください。");
     const external = caseName === "external-change",
       after = caseName === "after-operation" || external,
       searching = caseName === "search-result";
@@ -1145,6 +1229,7 @@ class Desktop {
       });
   };
   save = async () => {
+    if(this.surface.openingProject||this.surface.projectCreation||this.surface.projectOpenUncertain)return;
     if(this.surface.settingsOpen) {await this.settingsHooks?.save();return;}
     const p = this.surface.projection;
     if (!p || !(await this.commit())) return;
@@ -1156,10 +1241,12 @@ class Desktop {
     });
   };
   saveAll = async () => {
+    if(this.surface.openingProject||this.surface.projectCreation||this.surface.projectOpenUncertain)return;
     const epoch = this.surface.status.epoch;
     if (await (this.settingsHooks?.commit()??Promise.resolve(true)) && await this.commit()) await this.saveIntent({ kind: "saveAll", epoch });
   };
   private async saveIntent(intent: Record<string, unknown>) {
+    if(this.surface.openingProject)return;
     if (this.surface.busy) return;
     if (this.surface.deliveryCapturing) {this.showError("保存済みinputの取得中です。完了後にSaveを再操作してください。");return;}
     const epoch = this.surface.status.epoch;
@@ -1193,6 +1280,9 @@ class Desktop {
     }
   };
   guard(): Promise<"saved" | "discard" | "cancel"> {
+    if(this.surface.projectOpenUncertain){this.showError("ProjectのOpen結果を確認し、明示的にOpenしてください。");return Promise.resolve("cancel");}
+    if(this.surface.projectCreationUncertain){this.showError("Projectの作成結果を確認し、明示的にOpenしてください。");return Promise.resolve("cancel");}
+    if(this.surface.openingProject){this.showError("ProjectのOpen / Createが完了してから操作してください。");return Promise.resolve("cancel");}
     if(this.surface.deliveryMutating) {this.showError("実行中のBuild / Publishが確定してからProjectを切り替えるか終了してください。");return Promise.resolve("cancel");}
     if (this.guardRunning) return this.guardRunning;
     this.guardRunning = (async () => {
@@ -1794,6 +1884,9 @@ class Desktop {
     await listen<Status>("workspace-status", (event) => {
       const next = event.payload,
         current = this.surface.status;
+      // Preserve the old workspace's identity until the cold Open/Create reply
+      // is accepted. A status event can arrive before native preference I/O.
+      if((this.surface.openingProject||this.surface.projectCreationUncertain||this.surface.projectOpenUncertain)&&next.epoch>current.epoch){this.openingStatus=next;return;}
       if (
         next.epoch < current.epoch ||
         (next.epoch === current.epoch && next.generation < current.generation)

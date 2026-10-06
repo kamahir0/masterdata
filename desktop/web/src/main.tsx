@@ -15,10 +15,10 @@ const boot = await invoke<{
   initialProject: string | null;
   evidence: boolean;
   evidenceKind: string;
-  preferences: { theme: Preference };
+  preferences: { theme: Preference;recentProjects:{root:string;name:string}[] };
 }>("boot");
 startup.bootReadyMs = performance.now();
-desktop.surface = { ...desktop.surface, theme: boot.preferences.theme };
+desktop.surface = { ...desktop.surface, theme: boot.preferences.theme,recentProjects:boot.preferences.recentProjects };
 desktop.evidence = boot.evidence;
 if (boot.evidence) {
   const errors: string[] = [];
@@ -99,6 +99,8 @@ if (boot.evidence) {
         ? await import("./tags-evidence")
       : boot.evidenceKind === "settings"
         ? await import("./settings-evidence")
+      : boot.evidenceKind === "project"
+        ? await import("./project-evidence")
       : await import("./evidence");
   await evidence.run({
     rpc,

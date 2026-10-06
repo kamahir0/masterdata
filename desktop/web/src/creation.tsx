@@ -130,7 +130,7 @@ export function useCreation(inventory:Inventory,epoch:number,context:string,onCr
       {draft.artifact&&choices&&<Declaration artifact={draft.artifact} choices={choices} disabled={committing||uncertain} update={artifact=>change({artifact})}/>}
     </Form><Feedback draft={draft}/>
   </Modal>;
-  return {menu,draft,inline:content,modal,path:draft?join(draft.folder,draft.filename):null,ready:!!choices};
+  return {menu,begin,draft,inline:content,modal,path:draft?join(draft.folder,draft.filename):null,ready:!!choices};
 }
 function Feedback({draft}:{draft:Draft}) {
   const messages=[...(draft.error?[draft.error]:[]),...(!draft.pending?(draft.preview?.diagnostics.map(d=>`${d.code}: ${d.message}`)??[]):[]),...(draft.result&&draft.result.outcome!=="Success"?[`${draft.result.outcome}: ${draft.result.message}`]:[])];

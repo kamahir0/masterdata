@@ -13,6 +13,8 @@ pub struct InitReport {
 struct Initialized {
     report: InitReport,
     root_identity: Arc<Identity>,
+    created: Vec<Arc<Identity>>,
+    directories: Vec<Namespace>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +24,47 @@ pub struct ProjectCreation {
     pub remaining: Vec<String>,
     pub unconfirmed: Vec<String>,
     pub message: String,
+    #[serde(skip)]
+    binding: Option<CreationBinding>,
+}
+struct CreationBinding {
+    root: Namespace,
+    created: Vec<Arc<Identity>>,
+    directories: Vec<Namespace>,
+    files: Vec<Snapshot>,
+}
+impl CreationBinding {
+    fn check_current(&self) -> Result<()> {
+        self.root.fresh_with_created(&self.created)?;
+        for directory in &self.directories {
+            directory.fresh_with_created(&self.created)?;
+        }
+        for base in &self.files {
+            let current = capture(
+                &self.root.path,
+                std::slice::from_ref(&self.root.path),
+                base.path.file_name().unwrap().to_str().unwrap(),
+            )?;
+            if !base.matches(&current) {
+                return Err(Error::new(
+                    "E-INIT-CONFLICT",
+                    "created scaffold binding/bytes changed before publication",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+impl ProjectCreation {
+    /// Close the gap between scaffold creation and Desktop workspace adoption.
+    /// This witness never authorizes a later write: every check reads actual
+    /// namespace objects and bytes, including a replacement with identical TOML.
+    pub fn check_current(&self) -> Result<()> {
+        self.binding
+            .as_ref()
+            .ok_or_else(|| Error::new("E-INIT-INCOMPLETE", "no successful creation binding"))?
+            .check_current()
+    }
 }
 #[derive(Clone, Copy, Default)]
 pub enum InitFault {
@@ -115,7 +158,23 @@ pub fn create_project_with_fault(
                     "created Project binding/config changed during resolution",
                 ));
             }
-            Ok(project)
+            proof.fresh_with_created(&initialized.created)?;
+            let config = capture(&root, std::slice::from_ref(&root), "masterdata.toml")?;
+            let gitignore = capture(&root, std::slice::from_ref(&root), ".gitignore")?;
+            if config.bytes.as_ref() != expected_config
+                || gitignore.bytes.as_ref() != "/.masterdata/\n"
+            {
+                return Err(Error::new(
+                    "E-INIT-CONFLICT",
+                    "created scaffold bytes changed during resolution",
+                ));
+            }
+            Ok(CreationBinding {
+                root: proof,
+                created: initialized.created,
+                directories: initialized.directories,
+                files: vec![config, gitignore],
+            })
         });
     let mut remaining = vec![];
     let mut unconfirmed = vec![];
@@ -143,10 +202,12 @@ pub fn create_project_with_fault(
             }),
         }
     }
-    let (outcome, message) = match result {
-        Ok(_) => (
+    let result = result.and_then(|binding| binding.check_current().map(|()| binding));
+    let (outcome, message, binding) = match result {
+        Ok(binding) => (
             Outcome::Success,
             "Project scaffold created and resolved".into(),
+            Some(binding),
         ),
         Err(e) => (
             if e.code == "E-INIT-UNKNOWN" || e.message.contains("E-INIT-UNKNOWN") {
@@ -155,6 +216,7 @@ pub fn create_project_with_fault(
                 Outcome::Failure
             },
             e.to_string(),
+            None,
         ),
     };
     // These are observed leftovers, not inferred ownership. A concurrent entry
@@ -165,6 +227,7 @@ pub fn create_project_with_fault(
         remaining,
         unconfirmed,
         message,
+        binding,
     })
 }
 
@@ -350,6 +413,8 @@ fn initialize_at_root(
     }
     Ok(Initialized {
         root_identity,
+        created,
+        directories: proofs,
         report: InitReport {
             outcome: Outcome::Success,
             root,

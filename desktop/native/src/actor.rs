@@ -66,6 +66,11 @@ pub enum Intent {
         path: String,
         discard: bool,
     },
+    CreateProject {
+        path: String,
+        metadata: masterdata_engine::project::Metadata,
+        discard: bool,
+    },
     Inventory,
     ConfigView {
         profile: Option<String>,
@@ -341,7 +346,8 @@ impl Intent {
             Self::DeliveryStart { request } => Some(request.flags()),
             Self::MigrationApply { .. }
             | Self::MigrationRecovery { .. }
-            | Self::FieldOperation { .. } => Some((true, true)),
+            | Self::FieldOperation { .. }
+            | Self::CreateProject { .. } => Some((true, true)),
             _ => None,
         }
     }
@@ -354,6 +360,7 @@ impl Intent {
                 | Self::SaveSource { .. }
                 | Self::Overwrite { .. }
                 | Self::Create { .. }
+                | Self::CreateProject { .. }
                 | Self::MoveSource { .. }
         )
     }
@@ -425,6 +432,7 @@ pub struct Session {
     queue: Arc<Queue>,
     pub protected: Arc<AtomicBool>,
     delivery: crate::delivery::Session,
+    epoch: Arc<AtomicU64>,
 }
 impl Default for Session {
     fn default() -> Self {
@@ -443,6 +451,8 @@ impl Session {
             wake: Condvar::new(),
         });
         let protected = Arc::new(AtomicBool::new(false));
+        let current_epoch = Arc::new(AtomicU64::new(0));
+        let published_epoch = current_epoch.clone();
         let v = validator.clone();
         let q = queue.clone();
         thread::Builder::new()
@@ -528,6 +538,7 @@ impl Session {
                         let background=matches!(job.intent,Intent::DeliveryStart{..});
                         if matches!(job.intent, Intent::Validate) { scheduled = 0; }
                         let (result, measurement) = instrument::measure(|| execute(&mut workspace, &mut epoch, &jobs, job.intent));
+                        published_epoch.store(epoch,Ordering::Release);
                         if operation && (!background || result.is_err()) {jobs.gate.release();}
                         if epoch != previous_epoch {
                             scheduled = 0;
@@ -573,14 +584,20 @@ impl Session {
             queue,
             protected,
             delivery,
+            epoch: current_epoch,
         }
     }
     pub fn submit(&self, intent: Intent) -> oneshot::Receiver<Reply> {
         self.submit_at(intent, None)
     }
+    pub fn current_epoch(&self) -> u64 {
+        self.epoch.load(Ordering::Acquire)
+    }
     fn submit_at(&self, intent: Intent, epoch: Option<u64>) -> oneshot::Receiver<Reply> {
         let (tx, rx) = oneshot::channel();
-        if matches!(intent, Intent::Open { .. }) && self.delivery.gate.mutating() {
+        if matches!(intent, Intent::Open { .. } | Intent::CreateProject { .. })
+            && self.delivery.gate.mutating()
+        {
             let _ = tx.send(Err(UiError::new(
                 "E-DELIVERY-BUSY",
                 "wait for the running mutation to finish, then switch Project explicitly",
@@ -724,7 +741,11 @@ fn watch(
     Ok(watcher)
 }
 fn inventory(w: &Workspace) -> Value {
-    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,"sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),"types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"configDirty":w.config_dirty(),"configUncertain":w.config_uncertain(),"configIdentity":w.configuration.base.content,"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"recovery":w.recovery_information,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
+    json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,"folders":w.read.folders,
+        "sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),
+        "logicalTables":w.read.tables.values().map(|table|json!({"name":table.name,"source":table.source})).collect::<Vec<_>>(),
+        "logicalTypes":w.read.type_sources.iter().map(|(name,source)|json!({"name":name,"source":source})).collect::<Vec<_>>(),
+        "types":w.read.types.keys().collect::<Vec<_>>(),"dirty":w.dirty_paths(),"configDirty":w.config_dirty(),"configUncertain":w.config_uncertain(),"configIdentity":w.configuration.base.content,"uncertain":w.uncertain_paths(),"recoveryRequired":w.recovery_required,"recovery":w.recovery_information,"generation":w.generation,"externalVersion":w.external_version,"environmentError":w.environment_error.as_ref().map(ToString::to_string)})
 }
 fn execute(
     workspace: &mut Option<Workspace>,
@@ -749,6 +770,50 @@ fn execute(
         *workspace = Some(next);
         *epoch += 1;
         return Ok(inventory(workspace.as_ref().unwrap()));
+    }
+    if let Intent::CreateProject {
+        path,
+        metadata,
+        discard,
+    } = intent
+    {
+        if workspace.as_ref().is_some_and(Workspace::protected) && !discard {
+            return Err(UiError::new(
+                "E-PROJECT-DIRTY",
+                "Save All / Don't Save / Cancel required",
+            ));
+        }
+        let mut creation = masterdata_engine::native::create_project(Path::new(&path), metadata)?;
+        if creation.outcome == masterdata_engine::native::Outcome::Success {
+            // Opening the new workspace is part of creation success. Never drop
+            // the old drafts when final resolution fails or only a repair view
+            // can be opened. The already-created scaffold remains inspectable.
+            match Workspace::open(&creation.root) {
+                Ok(next)
+                    if next.environment_error.is_none() && creation.check_current().is_ok() =>
+                {
+                    *workspace = Some(next);
+                    *epoch += 1;
+                    return Ok(
+                        json!({"creation":creation,"inventory":inventory(workspace.as_ref().unwrap())}),
+                    );
+                }
+                Ok(next) => {
+                    creation.outcome = masterdata_engine::native::Outcome::Failure;
+                    creation.message = next
+                        .environment_error
+                        .map(|error| error.to_string())
+                        .unwrap_or_else(|| {
+                            "created Project binding changed before workspace adoption".into()
+                        });
+                }
+                Err(error) => {
+                    creation.outcome = masterdata_engine::native::Outcome::Failure;
+                    creation.message = error.to_string();
+                }
+            }
+        }
+        return Ok(json!({"creation":creation,"inventory":null}));
     }
     let w = workspace
         .as_mut()
@@ -783,7 +848,7 @@ fn execute(
             )?;
             Ok(json!({"source":diagnostic.source,"target":target,"generation":w.generation}))
         }
-        Intent::Open { .. } => unreachable!(),
+        Intent::Open { .. } | Intent::CreateProject { .. } => unreachable!(),
         Intent::Inventory => Ok(inventory(w)),
         Intent::ConfigView { profile, starts } => {
             convert(w.config_view(profile.as_deref(), starts))

@@ -52,6 +52,7 @@ import {
   EditOutlined,
   BuildOutlined,
   SettingOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
@@ -63,6 +64,7 @@ import { TypeSurface } from "./type-editor";
 import { DeliveryDrawer } from "./delivery";
 import { delivery } from "./delivery-state";
 import { ProjectSettings } from "./settings";
+import { CreateProjectModal } from "./project";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -166,6 +168,10 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     for(const [name,value] of Object.entries(variables))document.documentElement.style.setProperty(name,String(value));
   }, [variables]);
   const projectItems: MenuProps["items"] = [
+    {key:"createProject",label:"Create Project…",icon:<PlusOutlined/>,disabled:!!s.openingProject||s.deliveryMutating},
+    {key:"recent",label:"Recent Projects",icon:<FolderOpenOutlined/>,disabled:!!s.openingProject||s.deliveryMutating||!s.recentProjects.length,
+      children:s.recentProjects.map((project,index)=>({key:`recent:${index}`,label:project.name,title:project.root}))},
+    {type:"divider"},
     {
       key: "saveAll",
       label: "Save All",
@@ -209,7 +215,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
             <Button
               type="text"
               icon={<FolderOpenOutlined />}
-              disabled={s.deliveryMutating}
+              disabled={s.deliveryMutating||!!s.openingProject}
               title={s.deliveryMutating?"Build / Publishの完了後にProjectを開いてください。":undefined}
               onClick={desktop.pickProject}
             >
@@ -222,7 +228,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                   icon={<SaveOutlined />}
                   disabled={
                     (!s.settingsOpen && (!s.projection || s.pending)) ||
-                    s.busy || s.deliveryCapturing ||
+                    s.busy || !!s.openingProject || s.deliveryCapturing ||
                     s.status.recoveryRequired ||
                     (s.settingsOpen?s.status.configUncertain:s.projection?.writeStates.some(
                       (w) =>
@@ -237,7 +243,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                 <Button
                   type="text"
                   icon={<CheckCircleOutlined />}
-                  disabled={s.busy}
+                  disabled={s.busy||!!s.openingProject}
                   onClick={desktop.validate}
                 >
                   Validate
@@ -248,7 +254,9 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               menu={{
                 items: projectItems,
                 onClick: ({ key }) => {
-                  if (key === "saveAll") void desktop.saveAll();
+                  if(key==="createProject")void desktop.beginProjectCreation().catch(desktop.showError);
+                  else if(key.startsWith("recent:"))void desktop.openRecent(s.recentProjects[Number(key.slice(7))].root);
+                  else if (key === "saveAll") void desktop.saveAll();
                   else if (key === "reload")
                     void desktop.reloadProject().catch(desktop.showError);
                   else if (key === "delivery") delivery.open();
@@ -269,7 +277,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
           </Space>
         </nav>
       </header>
-      <div id="workbench">
+      <div id="workbench" inert={!!s.openingProject||!!s.projectCreation||!!s.projectOpenUncertain}>
         {s.inventory && <Explorer s={s} />}
         <main>
           {!s.inventory ? (
@@ -279,13 +287,19 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               <Typography.Paragraph type="secondary">
                 YAMLから、データを育てる。
               </Typography.Paragraph>
-              <Button
+              <Space><Button
                 type="primary"
                 icon={<FolderOpenOutlined />}
                 onClick={desktop.pickProject}
               >
                 Open Project
-              </Button>
+              </Button><Button icon={<PlusOutlined/>} onClick={()=>void desktop.beginProjectCreation()}>Create Project</Button></Space>
+              {!!s.recentProjects.length&&<div className="recent-projects"><Typography.Text type="secondary">Recent Projects</Typography.Text>
+                {s.recentProjects.map(project=><Flex key={project.root} align="center" gap={6} className="recent-project">
+                  <Button type="text" icon={<FolderOpenOutlined/>} title={project.root} onClick={()=>void desktop.openRecent(project.root)}><span>{project.name}</span></Button>
+                  <Button type="text" icon={<DeleteOutlined/>} aria-label={`Remove recent ${project.name}`} title="Remove from Recent Projects" onClick={()=>void desktop.removeRecent(project.root)}/>
+                </Flex>)}
+              </div>}
               {s.error && (
                 <Alert
                   type="error"
@@ -306,10 +320,23 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description="Explorerからsourceを選択"
               />}
+              {!s.status.environmentError&&!s.inventory.sources.length&&<div className="project-guides"><Typography.Title level={5}>Projectを始める</Typography.Title>
+                <Typography.Paragraph type="secondary">Table、Type、folderを個別に作成できます。</Typography.Paragraph>
+                <Space><Button type="primary" aria-label="New Table" disabled={!s.canCreateSource} icon={<PlusOutlined/>} onClick={()=>desktop.newSource("table")}>New Table</Button>
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"valueObject",label:"Value Object"},{key:"enum",label:"Enum"},{key:"flags",label:"Flags Enum"},{key:"custom",label:"Custom Type"}],onClick:({key})=>desktop.newSource(key as "valueObject"|"enum"|"flags"|"custom")}}><Button disabled={!s.canCreateSource} aria-label="New Type">New Type</Button></Dropdown>
+                  <Button disabled={!s.canCreateSource} icon={<FolderOpenOutlined/>} onClick={()=>desktop.newSource("folder")}>New folder</Button></Space>
+              </div>}
             </div>
           )}
         </main>
       </div>
+      {s.openingProject&&<div className="project-pending" role="status"><Spin size="small"/><Typography.Text>{s.projectCreation?"Projectを作成中…":"Projectを開いています…"}</Typography.Text><Typography.Text type="secondary" ellipsis>{s.openingProject}</Typography.Text></div>}
+      {!s.openingProject&&s.projectOpenUncertain&&<div className="project-pending"><Alert type="warning" showIcon title="ProjectのOpen結果を確認できません"
+        description={<Space orientation="vertical"><Typography.Text code>{s.projectOpenUncertain.path}</Typography.Text><Space>
+          <Button onClick={()=>void desktop.resolveProjectOpen(s.projectOpenUncertain!.path).catch(desktop.showError)}>Open destination…</Button>
+          {s.inventory&&<Button onClick={()=>void desktop.resolveProjectOpen(s.inventory!.root).catch(desktop.showError)}>Open previous Project…</Button>}
+        </Space>{s.error&&<Typography.Text type="secondary">{s.error}</Typography.Text>}</Space>}/></div>}
+      <CreateProjectModal s={s}/>
       <ChoiceModal s={s} />
       <CompareModal s={s} />
       <AppearanceModal s={s} />
@@ -320,16 +347,20 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   );
 }
 function Explorer({ s }: { s: Surface }) {
+  const logicalTargets=useMemo(()=>new Map<string,string>([
+    ...s.inventory!.logicalTables.map(table=>[`logical:table:${table.name}`,table.source] as const),
+    ...s.inventory!.logicalTypes.map(type=>[`logical:type:${type.name}`,type.source] as const),
+  ]),[s.inventory]);
   const [expanded, setExpanded] = useState(true);
-  const [keys,setKeys]=useState<string[]>(()=>s.inventory!.folders.map(p=>`folder:${p||"."}`));
+  const [keys,setKeys]=useState<string[]>(()=>["logical:tables","logical:types",...s.inventory!.folders.map(p=>`folder:${p||"."}`)]);
   const [selected,setSelected]=useState(s.target);
   const [activeKey,setActiveKey]=useState<string|null>(null);
   const [focusRequest,setFocusRequest]=useState<{key:string;intent:number}|null>(null);
   const tree=useRef<ComponentRef<typeof Tree>>(null);
   const container=useRef<HTMLElement|null>(null);
-  useEffect(()=>setSelected(s.target),[s.target]);
+  useEffect(()=>setSelected(current=>logicalTargets.get(current)===s.target?current:s.target),[s.target,logicalTargets]);
   const ancestors=(path:string)=>path.split("/").map((_,i,parts)=>`folder:${parts.slice(0,i+1).join("/")||"."}`);
-  const creation=useCreation(s.inventory!,s.status.epoch,selected||s.target,async(path,folder,inputIntent)=>{
+  const creation=useCreation(s.inventory!,s.status.epoch,logicalTargets.get(selected)||selected||s.target,async(path,folder,inputIntent)=>{
     if(inputIntent!==desktop.inputIntent)return;
     const key=folder?`folder:${path}`:path;
     setKeys(old=>[...new Set([...old,...ancestors(folder?path:path.split("/").slice(0,-1).join("/"))])]);
@@ -341,13 +372,18 @@ function Explorer({ s }: { s: Surface }) {
     }
   });
   const creationPending=useRef(false);creationPending.current=!!creation.draft;
+  const createFromGuide=useRef(creation.begin);createFromGuide.current=creation.begin;
+  const creationReady=creation.ready&&!creation.draft&&!s.status.recoveryRequired&&!s.status.environmentError;
+  useEffect(()=>creationReady?desktop.bindSourceCreation(category=>createFromGuide.current(category)):undefined,[creationReady,s.status.epoch]);
+  useEffect(()=>{setKeys(["logical:tables","logical:types",...s.inventory!.folders.map(path=>`folder:${path||"."}`)]);setActiveKey(null);setFocusRequest(null);},[s.status.epoch]);
   const pathMutation=useSourcePath(s.status.epoch,(source,destination,inputIntent)=>{
     setKeys(old=>[...new Set([...old,...ancestors(destination.split("/").slice(0,-1).join("/"))])]);
     if(inputIntent!==desktop.inputIntent)return;
     setSelected(old=>old===source?destination:old);
     setActiveKey(destination);setFocusRequest({key:destination,intent:inputIntent});
   });
-  const sourceItems:MenuProps={items:[{key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selected||selected.startsWith("folder:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selected)}],onClick:()=>void pathMutation.begin(selected)};
+  const selectedSource=logicalTargets.get(selected)||selected;
+  const sourceItems:MenuProps={items:[{key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selectedSource||selectedSource.startsWith("folder:")||selectedSource.startsWith("logical:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selectedSource)}],onClick:()=>void pathMutation.begin(selectedSource)};
   useLayoutEffect(()=>{
     if(!focusRequest)return;
     const frame=requestAnimationFrame(()=>{
@@ -387,7 +423,10 @@ function Explorer({ s }: { s: Surface }) {
       });
     }
     if(creation.draft)ensureFolder(creation.draft.folder).push({key:"creation:temporary",title:creation.draft.filename,isLeaf:true,selectable:false});
-    return roots;
+    const logical:TreeDataNode[]=[];
+    if(s.inventory!.logicalTables.length)logical.push({key:"logical:tables",title:"Tables",icon:<DatabaseOutlined/>,selectable:false,children:s.inventory!.logicalTables.map(table=>({key:`logical:table:${table.name}`,title:table.name,icon:<DatabaseOutlined/>,isLeaf:true}))});
+    if(s.inventory!.logicalTypes.length)logical.push({key:"logical:types",title:"Types",icon:<BuildOutlined/>,selectable:false,children:s.inventory!.logicalTypes.map(type=>({key:`logical:type:${type.name}`,title:type.name,icon:<BuildOutlined/>,isLeaf:true}))});
+    return [...logical,...roots];
   }, [s.inventory,creation.draft?.folder,creation.draft?.filename,creation.draft?.id]);
   return (
     <aside id="explorer" ref={container}>
@@ -421,29 +460,30 @@ function Explorer({ s }: { s: Surface }) {
           onExpand={next=>setKeys(next.map(String))}
           selectedKeys={[selected]}
           onRightClick={({node})=>{const key=String(node.key);setSelected(key);setActiveKey(key);}}
-          onKeyDown={event=>{if(event.key==="F2"&&!event.nativeEvent.isComposing){event.preventDefault();if(selected&&!selected.startsWith("folder:"))void pathMutation.begin(selected);}}}
+          onKeyDown={event=>{if(event.key==="F2"&&!event.nativeEvent.isComposing){event.preventDefault();if(selectedSource&&!selectedSource.startsWith("folder:")&&!selectedSource.startsWith("logical:"))void pathMutation.begin(selectedSource);}}}
           onSelect={(keys) => {
             if(keys[0]) {
               const key=String(keys[0]);setSelected(key);setActiveKey(key);
-              if(!key.startsWith("folder:"))void desktop.selectTarget(key).catch(desktop.showError);
+              const source=logicalTargets.get(key)||key;
+              if(!source.startsWith("folder:")&&!source.startsWith("logical:"))void desktop.selectTarget(source).catch(desktop.showError);
             }
           }}
           titleRender={(node) => node.key==="creation:temporary"?creation.inline:(
             <span
               className="source"
               title={String(node.key)}
-              data-path={node.key}
+              data-path={logicalTargets.get(String(node.key))||node.key}
             >
               {String(node.title)}
               <span
                 className="source-dirty"
                 aria-label={
-                  s.status.dirty.includes(String(node.key))
+                  s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key))
                     ? "未保存"
                     : undefined
                 }
               >
-                {s.status.dirty.includes(String(node.key)) ? "●" : ""}
+                {s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key)) ? "●" : ""}
               </span>
             </span>
           )}

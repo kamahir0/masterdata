@@ -145,6 +145,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case settings --output verification/results/settings.json
+      - name: Native Project creation, recent roots and explicit artifact workflow
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case project --output verification/results/project.json
       - name: Native filesystem observation and current authoring view lifetime
         shell: bash
         run: |

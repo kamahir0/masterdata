@@ -12,6 +12,32 @@ fn metadata() -> Metadata {
     }
 }
 #[test]
+fn creation_publication_rejects_rebound_root_config_and_scaffold_even_with_identical_bytes() {
+    let t = tempfile::tempdir().unwrap();
+    let parent = t.path().canonicalize().unwrap();
+    for case in ["root", "config", "directory"] {
+        let root = parent.join(case);
+        let created = native::create_project(&root, metadata()).unwrap();
+        created.check_current().unwrap();
+        match case {
+            "root" => {
+                fs::rename(&root, parent.join("previous-root")).unwrap();
+                native::initialize_project(&root, metadata()).unwrap();
+            }
+            "config" => {
+                let bytes = fs::read(root.join("masterdata.toml")).unwrap();
+                fs::remove_file(root.join("masterdata.toml")).unwrap();
+                fs::write(root.join("masterdata.toml"), bytes).unwrap();
+            }
+            _ => {
+                fs::remove_dir(root.join("sources/data")).unwrap();
+                fs::create_dir(root.join("sources/data")).unwrap();
+            }
+        }
+        assert!(created.check_current().is_err(), "{case}");
+    }
+}
+#[test]
 fn gui_create_accepts_empty_or_one_new_directory_and_resolves_only_the_minimum_scaffold() {
     let t = tempfile::tempdir().unwrap();
     let parent = t.path().canonicalize().unwrap();

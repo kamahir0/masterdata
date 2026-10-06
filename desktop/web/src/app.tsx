@@ -293,7 +293,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                 onClick={desktop.pickProject}
               >
                 Open Project
-              </Button><Button icon={<PlusOutlined/>} onClick={()=>void desktop.beginProjectCreation()}>Create Project</Button></Space>
+              </Button><Button aria-label="Create Project" icon={<PlusOutlined/>} onClick={()=>void desktop.beginProjectCreation()}>Create Project</Button></Space>
               {!!s.recentProjects.length&&<div className="recent-projects"><Typography.Text type="secondary">Recent Projects</Typography.Text>
                 {s.recentProjects.map(project=><Flex key={project.root} align="center" gap={6} className="recent-project">
                   <Button type="text" icon={<FolderOpenOutlined/>} title={project.root} onClick={()=>void desktop.openRecent(project.root)}><span>{project.name}</span></Button>
@@ -316,7 +316,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               {s.status.environmentError?<Alert type="warning" showIcon title="Project serviceを利用できません"
                 description={<Space direction="vertical"><Typography.Text>{s.status.environmentError}</Typography.Text>
                 <Space><Button icon={<SettingOutlined/>} onClick={()=>desktop.projectSettings(true)}>Project Settings…</Button>
-                <Button icon={<ReloadOutlined/>} onClick={()=>void desktop.reloadProject()}>Reload Project…</Button></Space></Space>}/>:<Empty
+                <Button icon={<ReloadOutlined/>} onClick={()=>void desktop.reloadProject()}>Reload Project…</Button></Space></Space>}/>:s.inventory.sources.length>0&&<Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description="Explorerからsourceを選択"
               />}
@@ -777,11 +777,27 @@ function ProblemsBar({ s }: { s: Surface }) {
 }
 function ChoiceModal({ s }: { s: Surface }) {
   const c = s.choice;
+  const closed=useRef<{input:number;epoch:number;target:string}|null>(null);
+  const finish=(answer:string)=>{
+    closed.current={input:desktop.inputIntent,epoch:s.status.epoch,target:s.target};
+    c?.finish(answer);
+  };
   return (
     <Modal
       title={c?.title}
       open={!!c}
-      onCancel={() => c?.finish("Cancel")}
+      onCancel={() => finish("Cancel")}
+      focusable={{focusTriggerAfterClose:false}}
+      afterOpenChange={open=>{
+        const request=closed.current,current=desktop.surface;
+        if(open||!request||request.input!==desktop.inputIntent||request.epoch!==current.status.epoch||request.target!==current.target||current.choice||current.projectCreation||current.openingProject)return;
+        const active=document.activeElement;
+        if(active instanceof HTMLElement&&active.matches('button,input,select,textarea,a[href],[tabindex]')&&!active.closest('.ant-modal-wrap,[role="dialog"],[role="menu"]')&&active.getClientRects().length)return;
+        // Menu actions can open a guard after their trigger has disappeared.
+        // Restore an accepted editing target, unless a newer action owns focus.
+        if(desktop.viewport&&current.projection)desktop.viewport.focus();
+        else document.querySelector<HTMLElement>('button[aria-label="Project menu"]')?.focus();
+      }}
       destroyOnHidden
       footer={c?.actions.map((action, i) => (
         <Button
@@ -789,7 +805,7 @@ function ChoiceModal({ s }: { s: Surface }) {
           autoFocus={i === c.actions.length - 1}
           type={i === 0 ? "primary" : "default"}
           danger={["Overwrite", "Delete", "Restore OLD"].includes(action)}
-          onClick={() => c.finish(action)}
+          onClick={() => finish(action)}
         >
           {action}
         </Button>
@@ -871,13 +887,21 @@ function RecoveryDrawer({s,open,close}:{s:Surface;open:boolean;close:()=>void}) 
   </Drawer>;
 }
 function AppearanceModal({ s }: { s: Surface }) {
+  const closed=useRef<{input:number;epoch:number;target:string}|null>(null);
+  const close=()=>{closed.current={input:desktop.inputIntent,epoch:s.status.epoch,target:s.target};desktop.appearance(false);};
   return (
     <Modal
       title="Application Settings"
       open={s.appearance}
-      onCancel={() => desktop.appearance(false)}
+      onCancel={close}
+      focusable={{focusTriggerAfterClose:false}}
+      afterOpenChange={open=>{
+        const request=closed.current,current=desktop.surface;
+        if(!open&&request&&request.input===desktop.inputIntent&&request.epoch===current.status.epoch&&request.target===current.target&&!current.choice&&!current.projectCreation&&!current.openingProject)
+          document.querySelector<HTMLElement>('button[aria-label="Project menu"]')?.focus();
+      }}
       footer={
-        <Button type="primary" onClick={() => desktop.appearance(false)}>
+        <Button type="primary" onClick={close}>
           Done
         </Button>
       }

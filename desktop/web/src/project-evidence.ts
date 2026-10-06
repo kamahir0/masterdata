@@ -11,7 +11,7 @@ function projectButton(label:string){const e=[...input('Project destination').cl
 function text(e:HTMLInputElement,value:string){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));}
 function key(e:HTMLElement,key:string,extra:KeyboardEventInit={}){e.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,...extra}));}
 async function startCreate(){button('Project menu').click();await until(()=>[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].some(e=>shown(e)&&e.textContent==='Create Project…'),'Create Project menu missing');[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e=>shown(e)&&e.textContent==='Create Project…')!.click();}
-async function guard(answer:string){await until(()=>desktop.surface.choice!==null,'all-dirty guard missing');button(answer).click();}
+async function guard(answer:string){await until(()=>desktop.surface.choice!==null&&[...document.querySelectorAll<HTMLButtonElement>('button')].some(e=>shown(e)&&e.textContent===answer),'all-dirty guard action not rendered');button(answer).click();}
 async function fill(path:string,name='New Project'){
   await until(()=>!!desktop.surface.projectCreation,'Create Project form missing');
   text(input('Project destination'),path);text(input('Project ID'),'new.masterdata');text(input('Project name'),name);
@@ -23,6 +23,11 @@ export async function run({startup}:{startup:Record<string,unknown>}){
   try {
     await until(()=>document.hasFocus(),'native window not focused');
     assert(!desktop.surface.inventory&&desktop.surface.recentProjects.length===2,'Welcome auto-opened a Project or lost recent entries');
+    button('Create Project').click();await fill(`${desktop.surface.recentProjects[0].root}/../welcome-cancel`);
+    key(input('Project name'),'ArrowLeft');projectButton('Cancel').click();
+    await until(()=>!desktop.surface.projectCreation&&document.activeElement?.getAttribute('aria-label')==='Create Project','Welcome Cancel did not return keyboard focus to Create Project');
+    assert(!desktop.surface.inventory&&desktop.surface.recentProjects.length===2,'Welcome Cancel changed Project / recent state');
+    checks.push('welcome-create-cancel-focus');
     button('Remove recent Remove entry').click();await until(()=>desktop.surface.recentProjects.length===1,'Recent removal did not commit');
     await invoke('evidence_bad_project_reply',{opening:true});button('Workspace').click();
     await until(()=>!!desktop.surface.projectOpenUncertain&&!desktop.surface.openingProject,'lost Open reply did not stop the stale view');
@@ -37,11 +42,13 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     text(document.querySelector<HTMLInputElement>('.active-cell-editor input')!,'Keep this old draft');
     await startCreate();await guard('Cancel');await frame();
     assert(!desktop.surface.projectCreation&&desktop.surface.status.dirty.includes(SOURCE),'guard Cancel opened creation or discarded the committed draft');
+    await until(()=>document.activeElement?.getAttribute('role')==='grid','guard Cancel did not restore authoring keyboard focus');
     checks.push('create-all-dirty-guard-cancel');
 
     await startCreate();await guard("Don't Save");await fill(`${oldRoot}/../cancelled`);
     key(input('Project name'),'Enter',{isComposing:true});await frame();assert(!desktop.surface.openingProject,'composition Enter created Project');
     projectButton('Cancel').click();await until(()=>!desktop.surface.projectCreation,'creation Cancel failed');
+    await until(()=>document.activeElement?.getAttribute('aria-label')==='Project menu','form Cancel did not restore a usable Project action focus');
     assert(desktop.surface.status.dirty.includes(SOURCE),'form Cancel dropped the old authoring draft');
     checks.push('create-form-cancel-composition');
 

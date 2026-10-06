@@ -16,6 +16,8 @@ export function CreateProjectModal({s}:{s:Surface}) {
     if(form){setPath("");setId("");setName("");setVersion("0.1.0");setError(null);setResult(null);setAttemptedPath(null);
       origin.current={element:document.activeElement as HTMLElement,intent:desktop.inputIntent,epoch:form.epoch};}
   },[form]);
+  const returnFromAction=()=>{if(origin.current)origin.current.intent=desktop.inputIntent;};
+  const cancel=()=>{if(!cannotCancel){returnFromAction();desktop.cancelProjectCreation();}};
   async function pick() {
     const expected=form;setPicking(true);
     try {const target=await invoke<string|null>("pick_project");if(target&&live.current===expected)setPath(target);}
@@ -24,6 +26,7 @@ export function CreateProjectModal({s}:{s:Surface}) {
   }
   async function create() {
     if(!form||desktop.surface.openingProject||desktop.surface.projectCreationUncertain||attemptedPath===path)return;
+    returnFromAction();
     setError(null);setResult(null);setAttemptedPath(path);
     try {const report=await desktop.createProject(path,{id,name,version});if(live.current===form)setResult(report);}
     catch(e){
@@ -37,14 +40,16 @@ export function CreateProjectModal({s}:{s:Surface}) {
   return <Modal title="Create Project" open={!!form} width={540}
     closable={!cannotCancel}
     focusable={{focusTriggerAfterClose:false}} keyboard={!cannotCancel} mask={{closable:!cannotCancel}}
-    onCancel={()=>{if(!cannotCancel)desktop.cancelProjectCreation();}}
+    onCancel={cancel}
     afterOpenChange={open=>{
       if(open)return;
       const request=origin.current;if(!request||request.intent!==desktop.inputIntent)return;
-      if(desktop.surface.status.epoch===request.epoch&&request.element?.isConnected)request.element.focus();
-      else document.querySelector<HTMLElement>('button[aria-label="New Table"]')?.focus();
+      // Ant may focus its portal before this component's effect captures the
+      // origin. A closing portal still has geometry; it is not a return target.
+      if(desktop.surface.status.epoch===request.epoch&&request.element?.isConnected&&request.element.matches('button,input,select,textarea,a[href],[tabindex]')&&!request.element.closest('.ant-modal-wrap,[role="dialog"],[role="menu"]')&&request.element.getClientRects().length)request.element.focus();
+      else document.querySelector<HTMLElement>(desktop.surface.status.epoch!==request.epoch?'button[aria-label="New Table"]':desktop.surface.inventory?'button[aria-label="Project menu"]':'#welcome button[aria-label="Create Project"]')?.focus();
     }}
-    footer={<Space><Button disabled={cannotCancel} onClick={desktop.cancelProjectCreation}>Cancel</Button>
+    footer={<Space><Button disabled={cannotCancel} onClick={cancel}>Cancel</Button>
       <Button type="primary" icon={<PlusOutlined/>} loading={running} disabled={picking||s.projectCreationUncertain||!path||!id||!name||!version||attemptedPath===path} onClick={()=>void create()}>Create Project</Button></Space>}>
     <Form layout="vertical" disabled={running||picking||s.projectCreationUncertain} onKeyDown={e=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing){e.preventDefault();if(path&&id&&name&&version)void create();}}}>
       <Form.Item label="Destination"><Flex gap={6}>
@@ -62,8 +67,8 @@ export function CreateProjectModal({s}:{s:Surface}) {
         {!!result.remaining.length&&<Typography.Text>確認できたentry: {result.remaining.join(", ")}</Typography.Text>}
         {!!result.unconfirmed.length&&<Typography.Text>未確認: {result.unconfirmed.join(", ")}</Typography.Text>}
         <Typography.Text type="secondary">保存先を確認してください。別の空directoryを指定して再作成できます。</Typography.Text>
-        <Button disabled={running} icon={<FolderOpenOutlined/>} onClick={()=>void desktop.resolveProjectCreation(result.root).catch(e=>setError(errorText(e)))}>Open destination…</Button>
-        {s.projectCreationUncertain&&s.inventory&&<Button disabled={running} onClick={()=>void desktop.resolveProjectCreation(s.inventory!.root).catch(e=>setError(errorText(e)))}>Open previous Project…</Button>}
+        <Button disabled={running} icon={<FolderOpenOutlined/>} onClick={()=>{returnFromAction();void desktop.resolveProjectCreation(result.root).catch(e=>setError(errorText(e)));}}>Open destination…</Button>
+        {s.projectCreationUncertain&&s.inventory&&<Button disabled={running} onClick={()=>{returnFromAction();void desktop.resolveProjectCreation(s.inventory!.root).catch(e=>setError(errorText(e)));}}>Open previous Project…</Button>}
       </Space>}/>}
   </Modal>;
 }

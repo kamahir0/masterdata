@@ -182,7 +182,7 @@ def check_settings(report):
 def check_project(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused']
-    assert report['checks'] == ['welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen', 'create-all-dirty-guard-cancel',
+    assert report['checks'] == ['welcome-create-cancel-focus', 'welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen', 'create-all-dirty-guard-cancel',
                                'create-form-cancel-composition', 'nonempty-failure-retains-workspace',
                                'unknown-creation-reply-explicit-open', 'guided-schema-explicit-no-record-source',
                                'explicit-data-logical-navigation-shared-draft', 'recent-canonical-root-order-dedup']
@@ -324,7 +324,7 @@ def run(binary: Path, output: Path, case: str):
                 output.write_text(json.dumps(report, indent=2), encoding='utf-8')
                 report['summary'] = {'navigation': check, 'external': check_external, 'creation': check_creation, 'authoring': check_authoring, 'path': check_path, 'migration': check_migration, 'type': check_type, 'delivery': check_delivery, 'capacity': check_capacity, 'tags': check_tags, 'settings': check_settings, 'project': check_project}[case](report)
                 if case == 'project':
-                    assert not (temporary / 'cancelled').exists(), 'Cancel created a Project'
+                    assert not (temporary / 'cancelled').exists() and not (temporary / 'welcome-cancel').exists(), 'Cancel created a Project'
                     assert (removed / 'notes').read_bytes() == b'user bytes', 'Recent removal modified disk'
                     assert (project / 'masterdata.toml').read_bytes() == initial_config
                     for path, before in initial_sources.items():

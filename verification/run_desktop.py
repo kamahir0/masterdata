@@ -126,7 +126,8 @@ def check_delivery(report):
     assert report['visibility'] == 'visible' and report['focused']
     assert report['checks'] == ['contextual-drawer-saved-input', 'build-live-navigation-draft-and-warm-zero',
                                 'native-build-then-preview-cancel-retains-artifacts', 'missing-profile-publish-independent',
-                                'stale-preview-fresh-confirm-no-write', 'confirmed-receipt-publish-invalid-source']
+                                'stale-preview-fresh-confirm-no-write', 'late-completion-preserves-newer-focus',
+                                'confirmed-receipt-publish-invalid-source']
     assert report['state']['result']['unityVerification'] == 'not_observed'
     assert report['dirty'] == ['sources/catalog-data.yaml']
     assert not report['startup']['browserErrors']

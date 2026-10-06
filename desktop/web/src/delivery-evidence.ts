@@ -1,6 +1,7 @@
 import {invoke} from "@tauri-apps/api/core";
 import {desktop} from "./workspace";
 import {delivery} from "./delivery-state";
+import type {Reply} from "./types";
 const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
 async function until(test:()=>boolean,message:string,timeout=30000){const deadline=performance.now()+timeout;while(!test()){if(performance.now()>deadline)throw new Error(message);await frame();}}
 function assert(value:unknown,message:string):asserts value {if(!value)throw new Error(message);}
@@ -25,7 +26,7 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
   assert(desktop.surface.projection!.rows[0].cells[11].display==='Unsaved delivery draft',"Build discarded draft");checks.push('build-live-navigation-draft-and-warm-zero');
   await until(()=>!!delivery.view.snapshot?.preview&&!delivery.view.snapshot.running,"combined Build did not reach explicit preview",180000);
   const built=delivery.view.snapshot!.lastBuild!;assert(built.status==='succeeded'&&built.result?.outcome==='Success',"Build failed");assert(!!built.result.nativeEvidence,"actual MasterMemory reload evidence missing");assert(delivery.view.snapshot!.preview!.detail.targets.length===0,"0-target preview wrong");
-  assert(button('Confirm Publish').getClientRects().length,"Publish skipped Confirm");button('Cancel Publish').click();await settled();assert(delivery.view.snapshot!.lastBuild!.id===built.id,"Cancel lost successful Build");checks.push('native-build-then-preview-cancel-retains-artifacts');
+  assert(button('Confirm Publish').getClientRects().length,"Publish skipped Confirm");button('Cancel Publish').click();await settled();await until(()=>document.activeElement===button('Build and Publish…'),"Cancel did not return focus to the start action");assert(delivery.view.snapshot!.lastBuild!.id===built.id,"Cancel lost successful Build");checks.push('native-build-then-preview-cancel-retains-artifacts');
   // A named Profile disappears outside the app. Refresh must keep its missing
   // selection, while receipt-only Publish remains eligible.
   const combo=document.querySelector<HTMLInputElement>('input[aria-label="Build Profile"]')!;combo.focus();combo.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',keyCode:40,which:40,bubbles:true}));
@@ -35,7 +36,22 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
   button('Publish last successful artifacts').click();await until(()=>!!delivery.view.snapshot?.preview&&!delivery.view.snapshot.running,"fresh Publish preview missing");assert(Number(delivery.view.snapshot!.preview!.detail.targets.length)===2,"current saved targets missing");
   const artifactIdentity=delivery.view.snapshot!.preview!.detail.artifactIdentity;
   await phase('delivery-stale');button('Confirm Publish').click();await settled();assert(delivery.view.snapshot!.status==='failed'&&delivery.view.snapshot!.error?.code==='E-PUBLISH-STALE',"stale preview was applied");assert(!delivery.view.snapshot!.preview,"stale preview retained authorization");checks.push('stale-preview-fresh-confirm-no-write');
-  button('Publish last successful artifacts').click();await until(()=>!!delivery.view.snapshot?.preview&&!delivery.view.snapshot.running,"new preview unavailable");assert(delivery.view.snapshot!.preview!.detail.artifactIdentity===artifactIdentity,"failed Publish replaced successful canonical artifact");button('Confirm Publish').click();await settled();assert(String(delivery.view.snapshot!.status)==='succeeded'&&delivery.view.snapshot!.result?.outcome==='Success',"confirmed Publish failed");
+  button('Publish last successful artifacts').click();await until(()=>!!delivery.view.snapshot?.preview&&!delivery.view.snapshot.running,"cancel preview unavailable");
+  const transport=desktop.rpc;let observed=false,release!:()=>void;const paused=new Promise<void>(resolve=>release=resolve);
+  desktop.rpc=async<T>(intent:Record<string,unknown>)=>{
+    const reply=await transport.call(desktop,intent) as Reply<T>;
+    if(intent.kind==='deliveryStart'&&(intent.request as {operation?:string})?.operation==='cancelPreview'){observed=true;await paused;}
+    return reply;
+  };
+  try {
+    button('Cancel Publish').click();await until(()=>observed,"Cancel reply not observed");
+    const newerFocus=document.querySelector<HTMLElement>('#explorer [role="tree"]');assert(newerFocus?.isConnected,"current Explorer unavailable");
+    newerFocus.focus();newerFocus.dispatchEvent(new KeyboardEvent('keydown',{key:'Shift',bubbles:true}));
+    assert(document.activeElement===newerFocus,"newer focus was not accepted before completion");
+    release();await settled();await frame();assert(document.activeElement===newerFocus,"late Cancel stole newer Explorer focus");
+    checks.push('late-completion-preserves-newer-focus');
+  } finally {release();desktop.rpc=transport;}
+  button('Publish last successful artifacts').click();await until(()=>!!delivery.view.snapshot?.preview&&!delivery.view.snapshot.running,"new preview unavailable");assert(delivery.view.snapshot!.preview!.detail.artifactIdentity===artifactIdentity,"failed Publish replaced successful canonical artifact");button('Confirm Publish').click();await settled();await until(()=>document.activeElement===button('Publish last successful artifacts'),"Publish completion did not return focus to the start action");assert(String(delivery.view.snapshot!.status)==='succeeded'&&delivery.view.snapshot!.result?.outcome==='Success',"confirmed Publish failed");
   assert(delivery.view.snapshot!.lastBuild!.id===built.id,"Publish replaced Build history");assert(desktop.surface.status.dirty.includes('sources/catalog-data.yaml'),"Publish discarded draft");checks.push('confirmed-receipt-publish-invalid-source');
   assert((startup.browserErrors as string[]).length===0,"browser error");assert(desktop.viewport!.getBoundingClientRect().top===top,"delivery status shifted grid");
   await invoke('evidence_write',{report:{kind:'delivery',checks,state:delivery.view.snapshot,dirty:desktop.surface.status.dirty,visibility:document.visibilityState,focused:document.hasFocus(),startup}});

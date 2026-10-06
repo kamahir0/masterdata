@@ -323,7 +323,7 @@ export function ComplexPanel() {
         aria-invalid={!node.valid}
         icon={node.valid ? undefined : <WarningOutlined />}
         data-value-path={JSON.stringify(node.path)}
-        aria-label={`Edit ${node.label}`}
+        aria-label={`Edit ${node.label}: ${node.display}`}
         onClick={() => setActive(node.path)}
       >
         {node.display}

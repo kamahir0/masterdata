@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState,useSyncExternalStore} from "react";
+import {useEffect,useLayoutEffect,useRef,useState,useSyncExternalStore} from "react";
 import {Alert,Button,Collapse,Descriptions,Divider,Drawer,Empty,Flex,List,Select,Space,Spin,Tag,Tooltip,Typography} from "antd";
 import {BuildOutlined,CloudUploadOutlined,FileSearchOutlined,ReloadOutlined,SaveOutlined} from "@ant-design/icons";
 import {delivery,type BuildResult,type DeliveryError,type PublishResult,type Snapshot} from "./delivery-state";
@@ -9,15 +9,27 @@ export function DeliveryDrawer({s}:{s:Surface}) {
   const v=useSyncExternalStore(delivery.subscribe,delivery.snapshot);
   const [start,setStart]=useState(0),[page,setPage]=useState<DeliveryError|null>(null);
   const previewOrigin=useRef<HTMLElement|null>(null);
+  const previewFocus=useRef<{origin:HTMLElement|null;epoch:number;intent:number;kind:"publish"|"cancelPreview"}|null>(null);
   useEffect(()=>{delivery.project(s.status.epoch);},[s.status.epoch]);
   useEffect(()=>{setStart(0);setPage(null);},[v.snapshot?.lastBuild?.id]);
   const state=v.snapshot,context=state?.context,preview=state?.preview,attempt=state?.lastBuild;
   const busy=v.pending||!!state?.running;
+  useLayoutEffect(()=>{
+    const restore=previewFocus.current;
+    if(!restore)return;
+    if(!v.open||restore.epoch!==s.status.epoch||restore.intent!==desktop.inputIntent){previewFocus.current=null;return;}
+    if(busy||state?.kind!==restore.kind)return;
+    // The native request can return while the job is still running. Restore
+    // only after React enables the start action; newer user input owns focus.
+    previewFocus.current=null;
+    if(restore.origin?.isConnected)restore.origin.focus();
+  },[busy,state?.kind,state?.id,state?.status,v.open,s.status.epoch]);
   useEffect(()=>{delivery.invalidateConfig(s.status.configIdentity);},[s.status.configIdentity,busy]);
   const missing=v.profile!==null&&!!context&&!context.profiles.includes(v.profile);
   const buildReason=s.status.recoveryRequired?"sourceのRecoveryを完了してからBuildしてください。":
     context?.buildCapability.available===false?context.buildCapability.reason:missing?"選択したProfileがありません。別のProfileを明示的に選択してください。":null;
-  const publishReason=context?.receipt.eligible===false?context.receipt.reason:null;
+  const publishUnavailable=context?.receipt.eligible===false;
+  const publishReason=publishUnavailable?context?.receipt.reason:null;
   const dirty=s.status.dirty.length;
   async function diagnostics(next:number){const result=await delivery.problems(next).catch(desktop.showError);if(result){setStart(next);setPage(result);}}
   async function focus(problem:Diagnostic,index:number){
@@ -25,7 +37,10 @@ export function DeliveryDrawer({s}:{s:Surface}) {
     delivery.close();await desktop.focusBuildProblem(id,index,problem.source);
   }
   function beginPreview(origin:HTMLElement){previewOrigin.current=origin;void delivery.preview();}
-  function returnPreviewFocus(){if(previewOrigin.current?.isConnected)previewOrigin.current.focus();}
+  function finishPreview(kind:"publish"|"cancelPreview"){
+    previewFocus.current={origin:previewOrigin.current,epoch:s.status.epoch,intent:desktop.inputIntent,kind};
+    void (kind==="publish"?delivery.confirm():delivery.cancel());
+  }
   const result=state?.kind==="publish"?state.result as PublishResult|null:null;
   const displayedError=page??attempt?.error;
   return <Drawer title={<Space><BuildOutlined/>Build / Publish</Space>} open={v.open} onClose={delivery.close}
@@ -43,9 +58,10 @@ export function DeliveryDrawer({s}:{s:Surface}) {
         onChange={value=>delivery.profile(value||null)}/></div>
       {buildReason&&<Alert type="warning" showIcon title="Buildを開始できません" description={buildReason}/>}
       <Space wrap><Button type="primary" icon={<BuildOutlined/>} aria-label="Build saved sources" disabled={busy||!!buildReason||s.busy||!context} onClick={()=>void delivery.build()}>Build</Button>
-        <Button icon={<CloudUploadOutlined/>} aria-label="Publish last successful artifacts" disabled={busy||!!publishReason||!context} onClick={e=>beginPreview(e.currentTarget)}>Publish last artifacts</Button>
+        <Button icon={<CloudUploadOutlined/>} aria-label="Publish last successful artifacts" disabled={busy||publishUnavailable||!context} onClick={e=>beginPreview(e.currentTarget)}>Publish last artifacts</Button>
         <Tooltip title="保存済みinputでBuildし、成功artifactのPublish previewへ進みます"><Button disabled={busy||!!buildReason||s.busy||!context} onClick={e=>{previewOrigin.current=e.currentTarget;void delivery.build(true);}}>Build and Publish…</Button></Tooltip></Space>
-      {publishReason&&<Typography.Text type="secondary">Publish: {publishReason}</Typography.Text>}
+      {publishUnavailable&&<div><Typography.Text type="secondary">Publishには確認済みのBuild artifactが必要です。</Typography.Text>
+        {publishReason&&<Collapse ghost size="small" items={[{key:"receipt",label:"利用できない理由",children:<Typography.Paragraph className="delivery-path">{publishReason}</Typography.Paragraph>}]}/>}</div>}
       {state?.kind?.startsWith("publish")&&<Typography.Text type="secondary">source freshness: この操作では未確認 · Unity verification: not_observed</Typography.Text>}
       {busy&&<div role="status" aria-live="polite" className="delivery-progress"><Spin size="small"/><div><Typography.Text>{state?.kind==="build"?state.capturing?"保存済みinputを取得中":"Build実行中":state?.kind==="publish"?"Publish実行中":"確認中"}</Typography.Text>
         <div className="delivery-caption">{state?.captured?.project.name??s.inventory?.project.name} · {state?.kind==="build"?(state.profile??"Unfiltered"):""}</div><Typography.Text type="secondary">編集とsourceの移動は続けられます。別のBuild / PublishとProject切替は完了後に再操作してください。</Typography.Text></div></div>}
@@ -59,12 +75,12 @@ export function DeliveryDrawer({s}:{s:Surface}) {
         {preview.detail.targets.length?<List size="small" dataSource={preview.detail.targets} renderItem={target=><List.Item><div className="delivery-target"><Typography.Text strong>{target.kind}</Typography.Text><Typography.Paragraph className="delivery-path" copyable>{target.destination}</Typography.Paragraph>
           <Space wrap><Tag>追加 {target.additions.length}</Tag><Tag>更新 {target.updates.length}</Tag><Tag>削除 {target.removals.length}</Tag>{target.binaryReplacement&&<Tag>binaryを更新</Tag>}</Space>
           <Collapse ghost size="small" items={[{key:"files",label:"変更するfile",children:<Space direction="vertical">{[["追加",target.additions],["更新",target.updates],["削除",target.removals]].map(([label,paths])=><div key={String(label)}><Typography.Text type="secondary">{String(label)}</Typography.Text>{(paths as string[]).map(path=><div key={path}>{path}</div>)}</div>)}</Space>}]}/></div></List.Item>}/>:<Alert type="info" showIcon title="Publish targetは0件です" description="Confirmはsuccessful no-opです。fileの配置は行いません。"/>}
-        <Space className="delivery-confirm"><Button disabled={busy} onClick={()=>{void delivery.cancel().then(returnPreviewFocus);}}>Cancel Publish</Button><Button type="primary" icon={<CloudUploadOutlined/>} disabled={busy} onClick={()=>{void delivery.confirm().then(returnPreviewFocus);}}>Confirm Publish</Button></Space>
+        <Space className="delivery-confirm"><Button disabled={busy} onClick={()=>finishPreview("cancelPreview")}>Cancel Publish</Button><Button type="primary" icon={<CloudUploadOutlined/>} disabled={busy} onClick={()=>finishPreview("publish")}>Confirm Publish</Button></Space>
       </section>}
       {result&&<section aria-label="Publish result"><Divider/><Typography.Title level={5}>Publish · {result.outcome}</Typography.Title>
         {result.noOp&&<Typography.Paragraph>target 0件 · successful no-op（配置なし）</Typography.Paragraph>}
         <Typography.Paragraph type="secondary">source freshness: この操作では未確認<br/>Unity verification: not_observed</Typography.Paragraph>
-        <List size="small" dataSource={result.targets} renderItem={target=><List.Item><div className="delivery-target"><Space><Tag color={target.outcome==="Success"?"success":"warning"}>{target.status}</Tag><Typography.Text>{target.kind}</Typography.Text></Space><div className="delivery-path">{target.destination}</div><Typography.Text type="secondary">{target.message}</Typography.Text>{target.recoveryDirectory&&<Typography.Paragraph copyable className="delivery-path">{target.recoveryDirectory}</Typography.Paragraph>}</div></List.Item>}/></section>}
+        {!!result.targets.length&&<List size="small" dataSource={result.targets} renderItem={target=><List.Item><div className="delivery-target"><Space><Tag color={target.outcome==="Success"?"success":"warning"}>{target.status}</Tag><Typography.Text>{target.kind}</Typography.Text></Space><div className="delivery-path">{target.destination}</div><Typography.Text type="secondary">{target.message}</Typography.Text>{target.recoveryDirectory&&<Typography.Paragraph copyable className="delivery-path">{target.recoveryDirectory}</Typography.Paragraph>}</div></List.Item>}/>}</section>}
       {state?.kind==="cancelPreview"&&!busy&&<Typography.Text role="status" type="secondary">Publishは実行していません。成功済みBuild artifactを保持しています。</Typography.Text>}
       {attempt&&<section aria-label="Last Build result"><Divider/><Flex align="center" justify="space-between"><Typography.Title level={5}>Build · {attempt.status}</Typography.Title><Tag>{attempt.profile??"Unfiltered"}</Tag></Flex>
         <Typography.Paragraph type="secondary">保存済みinput · {attempt.captured?.project.name??s.inventory?.project.name}{v.combinedBuild&&" · Publishは別の確認操作です"}</Typography.Paragraph>

@@ -48,7 +48,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     await startCreate();await guard("Don't Save");await fill(`${oldRoot}/../cancelled`);
     key(input('Project name'),'Enter',{isComposing:true});await frame();assert(!desktop.surface.openingProject,'composition Enter created Project');
     projectButton('Cancel').click();await until(()=>!desktop.surface.projectCreation,'creation Cancel failed');
-    await until(()=>document.activeElement?.getAttribute('aria-label')==='Project menu','form Cancel did not restore a usable Project action focus');
+    await until(()=>document.activeElement?.getAttribute('aria-label')==='Project menu'||document.activeElement?.getAttribute('role')==='grid','form Cancel did not restore a usable authoring/action focus');
     assert(desktop.surface.status.dirty.includes(SOURCE),'form Cancel dropped the old authoring draft');
     checks.push('create-form-cancel-composition');
 

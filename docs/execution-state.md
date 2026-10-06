@@ -1,15 +1,18 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: decision-required
+Candidate: f57102e2d098a4a3385081dc111982e5c065d4ff
 Work base: e5c2f3df82b8e5ac033a894cd8ae400b4e312c56
 
 ## Active work
 
-Completed: fresh recovery、architecture / workspace / CI bootstrap、source byte / interpretation / Save oracle、shared type解釈、source-local draft / history、fresh Save / Conflict / unknown outcome、bounded Desktop slice、record / Complex / paste / Search engine、React / Ant Design presentation foundation、nested Problems focus / spatial reorder、external source lifetime / scoped authoring input保護、exclusive source creation / Explorer focus、exclusive source rename / move、Schema Migration / source-set commit / Recovery、direct column authoring / contextual Compare GUI、Type Migration / Type Editor / guided initializer、native Build / receipt / independent consumer、shared Publish preview / target-local commit、CLI shared operations、Desktop background Build / contextual Publish preview / confirmation、retained Build Problems / saved occurrence provenance、100k native oracle / bounded native WebView capacity / stageとRSS計測、source-preserving Record Tags / contextual Ant editor / Problems focus、Project Settings / config buffer、Project workflow / scoped focus復帰、Table declaration / Key / Reference authoring、Unity package / caller factory native reload / portable boundary validation。
-In progress: Tier1 CI reconciliation、authoring completeness、keyboard pane focus / OS input capture、React actual interaction / performance / visual verification。
-Remaining: authoring completeness、Migration / delivery / CLI、Unity actual Editor / Player evidence、全oracle / Tier1 Desktop / performance / capacity、fresh review / cutover readiness。
+Completed: canonical authoring / write / structural / delivery / CLI / portable Unity implementation、全portable oracle adapters、React / Ant Design代表surface review、100k capacity、macOS OS入力2run、frozen-boundary fresh / adversarial review、Candidate required CI reconciliation。
+Remaining: [Candidate evidence / finite ledger](evidence/clean-room-candidate.md#human-gates--verdict)のrequired external evidence。未取得の証拠を追加実装や新しいacceptanceで置換しない。
 
 ## Blocking findings
 
-None.
+Evidence gaps: macOS actual first-accepted <150ms証明（tool probe遅延）、Windows x64 actual OS interaction / performance、Unity actual Editor / runtime、macOS actual IME / reduced motion ON / held-drag Escape。製品codeの既知Blockingはfresh reviewで未検出。Cutover-ready / objective-complete未達。
+
+## Human decision needed
+
+[exact gaps / evidence / choices](evidence/clean-room-candidate.md#human-gates--verdict)。推奨はWindows / Unity実行環境とmacOSの密なOS入力・設定変更authorizationを提供し、同じCandidateの残証拠を取得すること。環境を提供できない場合のevidence exceptionはHuman-selected decisionを要する。main merge / cutoverは今回のscope外。

@@ -274,10 +274,35 @@ class Desktop {
   currentSample: SelectionSample | null = null;
   samples: SelectionSample[] = [];
   evidence = false;
+  inputCapture = false;
+  measurementCase = "ordinary";
+  droppedSamples = 0;
+  private currentInput: {origin:"os-trusted"|"synthetic";type:string;at:number;timestamp:number;event:Event}|null = null;
   inputIntent = 0;
-  noteInputIntent = () => {
+  noteInputIntent = (event?:{nativeEvent:Event}) => {
     this.inputIntent++;
+    if(this.inputCapture)this.captureInput(event?.nativeEvent);
   };
+  // Pointer / keyboard already own focus intent. Recording a click timestamp
+  // must not add an intent or alter focus recovery in the measured product.
+  noteClickInput = (event:{nativeEvent:Event}) => {if(this.inputCapture)this.captureInput(event.nativeEvent);};
+  private captureInput(native?:Event) {
+    const observed=native?{origin:native.isTrusted?"os-trusted" as const:"synthetic" as const,type:native.type,at:performance.now(),timestamp:native.timeStamp,event:native}:null;
+    this.currentInput=observed;
+    const sample=this.currentSample;
+    if(sample&&!sample.firstAccepted&&observed&&native?.target instanceof Element&&native.target.closest('#editor-pane')&&
+      ((native instanceof KeyboardEvent&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','F2','Tab'].includes(native.key)&&!native.isComposing)||
+       (native.type==='pointerdown'&&native.target.closest('[role="gridcell"]')))) {
+      const probes=sample.probes??= [];
+      if(probes.length<64)probes.push({at:observed.at,event:native.type,origin:observed.origin,target:this.surface.target,pending:this.surface.pending,afterPaint:!!sample.paintOpportunity});
+      else sample.droppedProbes=(sample.droppedProbes??0)+1;
+    }
+    // Capture and bubble can be separate native listeners with a microtask
+    // checkpoint between them. Keep the event through dispatch, but eventPhase
+    // rejects later refresh/focus work even before this cleanup task runs.
+    setTimeout(()=>{if(this.currentInput===observed)this.currentInput=null;},0);
+  }
+  private activeInput(){const input=this.currentInput;return input?.event.eventPhase?input:null;}
   private publish(delta: Partial<Surface>) {
     this.surface = { ...this.surface, ...delta };
     for (const f of this.surfaces) f();
@@ -574,16 +599,20 @@ class Desktop {
         resolve();
         this.paintResolve.delete(old);
       }
+    const input=this.inputCapture?this.activeInput():null;
     const sample: SelectionSample = {
       target: path,
       token: mine,
-      caseName,
-      input: performance.now(),
+      caseName: this.inputCapture&&caseName==="ordinary"?this.measurementCase:caseName,
+      input: input?.at??performance.now(),
+      inputOrigin: input?.origin??"programmatic",
+      inputEvent: input?.type,
+      eventTimestamp: input?.timestamp,
       selectionPublication: 0,
     };
     this.sampleForeground(sample, "input");
     this.samples.push(sample);
-    if (!this.evidence && this.samples.length > 256) this.samples.shift();
+    if (!this.evidence && this.samples.length > (this.inputCapture?8192:256)) {this.samples.shift();this.droppedSamples++;}
     this.currentSample = sample;
     if (!same) this.interact({ focusIntent: this.interaction.focusIntent + 1 });
     flushSync(() =>
@@ -753,7 +782,7 @@ class Desktop {
     } finally {clearTimeout(deadline!);this.paintResolve.delete(token);}
   }
   private sampleForeground(sample: SelectionSample, boundary: "input" | "paint" | "interaction") {
-    if (!this.evidence) return;
+    if (!this.evidence&&!this.inputCapture) return;
     const observed = { visibility: document.visibilityState, focused: document.hasFocus() };
     (sample.observations ??= {})[boundary] = observed;
     if (observed.visibility !== "visible" || !observed.focused)
@@ -775,8 +804,10 @@ class Desktop {
     });
   }
   acceptedType(p: TypeProjection) {
+    if(this.inputCapture&&(!this.currentSample?.paintOpportunity||this.activeInput()?.origin!=="os-trusted"))return;
     if(this.currentType(p) && this.currentSample?.target===p.clicked && !this.currentSample.firstAccepted) {
       this.currentSample.firstAccepted=performance.now();
+      this.currentSample.firstAcceptedOrigin=this.activeInput()?.origin??"programmatic";
       this.sampleForeground(this.currentSample,"interaction");
     }
   }
@@ -866,11 +897,13 @@ class Desktop {
     const sample = this.currentSample;
     if (
       sample?.paintOpportunity &&
+      (!this.inputCapture||this.activeInput()?.origin==="os-trusted") &&
       !sample.firstAccepted &&
       sample.target === p.clicked &&
       sample.token === this.token
     ) {
       sample.firstAccepted = performance.now();
+      sample.firstAcceptedOrigin=this.activeInput()?.origin??"programmatic";
       this.sampleForeground(sample, "interaction");
     }
   }

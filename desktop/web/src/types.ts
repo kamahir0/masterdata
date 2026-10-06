@@ -224,6 +224,12 @@ export interface SelectionSample {
   token: number;
   caseName: string;
   input: number;
+  inputOrigin?: "os-trusted" | "synthetic" | "programmatic";
+  inputEvent?: string;
+  eventTimestamp?: number;
+  firstAcceptedOrigin?: "os-trusted" | "synthetic" | "programmatic";
+  probes?: {at:number;event:string;origin:"os-trusted"|"synthetic";target:string;pending:boolean;afterPaint:boolean}[];
+  droppedProbes?: number;
   selectionPublication: number;
   ipcReturn?: number;
   statePublication?: number;

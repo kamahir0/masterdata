@@ -35,7 +35,7 @@ export function TypeSurface({s,footer}:{s:Surface;footer:ReactNode}) {
     if(element?.isConnected&&current?.review&&planFocus.current?.token===current.review.token&&planFocus.current.intent===desktop.inputIntent&&current.target.clicked===desktop.surface.target&&!desktop.surface.comparison&&!desktop.surface.choice)element.focus();
   }
   const patch=(change:Partial<Draft>)=>{if(live.current){live.current={...live.current,...change};setDraft(live.current);}};
-  useLayoutEffect(()=>{if(p&&ready&&body.current)desktop.committedType(p,body.current);},[p,ready]);
+  useLayoutEffect(()=>{if(p&&ready&&body.current){desktop.committedType(p,body.current);if(document.activeElement===document.getElementById('editor-pane'))body.current.focus({preventScroll:true});}},[p,ready]);
   useLayoutEffect(()=>{if(!draft&&ready){const frame=requestAnimationFrame(restoreOrigin);return()=>cancelAnimationFrame(frame);}},[p,ready,draft]);
   useLayoutEffect(()=>{
     const overlay=!!s.comparison||!!s.choice;

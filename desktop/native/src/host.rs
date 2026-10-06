@@ -176,7 +176,8 @@ fn project_epoch(state: tauri::State<'_, Host>) -> u64 {
 }
 #[tauri::command]
 fn boot(state: tauri::State<'_, Host>) -> Value {
-    json!({"platform":std::env::consts::OS,"initialProject":state.initial_project,"preferences":*state.preferences.lock().unwrap(),"evidence":cfg!(feature="desktop-evidence")&&state.evidence_output.is_some()&&state.evidence_kind!="manual","evidenceKind":state.evidence_kind})
+    let capture = cfg!(feature = "desktop-evidence") && state.evidence_output.is_some();
+    json!({"platform":std::env::consts::OS,"initialProject":state.initial_project,"preferences":*state.preferences.lock().unwrap(),"evidence":capture&&!matches!(state.evidence_kind.as_str(),"manual"|"manual-input"),"inputCapture":capture&&state.evidence_kind=="manual-input","evidenceKind":state.evidence_kind})
 }
 #[tauri::command]
 fn finish_exit(
@@ -270,7 +271,9 @@ pub fn run() {
         (true, Some("settings")) => "settings",
         (true, Some("project")) => "project",
         (true, Some("declaration")) => "declaration",
+        (true, Some("focus")) => "focus",
         (true, Some("manual")) => "manual",
+        (true, Some("manual-input")) => "manual-input",
         _ => "navigation",
     }
     .to_string();

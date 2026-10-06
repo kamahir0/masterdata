@@ -71,7 +71,10 @@ export const AuthoringGrid = memo(function AuthoringGrid({
   const [rename, setRename] = useState<string | null>(null);
   useLayoutEffect(() => {
     desktop.viewport = viewport.current;
-    if (p && !pending) desktop.committed(p);
+    if (p && !pending) {
+      desktop.committed(p);
+      if(document.activeElement===document.getElementById('editor-pane'))viewport.current?.focus({preventScroll:true});
+    }
   }, [p, pending]);
   useEffect(() => {
     const v = viewport.current;

@@ -136,6 +136,12 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --output verification/results/desktop.json
+      - name: Native keyboard pane focus and input evidence integrity
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case focus --output verification/results/focus.json
       - name: Native Desktop 100k capacity, bounded long/wide grid and ordinary 10k paste
         shell: bash
         run: |

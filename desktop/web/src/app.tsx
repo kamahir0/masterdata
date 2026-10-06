@@ -204,6 +204,19 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       style={variables}
       onPointerDownCapture={desktop.noteInputIntent}
       onKeyDownCapture={desktop.noteInputIntent}
+      onClickCapture={desktop.inputCapture?desktop.noteClickInput:undefined}
+      onKeyDown={event=>{
+        if(event.key!=="F6"||event.nativeEvent.isComposing||event.altKey||event.metaKey||event.ctrlKey)return;
+        if(!(event.target instanceof Element)||!event.target.closest('#workbench'))return;
+        const tree=document.querySelector<HTMLElement>('#explorer [role="tree"]');
+        const editor=document.getElementById('editor-pane');
+        if(!tree||!editor||editor.closest('[inert]'))return;
+        event.preventDefault();
+        if(tree.contains(document.activeElement)) {
+          const target=!desktop.surface.pending?editor.querySelector<HTMLElement>('#viewport:not([inert]),.type-body'):null;
+          (target??editor).focus({preventScroll:true});
+        } else tree.focus({preventScroll:true});
+      }}
     >
       <header id="titlebar">
         <div id="drag-region" data-tauri-drag-region>
@@ -280,7 +293,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
       </header>
       <div id="workbench" inert={!!s.openingProject||!!s.projectCreation||!!s.projectOpenUncertain}>
         {s.inventory && <Explorer s={s} />}
-        <main>
+        <main id="editor-pane" aria-label="Editor" tabIndex={-1}>
           {!s.inventory ? (
             <section id="welcome">
               <DatabaseOutlined className="welcome-mark" />
@@ -356,6 +369,10 @@ function Explorer({ s }: { s: Surface }) {
   const [keys,setKeys]=useState<string[]>(()=>["logical:tables","logical:types",...s.inventory!.folders.map(p=>`folder:${p||"."}`)]);
   const [selected,setSelected]=useState(s.target);
   const [activeKey,setActiveKey]=useState<string|null>(null);
+  const activeItem=useRef<string|null>(null);
+  // A subsequent discrete key can precede React's controlled-tree commit.
+  // Open the latest item requested by the user, never a render's older key.
+  const activate=(key:string|null)=>{activeItem.current=key;setActiveKey(key);};
   const [focusRequest,setFocusRequest]=useState<{key:string;intent:number}|null>(null);
   const tree=useRef<ComponentRef<typeof Tree>>(null);
   const container=useRef<HTMLElement|null>(null);
@@ -368,7 +385,7 @@ function Explorer({ s }: { s: Surface }) {
     setSelected(key);
     if(!folder)await desktop.selectTarget(path,"creation").catch(desktop.showError);
     if(inputIntent===desktop.inputIntent) {
-      setActiveKey(key);
+      activate(key);
       setFocusRequest({key,intent:inputIntent});
     }
   });
@@ -376,12 +393,12 @@ function Explorer({ s }: { s: Surface }) {
   const createFromGuide=useRef(creation.begin);createFromGuide.current=creation.begin;
   const creationReady=creation.ready&&!creation.draft&&!s.status.recoveryRequired&&!s.status.environmentError;
   useEffect(()=>creationReady?desktop.bindSourceCreation(category=>createFromGuide.current(category)):undefined,[creationReady,s.status.epoch]);
-  useEffect(()=>{setKeys(["logical:tables","logical:types",...s.inventory!.folders.map(path=>`folder:${path||"."}`)]);setActiveKey(null);setFocusRequest(null);},[s.status.epoch]);
+  useEffect(()=>{setKeys(["logical:tables","logical:types",...s.inventory!.folders.map(path=>`folder:${path||"."}`)]);activate(null);setFocusRequest(null);},[s.status.epoch]);
   const pathMutation=useSourcePath(s.status.epoch,(source,destination,inputIntent)=>{
     setKeys(old=>[...new Set([...old,...ancestors(destination.split("/").slice(0,-1).join("/"))])]);
     if(inputIntent!==desktop.inputIntent)return;
     setSelected(old=>old===source?destination:old);
-    setActiveKey(destination);setFocusRequest({key:destination,intent:inputIntent});
+    activate(destination);setFocusRequest({key:destination,intent:inputIntent});
   });
   const selectedSource=logicalTargets.get(selected)||selected;
   const sourceItems:MenuProps={items:[{key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selectedSource||selectedSource.startsWith("folder:")||selectedSource.startsWith("logical:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selectedSource)}],onClick:()=>void pathMutation.begin(selectedSource)};
@@ -430,7 +447,20 @@ function Explorer({ s }: { s: Surface }) {
     return [...logical,...roots];
   }, [s.inventory,creation.draft?.folder,creation.draft?.filename,creation.draft?.id]);
   return (
-    <aside id="explorer" ref={container}>
+    <aside id="explorer" ref={container} onKeyDownCapture={event=>{
+      if(event.key!=="Enter"||event.altKey||event.metaKey||event.ctrlKey)return;
+      if(!(event.target instanceof Element)||!event.target.closest('[role="tree"]')||event.target.closest('input,textarea,[contenteditable=true]'))return;
+      if(event.nativeEvent.isComposing){event.stopPropagation();return;}
+      const key=activeItem.current??selected,source=logicalTargets.get(key)||key;
+      if(!source||source.startsWith('folder:')||source.startsWith('logical:'))return;
+      event.preventDefault();event.stopPropagation();
+      setSelected(key);activate(key);
+      void desktop.selectTarget(source).catch(desktop.showError);
+      // Put focus on the stable editor pane while the fresh projection is
+      // pending. Only that pane can pass it to the accepted editor; a newer
+      // click, pane switch or selection cannot be overridden by old completion.
+      document.getElementById('editor-pane')?.focus({preventScroll:true});
+    }}>
       <div className="pane-heading">
         <Button
           type="text"
@@ -453,21 +483,23 @@ function Explorer({ s }: { s: Surface }) {
           ref={tree}
           aria-label="Sources"
           activeKey={activeKey}
-          onActiveChange={key=>setActiveKey(key===null?null:String(key))}
+          onActiveChange={key=>activate(key===null?null:String(key))}
           treeData={nodes}
           blockNode
           showIcon
           expandedKeys={keys}
           onExpand={next=>setKeys(next.map(String))}
           selectedKeys={[selected]}
-          onRightClick={({node})=>{const key=String(node.key);setSelected(key);setActiveKey(key);}}
+          onRightClick={({node})=>{const key=String(node.key);setSelected(key);activate(key);}}
           onKeyDown={event=>{if(event.key==="F2"&&!event.nativeEvent.isComposing){event.preventDefault();if(selectedSource&&!selectedSource.startsWith("folder:")&&!selectedSource.startsWith("logical:"))void pathMutation.begin(selectedSource);}}}
-          onSelect={(keys) => {
-            if(keys[0]) {
-              const key=String(keys[0]);setSelected(key);setActiveKey(key);
-              const source=logicalTargets.get(key)||key;
-              if(!source.startsWith("folder:")&&!source.startsWith("logical:"))void desktop.selectTarget(source).catch(desktop.showError);
-            }
+          onSelect={(_keys,info) => {
+            // Ant reports [] when the already selected node is clicked. The
+            // clicked node still owns keyboard intent, including after Arrow
+            // navigation to a different active item. Keep a single selection.
+            const key=String(info.node.key);setSelected(key);activate(key);
+            const source=logicalTargets.get(key)||key;
+            if(!source.startsWith("folder:")&&!source.startsWith("logical:")&&
+              (source!==s.target||s.pending||(!s.projection&&!s.typeProjection)))void desktop.selectTarget(source).catch(desktop.showError);
           }}
           titleRender={(node) => node.key==="creation:temporary"?creation.inline:(
             <span

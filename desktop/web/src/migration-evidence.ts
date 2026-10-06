@@ -16,6 +16,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
   await until(()=>!!desktop.surface.inventory,"Project not open");await desktop.selectTarget(SOURCE,"migration-setup",false);
   const initial=desktop.surface.projection!,rows=initial.rows.map(r=>r.id),top=desktop.viewport!.getBoundingClientRect().top;
   desktop.viewport!.scrollLeft=11*160;await frame();await frame();
+  await until(()=>!!findButton('Rename name'),'scrolled name header did not become visible');
   button('Rename name').click();await until(()=>!!document.querySelector('input[aria-label="Rename name"]'),"inline name input not open");
   text('name','title');enter('name',true);await frame();assert(desktop.surface.projection!.columns.some(c=>c.field.name==='name'),"composition Enter renamed field");
   fieldInput('name').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!document.querySelector('input[aria-label="Rename name"]'),"Escape did not cancel rename");await until(()=>document.activeElement?.getAttribute('aria-label')==='Rename name',"Escape lost header focus");checks.push('inline-rename-composition-cancel');

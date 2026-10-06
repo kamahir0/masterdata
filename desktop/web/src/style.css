@@ -66,6 +66,10 @@ html[data-theme="dark"] body {
   flex: 1;
   min-height: 0;
 }
+#editor-pane:focus-visible {
+  outline: 1px solid var(--md-accent);
+  outline-offset: -1px;
+}
 #explorer {
   width: 224px;
   flex: none;

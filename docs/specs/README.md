@@ -157,6 +157,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Custom Types仕様](type-system/custom-types.md)
 - [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Approved`
 - [Index / reference仕様](index-and-reference.md) — `Status: Approved`（Reference core semanticsを所有。Table/Keyのsemantic ownerは別document）
+- [Table Declaration Mutation仕様](table-declaration-mutation.md) — `Status: Approved`
 - [Source Record Edit仕様](source-edit.md) — `Status: Approved`
 - [Source Path Mutation仕様](source-path-mutation.md) — `Status: Approved`
 - [Build Selection仕様](build-selection.md) — `Status: Approved`

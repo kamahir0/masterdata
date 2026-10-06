@@ -28,6 +28,8 @@ field名はheaderそのものからpointerとkeyboardでinline renameでき、ty
 
 #### Schema draftと通常Save
 
+MessagePack key / Key / Reference authoringのoperation contractは[Table Declaration Mutation](../../specs/table-declaration-mutation.md)が所有する。
+
 type / Nullable / Arrayのheader操作は[Field Declaration Mutation](../../specs/field-declaration-mutation.md)の`FIELD-DECL-006..010`に従う可逆的なschema draftでなければならない（MUST）。headerは直ちに新宣言を表示し、shared Coreの再解釈によるcell/column/Problems diagnosticを更新する。既存valueが新宣言でinvalidでも操作を拒否せず、record source bytesを変換しない。Ctrl/Cmd+Zで未保存のtype変更を戻すと、sourceを変更せず該当diagnosticも消える。
 
 通常のheader SaveとCmd/Ctrl+Sは同じshared Application intentとして、current Tableのschema sourceとselected record sourceのうちactual candidateがdirtyなphysical sourceを全て対象としなければならない（MUST）。schema fileのinline records draftは別record source選択中でもschema source候補へ含め、schema宣言とinline recordsを一候補へcomposeして一回commitする（MUST）。inactiveな別physical record source、別Table、diagnosticだけのclean sourceを対象にしてはならない（MUST NOT）。複数fileのcandidateとexact identityは全件preflightしてからcommitし、partial resultはfile別に表現しなければならない（MUST）。Save AllはProject-wideな別commandである。dirty ownershipとcommit resultはfileごとに独立して保持する。

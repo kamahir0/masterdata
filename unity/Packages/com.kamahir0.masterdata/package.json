@@ -1,0 +1,8 @@
+{
+  "name": "com.kamahir0.masterdata",
+  "version": "0.1.0",
+  "displayName": "MasterData",
+  "description": "Explicit saved-artifact loading and scoped Unity delivery observation.",
+  "unity": "2022.3",
+  "author": { "name": "MasterData" }
+}

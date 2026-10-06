@@ -42,7 +42,11 @@ freeze = manifest["freezeCommit"]
 assets = manifest["assets"]
 implementation = Path("Cargo.toml").exists()
 bootstrap_files = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml"} if implementation else set()
-source_roots = {"engine", "command", "desktop", "delivery", "verification"} if implementation else set()
+source_roots = {"engine", "command", "desktop", "delivery", "verification", "unity"} if implementation else set()
+unity_package = Path("unity/Packages/com.kamahir0.masterdata")
+if implementation and Path("unity").exists():
+    require(subprocess.run([sys.executable, "verification/check_unity_package.py"]).returncode == 0,
+            "new Unity package layout/boundary check failed")
 if implementation:
     workspace = tomllib.loads(Path("Cargo.toml").read_text())
     require(workspace.get("workspace", {}).get("metadata", {}).get("masterdata", {}).get("clean-room-rewrite") is True,
@@ -74,8 +78,12 @@ for asset in assets:
     classification = asset["classification"]
     require(classification in {"KEEP_AUTHORITY_CORPUS", "KEEP_GOVERNANCE_NEUTRAL", "REMOVE", "REVIEW_TRANSITIONAL"},
             f"unknown classification: {path}")
-    require((not path.exists() or str(path) in bootstrap_files) if classification == "REMOVE" else path.exists(),
+    new_unity_source = implementation and unity_package in path.parents
+    require((not path.exists() or str(path) in bootstrap_files or new_unity_source) if classification == "REMOVE" else path.exists(),
             f"retention mismatch: {path}")
+    if classification == "REMOVE" and path.is_file() and new_unity_source:
+        require(hashlib.sha256(path.read_bytes()).hexdigest() != asset["sha256"],
+                f"retired Unity source was restored unchanged: {path}")
     if path.exists() and path.parts[0] == "fixtures":
         require(hashlib.sha256(path.read_bytes()).hexdigest() == asset["sha256"],
                 f"frozen fixture bytes changed: {path}")
@@ -85,7 +93,7 @@ counts["retired_assets"] = sum(a["classification"] == "REMOVE" for a in assets)
 for name in ("apps", "crates", "dotnet", "unity", "scripts", ".cargo", "node_modules",
              "Cargo.toml", "Cargo.lock", "package.json", "package-lock.json", "global.json",
              "rust-toolchain.toml", "legacy", "old", "archive", "reference", "previous"):
-    if name not in bootstrap_files:
+    if name not in bootstrap_files and not (implementation and name == "unity"):
         require(not Path(name).exists(), f"forbidden legacy path: {name}")
 allowed_source = {"tools/check-clean-slate.py", "fixtures/rewrite-oracle/v1/consumer/Consumer.cs",
                   "fixtures/rewrite-oracle/v1/consumer/minimal/Consumer.cs"}

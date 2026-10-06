@@ -1,0 +1,7 @@
+{
+  "name": "MasterData.UnityTests",
+  "references": ["MasterData.UnityRuntime", "MasterData.UnityEditorIntegration"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

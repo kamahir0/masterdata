@@ -148,6 +148,64 @@ System.Console.WriteLine("PASS ImmutableArray / constructor guards / Ordinal com
 "#;
 
 #[test]
+fn unity_caller_factory_loads_actual_binary_and_preserves_independent_database_ownership() {
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let oracle = repository.join("fixtures/rewrite-oracle/v1/consumer");
+    let project = copy_project(&repository.join("fixtures/full"));
+    for file in ["probe-schema.yaml", "probe-data.yaml"] {
+        fs::copy(oracle.join(file), project.path().join("sources").join(file)).unwrap();
+    }
+    let before = bytes(project.path());
+    let plan = BuildPlan::capture(project.path(), None).unwrap();
+    let built = dotnet::build(&plan).unwrap();
+    let mut csharp = plan.csharp().clone();
+    csharp.insert(
+        "UnityCallerLoader.cs".into(),
+        fs::read_to_string(
+            repository
+                .join("unity/Packages/com.kamahir0.masterdata/Runtime/SavedDatabaseLoader.cs"),
+        )
+        .unwrap(),
+    );
+    let result = dotnet::verify_consumer(&csharp, &built.binary, &oracle.join("Consumer.cs"), r#"
+var callerBytes = System.IO.File.ReadAllBytes(args[0]);
+var calls = 0;
+System.Func<byte[], Masterdata.Generated.MemoryDatabase> factory = data => {
+    if (!object.ReferenceEquals(data, callerBytes)) throw new System.Exception("loader replaced caller bytes");
+    calls++;
+    return new Masterdata.Generated.MemoryDatabase(data);
+};
+var loaded = MasterData.UnityRuntime.SavedDatabaseLoader.LoadBytes(callerBytes, factory);
+var reloaded = MasterData.UnityRuntime.SavedDatabaseLoader.LoadBytes(callerBytes, factory);
+if (!loaded.Succeeded || !reloaded.Succeeded || calls != 2 || object.ReferenceEquals(loaded.Database, reloaded.Database))
+    throw new System.Exception("caller-owned actual database load/reload failed");
+var row = loaded.Database.ItemMasterTable.FindById(1001);
+if (row.Reward.ItemId.Value != 2001 || row.LongValue != long.MinValue || row.UlongValue != ulong.MaxValue
+    || reloaded.Database.ItemMasterTable.FindById(1002).LongValue != long.MaxValue
+    || loaded.Database.ProbeTable.FindById(1).GetParent(loaded.Database).Id != 1001)
+    throw new System.Exception("actual loaded values/reference corrupted");
+var missing = MasterData.UnityRuntime.SavedDatabaseLoader.LoadBytes<Masterdata.Generated.MemoryDatabase>(null, factory);
+var empty = MasterData.UnityRuntime.SavedDatabaseLoader.LoadBytes(System.Array.Empty<byte>(), factory);
+using (var cancelled = new System.Threading.CancellationTokenSource()) {
+    cancelled.Cancel();
+    var result = MasterData.UnityRuntime.SavedDatabaseLoader.LoadBytes(callerBytes, factory, cancelled.Token);
+    if (result.Succeeded || result.Error.Code != "MASTERDATA-UNITY-CANCELLED") throw new System.Exception("cancelled load accepted");
+}
+var broken = MasterData.UnityRuntime.SavedDatabaseLoader.LoadBytes<Masterdata.Generated.MemoryDatabase>(new byte[]{0xC1},
+    data => new Masterdata.Generated.MemoryDatabase(data));
+if (missing.Error.Code != "MASTERDATA-UNITY-MISSING" || empty.Error.Code != "MASTERDATA-UNITY-EMPTY" || calls != 2
+    || broken.Succeeded || broken.Database != null || broken.Error.Code != "MASTERDATA-UNITY-FACTORY")
+    throw new System.Exception("failed load fabricated database or invoked cancelled factory");
+System.Console.WriteLine("PASS Unity caller factory / actual native binary reload / independent ownership / structured errors");
+"#).unwrap();
+    assert!(result.contains("PASS Unity caller factory"), "{result}");
+    for line in result.lines().filter(|line| line.starts_with("PASS ")) {
+        println!("{line}");
+    }
+    assert_eq!(bytes(project.path()), before);
+}
+
+#[test]
 fn authored_messagepack_keys_primary_secondary_and_reference_helpers_reload_in_native_consumer() {
     use masterdata_engine::{
         table_declaration::{Change, Command, ReferenceInput},

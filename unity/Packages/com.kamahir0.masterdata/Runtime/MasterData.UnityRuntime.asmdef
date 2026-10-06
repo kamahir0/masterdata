@@ -1,0 +1,6 @@
+{
+  "name": "MasterData.UnityRuntime",
+  "rootNamespace": "MasterData.UnityRuntime",
+  "references": [],
+  "autoReferenced": true
+}

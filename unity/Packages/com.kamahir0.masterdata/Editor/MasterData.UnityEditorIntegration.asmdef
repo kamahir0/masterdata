@@ -1,0 +1,7 @@
+{
+  "name": "MasterData.UnityEditorIntegration",
+  "rootNamespace": "MasterData.UnityEditorIntegration",
+  "references": ["MasterData.UnityRuntime"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

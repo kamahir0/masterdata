@@ -11,6 +11,27 @@ permissions:
   contents: read
 
 jobs:
+  unity-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: UPM layout, runtime/editor separation and stable diagnostics
+        run: python verification/check_unity_package.py
+      - name: Pure package APIs on .NET Standard 2.1 / C# 8 (no Unity assemblies)
+        run: dotnet build verification/unity-compatibility/UnityCompatibility.csproj --configuration Release
+      - name: Caller-owned runtime and fresh scoped compile evidence (portable; no Unity execution)
+        run: dotnet run --project verification/unity-boundary/UnityBoundary.csproj --configuration Release
+
   native-consumer:
     strategy:
       fail-fast: false

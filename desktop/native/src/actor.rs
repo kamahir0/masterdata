@@ -1136,10 +1136,7 @@ fn execute(
         Intent::Undo { source, redo } => convert(w.undo(&source, redo)?),
         Intent::Save { table, source } => convert(w.save_table(&table, source.as_deref())?),
         Intent::SaveAll => convert(w.save_all()?),
-        Intent::Compare { source } => {
-            let (identity, before, after) = w.compare(&source)?;
-            Ok(json!({"source":source,"identity":identity,"before":before,"after":after}))
-        }
+        Intent::Compare { source } => convert(w.compare(&source)?),
         Intent::Overwrite { source, identity } => convert(w.overwrite(&source, &identity)?),
         Intent::ReloadSource { source } => {
             w.reload_source(&source)?;

@@ -912,11 +912,11 @@ function CompareModal({ s }: { s: Surface }) {
           />
           <div className="compare-panes">
             <label>
-              {c.migration ? "レビューしたsource" : "現在のdisk"}
+              {c.migration ? "レビューしたsource" : c.conflict ? "現在のdisk" : "編集元のsource"}
               <Input.TextArea
-                aria-label="Current disk source"
+                aria-label={c.migration ? "Reviewed source" : c.conflict ? "Current disk source" : "Editing base source"}
                 readOnly
-                value={c.before}
+                value={c.migration || c.conflict ? c.before : c.base}
               />
             </label>
             <label>

@@ -35,6 +35,7 @@ export type Choice = {
 export type Compare = {
   source: string;
   identity: string;
+  base: string;
   before: string;
   after: string;
   conflict: boolean;
@@ -614,7 +615,7 @@ class Desktop {
     this.samples.push(sample);
     if (!this.evidence && this.samples.length > (this.inputCapture?8192:256)) {this.samples.shift();this.droppedSamples++;}
     this.currentSample = sample;
-    if (!same) this.interact({ focusIntent: this.interaction.focusIntent + 1 });
+    if (!same) {this.comparisonRequest++;this.interact({ focusIntent: this.interaction.focusIntent + 1 });}
     flushSync(() =>
       this.publish({
         target: path,
@@ -1382,30 +1383,30 @@ class Desktop {
       await this.openProject(inventory.root, result === "discard");
   };
   async compare(source?: string) {
+    const request=++this.comparisonRequest;
     const previous = this.surface.projection;
     if (!previous || !(await this.commit())) return;
-    const p = this.currentFor(previous);
-    if (!p) return;
+    const p = this.surface.projection;
+    if (request!==this.comparisonRequest || !p || this.surface.pending || p.sessionEpoch!==previous.sessionEpoch ||
+      p.clicked!==previous.clicked || p.source!==previous.source) return;
+    const selection=this.token;
     const path = source ?? (p.dirty && p.source ? p.source : p.table.source);
     try {
-      const r = await this.rpc<{
-        identity: string;
-        before: string;
-        after: string;
-      }>({ kind: "compare", epoch: p.sessionEpoch, source: path });
-      if (this.currentFor(p))
+      const r = await this.rpc<Compare>({ kind: "compare", epoch: p.sessionEpoch, source: path });
+      if (request===this.comparisonRequest && selection===this.token && this.currentFor(p))
         this.publish({
-          comparison: { source: path, ...r.data, conflict: p.conflict },
+          comparison: r.data,
         });
     } catch (e) {
-      if (this.currentFor(p)) this.showError(e);
+      if (request===this.comparisonRequest && selection===this.token && this.currentFor(p)) this.showError(e);
     }
   }
-  closeCompare = () => this.publish({ comparison: null });
+  private comparisonRequest=0;
+  closeCompare = () => {this.comparisonRequest++;this.publish({ comparison: null });};
   async migrationCompare(token: string, source: string, sources: string[]) {
-    const epoch=this.surface.status.epoch;
+    const request=++this.comparisonRequest,epoch=this.surface.status.epoch,selection=this.token;
     const r=await this.rpc<[string,string]>({kind:"migrationCompare",epoch,token,source});
-    if(epoch===this.surface.status.epoch) this.publish({comparison:{source,identity:"",before:r.data[0],after:r.data[1],conflict:false,migration:{token,sources}}});
+    if(request===this.comparisonRequest&&epoch===this.surface.status.epoch&&selection===this.token) this.publish({comparison:{source,identity:"",base:r.data[0],before:r.data[0],after:r.data[1],conflict:false,migration:{token,sources}}});
   }
   async recoverMigration(id: string, restoreOld: boolean) {
     const epoch=this.surface.status.epoch;

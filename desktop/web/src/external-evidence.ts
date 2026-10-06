@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { desktop } from "./workspace";
+import type { Reply } from "./types";
 
 const SOURCE = "sources/catalog-data.yaml";
 const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -53,6 +54,46 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     await until(() => desktop.surface.projection?.conflict === true && !desktop.surface.pending, "dirty source did not become Conflict");
     assert(name() === "unfinished input" && desktop.surface.projection!.canUndo, "Conflict discarded local draft/history");
     checks.push("dirty-conflict");
+    await desktop.compare(SOURCE);
+    await until(() => {
+      const compared=desktop.surface.comparison;
+      return !!compared?.conflict && document.querySelector<HTMLTextAreaElement>('[aria-label="Current disk source"]')?.value===compared.before;
+    },"Conflict comparison did not identify the current external source");
+    assert(desktop.surface.comparison!.base!==desktop.surface.comparison!.before,
+      "Conflict comparison lost the distinct editing base");
+    await desktop.compare("sources/catalog-schema.yaml");
+    await until(() => {
+      const compared=desktop.surface.comparison;
+      return compared?.source==="sources/catalog-schema.yaml" && !compared.conflict &&
+        document.querySelector<HTMLTextAreaElement>('[aria-label="Editing base source"]')?.value===compared.base;
+    },"clean physical source inherited another source's Conflict / external comparison");
+    assert(![...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].some(button=>button.textContent?.includes('Overwrite')),
+      "another physical source's Conflict exposed Overwrite");
+    checks.push("compare-isolates-physical-source");
+    const transport=desktop.rpc;
+    let observed=false,release!:()=>void,paused=new Promise<void>(resolve=>release=resolve);
+    // Delay delivery only after Rust has captured the actual source result.
+    // Exercise popup publication independently of host response ordering.
+    desktop.rpc=async<T>(intent:Record<string,unknown>)=>{
+      const reply=await transport.call(desktop,intent) as Reply<T>;
+      if(intent.kind==='compare'&&intent.source==='sources/catalog-schema.yaml'){observed=true;await paused;}
+      return reply;
+    };
+    try {
+      const old=desktop.compare('sources/catalog-schema.yaml');
+      await until(()=>observed,'comparison reply was not captured');
+      await desktop.compare(SOURCE);
+      release();await old;
+      assert(desktop.surface.comparison?.source===SOURCE&&desktop.surface.comparison.conflict,
+        'old comparison replaced the latest physical source');
+      observed=false;paused=new Promise<void>(resolve=>release=resolve);
+      const closing=desktop.compare('sources/catalog-schema.yaml');
+      await until(()=>observed,'closing comparison reply was not captured');
+      desktop.closeCompare();release();await closing;
+      assert(!desktop.surface.comparison,'late comparison reopened a closed surface');
+    } finally {release();desktop.rpc=transport;}
+    await until(()=>!document.querySelector('[aria-label="Current disk source"]'),"comparison did not close");
+    checks.push("obsolete-compare-cannot-replace-or-reopen");
     desktop.setSelection(0, desktop.surface.projection!.columns.findIndex(c => c.field.name === "name"));
     desktop.beginEditor();
     await until(() => !!document.querySelector(".active-cell-editor input"), "temporary input missing");

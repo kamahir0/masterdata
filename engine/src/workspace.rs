@@ -142,6 +142,15 @@ impl Draft {
     }
 }
 #[derive(Clone, Debug, Serialize)]
+pub struct SourceComparison {
+    pub source: String,
+    pub identity: String,
+    pub base: String,
+    pub before: String,
+    pub after: String,
+    pub conflict: bool,
+}
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceViewState {
     pub search: String,
@@ -1400,18 +1409,24 @@ impl Workspace {
         }
         Ok(results)
     }
-    pub fn compare(&mut self, path: &str) -> Result<(String, String, String)> {
+    pub fn compare(&mut self, path: &str) -> Result<SourceComparison> {
         let actual = native::capture(&self.read.root, &self.read.roots, path)?;
         let d = self
             .drafts
             .get_mut(path)
             .ok_or_else(|| Error::new("E-DRAFT-MISSING", path))?;
         d.external = Some(actual.clone());
-        Ok((
-            actual.content,
-            actual.bytes.to_string(),
-            d.document.bytes.to_string(),
-        ))
+        // Editing base and current external bytes can differ. Their identity
+        // comparison belongs to this physical source, never the Table's
+        // aggregate Conflict state or a frontend reconstruction.
+        Ok(SourceComparison {
+            source: path.to_string(),
+            conflict: !d.base.matches(&actual),
+            identity: actual.content,
+            base: d.base.bytes.to_string(),
+            before: actual.bytes.to_string(),
+            after: d.document.bytes.to_string(),
+        })
     }
     pub fn overwrite(&mut self, path: &str, reviewed_identity: &str) -> Result<WriteResult> {
         if self.recovery_required || native::has_pending_recovery(&self.read.root)? {

@@ -68,6 +68,8 @@ def check_external(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused']
     assert report['checks'] == ['clean-auto-refresh', 'unrelated-change-preserves-input', 'dirty-conflict',
+                                'compare-isolates-physical-source',
+                                'obsolete-compare-cannot-replace-or-reopen',
                                 'changed-context-holds-input', 'invalid-and-repair-preserve-draft',
                                 'missing-dependency-refresh', 'native-close-cancel-preserves-input']
     assert report['dirty'] == ['sources/catalog-data.yaml'] and report['conflict']

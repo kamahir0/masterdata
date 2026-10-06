@@ -304,7 +304,7 @@ fn overwrite_rechecks_reviewed_file_identity_and_keeps_the_draft_on_conflict() {
         w.save_table("item", Some("sources/data.yaml")).unwrap()[0].outcome,
         Outcome::Conflict
     );
-    let (reviewed, _, _) = w.compare("sources/data.yaml").unwrap();
+    let reviewed = w.compare("sources/data.yaml").unwrap().identity;
     // Identical bytes in a replaced file still have a different physical identity.
     let replacement = tempfile::NamedTempFile::new_in(path.parent().unwrap()).unwrap();
     fs::write(replacement.path(), external).unwrap();
@@ -316,12 +316,61 @@ fn overwrite_rechecks_reviewed_file_identity_and_keeps_the_draft_on_conflict() {
     assert!(w.drafts["sources/data.yaml"].dirty());
     assert!(w.drafts["sources/data.yaml"].can_undo());
     assert_eq!(fs::read_to_string(&path).unwrap(), external);
-    let (reviewed, _, candidate) = w.compare("sources/data.yaml").unwrap();
+    let comparison = w.compare("sources/data.yaml").unwrap();
     assert_eq!(
-        w.overwrite("sources/data.yaml", &reviewed).unwrap().outcome,
+        w.overwrite("sources/data.yaml", &comparison.identity)
+            .unwrap()
+            .outcome,
         Outcome::Success
     );
-    assert_eq!(fs::read_to_string(path).unwrap(), candidate);
+    assert_eq!(fs::read_to_string(path).unwrap(), comparison.after);
+}
+
+#[test]
+fn comparison_preserves_editing_base_and_fresh_external_scope_without_mutation() {
+    let temp = tempfile::tempdir().unwrap();
+    copy(&oracle().join("save-both/input"), temp.path());
+    let source = "sources/data.yaml";
+    let schema = "sources/schema.yaml";
+    let path = temp.path().join(source);
+    let base = fs::read_to_string(&path).unwrap();
+    let schema_base = fs::read_to_string(temp.path().join(schema)).unwrap();
+    let mut w = Workspace::open(temp.path()).unwrap();
+    let p = w.select(source, 0, 32).unwrap();
+    w.edit_text(source, p.revision, &p.rows[0].id, "note", "draft")
+        .unwrap();
+    let candidate = base.replace("'old'", "'draft'");
+    assert_ne!(candidate, base);
+    let ordinary = w.compare(source).unwrap();
+    assert!(!ordinary.conflict);
+    assert_eq!(ordinary.base, base);
+    assert_eq!(ordinary.before, base);
+    assert_eq!(ordinary.after, candidate);
+
+    // No watcher or selection refresh has observed this external change. A
+    // comparison must still capture the real bytes and isolate its own scope.
+    let external = "kind: [unfinished\n# external source\n";
+    fs::write(&path, external).unwrap();
+    let changed = w.compare(source).unwrap();
+    assert!(changed.conflict);
+    assert_eq!(changed.base, base);
+    assert_eq!(changed.before, external);
+    assert_eq!(changed.after, candidate);
+    let other = w.compare(schema).unwrap();
+    assert!(
+        !other.conflict,
+        "another physical source inherited Conflict"
+    );
+    assert_eq!(other.base, schema_base);
+    assert_eq!(other.before, schema_base);
+    assert_eq!(other.after, schema_base);
+    assert_eq!(fs::read_to_string(path).unwrap(), external);
+    assert_eq!(
+        fs::read_to_string(temp.path().join(schema)).unwrap(),
+        schema_base
+    );
+    assert_eq!(w.dirty_paths(), vec![source]);
+    assert!(w.drafts[source].can_undo());
 }
 
 #[test]

@@ -80,8 +80,8 @@ fn precommit_failure_and_unknown_keep_draft_history_and_never_retry() {
                 w.save_all().is_err(),
                 "navigation cannot authorize automatic retry"
             );
-            let (_, observed, _) = w.compare("sources/data.yaml").unwrap();
-            assert_eq!(observed.as_bytes(), candidate);
+            let observed = w.compare("sources/data.yaml").unwrap();
+            assert_eq!(observed.before.as_bytes(), candidate);
         }
     }
 }

@@ -122,7 +122,10 @@ export function ProjectSettings({s}:{s:Surface}) {
     origin.current=document.querySelector<HTMLButtonElement>('button[aria-label="Project menu"]');openingIntent.current=desktop.inputIntent;
     void read();
   },[s.settingsOpen,s.status.epoch,read]);
-  useEffect(()=>{if(s.settingsOpen&&s.inventory&&!running.current)void read();},[s.status.configIdentity,s.status.externalVersion,read]);
+  // External status can arrive after ConfigEdit publishes dirty but before its
+  // reply settles. Revisit the notification after busy clears; dropping it
+  // would leave Conflict hidden behind a stale editable config projection.
+  useEffect(()=>{if(s.settingsOpen&&s.inventory&&!running.current)void read();},[s.status.configIdentity,s.status.externalVersion,busy,read]);
   useLayoutEffect(()=>{if(typing&&s.settingsOpen){const captured=epoch.current,t=typing;requestAnimationFrame(()=>{if(epoch.current===captured&&active.current===t&&desktop.surface.settingsOpen)(t.kind==="profile"||t.kind==="target"?formInput:input).current?.focus({cursor:"end"});});}},[typing?.kind,typing&&"index" in typing?typing.index:null,typing&&typing.kind==="tag"?typing.exclude:null,newItem,s.settingsOpen]);
   // A committed input unmounts, and the trigger may still be disabled while
   // the modal closes. Restore only after both finish, without stealing a newer

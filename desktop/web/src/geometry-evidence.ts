@@ -1,5 +1,5 @@
 import {invoke} from "@tauri-apps/api/core";
-import {desktop} from "./workspace";
+import {desktop,GRID} from "./workspace";
 const SOURCE='sources/a-1.yaml';
 const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
 async function until(test:()=>boolean,message:string){const deadline=performance.now()+8000;while(!test()){if(performance.now()>deadline)throw new Error(message);await frame();}}
@@ -46,9 +46,28 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     const row=viewport.querySelector<HTMLElement>('[aria-rowindex="2"] [role="rowheader"]')!;
     unobstructed(row,'rowheader');
     assert(input===document.activeElement&&document.querySelectorAll('.active-cell-editor').length===1,'scroll lost or duplicated active input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'123456');
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    const editor=desktop.interaction.editor;
+    viewport.scrollLeft=0;viewport.scrollTop=100*GRID.row;
+    await until(()=>!!document.getElementById('cell-100-0'),'scrolling with temporary input left a blank viewport');
+    assert(document.activeElement===input&&input.value==='123456'&&desktop.interaction.editor===editor&&
+      document.querySelectorAll('.active-cell-editor').length===1&&viewport.querySelectorAll('.grid-row').length<=64,
+      'scrolling lost temporary input / occurrence / focus or exceeded bounded rendering');
+    assert(!desktop.surface.status.dirty.length&&!desktop.surface.projection!.canUndo,'scrolling committed temporary input');
+    viewport.scrollTop=0;
+    await until(()=>!!document.getElementById('cell-0-0'),'returning to the editing occurrence failed');
+    await frame();
+    const cellRect=document.getElementById('cell-0-0')!.getBoundingClientRect(),inputRect=input.getBoundingClientRect();
+    assert(Math.abs(cellRect.left-inputRect.left)<=2&&Math.abs(cellRect.top-inputRect.top)<=2&&document.activeElement===input,
+      'active input did not follow its cell / preserve focus after scroll');
     input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     await until(()=>!document.querySelector('.active-cell-editor'),'Escape retained the editor');
+    await frame();
+    assert(!desktop.surface.status.dirty.length&&!desktop.surface.projection!.canUndo&&
+      document.getElementById('cell-0-0')!.textContent==='2000','Escape / blur committed temporary input');
     checks.push('sticky-row-context-occludes-active-editor');
+    checks.push('scroll-preserves-temporary-input-and-escape-discards');
     viewport.scrollLeft=viewport.scrollWidth-viewport.clientWidth;
     viewport.scrollTop=viewport.scrollHeight-viewport.clientHeight;
     await until(()=>!!document.getElementById('cell-1999-19'),'last row / column did not become visible');
@@ -70,8 +89,12 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     assert(combo,'last field control missing');combo.focus();combo.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',keyCode:40,which:40,bubbles:true}));
     await until(()=>!!document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option'),'type popup not visible');
     const option=document.querySelector<HTMLElement>('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')!;
-    const rect=option.getBoundingClientRect(),found=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
-    assert(found?.closest('.ant-select-dropdown')===option.closest('.ant-select-dropdown'),'sticky layer obstructed contextual popup');
+    // Portal mounting precedes placement / interactive motion. DOM existence
+    // alone cannot prove that the option has reached its usable hit area.
+    await until(()=>{
+      const rect=option.getBoundingClientRect(),found=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+      return found?.closest('.ant-select-dropdown')===option.closest('.ant-select-dropdown');
+    },'sticky layer obstructed contextual popup');
     combo.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,which:27,bubbles:true}));
     await until(()=>!document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)'),'Escape did not close popup');
     checks.push('contextual-popup-remains-interactive');

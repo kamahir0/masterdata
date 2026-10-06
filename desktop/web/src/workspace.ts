@@ -934,8 +934,7 @@ class Desktop {
       !p ||
       !v ||
       this.surface.pending ||
-      this.surface.queryPending ||
-      this.interaction.editor
+      this.surface.queryPending
     )
       return;
     const start = Math.max(

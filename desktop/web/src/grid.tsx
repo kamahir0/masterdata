@@ -256,8 +256,8 @@ export const AuthoringGrid = memo(function AuthoringGrid({
           </div>
         </div>
         <SelectionOverlay projection={p} />
-        <ActiveEditor />
       </div>
+      <ActiveEditor pending={pending || !p} />
       <GridMenu
         target={menu}
         close={() => {
@@ -585,7 +585,7 @@ function SelectionOverlay({
     </>
   );
 }
-function ActiveEditor() {
+function ActiveEditor({pending}:{pending:boolean}) {
   const { editor } = useSyncExternalStore(
     desktop.subscribeInteraction,
     desktop.interactionSnapshot,
@@ -594,16 +594,30 @@ function ActiveEditor() {
     <CellInput
       key={`${editor.epoch}:${editor.source}:${editor.row}:${editor.field}`}
       editor={editor}
+      pending={pending}
     />
   ) : null;
 }
-function CellInput({ editor }: { editor: Editor }) {
+function CellInput({ editor, pending }: { editor: Editor; pending:boolean }) {
   const input = useRef<InputRef>(null),
+    element = useRef<HTMLDivElement>(null),
     value = useRef(editor.initial),
     composing = useRef(false),
+    cancelled = useRef(false),
     committing = useRef<Promise<boolean> | null>(null);
   const [text, setText] = useState(editor.initial);
+  useLayoutEffect(() => {
+    // A textbox directly under role=grid is pruned from WebKit's native AX
+    // tree. Keep the one editor outside the grid's row hierarchy and outside
+    // virtualized row ownership, so scrolling cannot destroy its input session.
+    // https://www.w3.org/WAI/ARIA/apg/patterns/grid/
+    const viewport=desktop.viewport;
+    const position=()=>{if(element.current&&viewport)element.current.style.transform=`translate(${-viewport.scrollLeft}px, ${-viewport.scrollTop}px)`;};
+    position();viewport?.addEventListener('scroll',position,{passive:true});
+    return ()=>viewport?.removeEventListener('scroll',position);
+  }, []);
   const commit = useCallback(() => {
+    if (cancelled.current) return Promise.resolve(true);
     if (composing.current) return Promise.resolve(false);
     if (committing.current) return committing.current;
     committing.current = desktop.edit(editor, value.current).finally(() => {
@@ -611,15 +625,25 @@ function CellInput({ editor }: { editor: Editor }) {
     });
     return committing.current;
   }, [editor]);
+  const cancel = useCallback(() => {
+    // React removes the input after this event. Restoring grid focus can blur
+    // it first, so cancellation must precede any blur-driven commit.
+    cancelled.current = true;
+    desktop.closeEditor();
+  }, []);
   useLayoutEffect(() => {
-    const unbind = desktop.bindEditor(commit, () => ({ source: editor.source, revision: editor.revision, generation: editor.generation, label: `${editor.field} · Row ${editor.rowIndex + 1}`, text: value.current, dirty: value.current !== editor.initial, cancel: desktop.closeEditor }));
-    input.current?.focus({ cursor: "all" });
+    const unbind = desktop.bindEditor(commit, () => ({ source: editor.source, revision: editor.revision, generation: editor.generation, label: `${editor.field} · Row ${editor.rowIndex + 1}`, text: value.current, dirty: value.current !== editor.initial, cancel }));
+    input.current?.focus({ cursor: "all", preventScroll:true });
     return unbind;
-  }, [commit]);
+  }, [commit, cancel]);
   return (
     <div
+      ref={element}
       className="active-cell-editor"
+      aria-hidden={pending}
+      inert={pending}
       style={{
+        visibility: pending ? "hidden" : undefined,
         top: GRID.header + editor.rowIndex * GRID.row,
         left: GRID.identity + editor.column * GRID.column,
         width: GRID.column,
@@ -653,7 +677,7 @@ function CellInput({ editor }: { editor: Editor }) {
           if (e.nativeEvent.isComposing || composing.current) return;
           if (e.key === "Escape") {
             e.preventDefault();
-            desktop.closeEditor();
+            cancel();
             desktop.viewport?.focus();
           } else if (e.key === "Enter" || e.key === "Tab") {
             e.preventDefault();

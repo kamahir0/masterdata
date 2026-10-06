@@ -213,7 +213,8 @@ def check_geometry(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused']
     assert report['checks'] == ['header-name-handle-action-separate', 'sticky-corner-occludes-scrolled-controls',
-                               'sticky-row-context-occludes-active-editor', 'long-wide-sticky-context-and-exact-value',
+                               'sticky-row-context-occludes-active-editor', 'scroll-preserves-temporary-input-and-escape-discards',
+                               'long-wide-sticky-context-and-exact-value',
                                'contextual-popup-remains-interactive']
     assert report['mountedRows'] <= 64 and not report['dirty'] and not report['startup']['browserErrors']
     return {'checks': len(report['checks']), 'stickyHitAreasProtected': True}

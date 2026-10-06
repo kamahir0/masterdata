@@ -181,7 +181,8 @@ def check_settings(report):
 def check_project(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused']
-    assert report['checks'] == ['welcome-create-cancel-focus', 'welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen', 'create-all-dirty-guard-cancel',
+    assert report['checks'] == ['welcome-create-cancel-focus', 'welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen',
+                               'source-only-tree-contextual-find-cancel', 'contextual-find-type-table-warm-zero', 'create-all-dirty-guard-cancel',
                                'create-form-cancel-composition', 'nonempty-failure-retains-workspace',
                                'unknown-creation-reply-explicit-open', 'guided-schema-explicit-no-record-source',
                                'explicit-data-logical-navigation-shared-draft', 'recent-canonical-root-order-dedup']
@@ -238,6 +239,8 @@ def run(binary: Path, output: Path, case: str):
                 config.write_text(config.read_text(encoding='utf-8') + '\n[build.profiles.development]\ninclude_tags = ["development"]\n', encoding='utf-8')
             if case == 'external':
                 (project / 'sources/unrelated-data.yaml').write_text('kind: data\ntable: item\nrecords: []\n', encoding='utf-8')
+                for file in [data, project / 'sources/catalog-schema.yaml']:
+                    file.write_bytes(file.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
             if case == 'path':
                 (project / 'sources/moved').mkdir()
             if case == 'type':
@@ -402,6 +405,12 @@ def run(binary: Path, output: Path, case: str):
                         assert (project / 'delivery/generated' / entry['path']).read_bytes() == canonical.read_bytes()
                     assert all((project / path).read_bytes() == value for path, value in initial_sources.items() if path != Path('sources/catalog-data.yaml')), 'delivery changed source'
                 if case == 'external':
+                    initial = initial_sources[Path('sources/catalog-data.yaml')]
+                    comparison = report['sourceComparison']
+                    clean = initial.replace(b'name: Debug Sword', b'name: Outside clean')
+                    assert comparison['base'].encode('utf-8') == clean, 'Compare changed exact editing base bytes'
+                    assert comparison['before'].encode('utf-8') == initial.replace(b'name: Debug Sword', b'name: Outside dirty'), 'Compare did not capture exact external bytes'
+                    assert comparison['after'].encode('utf-8') == clean.replace(b'name: Outside clean', b'name: unfinished input'), 'Compare normalized / changed non-target candidate bytes'
                     expected = initial_sources[Path('sources/catalog-data.yaml')].replace(b'name: Debug Sword', b'name: Outside restored')
                     assert (project / 'sources/catalog-data.yaml').read_bytes() == expected, 'local draft silently overwrote external source'
                 elif case == 'path':

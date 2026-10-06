@@ -364,12 +364,18 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   );
 }
 function Explorer({ s }: { s: Surface }) {
-  const logicalTargets=useMemo(()=>new Map<string,string>([
-    ...s.inventory!.logicalTables.map(table=>[`logical:table:${table.name}`,table.source] as const),
-    ...s.inventory!.logicalTypes.map(type=>[`logical:type:${type.name}`,type.source] as const),
-  ]),[s.inventory]);
+  const findOptions=useMemo(()=>[
+    ...s.inventory!.logicalTables.map(table=>({value:table.source,label:`Table · ${table.name} — ${table.source}`})),
+    ...s.inventory!.logicalTypes.map(type=>({value:type.source,label:`Type · ${type.name} — ${type.source}`})),
+  ],[s.inventory]);
+  const [findEpoch,setFindEpoch]=useState<number|null>(null);
+  const findRestore=useRef<{input:number;epoch:number;target:string}|null>(null);
+  const closeFind=()=>{
+    findRestore.current={input:desktop.inputIntent,epoch:s.status.epoch,target:s.target};
+    setFindEpoch(null);
+  };
   const [expanded, setExpanded] = useState(true);
-  const [keys,setKeys]=useState<string[]>(()=>["logical:tables","logical:types",...s.inventory!.folders.map(p=>`folder:${p||"."}`)]);
+  const [keys,setKeys]=useState<string[]>(()=>s.inventory!.folders.map(p=>`folder:${p||"."}`));
   const [selected,setSelected]=useState(s.target);
   const [activeKey,setActiveKey]=useState<string|null>(null);
   const activeItem=useRef<string|null>(null);
@@ -379,9 +385,9 @@ function Explorer({ s }: { s: Surface }) {
   const [focusRequest,setFocusRequest]=useState<{key:string;intent:number}|null>(null);
   const tree=useRef<ComponentRef<typeof Tree>>(null);
   const container=useRef<HTMLElement|null>(null);
-  useEffect(()=>setSelected(current=>logicalTargets.get(current)===s.target?current:s.target),[s.target,logicalTargets]);
+  useEffect(()=>setSelected(s.target),[s.target]);
   const ancestors=(path:string)=>path.split("/").map((_,i,parts)=>`folder:${parts.slice(0,i+1).join("/")||"."}`);
-  const creation=useCreation(s.inventory!,s.status.epoch,logicalTargets.get(selected)||selected||s.target,async(path,folder,inputIntent)=>{
+  const creation=useCreation(s.inventory!,s.status.epoch,selected||s.target,async(path,folder,inputIntent)=>{
     if(inputIntent!==desktop.inputIntent)return;
     const key=folder?`folder:${path}`:path;
     setKeys(old=>[...new Set([...old,...ancestors(folder?path:path.split("/").slice(0,-1).join("/"))])]);
@@ -396,15 +402,21 @@ function Explorer({ s }: { s: Surface }) {
   const createFromGuide=useRef(creation.begin);createFromGuide.current=creation.begin;
   const creationReady=creation.ready&&!creation.draft&&!s.status.recoveryRequired&&!s.status.environmentError;
   useEffect(()=>creationReady?desktop.bindSourceCreation(category=>createFromGuide.current(category)):undefined,[creationReady,s.status.epoch]);
-  useEffect(()=>{setKeys(["logical:tables","logical:types",...s.inventory!.folders.map(path=>`folder:${path||"."}`)]);activate(null);setFocusRequest(null);},[s.status.epoch]);
+  useEffect(()=>{setKeys(s.inventory!.folders.map(path=>`folder:${path||"."}`));activate(null);setFocusRequest(null);setFindEpoch(null);findRestore.current=null;},[s.status.epoch]);
   const pathMutation=useSourcePath(s.status.epoch,(source,destination,inputIntent)=>{
     setKeys(old=>[...new Set([...old,...ancestors(destination.split("/").slice(0,-1).join("/"))])]);
     if(inputIntent!==desktop.inputIntent)return;
     setSelected(old=>old===source?destination:old);
     activate(destination);setFocusRequest({key:destination,intent:inputIntent});
   });
-  const selectedSource=logicalTargets.get(selected)||selected;
-  const sourceItems:MenuProps={items:[{key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selectedSource||selectedSource.startsWith("folder:")||selectedSource.startsWith("logical:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selectedSource)}],onClick:()=>void pathMutation.begin(selectedSource)};
+  const selectedSource=selected;
+  const sourceItems:MenuProps={items:[
+    {key:"find",label:"Find Table / Type…",icon:<SearchOutlined/>,disabled:!findOptions.length||!!creation.draft||pathMutation.open},
+    {key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selectedSource||selectedSource.startsWith("folder:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selectedSource)},
+  ],onClick:({key})=>{
+    if(key==="find"){findRestore.current=null;setFindEpoch(s.status.epoch);}
+    else void pathMutation.begin(selectedSource);
+  }};
   useLayoutEffect(()=>{
     if(!focusRequest)return;
     const frame=requestAnimationFrame(()=>{
@@ -444,18 +456,15 @@ function Explorer({ s }: { s: Surface }) {
       });
     }
     if(creation.draft)ensureFolder(creation.draft.folder).push({key:"creation:temporary",title:creation.draft.filename,isLeaf:true,selectable:false});
-    const logical:TreeDataNode[]=[];
-    if(s.inventory!.logicalTables.length)logical.push({key:"logical:tables",title:"Tables",icon:<DatabaseOutlined/>,selectable:false,children:s.inventory!.logicalTables.map(table=>({key:`logical:table:${table.name}`,title:table.name,icon:<DatabaseOutlined/>,isLeaf:true}))});
-    if(s.inventory!.logicalTypes.length)logical.push({key:"logical:types",title:"Types",icon:<BuildOutlined/>,selectable:false,children:s.inventory!.logicalTypes.map(type=>({key:`logical:type:${type.name}`,title:type.name,icon:<BuildOutlined/>,isLeaf:true}))});
-    return [...logical,...roots];
+    return roots;
   }, [s.inventory,creation.draft?.folder,creation.draft?.filename,creation.draft?.id]);
   return (
     <aside id="explorer" ref={container} onKeyDownCapture={event=>{
       if(event.key!=="Enter"||event.altKey||event.metaKey||event.ctrlKey)return;
       if(!(event.target instanceof Element)||!event.target.closest('[role="tree"]')||event.target.closest('input,textarea,[contenteditable=true]'))return;
       if(event.nativeEvent.isComposing){event.stopPropagation();return;}
-      const key=activeItem.current??selected,source=logicalTargets.get(key)||key;
-      if(!source||source.startsWith('folder:')||source.startsWith('logical:'))return;
+      const key=activeItem.current??selected,source=key;
+      if(!source||source.startsWith('folder:'))return;
       event.preventDefault();event.stopPropagation();
       setSelected(key);activate(key);
       void desktop.selectTarget(source).catch(desktop.showError);
@@ -494,40 +503,60 @@ function Explorer({ s }: { s: Surface }) {
           onExpand={next=>setKeys(next.map(String))}
           selectedKeys={[selected]}
           onRightClick={({node})=>{const key=String(node.key);setSelected(key);activate(key);}}
-          onKeyDown={event=>{if(event.key==="F2"&&!event.nativeEvent.isComposing){event.preventDefault();if(selectedSource&&!selectedSource.startsWith("folder:")&&!selectedSource.startsWith("logical:"))void pathMutation.begin(selectedSource);}}}
+          onKeyDown={event=>{if(event.key==="F2"&&!event.nativeEvent.isComposing){event.preventDefault();if(selectedSource&&!selectedSource.startsWith("folder:"))void pathMutation.begin(selectedSource);}}}
           onSelect={(_keys,info) => {
             // Ant reports [] when the already selected node is clicked. The
             // clicked node still owns keyboard intent, including after Arrow
             // navigation to a different active item. Keep a single selection.
             const key=String(info.node.key);setSelected(key);activate(key);
-            const source=logicalTargets.get(key)||key;
-            if(!source.startsWith("folder:")&&!source.startsWith("logical:")&&
+            const source=key;
+            if(!source.startsWith("folder:")&&
               (source!==s.target||s.pending||(!s.projection&&!s.typeProjection)))void desktop.selectTarget(source).catch(desktop.showError);
           }}
           titleRender={(node) => node.key==="creation:temporary"?creation.inline:(
             <span
               className="source"
               title={String(node.key)}
-              data-path={logicalTargets.get(String(node.key))||node.key}
+              data-path={node.key}
             >
               {String(node.title)}
               <span
                 className="source-dirty"
                 role="img"
-                aria-hidden={!s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key))}
+                aria-hidden={!s.status.dirty.includes(String(node.key))}
                 aria-label={
-                  s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key))
+                  s.status.dirty.includes(String(node.key))
                     ? "未保存"
                     : undefined
                 }
               >
-                {s.status.dirty.includes(logicalTargets.get(String(node.key))||String(node.key)) ? "●" : ""}
+                {s.status.dirty.includes(String(node.key)) ? "●" : ""}
               </span>
             </span>
           )}
         />
         </Dropdown>
       )}
+      <Modal title="Find Table / Type" open={findEpoch===s.status.epoch} onCancel={closeFind}
+        footer={null} width={640} destroyOnHidden focusable={{focusTriggerAfterClose:false}}
+        afterOpenChange={open=>{
+          const request=findRestore.current,current=desktop.surface;
+          if(open||!request||request.input!==desktop.inputIntent||request.epoch!==current.status.epoch||request.target!==current.target||current.openingProject||current.projectCreation)return;
+          container.current?.querySelector<HTMLElement>('[role="tree"]')?.focus();
+        }}>
+        <Select<string> aria-label="Find Table or Type" autoFocus showSearch={{optionFilterProp:"label"}}
+          placeholder="Table / Type名を検索" style={{width:"100%"}} options={findOptions} value={undefined}
+          onSelect={source=>{
+            if(findEpoch!==desktop.surface.status.epoch)return;
+            findRestore.current=null;setFindEpoch(null);setExpanded(true);
+            setKeys(old=>[...new Set([...old,...ancestors(source.split("/").slice(0,-1).join("/"))])]);
+            setSelected(source);activate(source);
+            // Logical names resolve through shared inventory; the selected
+            // physical source still owns the buffer and the Explorer row.
+            void desktop.selectTarget(source).catch(desktop.showError);
+            document.getElementById('editor-pane')?.focus({preventScroll:true});
+          }}/>
+      </Modal>
       {creation.modal}
       {pathMutation.modal}
     </aside>

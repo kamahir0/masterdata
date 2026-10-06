@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { desktop } from "./workspace";
+import { desktop, type Compare } from "./workspace";
 import type { Reply } from "./types";
 
 const SOURCE = "sources/catalog-data.yaml";
@@ -20,11 +20,16 @@ function text(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 const name = () => desktop.surface.projection?.rows[0]?.cells.find((_cell, i) => desktop.surface.projection?.columns[i].field.name === "name")?.display;
+// Textarea's API value uses LF, even when its raw input contains CRLF. Only
+// this presentation assertion adapts it; Rust / disk evidence stays exact.
+// https://html.spec.whatwg.org/multipage/form-elements.html#the-textarea-element
+const textAreaValue = (bytes: string) => bytes.replace(/\r\n?/g, "\n");
 async function phase(phase: string) {
   await invoke("evidence_write", { report: { phase } });
 }
 export async function run({ startup }: { startup: Record<string, unknown> }) {
   const checks: string[] = [];
+  let sourceComparison: Compare | null = null;
   try {
     await until(() => !!desktop.surface.inventory, "Project not open");
     await desktop.selectTarget(SOURCE, "external-setup", false);
@@ -57,15 +62,19 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     await desktop.compare(SOURCE);
     await until(() => {
       const compared=desktop.surface.comparison;
-      return !!compared?.conflict && document.querySelector<HTMLTextAreaElement>('[aria-label="Current disk source"]')?.value===compared.before;
+      return !!compared?.conflict && document.querySelector<HTMLTextAreaElement>('[aria-label="Current disk source"]')?.value===textAreaValue(compared.before) &&
+        document.querySelector<HTMLTextAreaElement>('[aria-label="Save candidate"]')?.value===textAreaValue(compared.after);
     },"Conflict comparison did not identify the current external source");
+    sourceComparison=desktop.surface.comparison!;
+    assert([sourceComparison.base,sourceComparison.before,sourceComparison.after].every(bytes=>bytes.includes('\r\n')),
+      "comparison payload normalized the arranged physical source's CRLF");
     assert(desktop.surface.comparison!.base!==desktop.surface.comparison!.before,
       "Conflict comparison lost the distinct editing base");
     await desktop.compare("sources/catalog-schema.yaml");
     await until(() => {
       const compared=desktop.surface.comparison;
       return compared?.source==="sources/catalog-schema.yaml" && !compared.conflict &&
-        document.querySelector<HTMLTextAreaElement>('[aria-label="Editing base source"]')?.value===compared.base;
+        document.querySelector<HTMLTextAreaElement>('[aria-label="Editing base source"]')?.value===textAreaValue(compared.base);
     },"clean physical source inherited another source's Conflict / external comparison");
     assert(![...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].some(button=>button.textContent?.includes('Overwrite')),
       "another physical source's Conflict exposed Overwrite");
@@ -128,8 +137,11 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     assert(desktop.surface.heldInputs[0].text === "18446744073709551615 · 未確定", "close guard lost held input");
     checks.push("native-close-cancel-preserves-input");
     assert((startup.browserErrors as string[])?.length === 0, "browser event errors");
-    await invoke("evidence_write", { report: {kind: "external", checks, startup, visibility: document.visibilityState, focused: document.hasFocus(), mountedRows: document.querySelectorAll(".grid-row").length, dirty: desktop.surface.status.dirty, conflict: desktop.surface.projection!.conflict} });
+    await invoke("evidence_write", { report: {kind: "external", checks, sourceComparison, startup, visibility: document.visibilityState, focused: document.hasFocus(), mountedRows: document.querySelectorAll(".grid-row").length, dirty: desktop.surface.status.dirty, conflict: desktop.surface.projection!.conflict} });
   } catch (error) {
-    await invoke("evidence_write", {report: {kind: "external", error: String(error), checks, startup, status: desktop.surface.status, surfaceError: desktop.surface.error, projection: desktop.surface.projection, interaction: desktop.interaction, active: document.activeElement?.outerHTML.slice(0, 1500)}});
+    await invoke("evidence_write", {report: {kind: "external", error: String(error), checks, sourceComparison, comparison: desktop.surface.comparison,
+      comparedText: {external: document.querySelector<HTMLTextAreaElement>('[aria-label="Current disk source"]')?.value,
+        base: document.querySelector<HTMLTextAreaElement>('[aria-label="Editing base source"]')?.value},
+      startup, status: desktop.surface.status, surfaceError: desktop.surface.error, projection: desktop.surface.projection, interaction: desktop.interaction, active: document.activeElement?.outerHTML.slice(0, 1500)}});
   }
 }

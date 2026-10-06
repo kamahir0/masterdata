@@ -18,6 +18,18 @@ async function fill(path:string,name='New Project'){
     await until(()=>!projectButton('Create Project').disabled,'Project form not ready');
 }
 async function readyArtifact(){await until(()=>!!document.querySelector('.creation-inline')&&!document.querySelector('.creation-inline .ant-spin')&&!document.querySelector('.creation-inline .ant-alert'),'artifact preview did not become valid');}
+async function openFind(){
+  button('Source actions').click();
+  await until(()=>[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].some(e=>shown(e)&&e.textContent==='Find Table / Type…'),'contextual Find action missing');
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e=>shown(e)&&e.textContent==='Find Table / Type…')!.click();
+  await until(()=>!!document.querySelector('input[aria-label="Find Table or Type"]'),'Find input missing');
+}
+async function findTarget(query:string,label:string){
+  await openFind();
+  text(input('Find Table or Type'),query);
+  await until(()=>[...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content')].some(e=>shown(e)&&e.textContent===label),'matching logical target missing');
+  [...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content')].find(e=>shown(e)&&e.textContent===label)!.click();
+}
 export async function run({startup}:{startup:Record<string,unknown>}){
   const checks:string[]=[];let oldRoot='',newRoot='',fixtureRoot='';
   try {
@@ -40,6 +52,24 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     checks.push('welcome-recents-explicit-open-remove');checks.push('unknown-open-reply-explicit-reopen');
 
     await desktop.selectTarget(SOURCE,'project-setup',false);
+    const treeLabels=[...document.querySelectorAll<HTMLElement>('#explorer .source')].map(e=>e.textContent!.trim()).sort();
+    const physicalLabels=['sources',...desktop.surface.inventory!.sources.map(source=>source.path.split('/').at(-1)!)].sort();
+    assert(JSON.stringify(treeLabels)===JSON.stringify(physicalLabels),'Explorer mixed domain groups into the physical source hierarchy');
+    const selection=desktop.interaction.selection;
+    await openFind();text(input('Find Table or Type'),'not a target');
+    input('Find Table or Type').closest('.ant-modal')!.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();
+    await until(()=>!document.querySelector('input[aria-label="Find Table or Type"]')&&!!document.activeElement?.closest('[role="tree"]'),'Find Cancel did not restore Explorer keyboard focus');
+    assert(desktop.surface.target===SOURCE&&desktop.interaction.selection===selection&&!desktop.surface.status.dirty.length,'Find Cancel changed source / selection / draft');
+    checks.push('source-only-tree-contextual-find-cancel');
+    await findTarget('ItemId','Type · ItemId — sources/item-id.yaml');
+    await until(()=>desktop.surface.typeProjection?.name==='ItemId'&&!desktop.surface.pending,'Find did not open the shared typed source');
+    const work=desktop.surface.typeProjection!.measurement.work;
+    assert(work.projectDiscovery===0&&work.projectEnumeration===0&&work.projectYamlParse===0&&work.projectValidation===0,'logical Find reopened / rebuilt the Project');
+    await findTarget('item','Table · item — sources/catalog-schema.yaml');
+    await until(()=>desktop.surface.target==='sources/catalog-schema.yaml'&&desktop.surface.projection?.source===SOURCE&&!desktop.surface.pending,'logical Table did not use the same physical record context');
+    assert(document.querySelector('#explorer [data-path="sources/catalog-schema.yaml"]')!.closest('[aria-selected="true"]'),'logical Find did not select its physical source row');
+    checks.push('contextual-find-type-table-warm-zero');
+    await desktop.selectTarget(SOURCE,'project-edit',false);
     desktop.setSelection(0,desktop.surface.projection!.columns.findIndex(c=>c.field.name==='name'));desktop.beginEditor();
     await until(()=>!!document.querySelector('.active-cell-editor input'),'scalar editor missing');
     text(document.querySelector<HTMLInputElement>('.active-cell-editor input')!,'Keep this old draft');
@@ -86,7 +116,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     await until(()=>desktop.surface.inventory!.sources.length===2&&desktop.surface.projection!.canAdd&&!desktop.surface.pending,'explicit Data creation did not bind to Table');
     const source=desktop.surface.projection!.source!;await desktop.addRow();
     await until(()=>desktop.surface.status.dirty.includes(source),'Add Row did not create its source-local draft');
-    const logical=[...document.querySelectorAll<HTMLElement>('.source')].find(e=>e.getAttribute('data-path')===table.source&&e.textContent?.startsWith(table.name));assert(logical,'logical Table navigation missing');logical.click();
+    await findTarget(table.name,`Table · ${table.name} — ${table.source}`);
     await until(()=>desktop.surface.target===table.source&&!desktop.surface.pending,'logical Table navigation failed');
     assert(desktop.surface.projection!.source===source&&desktop.surface.projection!.rows.some(row=>row.added),'logical navigation did not share the physical draft');
     checks.push('explicit-data-logical-navigation-shared-draft');

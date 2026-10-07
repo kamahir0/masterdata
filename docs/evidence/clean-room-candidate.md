@@ -2,9 +2,11 @@
 
 Status: Evidence / Human-gated
 
-Review Candidate: `f57102e2d098a4a3385081dc111982e5c065d4ff`（2026-10-07）
+Review Candidate: `f7cf90d857124602a918bdcad1dda2ef2e031850`（2026-10-07、実IME correction）
 
-**Not cutover-ready — 実IME EnterのBlockingとactual Desktop / Unity / macOS測定のrequired evidence gaps。** `f57102e`のfresh review後、許可済みmacOS実機検証で`GUI-GRID-006`違反を確認した。完成・cutover・main mergeは承認していない。
+基準Candidate: `f57102e2d098a4a3385081dc111982e5c065d4ff`。既存のperformance raw samplesはこの基準binaryの実測として保持し、新SHAへ読み替えない。
+
+**Not cutover-ready — macOS dense input / held drag、Windows actual Desktop、Unity actual環境のrequired evidence gaps。** `f57102e`の実IME違反は`f7cf90d`で修正し、scalar / nestedのactual IMEとrequired CIで再検証した。完成・cutover・main mergeは承認していない。
 
 ## Scope / completion boundary
 
@@ -48,7 +50,7 @@ Desktopにはbounded projection、resolved descriptor、lossless value、operati
 
 macOS arm64ではComputer Useのnative keyboard / pointerでWelcome / Open、通常 / dirty Table、Problems、Complex、menu、Conflict / Compare、Migration review、Build / Publish、Dark / Light / System、long / wide / sticky、drag drop / Undo、focus / Arrow操作を確認した。System preferenceはnative storageへ保存され、再起動後のradio selectionとRecent Projects復帰を確認した。各検証用projectのsource hashesは一致し、Humanが編集中の別windowは変更していない。
 
-既存presentation checklistに対し、Ant Design system / tokens、compact density、overlay / feedbackの一貫性、custom gridとの統合、stable geometryをreviewし、identified visual Blockingは未検出。追加のaesthetic polishはnon-blockingで、ここから新しい最適化を始めない。actual IME、OS reduced-motion ON、held-drag中のEscape観測、Windows OS interactionは下記gateに残す。native WebViewのcontrolled composition / drag preview / cancelは成功している。
+既存presentation checklistに対し、Ant Design system / tokens、compact density、overlay / feedbackの一貫性、custom gridとの統合、stable geometryをreviewし、identified visual Blockingは未検出。追加のaesthetic polishはnon-blockingで、ここから新しい最適化を始めない。actual IMEとOS reduced-motion ON / OFF復元は下記follow-upで確認した。held-drag中のEscape観測とWindows OS interactionはgateに残す。native WebViewのcontrolled composition / drag preview / cancelは成功している。
 
 ## Performance
 
@@ -93,7 +95,7 @@ RSSはisolated runnerのOS child-lifetime maximumまたはWindows PeakWorkingSet
 
 Specification Conformance: source / semantics / workspace / write / structural / delivery / presentationのreview範囲で既知のcontract違反を未検出。未取得のfinal evidenceは下記Blockingとして保持した。
 
-Tests and Regression Evidence: [implementation CI](https://github.com/kamahir0/masterdata/actions/runs/37540442659)全14 jobs、[integrity CI](https://github.com/kamahir0/masterdata/actions/runs/37540442562)がReview CandidateでSUCCESS。shared workspace testsはmacOS / Linux 168、Windows 164（platform-specific範囲が異なる）、native deliveryは各OS 8。両Tier1 native Desktopは14 contextual categories / 各111 checksとnavigationを通過。Rust fmt / clippy、TypeScript / Vite、corpus / docs integrityを含む。
+Tests and Regression Evidence: [implementation CI](https://github.com/kamahir0/masterdata/actions/runs/37595928336)全14 jobs、[integrity CI](https://github.com/kamahir0/masterdata/actions/runs/37595928491)が修正Review CandidateでSUCCESS。shared workspace testsはmacOS / Linux 168、Windows 164（platform-specific範囲が異なる）、native deliveryは各OS 8。両Tier1 native Desktopは14 contextual categories / 各111 checksとnavigationを通過し、compositionend後のIME process Enter保持も両OSの既存authoring adapterで確認した。Rust fmt / clippy、TypeScript / Vite、corpus / docs integrityを含む。
 
 Rationale Freshness: `Still accurate`。equal-byte read syntax reuseはfresh actual capture後だけで、write前flightを省略しない。Windows handle保持を避ける理由と128-bit file identity、source-set journalのowned-object rollback、Custom formatterのpublic declaration order、bounded projection / separate workers、Publish completion後のReact focus復帰はcurrent codeと既存regressionに一致する。
 
@@ -105,7 +107,9 @@ Architecture / Scope / Performance / Cross-platform: CLI one-shot lifecycleのDe
 
 2026-10-07 Humanは固定Review CandidateのmacOS actual-input、Reduced Motion一時変更と復元、既存contract違反だけの修正をauthorizationした。元のrelease binary `ae1715…`を独立した検証bundleへcopyし、実key入力で`にほんご`→`日本語`を変換した。変換確定の最初のEnterでscalar editorが閉じ、次のrowへ移動してdirty / Undoが発生した。Complex Nullable noteでも同じEnterがnon-null operationを誤確定した。`GUI-GRID-006`のconcrete Blockingである。両試行のraw captureを保持し、Undo後の全source hashesは不変。
 
-WebKitではcompositionendがIME確定Enterより先になる場合がある。[WebKit issue](https://bugs.webkit.org/show_bug.cgi?id=165004)と実機failureに基づき、cell / nested inputの既存composition guardへprocess key `229`を加えた。既存authoring adapter内でこのevent orderingを再現し、native WebView 11 checksとsource / schema exact復帰がPASS。actual IMEの修正後再検証は次のcheckpointで取得する。feature / polish / completion boundaryは変更していない。
+WebKitではcompositionendがIME確定Enterより先になる場合がある。[WebKit issue](https://bugs.webkit.org/show_bug.cgi?id=165004)と実機failureに基づき、cell / nested inputの既存composition guardへprocess key `229`を加えた。既存authoring adapter内でこのevent orderingを再現し、native WebView 11 checksとsource / schema exact復帰がPASS。feature / polish / completion boundaryは変更していない。
+
+修正binary SHA-256 `ffb2e20f4639d32b28b3bbfaded233c95f05ea1442533e0223f5d8e46ab6560d`でactual Japanese IMEを再実行した。scalarは最初のEnter後も`name row 1`のinput / focus / cleanを維持し、次の通常Enterでのみ`日本語`が確定してrow 2へ移動した。nested Nullable noteも最初のEnterでinput / 未確定seed / cleanを保ち、通常Enterでだけoperationを確定した。両操作は一Undoで復帰し、全source hashesが一致した。修正diffのfresh reviewでRust semantics / workspace / write / navigation boundaryの変更はなく、他の既知製品Blockingは未検出。
 
 OS Reduced Motionは元のOFFを記録してONへ切り替え、アプリの`reducedMotion=true`、Complex / menu開閉、row reorder / Undo、clean復帰を実機確認した。その後OSのOFFとアプリの`false`への復元を確認した。
 
@@ -116,7 +120,7 @@ documented Computer Use APIで`drag`とEscapeを並行送信してもdropが先�
 1. **macOS actual performance**: dense OS probesによる全分布の<150ms target証明が必要。今回のtool-limited upper boundsで合格を主張しない。
 2. **Windows x64 actual Desktop**: native CIは成功したが、Computer Useから操作できるWindows環境がない。actual keyboard / IME / pointer / drag / visual / accepted-interaction distributionsが必要。
 3. **Unity actual Editor / runtime**: 利用できるlicensed Editor / project / Player環境がない。package import / compile / Editor observationとruntime loadの実行証拠が必要。[Unity contract](../specs/unity-integration.md)のportable CI成功を実Unityへ置換しない。
-4. **macOS actual IME / drag cancel**: 設定変更は明示authorization済みでReduced Motion ON / OFF復元を確認した。実IMEで発見した上記Blockingの修正後再検証とheld drag中のEscapeは、controlled event成功と別に観測する必要がある。CGEvent入力helperの明示指定を確認中。
+4. **macOS held-drag Escape**: actual IMEのBlockingは修正・実機再検証済み。Reduced Motion ON / OFF復元も確認した。held drag中のEscapeはatomic APIで観測できないため、CGEvent入力helperの明示指定を確認中。helperはforegroundを検証アプリへ限定し、permission不足ならprompt / security変更なしで停止する。compile済みだが未実行。
 
 [workflow Human gate 7](../execution-workflow.md#human-gate)とHuman completion rule 7により`decision-required`へrouteする。推奨は上記環境 / 操作authorizationを提供して同じCandidateを検証すること。提供できない場合のevidence exceptionはHuman-selected boundary decisionが必要で、自動免除しない。decision後のscopeはこの有限ledgerの残証拠と、そこで実際に発見したcontract defectの修正だけである。
 

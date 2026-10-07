@@ -674,7 +674,11 @@ function CellInput({ editor, pending }: { editor: Editor; pending:boolean }) {
           )
             return;
           e.stopPropagation();
-          if (e.nativeEvent.isComposing || composing.current) return;
+          // WebKit can emit compositionend before the IME confirmation Enter,
+          // clearing both flags. Its process key (229) still belongs to the IME;
+          // committing it would move the cell and create unwanted history.
+          // https://bugs.webkit.org/show_bug.cgi?id=165004 — GUI-GRID-006
+          if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
           if (e.key === "Escape") {
             e.preventDefault();
             cancel();

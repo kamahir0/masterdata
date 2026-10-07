@@ -245,6 +245,7 @@ export function ComplexPanel() {
     if (
       e.isDefaultPrevented() ||
       e.nativeEvent.isComposing ||
+      e.keyCode === 229 ||
       typing.current?.composing
     )
       return;
@@ -833,7 +834,7 @@ function LeafInput({
         }}
         onBlur={() => { if (!desktop.surface.externalPending) void commit(); }}
         onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing || composing.current) return;
+          if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
           if (e.key === "Enter") {
             e.preventDefault();
             e.stopPropagation();

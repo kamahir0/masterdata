@@ -4,7 +4,7 @@ Status: Evidence / Human-gated
 
 Review Candidate: `f57102e2d098a4a3385081dc111982e5c065d4ff`（2026-10-07）
 
-**Not cutover-ready — actual Desktop / Unity / macOS測定のrequired evidence gaps。** 製品codeの既知Blockingは今回のreviewで未検出。完成・cutover・main mergeは承認していない。
+**Not cutover-ready — 実IME EnterのBlockingとactual Desktop / Unity / macOS測定のrequired evidence gaps。** `f57102e`のfresh review後、許可済みmacOS実機検証で`GUI-GRID-006`違反を確認した。完成・cutover・main mergeは承認していない。
 
 ## Scope / completion boundary
 
@@ -101,12 +101,22 @@ Evidence Integrity: Requirement referencesは[canonical owners](../specs/README.
 
 Architecture / Scope / Performance / Cross-platform: CLI one-shot lifecycleのDesktop流入、frontend YAML/type/write authority、whole-document serializer、read-cache write authorization、persistent feature bloat、hidden project-wide navigation workはreview範囲で未検出。contractとADRだけに基づくownership reviewも行った。新しいquality barは作らず、任意refactor / aesthetic / stretchをBlockingにしなかった。
 
+## macOS actual-input follow-up
+
+2026-10-07 Humanは固定Review CandidateのmacOS actual-input、Reduced Motion一時変更と復元、既存contract違反だけの修正をauthorizationした。元のrelease binary `ae1715…`を独立した検証bundleへcopyし、実key入力で`にほんご`→`日本語`を変換した。変換確定の最初のEnterでscalar editorが閉じ、次のrowへ移動してdirty / Undoが発生した。Complex Nullable noteでも同じEnterがnon-null operationを誤確定した。`GUI-GRID-006`のconcrete Blockingである。両試行のraw captureを保持し、Undo後の全source hashesは不変。
+
+WebKitではcompositionendがIME確定Enterより先になる場合がある。[WebKit issue](https://bugs.webkit.org/show_bug.cgi?id=165004)と実機failureに基づき、cell / nested inputの既存composition guardへprocess key `229`を加えた。既存authoring adapter内でこのevent orderingを再現し、native WebView 11 checksとsource / schema exact復帰がPASS。actual IMEの修正後再検証は次のcheckpointで取得する。feature / polish / completion boundaryは変更していない。
+
+OS Reduced Motionは元のOFFを記録してONへ切り替え、アプリの`reducedMotion=true`、Complex / menu開閉、row reorder / Undo、clean復帰を実機確認した。その後OSのOFFとアプリの`false`への復元を確認した。
+
+documented Computer Use APIで`drag`とEscapeを並行送信してもdropが先に完了し、held cancelを観測できなかった。referenceのbatch key入力10 cycles / 各4caseでも、遅い受付値にはpaint後120–190ms程度の無入力区間がある。既存100 samples / 2runのtarget判定を変更せず、これらを合格証拠に数えない。別入力技術の明示指定を求めるComputer UseルールによりCGEvent helper使用の確認を出した。Windows / Unityのgateは維持する。
+
 ## Human gates / verdict
 
 1. **macOS actual performance**: dense OS probesによる全分布の<150ms target証明が必要。今回のtool-limited upper boundsで合格を主張しない。
 2. **Windows x64 actual Desktop**: native CIは成功したが、Computer Useから操作できるWindows環境がない。actual keyboard / IME / pointer / drag / visual / accepted-interaction distributionsが必要。
 3. **Unity actual Editor / runtime**: 利用できるlicensed Editor / project / Player環境がない。package import / compile / Editor observationとruntime loadの実行証拠が必要。[Unity contract](../specs/unity-integration.md)のportable CI成功を実Unityへ置換しない。
-4. **macOS actual IME / reduced motion / drag cancel**: OS設定の変更許可は未取得。Computer Use policyの非明示的OS preference変更に対する確認要件による。実IME Enter、reduced-motion ON、held drag中のEscapeはcontrolled event成功とは別に観測する必要がある。
+4. **macOS actual IME / drag cancel**: 設定変更は明示authorization済みでReduced Motion ON / OFF復元を確認した。実IMEで発見した上記Blockingの修正後再検証とheld drag中のEscapeは、controlled event成功と別に観測する必要がある。CGEvent入力helperの明示指定を確認中。
 
 [workflow Human gate 7](../execution-workflow.md#human-gate)とHuman completion rule 7により`decision-required`へrouteする。推奨は上記環境 / 操作authorizationを提供して同じCandidateを検証すること。提供できない場合のevidence exceptionはHuman-selected boundary decisionが必要で、自動免除しない。decision後のscopeはこの有限ledgerの残証拠と、そこで実際に発見したcontract defectの修正だけである。
 

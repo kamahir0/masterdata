@@ -172,6 +172,13 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     input.dispatchEvent(
       new CompositionEvent("compositionend", { bubbles: true, data: "日本語" }),
     );
+    key(input, "Enter", { keyCode: 229, which: 229 });
+    await frame();
+    assert(
+      (await bytes()).after === base.after && desktop.interaction.editor &&
+        desktop.interaction.selection.row === 0 && input === document.activeElement,
+      "IME confirmation after compositionend committed or moved the scalar cell",
+    );
     key(input, "Enter");
     await until(
       () => !desktop.interaction.editor && !desktop.surface.busy,
@@ -185,6 +192,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     record("scalar-composition", {
       initialEditorFocused,
       compositionEnterPreserved: true,
+      compositionEndEnterPreserved: true,
       exactLocalizedBytes: true,
     });
     await undo();
@@ -353,7 +361,16 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       () => !!document.querySelector(".complex-input input"),
       "nested leaf input missing",
     );
-    text(find(".complex-input input") as HTMLInputElement, "invalid");
+    const nestedInput = find(".complex-input input") as HTMLInputElement;
+    nestedInput.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    text(nestedInput, "invalid");
+    nestedInput.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "invalid" }));
+    key(nestedInput, "Enter", { keyCode: 229, which: 229 });
+    await frame();
+    assert(
+      (await bytes()).after === base.after && nestedInput === document.activeElement,
+      "IME confirmation after compositionend committed a Complex operation",
+    );
     const add = [
       ...document.querySelectorAll<HTMLButtonElement>(
         ".ant-drawer-body button",

@@ -113,15 +113,19 @@ WebKitではcompositionendがIME確定Enterより先になる場合がある。[
 
 OS Reduced Motionは元のOFFを記録してONへ切り替え、アプリの`reducedMotion=true`、Complex / menu開閉、row reorder / Undo、clean復帰を実機確認した。その後OSのOFFとアプリの`false`への復元を確認した。
 
-documented Computer Use APIで`drag`とEscapeを並行送信してもdropが先に完了し、held cancelを観測できなかった。referenceのbatch key入力10 cycles / 各4caseでも、遅い受付値にはpaint後120–190ms程度の無入力区間がある。既存100 samples / 2runのtarget判定を変更せず、これらを合格証拠に数えない。別入力技術の明示指定を求めるComputer UseルールによりCGEvent helper使用の確認を出した。Windows / Unityのgateは維持する。
+documented Computer Use APIで`drag`とEscapeを並行送信してもdropが先に完了し、held cancelを観測できなかった。referenceのbatch key入力10 cycles / 各4caseでも、遅い受付値にはpaint後120–190ms程度の無入力区間がある。既存100 samples / 2runのtarget判定を変更せず、これらを合格証拠に数えない。
+
+Humanは修正Candidate `f7cf90d`上でtemporary CGEvent helperによるdense input / held-drag Escapeを明示authorizationした。権限設定を変更しない条件に従い、compile済み`/tmp/masterdata-os-input`を専用bundle `dev.masterdata.clean-input-review.20261007.19`のzero-step planで実行した。`CGPreflightPostEventAccess()`がfalseを返し、event生成・送信前に`permissionUnavailable`（exit 133）で停止した。送信CGEvent / accepted sampleは共に0。permission request、Security / Privacy等の設定変更、persistent hook、再試行は行っていない。product codeとCandidateは不変で、専用projectの全source hashesも一致した。
+
+この試行は**CGEvent入力のpermission preflight失敗**であり、physical human inputやperformance measurementではない。injection timestamp / application receipt / selection / React / layout / paint / first acceptedの新しい値はない。helper起動時間や過去のprobe遅延をproduct latencyへ加減してtarget達成を主張しない。plan / exit / stderr / helper source・binary hashをmachine evidenceに保持した。直前のevidence / state commit `4d785dd`のimplementation CI / integrity CIもSUCCESSへreconcileした。Windows / Unityのgateは維持する。
 
 ## Human gates / verdict
 
-1. **macOS actual performance**: dense OS probesによる全分布の<150ms target証明が必要。今回のtool-limited upper boundsで合格を主張しない。
+1. **macOS actual performance**: dense OS probesによる全分布の<150ms target証明が必要。CGEvent helperはauthorization済みだが、現在の`CGPreflightPostEventAccess()`がfalseで実行不能。permission設定変更を禁じたHuman条件に従って停止した。過去のtool-limited upper boundsで合格を主張しない。
 2. **Windows x64 actual Desktop**: native CIは成功したが、Computer Useから操作できるWindows環境がない。actual keyboard / IME / pointer / drag / visual / accepted-interaction distributionsが必要。
 3. **Unity actual Editor / runtime**: 利用できるlicensed Editor / project / Player環境がない。package import / compile / Editor observationとruntime loadの実行証拠が必要。[Unity contract](../specs/unity-integration.md)のportable CI成功を実Unityへ置換しない。
-4. **macOS held-drag Escape**: actual IMEのBlockingは修正・実機再検証済み。Reduced Motion ON / OFF復元も確認した。held drag中のEscapeはatomic APIで観測できないため、CGEvent入力helperの明示指定を確認中。helperはforegroundを検証アプリへ限定し、permission不足ならprompt / security変更なしで停止する。compile済みだが未実行。
+4. **macOS held-drag Escape**: actual IMEのBlockingは修正・実機再検証済み。Reduced Motion ON / OFF復元も確認した。held drag中のEscapeはatomic APIで観測できず、authorization済みCGEvent helperも同じpermission preflightで停止した。入力は一件も送っていない。
 
-[workflow Human gate 7](../execution-workflow.md#human-gate)とHuman completion rule 7により`decision-required`へrouteする。推奨は上記環境 / 操作authorizationを提供して同じCandidateを検証すること。提供できない場合のevidence exceptionはHuman-selected boundary decisionが必要で、自動免除しない。decision後のscopeはこの有限ledgerの残証拠と、そこで実際に発見したcontract defectの修正だけである。
+[workflow Human gate 7](../execution-workflow.md#human-gate)とHuman completion rule 7により`decision-required`を維持する。推奨はpermission変更を要しない承認済み実行環境で同じCandidateの残証拠を取得すること。提供できない場合のevidence exceptionはHuman-selected boundary decisionが必要で、自動免除しない。追加の操作authorization自体は取得済みで、再確認は不要。decision後のscopeはこの有限ledgerの残証拠と、そこで実際に発見したcontract defectの修正だけである。
 
 Verdict: **Ready to merge: No。Not cutover-ready。** Review用Candidateは固定したがfinal cutover Candidate / objective-completeにはしていない。main置換、merge、releaseは行っていない。

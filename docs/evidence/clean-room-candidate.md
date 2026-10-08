@@ -8,6 +8,22 @@ Review Candidate: `f7cf90d857124602a918bdcad1dda2ef2e031850`（2026-10-07、実I
 
 **Not cutover-ready — macOS dense input / held drag、Windows actual Desktop、Unity actual環境のrequired evidence gaps。** `f57102e`の実IME違反は`f7cf90d`で修正し、scalar / nestedのactual IMEとrequired CIで再検証した。完成・cutover・main mergeは承認していない。
 
+## 日本語Desktop追加scope（2026-10-09）
+
+日本語Candidate: `20b3a3a304adbe3a61bd535ac9400de792a4a21a`、Work base: `b919fa5e4ec2120b523cabca5d8a0a31cf8cd8da`。Human-selected `GUI-SHELL-LANGUAGE-001`により、操作・説明・状態・確認・診断・accessible labelsを日本語化した。Ant Design日本語localeとnative menuを使い、technical identity / wire / CLI / YAML / TOMLは保持する。外部toolのtechnical detailとOSが追加するnative機能はOS側の言語を保つ。独立oracleやengineの意味論は変更していない。
+
+| Finite追加evidence | 状態 / exact evidence |
+| --- | --- |
+| 日本語surface / technical identity | 既存全Desktop surfaceを静的review。表示境界3 tests PASS。補間template37件でtechnical capture保持を確認 |
+| authoring / focus / write回帰 | local native 13 contextual categories / 106 checksとnavigation PASS。各rawは実行時HEAD / dirty / binary hashを保持し、最終Candidate測定へ読み替えない |
+| macOS actual日本語UI | clean Candidateの専用bundle24、binary SHA-256 `d9f088e468018b0fa1a41181f6fc1bd2b8dce047b59cc92dd7977f2cf47660c9`。CUA native pointer / keyboardでTable・要約・Problems・Build/Publish・native Editを確認。source hashes全て不変。bundle23（05da5d6）では設定 / Complex / Light / Darkと全source hash不変も確認 |
+| source safety / scope | engine / fixture / source mutation / native builder変更なし。scalarの`[3 items]` / `{2 fields}` / `(missing)`は表示値として保持。actualで発見したgrid要約の英語残存だけを修正 |
+| Candidate required CI | [implementation run 37812769520](https://github.com/kamahir0/masterdata/actions/runs/37812769520)の全17 jobs / [integrity run 37812769539](https://github.com/kamahir0/masterdata/actions/runs/37812769539): SUCCESS。shared engine / oracle、native consumer、Unity portable、capacityは3OS、native Desktop / package smokeは両Tier1で通過 |
+
+Scope: b919fa5→日本語Candidateのpresentation / native label diffを別passでreview。Specification Conformance: Pass。Tests and Regression Evidence: 上記の表示・focus・source exact回帰。Rationale Freshness: Still accurate（Rustのbounded projectionではcomplex payloadを省くためvalueの有無を表示要約の区別に使い、frontendでschemaを再解釈しない。native item ID / selectorは保持）。Evidence Integrity: GUI-SHELL-LANGUAGE-001 / 0055のauthorityと既存adaptersを照合、未取得の旧OS-input証拠を新Candidateへ流用しない。Architecture: presentationのみ、read/write authority・lifecycle・projection境界の変更なし。Findings: None identified。Verdict: 日本語追加scopeはReady to merge: Yes、required CI reconciliation完了。Clean-room全体は既存4 evidence gapsによりNot cutover-ready。
+
+下記の28項目ledgerと旧conformance / performance / OS-input結果はf7cf90dまでの記録。日本語の追加Human scopeは上記の有限evidenceに限定し、既存external gateやstretchの扱いを変更しない。[machine evidence](clean-room-candidate-data.json.gz)の`japaneseLanguage`に追加scopeのraw metadata / checks / reviewを分離する。
+
 ## Scope / completion boundary
 
 Work base `e5c2f3df82b8e5ac033a894cd8ae400b4e312c56`からReview Candidateまでの新実装を対象とした。同じagentが実装passと分けてfresh / adversarial reviewを行った。別reviewerによる独立審査を主張しない。旧production source / history / generatorは参照していない。

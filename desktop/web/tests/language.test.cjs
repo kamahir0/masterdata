@@ -23,7 +23,10 @@ test('操作IDは表示時にだけ日本語化する',()=>{
   assert.equal(actionLabel('custom-action'),'custom-action');
 });
 test('構造の要約だけを翻訳し同形のscalar値を保持する',()=>{
+  // Rust omits complex payloads from the bounded grid projection.
   assert.equal(complexSummary('[3 items]',true),'[3 要素]');
+  assert.equal(complexSummary('(missing)',true),'（未指定）');
+  assert.equal(complexSummary('(missing)',false),'(missing)');
   assert.equal(complexSummary('{2 fields}',true),'{2 フィールド}');
   assert.equal(complexSummary('[3 items]',false),'[3 items]');
   assert.equal(complexSummary('{2 fields}',false),'{2 fields}');

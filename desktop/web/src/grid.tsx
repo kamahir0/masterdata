@@ -518,7 +518,7 @@ const GridRow = memo(function GridRow({
               menu(row, e.clientX, e.clientY);
             }}
           >
-            {complexSummary(cell.display, cell.value?.kind === "sequence" || cell.value?.kind === "mapping")}
+            {complexSummary(cell.display, cell.value === null)}
           </div>
         );
       })}

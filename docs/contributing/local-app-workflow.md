@@ -1,32 +1,26 @@
-> FORENSIC ONLY: legacy-final向けのhistorical developer手順。clean-slate branchでは実行不能。新implementationのworkspace / frameworkを指定しない。
-
 # ローカルGUI workflow
 
-## 目的と前提
+現在のcheckoutからproduction Desktopをビルドし、ユーザー領域へインストールして起動するdeveloper用の入口。正式release distributionではない。
 
-現在のcheckoutからDesktop GUIを検証、Tauri package生成、per-user install、production appのlaunch smokeまで行うdeveloper convenienceです。正式なrelease distribution contractではありません。Rust stable、Node.js 20以上、npm、`npm ci`済みの依存関係が必要です。macOSではXcode Command Line Tools、WindowsではWebView2とVisual Studio C++ Build Toolsが必要です。`cargo xtask doctor`で確認してください。
+macOSでは[`app.command`](../../scripts/local-app/app.command)、Windowsでは[`app.bat`](../../scripts/local-app/app.bat)をダブルクリックする。Terminal / cmdからも実行でき、作業directoryに依存しない。
 
-## command
+必要環境はNode.js 22以上とnpm、repository指定のRust toolchain、.NET SDK 8以上。macOSにはXcode Command Line Tools、WindowsにはVisual Studio C++ Build ToolsとWebView2が必要。
 
-```text
-cargo xtask app dev       # fixtureを準備して既存Tauri開発モードを起動
-cargo xtask app verify    # frontend、GUI Rust、Tauri compileのfocused preflight
-cargo xtask app package   # production Tauri packageを生成しtarget/local-distへ集約
-cargo xtask app install   # 集約済みpackageをper-user領域へ配置
-cargo xtask app smoke     # install済みproduction executableを起動し2秒生存確認
-cargo xtask app reinstall # verify -> package -> install -> smoke -> launch
+共通処理は`npm ci`、frontend build / type check、Desktop applicationのfocused Rust tests、Tauri production build、stagingでの2秒生存確認、per-user install、launchの順。`desktop-evidence` featureは有効化しない。Tauri CLIはnpm lockfileから導入するためglobal installは不要。出力先はrepositoryの`target/`に固定する。
+
+インストール先:
+
+- macOS: `~/Applications/masterdata-local.app`
+- Windows: `%LOCALAPPDATA%\Programs\masterdata-local\masterdata-desktop.exe`（portable executable）
+
+置換前のfailureでは既存版を保持する。置換失敗時は既存版を復元し、復元にも失敗した場合はbackupのpathを表示して保存する。起動中の既存GUIは終了しない。Windowsで置換できない場合はGUIを閉じて再実行する。Project sourceとuser preferencesは削除しない。
+
+macOSのlaunchはbundle内executableを直接起動し、native .NET invocationで必要なshellの`PATH`を引き継ぐ。smokeが起動したscratch processだけを終了し、最後に起動したGUIを残す。smokeは即時crashの確認であり、画面操作やproduct conformanceの証明ではない。
+
+```sh
+sh scripts/local-app/app.command --no-launch
+node scripts/local-app/app.mjs --help
+node --test scripts/local-app/app.test.mjs
 ```
 
-macOSでは `scripts/local-app/app.command` をダブルクリックできます。Terminalからは `sh scripts/local-app/app.command` も使えます。必要なら一度 `chmod +x scripts/local-app/app.command` を実行してください。Windowsでは `scripts/local-app/app.bat` をダブルクリックするかcmdから実行します。どちらもscript自身の場所をrootとして扱い、failure時にwindowがすぐ閉じないようにします。
-
-## package / install
-
-`target/local-dist/` はpackage phaseで毎回repository配下の対象directoryだけを消去・再生成するdeveloper-onlyの集約先です。baseのTauri設定は変更せず、package phaseだけinline configでbundleを有効化します。macOSでは既知の `masterdata.app` を `~/Applications/masterdata-local.app` へstagingして置き換えます。Windowsでは既知の `target/release/masterdata-gui.exe` だけを集約し、`%LOCALAPPDATA%\Programs\masterdata-local\masterdata-gui.exe` へstagingして置き換えます。管理者権限やsystem-wide `/Applications`は要求しません。Windowsのlocal installはportable executable deploymentです。起動中でWindowsが置換を拒否した場合はprocessをkillせず、対象pathと「GUIを閉じてretry」というstructured errorで停止します。
-
-## failure / troubleshooting
-
-失敗時はphase名とstructured diagnostic codeを表示してnon-zeroで終了します。`doctor`、`npm ci`、OS依存（Xcode CLT、WebView2/C++ Build Tools）、Tauri build output、空き容量、per-user directory権限を確認してください。`smoke`はlocal-distの既知artifact、install済みproduction executableの存在、起動、2秒間の即時crashを確認し、smoke自身が起動したprocessを終了します。GUI操作、`Open Project`、`Validate`、`Build`の画面操作までは確認しません。`reinstall`最後のlaunchだけはprocessを残してGUI確認に使います。
-
-## scope
-
-正式release distribution、code signing、notarization、auto-update、store distributionは対象外です。正式distributionではidentity、installer policy、署名、更新チャネル、各OSの配布審査を別途決定する必要があります。
+`--no-launch`はinstallまで行い、最後のGUI起動を省略する。Windowsでも`app.bat --no-launch`を使える。失敗時はnon-zeroで終了し、ダブルクリックで開いたwindowがすぐ閉じないように待つ。

@@ -11,6 +11,20 @@ permissions:
   contents: read
 
 jobs:
+  local-app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Local installer failure safety and native launcher paths
+        run: node --test scripts/local-app/app.test.mjs
+
   unity-package:
     strategy:
       fail-fast: false
@@ -220,6 +234,10 @@ jobs:
           executable=target/release/masterdata-desktop
           if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
           python verification/run_desktop.py --binary "$executable" --case declaration --output verification/results/declaration.json
+      - name: Local production package, per-user install and staged launch smoke
+        run: node scripts/local-app/app.mjs --no-launch
+      - name: Packaging leaves tracked inputs unchanged
+        run: git diff --exit-code
       - uses: actions/upload-artifact@v4
         if: always()
         with:

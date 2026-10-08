@@ -62,8 +62,8 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     await desktop.compare(SOURCE);
     await until(() => {
       const compared=desktop.surface.comparison;
-      return !!compared?.conflict && document.querySelector<HTMLTextAreaElement>('[aria-label="Current disk source"]')?.value===textAreaValue(compared.before) &&
-        document.querySelector<HTMLTextAreaElement>('[aria-label="Save candidate"]')?.value===textAreaValue(compared.after);
+      return !!compared?.conflict && document.querySelector<HTMLTextAreaElement>("[aria-label=\"ディスク上のソース\"]")?.value===textAreaValue(compared.before) &&
+        document.querySelector<HTMLTextAreaElement>("[aria-label=\"保存候補\"]")?.value===textAreaValue(compared.after);
     },"Conflict comparison did not identify the current external source");
     sourceComparison=desktop.surface.comparison!;
     assert([sourceComparison.base,sourceComparison.before,sourceComparison.after].every(bytes=>bytes.includes('\r\n')),
@@ -74,9 +74,9 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     await until(() => {
       const compared=desktop.surface.comparison;
       return compared?.source==="sources/catalog-schema.yaml" && !compared.conflict &&
-        document.querySelector<HTMLTextAreaElement>('[aria-label="Editing base source"]')?.value===textAreaValue(compared.base);
+        document.querySelector<HTMLTextAreaElement>("[aria-label=\"編集元のソース\"]")?.value===textAreaValue(compared.base);
     },"clean physical source inherited another source's Conflict / external comparison");
-    assert(![...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].some(button=>button.textContent?.includes('Overwrite')),
+    assert(![...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].some(button=>button.textContent?.includes("上書き")),
       "another physical source's Conflict exposed Overwrite");
     checks.push("compare-isolates-physical-source");
     const transport=desktop.rpc;
@@ -101,7 +101,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       desktop.closeCompare();release();await closing;
       assert(!desktop.surface.comparison,'late comparison reopened a closed surface');
     } finally {release();desktop.rpc=transport;}
-    await until(()=>!document.querySelector('[aria-label="Current disk source"]'),"comparison did not close");
+    await until(()=>!document.querySelector("[aria-label=\"ディスク上のソース\"]"),"comparison did not close");
     checks.push("obsolete-compare-cannot-replace-or-reopen");
     desktop.setSelection(0, desktop.surface.projection!.columns.findIndex(c => c.field.name === "name"));
     desktop.beginEditor();
@@ -127,7 +127,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     checks.push("missing-dependency-refresh");
     await getCurrentWindow().close();
     await until(() => !!desktop.surface.choice, "native window close bypassed authoring guard");
-    const cancelButton = () => [...document.querySelectorAll<HTMLButtonElement>(".ant-modal button")].find(button => button.textContent === "Cancel");
+    const cancelButton = () => [...document.querySelectorAll<HTMLButtonElement>(".ant-modal button")].find(button => button.textContent === "キャンセル");
     await until(() => !!cancelButton(), "close guard did not render");
     const cancel = cancelButton();
     assert(cancel, "close guard Cancel missing");
@@ -140,8 +140,8 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
     await invoke("evidence_write", { report: {kind: "external", checks, sourceComparison, startup, visibility: document.visibilityState, focused: document.hasFocus(), mountedRows: document.querySelectorAll(".grid-row").length, dirty: desktop.surface.status.dirty, conflict: desktop.surface.projection!.conflict} });
   } catch (error) {
     await invoke("evidence_write", {report: {kind: "external", error: String(error), checks, sourceComparison, comparison: desktop.surface.comparison,
-      comparedText: {external: document.querySelector<HTMLTextAreaElement>('[aria-label="Current disk source"]')?.value,
-        base: document.querySelector<HTMLTextAreaElement>('[aria-label="Editing base source"]')?.value},
+      comparedText: {external: document.querySelector<HTMLTextAreaElement>("[aria-label=\"ディスク上のソース\"]")?.value,
+        base: document.querySelector<HTMLTextAreaElement>("[aria-label=\"編集元のソース\"]")?.value},
       startup, status: desktop.surface.status, surfaceError: desktop.surface.error, projection: desktop.surface.projection, interaction: desktop.interaction, active: document.activeElement?.outerHTML.slice(0, 1500)}});
   }
 }

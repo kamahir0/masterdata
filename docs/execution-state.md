@@ -1,10 +1,12 @@
 # Development State
 
-Stage: decision-required
-Candidate: f7cf90d857124602a918bdcad1dda2ef2e031850
-Work base: e5c2f3df82b8e5ac033a894cd8ae400b4e312c56
+Stage: implementation-ready
+Candidate: none
+Work base: b919fa5e4ec2120b523cabca5d8a0a31cf8cd8da
 
 ## Active work
+
+In progress: Human-selected Desktop日本語化（`GUI-SHELL-LANGUAGE-001`）。既存technical identity / product semanticsを保持し、表示・説明・accessible labels・診断を更新する。完了後、既存external evidence gateへ戻る。
 
 Completed: canonical authoring / write / structural / delivery / CLI / portable Unity implementation、全portable oracle adapters、React / Ant Design代表surface review、100k capacity、macOS OS入力2run、frozen-boundary fresh / adversarial review、Candidate required CI reconciliation。
 Completed: 許可済みmacOS実IMEで発見した`GUI-GRID-006`違反をcell / nested inputで修正。actual IME再検証 / 一Undo / source hashes、Reduced Motion ON / OFF復元、修正Candidate全14 CI jobs / integrityがPASS。

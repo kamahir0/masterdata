@@ -1,3 +1,4 @@
+import { uiMessage } from "./language";
 import {useEffect,useRef,useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {Alert,Button,Flex,Form,Input,Modal,Space,Typography} from "antd";
@@ -37,7 +38,7 @@ export function CreateProjectModal({s}:{s:Surface}) {
   }
   const running=!!s.openingProject;
   const cannotCancel=running||picking||s.projectCreationUncertain;
-  return <Modal title="Create Project" open={!!form} width={540}
+  return <Modal title="プロジェクトを作成" open={!!form} width={540}
     closable={!cannotCancel}
     focusable={{focusTriggerAfterClose:false}} keyboard={!cannotCancel} mask={{closable:!cannotCancel}}
     onCancel={cancel}
@@ -47,28 +48,28 @@ export function CreateProjectModal({s}:{s:Surface}) {
       // Ant may focus its portal before this component's effect captures the
       // origin. A closing portal still has geometry; it is not a return target.
       if(desktop.surface.status.epoch===request.epoch&&request.element?.isConnected&&request.element.matches('button,input,select,textarea,a[href],[tabindex]')&&!request.element.closest('.ant-modal-wrap,[role="dialog"],[role="menu"]')&&request.element.getClientRects().length)request.element.focus();
-      else document.querySelector<HTMLElement>(desktop.surface.status.epoch!==request.epoch?'button[aria-label="New Table"]':desktop.surface.inventory?'button[aria-label="Project menu"]':'#welcome button[aria-label="Create Project"]')?.focus();
+      else document.querySelector<HTMLElement>(desktop.surface.status.epoch!==request.epoch?"button[aria-label=\"テーブルを作成\"]":desktop.surface.inventory?"button[aria-label=\"プロジェクトメニュー\"]":"#welcome button[aria-label=\"プロジェクトを作成\"]")?.focus();
     }}
-    footer={<Space><Button disabled={cannotCancel} onClick={cancel}>Cancel</Button>
-      <Button type="primary" icon={<PlusOutlined/>} loading={running} disabled={picking||s.projectCreationUncertain||!path||!id||!name||!version||attemptedPath===path} onClick={()=>void create()}>Create Project</Button></Space>}>
+    footer={<Space><Button disabled={cannotCancel} onClick={cancel}>キャンセル</Button>
+      <Button type="primary" icon={<PlusOutlined aria-hidden="true"/>} loading={running} disabled={picking||s.projectCreationUncertain||!path||!id||!name||!version||attemptedPath===path} onClick={()=>void create()}>プロジェクトを作成</Button></Space>}>
     <Form layout="vertical" disabled={running||picking||s.projectCreationUncertain} onKeyDown={e=>{if(e.key==="Enter"&&!e.nativeEvent.isComposing){e.preventDefault();if(path&&id&&name&&version)void create();}}}>
-      <Form.Item label="Destination"><Flex gap={6}>
-        <Input aria-label="Project destination" value={path} onChange={e=>setPath(e.target.value)} placeholder="Empty directory or new directory"/>
-        <Button aria-label="Choose Project destination" icon={<FolderOpenOutlined/>} onClick={()=>void pick()}/>
+      <Form.Item label="保存先"><Flex gap={6}>
+        <Input aria-label="プロジェクトの保存先" value={path} onChange={e=>setPath(e.target.value)} placeholder="空のディレクトリ、または新しいディレクトリ"/>
+        <Button aria-label="プロジェクトの保存先を選択" icon={<FolderOpenOutlined aria-hidden="true"/>} onClick={()=>void pick()}/>
       </Flex></Form.Item>
-      <Form.Item label="Project ID"><Input aria-label="Project ID" value={id} onChange={e=>setId(e.target.value)} placeholder="game.masterdata"/></Form.Item>
-      <Flex gap={12}><Form.Item label="Name" style={{flex:1}}><Input aria-label="Project name" value={name} onChange={e=>setName(e.target.value)}/></Form.Item>
-        <Form.Item label="Version" style={{width:120}}><Input aria-label="Project version" value={version} onChange={e=>setVersion(e.target.value)}/></Form.Item></Flex>
+      <Form.Item label="プロジェクトID"><Input aria-label="プロジェクトID" value={id} onChange={e=>setId(e.target.value)} placeholder="game.masterdata"/></Form.Item>
+      <Flex gap={12}><Form.Item label="名前" style={{flex:1}}><Input aria-label="プロジェクト名" value={name} onChange={e=>setName(e.target.value)}/></Form.Item>
+        <Form.Item label="バージョン" style={{width:120}}><Input aria-label="プロジェクトのバージョン" value={version} onChange={e=>setVersion(e.target.value)}/></Form.Item></Flex>
     </Form>
-    {error&&<Alert showIcon type="error" title="Projectを作成できません" description={error}/>}
+    {error&&<Alert showIcon type="error" title="プロジェクトを作成できません" description={uiMessage(error)}/>}
     {result&&result.outcome!=="Success"&&<Alert showIcon type={result.outcome==="OutcomeUnknown"?"warning":"error"} title={result.outcome==="OutcomeUnknown"?"作成結果を確認できません":"作成が完了しませんでした"}
-      description={<Space orientation="vertical"><Typography.Text>{result.message}</Typography.Text>
+      description={<Space orientation="vertical"><Typography.Text>{uiMessage(result.message)}</Typography.Text>
         <Typography.Text code>{result.root}</Typography.Text>
-        {!!result.remaining.length&&<Typography.Text>確認できたentry: {result.remaining.join(", ")}</Typography.Text>}
+        {!!result.remaining.length&&<Typography.Text>確認できた項目: {result.remaining.join(", ")}</Typography.Text>}
         {!!result.unconfirmed.length&&<Typography.Text>未確認: {result.unconfirmed.join(", ")}</Typography.Text>}
-        <Typography.Text type="secondary">保存先を確認してください。別の空directoryを指定して再作成できます。</Typography.Text>
-        <Button disabled={running} icon={<FolderOpenOutlined/>} onClick={()=>{returnFromAction();void desktop.resolveProjectCreation(result.root).catch(e=>setError(errorText(e)));}}>Open destination…</Button>
-        {s.projectCreationUncertain&&s.inventory&&<Button disabled={running} onClick={()=>{returnFromAction();void desktop.resolveProjectCreation(s.inventory!.root).catch(e=>setError(errorText(e)));}}>Open previous Project…</Button>}
+        <Typography.Text type="secondary">保存先を確認してください。別の空ディレクトリを指定して再作成できます。</Typography.Text>
+        <Button disabled={running} icon={<FolderOpenOutlined aria-hidden="true"/>} onClick={()=>{returnFromAction();void desktop.resolveProjectCreation(result.root).catch(e=>setError(errorText(e)));}}>保存先を開く…</Button>
+        {s.projectCreationUncertain&&s.inventory&&<Button disabled={running} onClick={()=>{returnFromAction();void desktop.resolveProjectCreation(s.inventory!.root).catch(e=>setError(errorText(e)));}}>前のプロジェクトを開く…</Button>}
       </Space>}/>}
   </Modal>;
 }

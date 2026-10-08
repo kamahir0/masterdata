@@ -1,3 +1,4 @@
+import { uiMessage, statusLabel } from "./language";
 import {useEffect, useRef, useState} from "react";
 import {Alert, Button, Flex, Form, Input, Modal, Select, Space, Typography} from "antd";
 import {desktop} from "./workspace";
@@ -79,25 +80,25 @@ export function useSourcePath(epoch:number,onMoved:(source:string,destination:st
       if(epoch===desktop.surface.status.epoch&&live.current?.id===current.id) {
         const knownRejection=error&&typeof error==="object"&&"code" in error;
         desktop.protectWriteView(protection,recheck||!knownRejection);
-        patch({committing:false,review:recheck||!knownRejection?current.review:null,error:errorText(error),result:!knownRejection?{source:current.source,outcome:"OutcomeUnknown",message:"結果を受信できませんでした。old / new pathをRecheckしてください。"}:current.result});
+        patch({committing:false,review:recheck||!knownRejection?current.review:null,error:errorText(error),result:!knownRejection?{source:current.source,outcome:"OutcomeUnknown",message:"結果を受信できませんでした。変更前・変更後のパスを再確認してください。"}:current.result});
       }
     }
   }
   const uncertain=draft?.result?.outcome==="OutcomeUnknown";
-  const modal=draft&&<Modal title="Rename / Move source" open width={520} focusTriggerAfterClose={false} afterOpenChange={open=>{if(open)filename.current?.focus();}} onCancel={cancel} keyboard={!draft.committing&&!uncertain} mask={{closable:!draft.committing&&!uncertain}} footer={<Space>
-    <Button onClick={cancel} disabled={draft.committing||uncertain}>Cancel</Button>
-    {!uncertain&&!draft.review&&!draft.pending&&<Button onClick={()=>review()}>Review current source</Button>}
-    <Button type="primary" loading={draft.committing||draft.pending} disabled={draft.pending||!draft.review} onClick={()=>void apply()}>{uncertain?"Recheck both paths":"Move"}</Button>
+  const modal=draft&&<Modal title="ソースの名前変更・移動" open width={520} focusTriggerAfterClose={false} afterOpenChange={open=>{if(open)filename.current?.focus();}} onCancel={cancel} keyboard={!draft.committing&&!uncertain} mask={{closable:!draft.committing&&!uncertain}} footer={<Space>
+    <Button onClick={cancel} disabled={draft.committing||uncertain}>キャンセル</Button>
+    {!uncertain&&!draft.review&&!draft.pending&&<Button onClick={()=>review()}>現在のソースを確認</Button>}
+    <Button type="primary" loading={draft.committing||draft.pending} disabled={draft.pending||!draft.review} onClick={()=>void apply()}>{uncertain?"変更前・変更後のパスを再確認":"移動"}</Button>
   </Space>}>
     <Typography.Paragraph type="secondary" className="source-path-origin">{draft.source}</Typography.Paragraph>
     <Form layout="vertical" disabled={draft.committing||uncertain}>
-      <Form.Item label="Folder"><Select aria-label="Move source folder" value={draft.folder} options={draft.choices.folders.map(folder=>({value:folder||".",label:folder||"."}))} onChange={folder=>change({folder})}/></Form.Item>
-      <Form.Item label="Filename"><Input aria-label="Move source filename" ref={input=>{filename.current=input?.input??null;}} value={draft.filename} onChange={event=>change({filename:event.target.value})} onKeyDown={event=>{if(event.nativeEvent.isComposing)return;if(event.key==="Enter"){event.preventDefault();void apply();}}}/></Form.Item>
+      <Form.Item label="フォルダー"><Select aria-label="ソースの移動先フォルダー" value={draft.folder} options={draft.choices.folders.map(folder=>({value:folder||".",label:folder||"."}))} onChange={folder=>change({folder})}/></Form.Item>
+      <Form.Item label="ファイル名"><Input aria-label="移動後のソースファイル名" ref={input=>{filename.current=input?.input??null;}} value={draft.filename} onChange={event=>change({filename:event.target.value})} onKeyDown={event=>{if(event.nativeEvent.isComposing)return;if(event.key==="Enter"){event.preventDefault();void apply();}}}/></Form.Item>
     </Form>
     <Flex vertical gap={8}>
       <Typography.Text type="secondary">{draft.choices.root} · {join(draft.folder,draft.filename)}</Typography.Text>
-      {draft.error&&<Alert type="error" showIcon title={draft.error}/>}
-      {draft.result&&<Alert type={uncertain?"warning":"error"} showIcon title={uncertain?"Outcome Unknown":draft.result.outcome} description={draft.result.message}/>}
+      {draft.error&&<Alert type="error" showIcon title={uiMessage(draft.error)}/>}
+      {draft.result&&<Alert type={uncertain?"warning":"error"} showIcon title={uncertain?"結果を確認できません":statusLabel(draft.result.outcome)} description={uiMessage(draft.result.message)}/>}
     </Flex>
   </Modal>;
   return {begin,modal,open:!!draft};

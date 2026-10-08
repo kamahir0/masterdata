@@ -10,12 +10,12 @@ function input(label:string) {const e=document.querySelector<HTMLInputElement>(`
 function text(e:HTMLInputElement,value:string) {Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(e,value);e.dispatchEvent(new Event("input",{bubbles:true}));}
 function button(label:string) {const e=[...document.querySelectorAll<HTMLButtonElement>("button")].find(e=>e.getAttribute("aria-label")===label||e.textContent===label);assert(e,`missing action: ${label}`);return e;}
 async function begin(category:string,filename:string) {
-  await until(()=>!button("New source artifact").disabled,"New remained unavailable");
-  button("New source artifact").click();
+  await until(()=>!button("ソースを作成").disabled,"New remained unavailable");
+  button("ソースを作成").click();
   await until(()=>[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].some(e=>e.textContent===category),"New menu missing");
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e=>e.textContent===category)!.click();
-  await until(()=>!!document.querySelector('input[aria-label="New artifact filename"]'),"temporary Explorer node missing");
-  const file=input("New artifact filename");
+  await until(()=>!!document.querySelector("input[aria-label=\"新しいソースのファイル名\"]"),"temporary Explorer node missing");
+  const file=input("新しいソースのファイル名");
   await until(()=>document.activeElement===file,"creation filename was not focused once");
   text(file,filename);
   await until(()=>file.getAttribute("value")===filename,"filename input was not published");
@@ -43,8 +43,8 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
     await desktop.rpc({kind:"editText",source:SOURCE,revision:p.revision,generation:p.generation,row:p.rows[0].id,field:"name",text:"Existing draft"});
     await desktop.selectTarget(SOURCE,"after-operation");
     const gridTop=desktop.viewport!.getBoundingClientRect().top;
-    await begin("Table","cancelled.yaml");
-    const file=input("New artifact filename");
+    await begin("テーブル","cancelled.yaml");
+    const file=input("新しいソースのファイル名");
     key(file,"Enter",{isComposing:true});await frame();
     assert(!!document.querySelector('.creation-inline'),"composition Enter created an artifact");
     key(file,"Escape");await until(()=>!document.querySelector('.creation-inline'),"Escape did not cancel");
@@ -52,7 +52,7 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
     assert(!desktop.surface.inventory!.sources.some(s=>s.path==='sources/cancelled.yaml'),"cancel created source");
     checks.push("inline-cancel-composition");
 
-    await begin("Table","fresh-table.yaml");key(input("New artifact filename"),"Enter");
+    await begin("テーブル","fresh-table.yaml");key(input("新しいソースのファイル名"),"Enter");
     await until(()=>desktop.surface.target==='sources/fresh-table.yaml'&&!desktop.surface.pending&&!!desktop.surface.projection,"created Table not selected");
     created.push('sources/fresh-table.yaml');
     await focusedSource('fresh-table.yaml');
@@ -61,26 +61,26 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
     assert(desktop.viewport!.getBoundingClientRect().top===gridTop,"creation moved working grid");
     checks.push("inline-table-exclusive-create");
 
-    await begin("Folder","catalog-new");key(input("New artifact filename"),"Enter");
+    await begin("フォルダー","catalog-new");key(input("新しいソースのファイル名"),"Enter");
     await until(()=>desktop.surface.inventory!.folders.includes('sources/catalog-new')&&!document.querySelector('.creation-inline'),"folder not published");
     assert(document.querySelector('[data-path="folder:sources/catalog-new"]'),"empty folder missing from Explorer");
     await focusedSource('catalog-new');
     checks.push("empty-folder-selection");
-    await begin("Data","storage-name.yml");
+    await begin("データ","storage-name.yml");
     assert(document.querySelector('.creation-destination')!.textContent!.includes('fresh-table'),"Data did not expose explicit Table");
-    key(input("New artifact filename"),"Enter");
+    key(input("新しいソースのファイル名"),"Enter");
     await until(()=>desktop.surface.target==='sources/catalog-new/storage-name.yml'&&!desktop.surface.pending&&!!desktop.surface.projection,"created Data not routed");
     created.push('sources/catalog-new/storage-name.yml');
     await focusedSource('storage-name.yml');
     assert(desktop.surface.projection!.table.name==='fresh-table'&&desktop.surface.projection!.totalRows===0,"filename changed Table identity or implicit rows appeared");
     checks.push("explicit-data-binding-yml");
 
-    await begin("Enum","huge-token.yaml");button("Advanced creation").click();
-    await until(()=>!!document.querySelector('[role="dialog"] input[aria-label="Artifact identity"]'),"Advanced dialog missing");
-    text(input("Artifact identity"),"HugeToken");
-    await choose("Underlying type","ulong");
-    text(input("Member 1 name"),"Maximum");text(input("Member 1 value"),"18446744073709551615");
-    await until(()=>!button("Create").disabled,"lossless Advanced declaration invalid");button("Create").click();
+    await begin("列挙型","huge-token.yaml");button("作成内容の詳細").click();
+    await until(()=>!!document.querySelector("[role=\"dialog\"] input[aria-label=\"ソースの識別子\"]"),"Advanced dialog missing");
+    text(input("ソースの識別子"),"HugeToken");
+    await choose("基になる型","ulong");
+    text(input("メンバー 1 名前"),"Maximum");text(input("メンバー 1 値"),"18446744073709551615");
+    await until(()=>!button("作成").disabled,"lossless Advanced declaration invalid");button("作成").click();
     await until(()=>desktop.surface.inventory!.types.includes('HugeToken')&&!document.querySelector('.creation-inline'),"Advanced Enum not published");
     created.push('sources/catalog-new/huge-token.yaml');
     await focusedSource('huge-token.yaml');

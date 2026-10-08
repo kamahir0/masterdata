@@ -1,3 +1,4 @@
+import { uiMessage, complexSummary } from "./language";
 import {
   useCallback,
   useEffect,
@@ -282,8 +283,8 @@ export function ComplexPanel() {
   const control = (node: EditorNode) => {
     if (!node.editable || !node.shape)
       return (
-        <Typography.Text type="secondary" title={node.reason ?? undefined}>
-          {node.display}
+        <Typography.Text type="secondary" title={uiMessage(node.reason ?? undefined)}>
+          {complexSummary(node.display, node.kind === "sequence" || node.kind === "mapping")}
         </Typography.Text>
       );
     if (
@@ -296,11 +297,11 @@ export function ComplexPanel() {
           type="text"
           className="complex-value-link"
           aria-invalid={!node.valid}
-          icon={node.valid ? undefined : <WarningOutlined />}
+          icon={node.valid ? undefined : <WarningOutlined aria-hidden="true" />}
           onClick={() => void navigate(node.path)}
         >
-          {node.display}
-          <RightOutlined />
+          {complexSummary(node.display, node.kind === "sequence" || node.kind === "mapping")}
+          <RightOutlined aria-hidden="true" />
         </Button>
       );
     if (active && same(active, node.path))
@@ -322,12 +323,12 @@ export function ComplexPanel() {
         type="text"
         className="complex-value-link"
         aria-invalid={!node.valid}
-        icon={node.valid ? undefined : <WarningOutlined />}
+        icon={node.valid ? undefined : <WarningOutlined aria-hidden="true" />}
         data-value-path={JSON.stringify(node.path)}
-        aria-label={`Edit ${node.label}: ${node.display}`}
+        aria-label={`編集: ${node.label}: ${complexSummary(node.display, node.kind === "sequence" || node.kind === "mapping")}`}
         onClick={() => setActive(node.path)}
       >
-        {node.display}
+        {complexSummary(node.display, node.kind === "sequence" || node.kind === "mapping")}
       </Button>
     );
   };
@@ -404,8 +405,8 @@ export function ComplexPanel() {
         >
           <button
             className="spatial-handle element-grip"
-            title="Reorder element"
-            aria-label={`Reorder element ${child.label}`}
+            title="要素を並べ替え"
+            aria-label={`要素を並べ替え ${child.label}`}
             disabled={!root?.editable || !root.shape?.array}
             onPointerDown={(e) =>
               view &&
@@ -424,7 +425,7 @@ export function ComplexPanel() {
               setMenu({ child, index, x: r.left, y: r.bottom });
             }}
           >
-            <HolderOutlined />
+            <HolderOutlined aria-hidden="true" />
           </button>
           <span className="element-number">{child.label}</span>
           <div
@@ -440,14 +441,14 @@ export function ComplexPanel() {
           </div>
           <button
             className="spatial-handle"
-            aria-label={`${child.label} actions`}
-            title="Element actions"
+            aria-label={`${child.label} の操作`}
+            title="要素の操作"
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               setMenu({ child, index, x: r.left - 150, y: r.bottom });
             }}
           >
-            <MoreOutlined />
+            <MoreOutlined aria-hidden="true" />
           </button>
         </div>
       ));
@@ -455,29 +456,29 @@ export function ComplexPanel() {
     ? [
         {
           key: "up",
-          label: "Move Up",
-          icon: <ArrowUpOutlined />,
+          label: "上に移動",
+          icon: <ArrowUpOutlined aria-hidden="true" />,
           disabled: root.start + (menu?.index ?? 0) === 0,
         },
         {
           key: "down",
-          label: "Move Down",
-          icon: <ArrowDownOutlined />,
+          label: "下に移動",
+          icon: <ArrowDownOutlined aria-hidden="true" />,
           disabled: root.start + (menu?.index ?? 0) + 1 === root.totalChildren,
         },
         { type: "divider" },
         {
           key: "remove",
-          label: "Remove",
-          icon: <DeleteOutlined />,
+          label: "削除",
+          icon: <DeleteOutlined aria-hidden="true" />,
           danger: true,
         },
       ]
     : [
         {
           key: "remove",
-          label: "Remove",
-          icon: <DeleteOutlined />,
+          label: "削除",
+          icon: <DeleteOutlined aria-hidden="true" />,
           danger: true,
         },
       ];
@@ -488,12 +489,12 @@ export function ComplexPanel() {
           {target && target.path.length > 1 && (
             <Button
               type="text"
-              icon={<LeftOutlined />}
-              aria-label="Parent value"
+              icon={<LeftOutlined aria-hidden="true" />}
+              aria-label="親の値"
               onClick={() => void navigate(target.path.slice(0, -1))}
             />
           )}
-          <span>{root?.label ?? target?.root ?? "Complex value"}</span>
+          <span>{root?.label ?? target?.root ?? "複合値"}</span>
         </Space>
       }
       open={!!target && (!s.pending || s.externalPending) && target.epoch === s.status.epoch}
@@ -518,7 +519,7 @@ export function ComplexPanel() {
             type="error"
             showIcon
             title="値を取得できません"
-            description={error}
+            description={uiMessage(error)}
           />
         ) : loading && !root ? (
           <Spin size="small" />
@@ -529,7 +530,7 @@ export function ComplexPanel() {
                 <Alert
                   type="warning"
                   showIcon
-                  title={root.problem.message}
+                  title={uiMessage(root.problem.message)}
                   className="value-problem"
                 />
               )}
@@ -557,14 +558,14 @@ export function ComplexPanel() {
               )}
               {!root.shape || !root.editable ? (
                 <Typography.Paragraph type="secondary">
-                  {root.display} · {root.reason}
+                  {root.display} · {uiMessage(root.reason)}
                 </Typography.Paragraph>
               ) : root.shape.array && root.kind === "sequence" ? (
                 <>
                   {arrayItems()}
                   <Button
                     type="text"
-                    icon={<PlusOutlined />}
+                    icon={<PlusOutlined aria-hidden="true" />}
                     onClick={() => {
                       const previous = target,
                         intent = desktop.inputIntent;
@@ -598,7 +599,8 @@ export function ComplexPanel() {
                       );
                     }}
                   >
-                    Element
+
+                    要素
                   </Button>
                 </>
               ) : root.shape.category === "flags" &&
@@ -646,16 +648,16 @@ export function ComplexPanel() {
                 root.shape.category === "custom" ||
                 root.shape.category === "flags" ? (
                 <Button
-                  icon={<PlusOutlined />}
+                  icon={<PlusOutlined aria-hidden="true" />}
                   onClick={() =>
                     void change(root.path, { kind: "materialize" })
                   }
                 >
                   {root.shape.array
-                    ? "Arrayを作成"
+                    ? "配列を作成"
                     : root.shape.category === "flags"
-                      ? "Flagsを作成"
-                      : "Custom valueを作成"}
+                      ? "フラグを作成"
+                      : "カスタム値を作成"}
                 </Button>
               ) : root.kind !== "null" || nonNull || !root.shape.nullable ? (
                 <div
@@ -681,8 +683,8 @@ export function ComplexPanel() {
               {root.totalChildren > 64 && (
                 <div className="complex-pages">
                   <Button
-                    icon={<LeftOutlined />}
-                    aria-label="Previous elements"
+                    icon={<LeftOutlined aria-hidden="true" />}
+                    aria-label="前の要素"
                     disabled={root.start === 0}
                     onClick={() =>
                       void navigate(root.path, Math.max(0, root.start - 64))
@@ -694,8 +696,8 @@ export function ComplexPanel() {
                     {root.totalChildren}
                   </Typography.Text>
                   <Button
-                    icon={<RightOutlined />}
-                    aria-label="Next elements"
+                    icon={<RightOutlined aria-hidden="true" />}
+                    aria-label="次の要素"
                     disabled={root.start + 64 >= root.totalChildren}
                     onClick={() => void navigate(root.path, root.start + 64)}
                   />
@@ -805,7 +807,7 @@ function LeafInput({
         autoFocus
         aria-label={node.label}
         value={node.input ?? undefined}
-        placeholder={node.display}
+        placeholder={complexSummary(node.display, node.kind === "sequence" || node.kind === "mapping")}
         options={node.shape.members?.map((value) => ({ value, label: value }))}
         onChange={enumSelect}
         className="complex-enum"

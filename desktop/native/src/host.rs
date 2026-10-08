@@ -165,10 +165,77 @@ fn evidence_bad_project_reply(
 #[tauri::command]
 async fn pick_project(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |path| {
-        let _ = tx.send(path.map(|p| p.to_string()));
-    });
+    app.dialog()
+        .file()
+        .set_title("プロジェクトのフォルダーを選択")
+        .pick_folder(move |path| {
+            let _ = tx.send(path.map(|p| p.to_string()));
+        });
     rx.await.map_err(|e| e.to_string())
+}
+
+fn japanese_menu(items: Vec<tauri::menu::MenuItemKind<tauri::Wry>>) -> tauri::Result<()> {
+    use tauri::menu::MenuItemKind;
+    fn label(text: &str) -> Option<String> {
+        let plain = text.replace('&', "");
+        let translated = match plain.as_str() {
+            "File" => "ファイル",
+            "Edit" => "編集",
+            "View" => "表示",
+            "Window" => "ウィンドウ",
+            "Help" => "ヘルプ",
+            "Services" => "サービス",
+            "Undo" => "元に戻す",
+            "Redo" => "やり直す",
+            "Cut" => "切り取り",
+            "Copy" => "コピー",
+            "Paste" => "貼り付け",
+            "Select All" => "すべて選択",
+            "Close" | "Close Window" => "ウィンドウを閉じる",
+            "Minimize" => "最小化",
+            "Maximize" => "最大化",
+            "Zoom" => "拡大・縮小",
+            "Toggle Full Screen" => "フルスクリーンを切り替え",
+            "Hide Others" => "ほかを非表示",
+            "Show All" => "すべて表示",
+            "Bring All to Front" => "すべてを手前に移動",
+            "About" => "このアプリケーションについて",
+            "Hide" => "非表示",
+            "Quit" | "Exit" => "終了",
+            _ => {
+                for (prefix, suffix) in [
+                    ("About ", "について"),
+                    ("Hide ", "を非表示"),
+                    ("Quit ", "を終了"),
+                ] {
+                    if let Some(name) = plain.strip_prefix(prefix) {
+                        return Some(format!("{name}{suffix}"));
+                    }
+                }
+                return None;
+            }
+        };
+        Some(translated.into())
+    }
+    // Keep Tauri's predefined item identities/native selectors: changing those
+    // would bypass native edit behavior or the existing close/Quit guard.
+    for item in items {
+        match item {
+            MenuItemKind::Submenu(menu) => {
+                if let Some(text) = label(&menu.text()?) {
+                    menu.set_text(text)?;
+                }
+                japanese_menu(menu.items()?)?;
+            }
+            MenuItemKind::Predefined(item) => {
+                if let Some(text) = label(&item.text()?) {
+                    item.set_text(text)?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 #[tauri::command]
 fn project_epoch(state: tauri::State<'_, Host>) -> u64 {
@@ -307,7 +374,9 @@ pub fn run() {
                 preferences_path,
                 preferences,
             });
-            app.set_menu(tauri::menu::Menu::default(app.handle())?)?;
+            let menu = tauri::menu::Menu::default(app.handle())?;
+            japanese_menu(menu.items()?)?;
+            app.set_menu(menu)?;
             #[cfg(target_os = "macos")]
             crate::macos_exit::install(
                 app.handle().clone(),

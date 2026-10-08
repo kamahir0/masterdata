@@ -22,7 +22,7 @@ export async function run({startup}: {startup: Record<string, unknown>}) {
   const checks: string[] = [];
   const bytes = async () => (await desktop.rpc<{before: string; after: string}>({kind: "compare", source: SOURCE})).data;
   const ready = async () => {
-    await until(() => !desktop.surface.busy && !desktop.surface.pending && !!document.querySelector('.tag-panel input[aria-label="New Tag"]:not([readonly])'), "Tag editor did not settle");
+    await until(() => !desktop.surface.busy && !desktop.surface.pending && !!document.querySelector(".tag-panel input[aria-label=\"新しいタグ\"]:not([readonly])"), "Tag editor did not settle");
     assert(!desktop.surface.error, desktop.surface.error ?? "Tag operation failed");
   };
   const changed = async (revision: number) => {
@@ -32,8 +32,8 @@ export async function run({startup}: {startup: Record<string, unknown>}) {
     desktop.viewport!.focus();
     desktop.setSelection(row, 0);
     key(desktop.viewport!, "F10", {shiftKey: true});
-    await until(() => !![...document.querySelectorAll<HTMLElement>('.ant-dropdown-menu-item')].find(item => item.textContent === "Tags…"), "keyboard row menu lacks Tags");
-    [...document.querySelectorAll<HTMLElement>('.ant-dropdown-menu-item')].find(item => item.textContent === "Tags…")!.click();
+    await until(() => !![...document.querySelectorAll<HTMLElement>('.ant-dropdown-menu-item')].find(item => item.textContent === "タグ…"), "keyboard row menu lacks Tags");
+    [...document.querySelectorAll<HTMLElement>('.ant-dropdown-menu-item')].find(item => item.textContent === "タグ…")!.click();
     await ready();
   };
   const close = async () => { key(find('.tag-panel input'), "Escape"); await until(() => !desktop.interaction.tags, "Tag editor did not close"); await frame(); };
@@ -53,7 +53,7 @@ export async function run({startup}: {startup: Record<string, unknown>}) {
     const descriptor = await desktop.tagView(desktop.interaction.tags!);
     assert(descriptor?.known.includes("development") && descriptor.known.includes("production"), "shared loaded/profile Tag candidates missing");
     checks.push("keyboard-context-open-clean-known-tags");
-    let input = find('input[aria-label="New Tag"]') as HTMLInputElement;
+    let input = find("input[aria-label=\"新しいタグ\"]") as HTMLInputElement;
     const revision = desktop.surface.projection!.revision;
     input.focus(); input.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}));
     text(input, "日本語"); key(input, "Enter", {isComposing: true}); await frame();
@@ -69,15 +69,15 @@ export async function run({startup}: {startup: Record<string, unknown>}) {
     await undo(true); assert((await bytes()).after === invalid, "Redo lost exact Tag spelling");
     checks.push("close-retains-one-undo-redo");
     await open();
-    find('button[aria-label="Edit Tag 2"]').click();
-    await until(() => !!document.querySelector('input[aria-label="Tag 2"]'), "Tag replace editor missing");
-    input = find('input[aria-label="Tag 2"]') as HTMLInputElement;
+    find("button[aria-label=\"タグを編集: 2\"]").click();
+    await until(() => !!document.querySelector('input[aria-label="タグ 2"]'), "Tag replace editor missing");
+    input = find('input[aria-label="タグ 2"]') as HTMLInputElement;
     const replaceRevision = desktop.surface.projection!.revision;
     text(input, "development"); key(input, "Enter"); await changed(replaceRevision);
     assert(document.querySelectorAll('.tag-entry-value[aria-invalid="true"]').length === 2, "duplicate Tags were deduplicated or not diagnosed");
     const addRevision = desktop.surface.projection!.revision;
-    find('button[aria-label="Add Tag"]').click(); await changed(addRevision);
-    assert(find('[data-tag-index="2"] .tag-entry-value').textContent?.includes("空のTag"), "explicit empty Tag was discarded");
+    find("button[aria-label=\"タグを追加\"]").click(); await changed(addRevision);
+    assert(find('[data-tag-index="2"] .tag-entry-value').textContent?.includes("空のタグ"), "explicit empty Tag was discarded");
     checks.push("replace-duplicate-and-explicit-empty");
     await close();
     await until(() => !desktop.surface.status.diagnosticsPending, "Tag diagnostics incomplete");
@@ -89,7 +89,7 @@ export async function run({startup}: {startup: Record<string, unknown>}) {
     [...document.querySelectorAll<HTMLButtonElement>('.problem-item')].find(item => item.textContent?.includes("E-RECORD-TAGS"))!.click();
     await ready(); assert(desktop.interaction.tags?.row === desktop.surface.projection!.rows[0].id, "Problems opened the wrong Tag occurrence");
     checks.push("problems-resolves-tag-editor");
-    for(const index of [2, 1]) { const before = desktop.surface.projection!.revision; find(`button[aria-label="Remove Tag ${index + 1}"]`).click(); await changed(before); }
+    for(const index of [2, 1]) { const before = desktop.surface.projection!.revision; find(`button[aria-label="タグを削除: ${index + 1}"]`).click(); await changed(before); }
     await close();
     for(let i = 0; i < 5; i++) await undo();
     assert((await bytes()).after === base.after, "inverse Tag history failed exact restoration");
@@ -98,7 +98,7 @@ export async function run({startup}: {startup: Record<string, unknown>}) {
     const added = desktop.surface.projection!.rows.find(row => row.added)!;
     assert(added, "Added Row missing");
     await open(added.viewIndex);
-    input = find('input[aria-label="New Tag"]') as HTMLInputElement;
+    input = find("input[aria-label=\"新しいタグ\"]") as HTMLInputElement;
     const addedRevision = desktop.surface.projection!.revision;
     text(input, "draft-only"); key(input, "Enter"); await changed(addedRevision);
     await close();

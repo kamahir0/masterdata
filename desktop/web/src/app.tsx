@@ -66,6 +66,8 @@ import { delivery } from "./delivery-state";
 import { ProjectSettings } from "./settings";
 import { CreateProjectModal } from "./project";
 import { useTableDeclaration } from "./table-declaration";
+import jaJP from "antd/locale/ja_JP";
+import { actionLabel, uiMessage, statusLabel } from "./language";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -130,7 +132,7 @@ export function Application({ platform }: { platform: string }) {
     document.documentElement.dataset.reducedMotion = String(reduced);
   }, [dark, reduced]);
   return (
-    <ConfigProvider theme={appearance} componentSize="small">
+    <ConfigProvider locale={jaJP} button={{autoInsertSpace:false}} theme={appearance} componentSize="small">
       <AntApp className="desktop-app">
         <ThemeFrame platform={platform} s={s} />
       </AntApp>
@@ -172,14 +174,14 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     for(const [name,value] of Object.entries(variables))document.documentElement.style.setProperty(name,String(value));
   }, [variables]);
   const projectItems: MenuProps["items"] = [
-    {key:"createProject",label:"Create Project…",icon:<PlusOutlined/>,disabled:!!s.openingProject||s.deliveryMutating},
-    {key:"recent",label:"Recent Projects",icon:<FolderOpenOutlined/>,disabled:!!s.openingProject||s.deliveryMutating||!s.recentProjects.length,
+    {key:"createProject",label:"プロジェクトを作成…",icon:<PlusOutlined aria-hidden="true"/>,disabled:!!s.openingProject||s.deliveryMutating},
+    {key:"recent",label:"最近開いたプロジェクト",icon:<FolderOpenOutlined aria-hidden="true"/>,disabled:!!s.openingProject||s.deliveryMutating||!s.recentProjects.length,
       children:s.recentProjects.map((project,index)=>({key:`recent:${index}`,label:project.name,title:project.root}))},
     {type:"divider"},
     {
       key: "saveAll",
-      label: "Save All",
-      icon: <SaveOutlined />,
+      label: "すべて保存",
+      icon: <SaveOutlined aria-hidden="true" />,
       disabled:
         !s.inventory ||
         s.busy || s.deliveryCapturing ||
@@ -188,17 +190,17 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     },
     {
       key: "reload",
-      label: "Reload Project",
-      icon: <ReloadOutlined />,
+      label: "プロジェクトを再読み込み",
+      icon: <ReloadOutlined aria-hidden="true" />,
       disabled: !s.inventory || s.busy || s.deliveryMutating,
     },
     { type: "divider" },
-    {key:"projectSettings",label:<Space>Project Settings…{(s.status.configDirty||s.settingsInputDirty)&&<Badge status="processing"/>}</Space>,icon:<SettingOutlined/>,disabled:!s.inventory},
-    {key:"delivery",label:"Build / Publish…",icon:<BuildOutlined/>,disabled:!s.inventory},
+    {key:"projectSettings",label:<Space>プロジェクト設定…{(s.status.configDirty||s.settingsInputDirty)&&<Badge status="processing"/>}</Space>,icon:<SettingOutlined aria-hidden="true"/>,disabled:!s.inventory},
+    {key:"delivery",label:"ビルド・配布…",icon:<BuildOutlined aria-hidden="true"/>,disabled:!s.inventory},
     {
       key: "appearance",
-      label: "Application Settings",
-      icon: <DesktopOutlined />,
+      label: "アプリケーション設定",
+      icon: <DesktopOutlined aria-hidden="true" />,
     },
   ];
   return (
@@ -223,26 +225,27 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     >
       <header id="titlebar">
         <div id="drag-region" data-tauri-drag-region>
-          <DatabaseOutlined />
+          <DatabaseOutlined aria-hidden="true" />
           <strong>MasterData</strong>
           <span id="project-name">{s.inventory?.project.name ?? ""}</span>
         </div>
-        <nav aria-label="Project commands">
+        <nav aria-label="プロジェクトの操作">
           <Space size={2}>
             <Button
               type="text"
-              icon={<FolderOpenOutlined />}
+              icon={<FolderOpenOutlined aria-hidden="true" />}
               disabled={s.deliveryMutating||!!s.openingProject}
-              title={s.deliveryMutating?"Build / Publishの完了後にProjectを開いてください。":undefined}
+              title={s.deliveryMutating?"ビルド・配布の完了後にプロジェクトを開いてください。":undefined}
               onClick={desktop.pickProject}
             >
-              Open Project
+
+              プロジェクトを開く
             </Button>
             {s.inventory && (
               <>
                 <Button
                   type="text"
-                  icon={<SaveOutlined />}
+                  icon={<SaveOutlined aria-hidden="true" />}
                   disabled={
                     (!s.settingsOpen && (!s.projection || s.pending)) ||
                     s.busy || !!s.openingProject || s.deliveryCapturing ||
@@ -255,15 +258,17 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                   }
                   onClick={desktop.save}
                 >
-                  Save
+
+                  保存
                 </Button>
                 <Button
                   type="text"
-                  icon={<CheckCircleOutlined />}
+                  icon={<CheckCircleOutlined aria-hidden="true" />}
                   disabled={s.busy||!!s.openingProject}
                   onClick={desktop.validate}
                 >
-                  Validate
+
+                  検証
                 </Button>
               </>
             )}
@@ -285,44 +290,45 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
             >
               <Button
                 type="text"
-                icon={<MoreOutlined />}
-                aria-label="Project menu"
-                title="Project menu"
+                icon={<MoreOutlined aria-hidden="true" />}
+                aria-label="プロジェクトメニュー"
+                title="プロジェクトメニュー"
               />
             </Dropdown>
-            {s.status.recoveryRequired && <Button danger type="text" icon={<WarningOutlined/>} onClick={()=>setRecoveryOpen(true)}>Recovery Required</Button>}
+            {s.status.recoveryRequired && <Button danger type="text" icon={<WarningOutlined aria-hidden="true"/>} onClick={()=>setRecoveryOpen(true)}>復旧が必要です</Button>}
           </Space>
         </nav>
       </header>
       <div id="workbench" inert={!!s.openingProject||!!s.projectCreation||!!s.projectOpenUncertain}>
         {s.inventory && <Explorer s={s} />}
-        <main id="editor-pane" aria-label="Editor" tabIndex={-1}>
+        <main id="editor-pane" aria-label="エディター" tabIndex={-1}>
           {!s.inventory ? (
             <section id="welcome">
-              <DatabaseOutlined className="welcome-mark" />
+              <DatabaseOutlined className="welcome-mark" aria-hidden="true" />
               <Typography.Title level={3}>MasterData</Typography.Title>
               <Typography.Paragraph type="secondary">
                 YAMLから、データを育てる。
               </Typography.Paragraph>
               <Space><Button
                 type="primary"
-                icon={<FolderOpenOutlined />}
+                icon={<FolderOpenOutlined aria-hidden="true" />}
                 onClick={desktop.pickProject}
               >
-                Open Project
-              </Button><Button aria-label="Create Project" icon={<PlusOutlined/>} onClick={()=>void desktop.beginProjectCreation()}>Create Project</Button></Space>
-              {!!s.recentProjects.length&&<div className="recent-projects"><Typography.Text type="secondary">Recent Projects</Typography.Text>
+
+                プロジェクトを開く
+              </Button><Button aria-label="プロジェクトを作成" icon={<PlusOutlined aria-hidden="true"/>} onClick={()=>void desktop.beginProjectCreation()}>プロジェクトを作成</Button></Space>
+              {!!s.recentProjects.length&&<div className="recent-projects"><Typography.Text type="secondary">最近開いたプロジェクト</Typography.Text>
                 {s.recentProjects.map(project=><Flex key={project.root} align="center" gap={6} className="recent-project">
-                  <Button type="text" icon={<FolderOpenOutlined/>} title={project.root} onClick={()=>void desktop.openRecent(project.root)}><span>{project.name}</span></Button>
-                  <Button type="text" icon={<DeleteOutlined/>} aria-label={`Remove recent ${project.name}`} title="Remove from Recent Projects" onClick={()=>void desktop.removeRecent(project.root)}/>
+                  <Button type="text" icon={<FolderOpenOutlined aria-hidden="true"/>} title={project.root} onClick={()=>void desktop.openRecent(project.root)}><span>{project.name}</span></Button>
+                  <Button type="text" icon={<DeleteOutlined aria-hidden="true"/>} aria-label={`最近開いた項目を削除: ${project.name}`} title="最近開いたプロジェクトから削除" onClick={()=>void desktop.removeRecent(project.root)}/>
                 </Flex>)}
               </div>}
               {s.error && (
                 <Alert
                   type="error"
                   showIcon
-                  title="Projectを開けません"
-                  description={s.error}
+                  title="プロジェクトを開けません"
+                  description={uiMessage(s.error)}
                 />
               )}
             </section>
@@ -330,29 +336,29 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
             (s.typeProjection?.clicked===s.target||s.inventory.sources.find(source=>source.path===s.target)?.kind==="type") ? <TypeSurface s={s} footer={<ProblemsBar s={s}/>}/> : <TableSurface s={s} />
           ) : (
             <div className="select-source">
-              {s.status.environmentError?<Alert type="warning" showIcon title="Project serviceを利用できません"
-                description={<Space direction="vertical"><Typography.Text>{s.status.environmentError}</Typography.Text>
-                <Space><Button icon={<SettingOutlined/>} onClick={()=>desktop.projectSettings(true)}>Project Settings…</Button>
-                <Button icon={<ReloadOutlined/>} onClick={()=>void desktop.reloadProject()}>Reload Project…</Button></Space></Space>}/>:s.inventory.sources.length>0&&<Empty
+              {s.status.environmentError?<Alert type="warning" showIcon title="プロジェクトを利用できません"
+                description={<Space direction="vertical"><Typography.Text>{uiMessage(s.status.environmentError)}</Typography.Text>
+                <Space><Button icon={<SettingOutlined aria-hidden="true"/>} onClick={()=>desktop.projectSettings(true)}>プロジェクト設定…</Button>
+                <Button icon={<ReloadOutlined aria-hidden="true"/>} onClick={()=>void desktop.reloadProject()}>プロジェクトを再読み込み…</Button></Space></Space>}/>:s.inventory.sources.length>0&&<Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="Explorerからsourceを選択"
+                description="エクスプローラーからソースを選択"
               />}
-              {!s.status.environmentError&&!s.inventory.sources.length&&<div className="project-guides"><Typography.Title level={5}>Projectを始める</Typography.Title>
-                <Typography.Paragraph type="secondary">Table、Type、folderを個別に作成できます。</Typography.Paragraph>
-                <Space><Button type="primary" aria-label="New Table" disabled={!s.canCreateSource} icon={<PlusOutlined/>} onClick={()=>desktop.newSource("table")}>New Table</Button>
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"valueObject",label:"Value Object"},{key:"enum",label:"Enum"},{key:"flags",label:"Flags Enum"},{key:"custom",label:"Custom Type"}],onClick:({key})=>desktop.newSource(key as "valueObject"|"enum"|"flags"|"custom")}}><Button disabled={!s.canCreateSource} aria-label="New Type">New Type</Button></Dropdown>
-                  <Button disabled={!s.canCreateSource} icon={<FolderOpenOutlined/>} onClick={()=>desktop.newSource("folder")}>New folder</Button></Space>
+              {!s.status.environmentError&&!s.inventory.sources.length&&<div className="project-guides"><Typography.Title level={5}>プロジェクトを始める</Typography.Title>
+                <Typography.Paragraph type="secondary">テーブル、型、フォルダーを個別に作成できます。</Typography.Paragraph>
+                <Space><Button type="primary" aria-label="テーブルを作成" disabled={!s.canCreateSource} icon={<PlusOutlined aria-hidden="true"/>} onClick={()=>desktop.newSource("table")}>テーブルを作成</Button>
+                  <Dropdown trigger={["click"]} menu={{items:[{key:"valueObject",label:"値オブジェクト"},{key:"enum",label:"列挙型"},{key:"flags",label:"フラグ列挙型"},{key:"custom",label:"カスタム型"}],onClick:({key})=>desktop.newSource(key as "valueObject"|"enum"|"flags"|"custom")}}><Button disabled={!s.canCreateSource} aria-label="型を作成">型を作成</Button></Dropdown>
+                  <Button disabled={!s.canCreateSource} icon={<FolderOpenOutlined aria-hidden="true"/>} onClick={()=>desktop.newSource("folder")}>フォルダーを作成</Button></Space>
               </div>}
             </div>
           )}
         </main>
       </div>
-      {s.openingProject&&<div className="project-pending" role="status"><Spin size="small"/><Typography.Text>{s.projectCreation?"Projectを作成中…":"Projectを開いています…"}</Typography.Text><Typography.Text type="secondary" ellipsis>{s.openingProject}</Typography.Text></div>}
-      {!s.openingProject&&s.projectOpenUncertain&&<div className="project-pending"><Alert type="warning" showIcon title="ProjectのOpen結果を確認できません"
+      {s.openingProject&&<div className="project-pending" role="status"><Spin size="small"/><Typography.Text>{s.projectCreation?"プロジェクトを作成中…":"プロジェクトを開いています…"}</Typography.Text><Typography.Text type="secondary" ellipsis>{s.openingProject}</Typography.Text></div>}
+      {!s.openingProject&&s.projectOpenUncertain&&<div className="project-pending"><Alert type="warning" showIcon title="プロジェクトを開いた結果を確認できません"
         description={<Space orientation="vertical"><Typography.Text code>{s.projectOpenUncertain.path}</Typography.Text><Space>
-          <Button onClick={()=>void desktop.resolveProjectOpen(s.projectOpenUncertain!.path).catch(desktop.showError)}>Open destination…</Button>
-          {s.inventory&&<Button onClick={()=>void desktop.resolveProjectOpen(s.inventory!.root).catch(desktop.showError)}>Open previous Project…</Button>}
-        </Space>{s.error&&<Typography.Text type="secondary">{s.error}</Typography.Text>}</Space>}/></div>}
+          <Button onClick={()=>void desktop.resolveProjectOpen(s.projectOpenUncertain!.path).catch(desktop.showError)}>保存先を開く…</Button>
+          {s.inventory&&<Button onClick={()=>void desktop.resolveProjectOpen(s.inventory!.root).catch(desktop.showError)}>前のプロジェクトを開く…</Button>}
+        </Space>{s.error&&<Typography.Text type="secondary">{uiMessage(s.error)}</Typography.Text>}</Space>}/></div>}
       <CreateProjectModal s={s}/>
       <ChoiceModal s={s} />
       <CompareModal s={s} />
@@ -365,8 +371,8 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
 }
 function Explorer({ s }: { s: Surface }) {
   const findOptions=useMemo(()=>[
-    ...s.inventory!.logicalTables.map(table=>({value:table.source,label:`Table · ${table.name} — ${table.source}`})),
-    ...s.inventory!.logicalTypes.map(type=>({value:type.source,label:`Type · ${type.name} — ${type.source}`})),
+    ...s.inventory!.logicalTables.map(table=>({value:table.source,label:`テーブル · ${table.name} — ${table.source}`})),
+    ...s.inventory!.logicalTypes.map(type=>({value:type.source,label:`型 · ${type.name} — ${type.source}`})),
   ],[s.inventory]);
   const [findEpoch,setFindEpoch]=useState<number|null>(null);
   const findRestore=useRef<{input:number;epoch:number;target:string}|null>(null);
@@ -411,8 +417,8 @@ function Explorer({ s }: { s: Surface }) {
   });
   const selectedSource=selected;
   const sourceItems:MenuProps={items:[
-    {key:"find",label:"Find Table / Type…",icon:<SearchOutlined/>,disabled:!findOptions.length||!!creation.draft||pathMutation.open},
-    {key:"move",label:"Rename / Move source",icon:<EditOutlined/>,disabled:!selectedSource||selectedSource.startsWith("folder:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selectedSource)},
+    {key:"find",label:"テーブル・型を検索…",icon:<SearchOutlined aria-hidden="true"/>,disabled:!findOptions.length||!!creation.draft||pathMutation.open},
+    {key:"move",label:"ソースの名前変更・移動",icon:<EditOutlined aria-hidden="true"/>,disabled:!selectedSource||selectedSource.startsWith("folder:")||!!creation.draft||pathMutation.open||s.status.recoveryRequired||s.status.uncertain.includes(selectedSource)},
   ],onClick:({key})=>{
     if(key==="find"){findRestore.current=null;setFindEpoch(s.status.epoch);}
     else void pathMutation.begin(selectedSource);
@@ -439,7 +445,7 @@ function Explorer({ s }: { s: Surface }) {
       for(const part of (logical||".").split("/")) {
         path=path?`${path}/${part}`:part;
         let folder=folders.get(path);
-        if(!folder){folder={key:`folder:${path}`,title:part,icon:<FolderOpenOutlined/>,children:[]};folders.set(path,folder);children.push(folder);}
+        if(!folder){folder={key:`folder:${path}`,title:part,icon:<FolderOpenOutlined aria-hidden="true"/>,children:[]};folders.set(path,folder);children.push(folder);}
         children=folder.children!;
       }
       return children;
@@ -451,7 +457,7 @@ function Explorer({ s }: { s: Surface }) {
       children.push({
         key: source.path,
         title: basename(source.path),
-        icon: source.error ? <WarningOutlined /> : <FileOutlined />,
+        icon: source.error ? <WarningOutlined aria-hidden="true" /> : <FileOutlined aria-hidden="true" />,
         isLeaf: true,
       });
     }
@@ -480,20 +486,21 @@ function Explorer({ s }: { s: Surface }) {
           onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
         >
-          Sources
+
+          ソース
         </Button>
         <Space size={0}>
           <Dropdown menu={creation.menu} trigger={["click"]}>
-            <Button type="text" icon={<PlusOutlined/>} aria-label="New source artifact" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft||pathMutation.open}>New</Button>
+            <Button type="text" icon={<PlusOutlined aria-hidden="true"/>} aria-label="ソースを作成" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft||pathMutation.open}>新規作成</Button>
           </Dropdown>
-          <Dropdown menu={sourceItems} trigger={["click"]}><Button type="text" icon={<MoreOutlined/>} aria-label="Source actions" title="Source actions"/></Dropdown>
+          <Dropdown menu={sourceItems} trigger={["click"]}><Button type="text" icon={<MoreOutlined aria-hidden="true"/>} aria-label="ソースの操作" title="ソースの操作"/></Dropdown>
         </Space>
       </div>
       {expanded && (
         <Dropdown menu={sourceItems} trigger={["contextMenu"]}>
         <Tree
           ref={tree}
-          aria-label="Sources"
+          aria-label="ソース"
           activeKey={activeKey}
           onActiveChange={key=>activate(key===null?null:String(key))}
           treeData={nodes}
@@ -537,15 +544,15 @@ function Explorer({ s }: { s: Surface }) {
         />
         </Dropdown>
       )}
-      <Modal title="Find Table / Type" open={findEpoch===s.status.epoch} onCancel={closeFind}
+      <Modal title="テーブル・型を検索" open={findEpoch===s.status.epoch} onCancel={closeFind}
         footer={null} width={640} destroyOnHidden focusable={{focusTriggerAfterClose:false}}
         afterOpenChange={open=>{
           const request=findRestore.current,current=desktop.surface;
           if(open||!request||request.input!==desktop.inputIntent||request.epoch!==current.status.epoch||request.target!==current.target||current.openingProject||current.projectCreation)return;
           container.current?.querySelector<HTMLElement>('[role="tree"]')?.focus();
         }}>
-        <Select<string> aria-label="Find Table or Type" autoFocus showSearch={{optionFilterProp:"label"}}
-          placeholder="Table / Type名を検索" style={{width:"100%"}} options={findOptions} value={undefined}
+        <Select<string> aria-label="テーブルまたは型を検索" autoFocus showSearch={{optionFilterProp:"label"}}
+          placeholder="テーブル / 型名を検索" style={{width:"100%"}} options={findOptions} value={undefined}
           onSelect={source=>{
             if(findEpoch!==desktop.surface.status.epoch)return;
             findRestore.current=null;setFindEpoch(null);setExpanded(true);
@@ -583,12 +590,12 @@ function TableSurface({ s }: { s: Surface }) {
     s.status.recoveryRequired ||
     !!uncertain;
   const items: MenuProps["items"] = [
-    {key:"declaration",label:"Table detail…",icon:<SettingOutlined/>,disabled:disabled||!p||!!s.uncertainField},
-    {key:"delivery",label:"Build / Publish…",icon:<BuildOutlined/>},
+    {key:"declaration",label:"テーブルの詳細…",icon:<SettingOutlined aria-hidden="true"/>,disabled:disabled||!p||!!s.uncertainField},
+    {key:"delivery",label:"ビルド・配布…",icon:<BuildOutlined aria-hidden="true"/>},
     {
       key: "compare",
-      label: "Compare save candidate",
-      icon: <FileOutlined />,
+      label: "保存前の変更を比較",
+      icon: <FileOutlined aria-hidden="true" />,
       disabled: !p,
     },
   ];
@@ -607,7 +614,7 @@ function TableSurface({ s }: { s: Surface }) {
         </Typography.Text>
         {!s.pending && p && p.sources.length > 1 && (
           <Select
-            aria-label="Record source"
+            aria-label="レコードのソース"
             className="source-picker"
             value={p.source}
             options={p.sources.map((source) => ({
@@ -634,26 +641,26 @@ function TableSurface({ s }: { s: Surface }) {
         <div className="context-actions">
           <Button
             type="text"
-            icon={<UndoOutlined />}
-            aria-label="Undo"
-            title="Undo"
+            icon={<UndoOutlined aria-hidden="true" />}
+            aria-label="元に戻す"
+            title="元に戻す"
             disabled={disabled || !history.undo}
             onClick={() => void desktop.undo(false)}
           />
           <Button
             type="text"
-            icon={<RedoOutlined />}
-            aria-label="Redo"
-            title="Redo"
+            icon={<RedoOutlined aria-hidden="true" />}
+            aria-label="やり直す"
+            title="やり直す"
             disabled={disabled || !history.redo}
             onClick={() => void desktop.undo(true)}
           />
           <Input
             id="search"
             className="source-search"
-            prefix={<SearchOutlined />}
-            placeholder="Find / Search"
-            aria-label="Search current source"
+            prefix={<SearchOutlined aria-hidden="true" />}
+            placeholder="検索"
+            aria-label="現在のソースを検索"
             value={s.query}
             onChange={(e) => desktop.search(e.target.value)}
             disabled={s.pending || !p?.source}
@@ -665,9 +672,9 @@ function TableSurface({ s }: { s: Surface }) {
           >
             <Button
               type="text"
-              icon={<MoreOutlined />}
-              aria-label="Table actions"
-              title="Table actions"
+              icon={<MoreOutlined aria-hidden="true" />}
+              aria-label="テーブルの操作"
+              title="テーブルの操作"
             />
           </Dropdown>
         </div>
@@ -684,19 +691,20 @@ function TableSurface({ s }: { s: Surface }) {
             <Spin size="small" />
             <span>
               {basename(s.target)}
-              {s.queryPending ? " · Search…" : s.externalPending ? " · 再確認中…" : " を開いています…"}
+              {s.queryPending ? " · 検索中…" : s.externalPending ? " · 再確認中…" : " を開いています…"}
             </span>
           </div>
         )}
         {!s.pending && p && (
           <Button
             className="add-row"
-            icon={<PlusOutlined />}
+            icon={<PlusOutlined aria-hidden="true" />}
             onClick={() => void desktop.addRow()}
             disabled={disabled || !p.canAdd}
-            title={p.addReason ?? "Add Row"}
+            title={uiMessage(p.addReason ?? "行を追加")}
           >
-            Row
+
+            行を追加
           </Button>
         )}
         {!s.pending && p?.conflict && (
@@ -704,12 +712,13 @@ function TableSurface({ s }: { s: Surface }) {
             className="context-alert conflict-alert"
             type="warning"
             showIcon
-            title="外部sourceが変更されています"
+            title="外部ソースが変更されています"
             description={
               <Space>
-                <Button onClick={() => void desktop.compare()}>Compare</Button>
+                <Button onClick={() => void desktop.compare()}>比較</Button>
                 <Button onClick={() => void desktop.reloadSource()}>
-                  Reload source
+
+                  ソースを再読み込み
                 </Button>
               </Space>
             }
@@ -723,7 +732,7 @@ function TableSurface({ s }: { s: Surface }) {
             title={
               uncertain.outcome === "OutcomeUnknown"
                 ? "保存結果を確認できません"
-                : "Recovery Required"
+                : "復旧が必要です"
             }
             description={
               <Space direction="vertical" size={4}>
@@ -735,12 +744,14 @@ function TableSurface({ s }: { s: Surface }) {
                   <Button
                     onClick={() => void desktop.compare(uncertain.source)}
                   >
-                    Compare
+
+                    比較
                   </Button>
                   <Button
                     onClick={() => void desktop.reloadSource(uncertain.source)}
                   >
-                    Reload source…
+
+                    ソースを再読み込み…
                   </Button>
                 </Space>
               </Space>
@@ -755,10 +766,10 @@ function TableSurface({ s }: { s: Surface }) {
             closable
             onClose={desktop.dismissError}
             title="操作を完了できません"
-            description={<span className="error-detail">{s.error}</span>}
+            description={<span className="error-detail">{uiMessage(s.error)}</span>}
           />
         )}
-        {s.uncertainField && <Alert className="context-alert" type="warning" showIcon title="構造変更の結果を確認できません" description={<Button disabled={s.busy} onClick={()=>void desktop.recheckFieldOperation()}>Recheck actual source set</Button>} />}
+        {s.uncertainField && <Alert className="context-alert" type="warning" showIcon title="構造変更の結果を確認できません" description={<Button disabled={s.busy} onClick={()=>void desktop.recheckFieldOperation()}>現在のソース一式を再確認</Button>} />}
         {s.heldInputs.length > 0 && <HeldInputs s={s} />}
         <ComplexPanel />
         <TagPanel />
@@ -775,8 +786,8 @@ function HeldInputs({s}: {s: Surface}) {
     {s.heldInputs.length > 1 && <Select aria-label="保持中の入力" value={index} options={s.heldInputs.map((input, at) => ({value: at, label: `${basename(input.source)} · ${input.label}`}))} onChange={select} />}
     <Typography.Text type="secondary">{input.source} · {input.label}</Typography.Text>
     <Input.TextArea aria-label="保持中の入力内容" value={input.text} readOnly rows={3} />
-    <Typography.Text type="secondary">{input.reason}</Typography.Text>
-    <Space><Button icon={<CopyOutlined />} onClick={() => void desktop.copyHeldInput(index)}>Copy</Button><Button danger onClick={() => desktop.discardHeldInput(index)}>この入力を破棄</Button></Space>
+    <Typography.Text type="secondary">{uiMessage(input.reason)}</Typography.Text>
+    <Space><Button icon={<CopyOutlined aria-hidden="true" />} onClick={() => void desktop.copyHeldInput(index)}>コピー</Button><Button danger onClick={() => desktop.discardHeldInput(index)}>この入力を破棄</Button></Space>
   </Space>}><Button size="small">入力を確認</Button></Popover>} />;
 }
 function ProblemsBar({ s }: { s: Surface }) {
@@ -788,11 +799,12 @@ function ProblemsBar({ s }: { s: Surface }) {
         <Button
           type="text"
           size="small"
-          icon={<WarningOutlined />}
+          icon={<WarningOutlined aria-hidden="true" />}
           onClick={desktop.toggleProblems}
           aria-expanded={s.problemsOpen}
         >
-          Problems{s.status.problemCount ? ` (${s.status.problemCount})` : ""}
+
+          問題{s.status.problemCount ? ` (${s.status.problemCount})` : ""}
         </Button>
         <span className="background-status" role="status">
           {s.status.diagnosticsPending ? "確認中…" : ""}
@@ -806,18 +818,19 @@ function ProblemsBar({ s }: { s: Surface }) {
       <section
         id="problems"
         className={s.problemsOpen ? "problems-open" : ""}
-        aria-label="Problems"
+        aria-label="問題"
         aria-hidden={!s.problemsOpen}
         inert={!s.problemsOpen}
       >
         <div className="problems-heading">
-          <Typography.Text strong>Problems</Typography.Text>
+          <Typography.Text strong>問題</Typography.Text>
           <Button
             type="text"
             onClick={desktop.toggleProblems}
-            aria-label="Close Problems"
+            aria-label="問題を閉じる"
           >
-            Close
+
+            閉じる
           </Button>
         </div>
         {s.problemsOpen &&
@@ -829,19 +842,19 @@ function ProblemsBar({ s }: { s: Surface }) {
                 key={`${problem.generation}:${i}`}
                 type="text"
                 className="problem-item"
-                icon={<WarningOutlined />}
+                icon={<WarningOutlined aria-hidden="true" />}
                 onClick={() => void desktop.focusProblem(problem)}
               >
                 <Typography.Text type="secondary">
                   {basename(problem.source)}:{problem.line}
                 </Typography.Text>
                 <span>
-                  {problem.code} · {problem.message}
+                  {problem.code} · {uiMessage(problem.message)}
                 </span>
               </Button>
             ))
           ) : (
-            <div className="quiet-empty">Problemsはありません。</div>
+            <div className="quiet-empty">問題はありません。</div>
           ))}
       </section>
     </>
@@ -856,7 +869,7 @@ function ChoiceModal({ s }: { s: Surface }) {
   };
   return (
     <Modal
-      title={c?.title}
+      title={actionLabel(c?.title??"")}
       open={!!c}
       onCancel={() => finish("Cancel")}
       focusable={{focusTriggerAfterClose:false}}
@@ -869,7 +882,7 @@ function ChoiceModal({ s }: { s: Surface }) {
         // Menu actions can open a guard after their trigger has disappeared.
         // Restore an accepted editing target, unless a newer action owns focus.
         if(desktop.viewport&&current.projection)desktop.viewport.focus();
-        else document.querySelector<HTMLElement>('button[aria-label="Project menu"]')?.focus();
+        else document.querySelector<HTMLElement>("button[aria-label=\"プロジェクトメニュー\"]")?.focus();
       }}
       destroyOnHidden
       footer={c?.actions.map((action, i) => (
@@ -880,11 +893,11 @@ function ChoiceModal({ s }: { s: Surface }) {
           danger={["Overwrite", "Delete", "Restore OLD"].includes(action)}
           onClick={() => finish(action)}
         >
-          {action}
+          {actionLabel(action)}
         </Button>
       ))}
     >
-      <Typography.Paragraph>{c?.description}</Typography.Paragraph>
+      <Typography.Paragraph>{uiMessage(c?.description)}</Typography.Paragraph>
     </Modal>
   );
 }
@@ -900,7 +913,7 @@ function CompareModal({ s }: { s: Surface }) {
     : []);
   return (
     <Modal
-      title={c?.migration ? "Compare structural change" : "Compare save candidate"}
+      title={c?.migration ? "構造変更を比較" : "保存前の変更を比較"}
       open={!!c}
       onCancel={close}
       focusable={{focusTriggerAfterClose:false}}
@@ -912,16 +925,17 @@ function CompareModal({ s }: { s: Surface }) {
         if(document.querySelector('.ant-drawer-open,.type-operation'))return;
         const saved=origin.current,element=saved?.element;
         if(saved?.epoch===current.status.epoch&&saved.target===current.target&&element?.isConnected&&element.matches('button,input,select,textarea,a[href],[tabindex]')&&!element.closest('.ant-modal-wrap,[role="dialog"],[role="menu"]')&&element.getClientRects().length)element.focus();
-        else if(!current.pending){if(current.projection)desktop.viewport?.focus();else document.querySelector<HTMLElement>('[aria-label="Type Editor"],button[aria-label="Table actions"]')?.focus();}
+        else if(!current.pending){if(current.projection)desktop.viewport?.focus();else document.querySelector<HTMLElement>("[aria-label=\"型エディター\"],button[aria-label=\"テーブルの操作\"]")?.focus();}
       }}
       width="min(1000px, 94vw)"
       destroyOnHidden
       footer={
         <Space>
-          <Button onClick={close}>Close</Button>
+          <Button onClick={close}>閉じる</Button>
           {c?.conflict && (
             <Button danger onClick={desktop.overwrite}>
-              Overwrite…
+
+              上書き…
             </Button>
           )}
         </Space>
@@ -930,7 +944,7 @@ function CompareModal({ s }: { s: Surface }) {
       {c && (
         <>
           <Select
-            aria-label="Compare source"
+            aria-label="比較するソース"
             value={c.source}
             options={sources.map((source) => ({
               value: source,
@@ -941,9 +955,9 @@ function CompareModal({ s }: { s: Surface }) {
           />
           <div className="compare-panes">
             <label>
-              {c.migration ? "レビューしたsource" : c.conflict ? "現在のdisk" : "編集元のsource"}
+              {c.migration ? "レビューしたソース" : c.conflict ? "ディスク上の内容" : "編集元のソース"}
               <Input.TextArea
-                aria-label={c.migration ? "Reviewed source" : c.conflict ? "Current disk source" : "Editing base source"}
+                aria-label={c.migration ? "確認済みのソース" : c.conflict ? "ディスク上のソース" : "編集元のソース"}
                 readOnly
                 value={c.migration || c.conflict ? c.before : c.base}
               />
@@ -951,7 +965,7 @@ function CompareModal({ s }: { s: Surface }) {
             <label>
               {c.migration ? "変更候補" : "保存候補"}
               <Input.TextArea
-                aria-label="Save candidate"
+                aria-label="保存候補"
                 readOnly
                 value={c.after}
               />
@@ -964,12 +978,12 @@ function CompareModal({ s }: { s: Surface }) {
 }
 function RecoveryDrawer({s,open,close}:{s:Surface;open:boolean;close:()=>void}) {
   const information=s.inventory?.recovery ?? [],[index,setIndex]=useState(0),info=information[Math.min(index,Math.max(0,information.length-1))];
-  return <Drawer title="Migration Recovery Required" open={open} onClose={close} size={520} destroyOnHidden footer={<Space><Button disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,false);}}>Recheck actual source set</Button><Button danger disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,true);}}>Restore OLD…</Button></Space>}>
+  return <Drawer title="構造変更の復旧が必要です" open={open} onClose={close} size={520} destroyOnHidden footer={<Space><Button disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,false);}}>現在のソース一式を再確認</Button><Button danger disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,true);}}>変更前の状態に復元…</Button></Space>}>
     <Space direction="vertical" size={12} className="recovery-detail">
-      <Alert type="error" showIcon title="Source変更とBuildを停止しています" description="OLD／NEWの状態を確認してください。閉じてもgateは解除されません。"/>
-      {information.length>1 && <Select aria-label="Recovery operation" value={index} options={information.map((record,i)=>({value:i,label:record.id || record.directory}))} onChange={setIndex}/>}
-      <Typography.Paragraph>{info?.message}</Typography.Paragraph>
-      {info?.files.map(file=><div className="recovery-file" key={file.source}><Space><Tag>{file.state}</Tag><Typography.Text strong>{file.source}</Typography.Text></Space><Typography.Paragraph type="secondary" copyable>{file.oldCopy}</Typography.Paragraph><Typography.Paragraph type="secondary" copyable>{file.newCopy}</Typography.Paragraph></div>)}
+      <Alert type="error" showIcon title="ソースの変更とビルドを停止しています" description="変更前・変更後の状態を確認してください。閉じても保護状態は解除されません。"/>
+      {information.length>1 && <Select aria-label="復旧する操作" value={index} options={information.map((record,i)=>({value:i,label:record.id || record.directory}))} onChange={setIndex}/>}
+      <Typography.Paragraph>{uiMessage(info?.message)}</Typography.Paragraph>
+      {info?.files.map(file=><div className="recovery-file" key={file.source}><Space><Tag>{statusLabel(file.state)}</Tag><Typography.Text strong>{file.source}</Typography.Text></Space><Typography.Paragraph type="secondary" copyable>{file.oldCopy}</Typography.Paragraph><Typography.Paragraph type="secondary" copyable>{file.newCopy}</Typography.Paragraph></div>)}
       <Typography.Text type="secondary" copyable>{info?.directory}</Typography.Text>
     </Space>
   </Drawer>;
@@ -979,40 +993,42 @@ function AppearanceModal({ s }: { s: Surface }) {
   const close=()=>{closed.current={input:desktop.inputIntent,epoch:s.status.epoch,target:s.target};desktop.appearance(false);};
   return (
     <Modal
-      title="Application Settings"
+      title="アプリケーション設定"
       open={s.appearance}
       onCancel={close}
       focusable={{focusTriggerAfterClose:false}}
       afterOpenChange={open=>{
         const request=closed.current,current=desktop.surface;
         if(!open&&request&&request.input===desktop.inputIntent&&request.epoch===current.status.epoch&&request.target===current.target&&!current.choice&&!current.projectCreation&&!current.openingProject)
-          document.querySelector<HTMLElement>('button[aria-label="Project menu"]')?.focus();
+          document.querySelector<HTMLElement>("button[aria-label=\"プロジェクトメニュー\"]")?.focus();
       }}
       footer={
         <Button type="primary" onClick={close}>
-          Done
+
+          完了
         </Button>
       }
       destroyOnHidden
     >
       <Flex vertical gap={12}>
-        <Typography.Text strong>Appearance</Typography.Text>
+        <Typography.Text strong>外観</Typography.Text>
         <Radio.Group
           value={s.theme}
           onChange={(e) => void desktop.setTheme(e.target.value as Preference)}
         >
           <Radio.Button value="system">
-            <DesktopOutlined /> System
+            <DesktopOutlined aria-hidden="true" />  システムに合わせる
           </Radio.Button>
           <Radio.Button value="light">
-            <SunOutlined /> Light
+            <SunOutlined aria-hidden="true" />  ライト
           </Radio.Button>
           <Radio.Button value="dark">
-            <MoonOutlined /> Dark
+            <MoonOutlined aria-hidden="true" />  ダーク
           </Radio.Button>
         </Radio.Group>
         <Typography.Text type="secondary">
-          Application全体に適用します。
+
+          アプリケーション全体に適用します。
         </Typography.Text>
       </Flex>
     </Modal>

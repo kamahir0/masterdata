@@ -350,7 +350,7 @@ class Desktop {
   cancelProjectCreation = () => {if(!this.surface.openingProject&&!this.surface.projectCreationUncertain)this.publish({projectCreation:null});};
   async createProject(path:string,metadata:Inventory['project']):Promise<ProjectCreationResult> {
     const form=this.surface.projectCreation;
-    if(!form||form.epoch!==this.surface.status.epoch||this.surface.openingProject)throw new Error("Projectの作成画面を開き直してください。");
+    if(!form||form.epoch!==this.surface.status.epoch||this.surface.openingProject)throw new Error("プロジェクトの作成画面を開き直してください。");
     this.publish({openingProject:path,error:null});
     try {
       const reply=await this.rpc<{creation:ProjectCreationResult;inventory:Inventory|null}>({kind:"createProject",epoch:form.epoch,path,metadata,discard:form.discard});
@@ -411,14 +411,14 @@ class Desktop {
     if (pending) this.unconfirmedWriteViews.add(key);
     else this.unconfirmedWriteViews.delete(key);
   }
-  async guardSource(source: string, epoch: number, title = "Rename / Move前の未保存変更", ignoreTemporary = false) {
+  async guardSource(source: string, epoch: number, title = "名前変更・移動前の未保存変更", ignoreTemporary = false) {
     const current = () => epoch === this.surface.status.epoch;
     const inventory = await this.rpc<Inventory>({kind: "inventory", epoch});
     if (!current()) return false;
     const input = ignoreTemporary ? null : this.inputPreview?.();
     const held = this.surface.heldInputs.some(input => input.source === source);
     if (inventory.data.recoveryRequired || inventory.data.uncertain.includes(source)) {
-      this.showError("書き込み結果のRecheckが必要です。");
+      this.showError("書き込み結果の再確認が必要です。");
       return false;
     }
     const temporary = input?.source === source && input.dirty;
@@ -485,7 +485,7 @@ class Desktop {
       this.local.set(p.clicked, this.local.get(p.source)!);
   }
   async openProject(path: string, discard = false, epoch=this.surface.status.epoch) {
-    if(this.surface.openingProject)throw new Error("Projectを開いています。完了後に操作してください。");
+    if(this.surface.openingProject)throw new Error("プロジェクトを開いています。完了後に操作してください。");
     if (this.surface.heldInputs.length && !discard) throw new Error("保持中の入力の確認が必要です。");
     this.publish({openingProject:path,error:null});
     try {
@@ -498,7 +498,7 @@ class Desktop {
     } finally {if(!this.surface.projectOpenUncertain)this.openingStatus=null;this.publish({openingProject:null});}
   }
   private acceptProject(r:Reply<Inventory>) {
-    if(!r||typeof r.data?.root!=="string"||!r.data.project||!Array.isArray(r.data.sources)||!Array.isArray(r.data.dirty)||!Number.isSafeInteger(r.host?.epoch))throw new Error("Project応答を確認できません。");
+    if(!r||typeof r.data?.root!=="string"||!r.data.project||!Array.isArray(r.data.sources)||!Array.isArray(r.data.dirty)||!Number.isSafeInteger(r.host?.epoch))throw new Error("プロジェクト応答を確認できません。");
     this.token++;
     this.readToken++;
     this.queryVersion++;
@@ -530,7 +530,7 @@ class Desktop {
       deliveryCapturing: false,
       query: "",
       queryPending: false,
-      error: r.preferencesError?`Recent Projectsを保存できません: ${r.preferencesError}`:null,
+      error: r.preferencesError?`最近開いたプロジェクトを保存できません: ${r.preferencesError}`:null,
       comparison: null,
       uncertainField: null,
       problems: [],
@@ -587,7 +587,7 @@ class Desktop {
     restore = true,
     startOverride?: number,
   ): Promise<SelectionSample> {
-    if(this.surface.openingProject||this.surface.projectCreation||this.surface.projectOpenUncertain)throw new Error("ProjectのOpen / Createを完了してから操作してください。");
+    if(this.surface.openingProject||this.surface.projectCreation||this.surface.projectOpenUncertain)throw new Error("プロジェクトを開く・作成する操作を完了してから操作してください。");
     const external = caseName === "external-change",
       after = caseName === "after-operation" || external,
       searching = caseName === "search-result";
@@ -632,11 +632,11 @@ class Desktop {
       if (!same && !(await this.commit())) {
         const input=this.inputPreview?.();
         if(input?.dirty) {
-          this.publish({heldInputs:[...this.surface.heldInputs,{source:input.source,label:input.label,text:input.text,reason:"入力を確定できませんでした。元のsourceで確認してください。"}]});
+          this.publish({heldInputs:[...this.surface.heldInputs,{source:input.source,label:input.label,text:input.text,reason:"入力を確定できませんでした。元のソースで確認してください。"}]});
           input.cancel();
         }
         throw new Error(
-          "入力を確定できません。元のsourceに戻って確認してください。",
+          "入力を確定できません。元のソースに戻って確認してください。",
         );
       }
       if (mine !== this.token) {
@@ -1168,7 +1168,7 @@ class Desktop {
   }
   async fieldOperation(operation: FieldOperation, expected: Projection, ignoreTemporary = false) {
     const epoch = expected.sessionEpoch;
-    if (this.surface.busy || this.surface.status.recoveryRequired || this.surface.uncertainField || epoch !== this.surface.status.epoch) throw new Error("現在この操作を開始できません。未確定の結果はRecheckで確認してください。");
+    if (this.surface.busy || this.surface.status.recoveryRequired || this.surface.uncertainField || epoch !== this.surface.status.epoch) throw new Error("現在この操作を開始できません。未確定の結果は結果を再確認してください。");
     if (!ignoreTemporary && !(await this.commit())) throw new Error("入力を確定できません。");
     const p = this.surface.projection;
     if (!p || p.clicked !== expected.clicked || p.sessionEpoch !== epoch) throw new Error("対象が変更されています。もう一度確定してください。");
@@ -1178,15 +1178,15 @@ class Desktop {
     let attempted = false;
     try {
       scope = (await this.rpc<FieldScope>({kind:"fieldScope", ...context, operation})).data;
-      if (epoch !== this.surface.status.epoch) throw new Error("Projectが変更されています。");
+      if (epoch !== this.surface.status.epoch) throw new Error("プロジェクトが変更されています。");
       for (const source of scope.sources) {
         if (!(await this.guardSource(source, epoch, "構造変更前の未保存変更", ignoreTemporary))) return null;
       }
-      if (scope.dirty.length) throw new Error("未保存変更を処理しました。変更後のTableで、もう一度確定してください。");
+      if (scope.dirty.length) throw new Error("未保存変更を処理しました。変更後のテーブルで、もう一度確定してください。");
       if (scope.destructive) {
         let answer: string;
         do {
-          answer = await this.choose("Drop Field", `${operation.kind === "drop" ? operation.field : "Field"}を${scope.affectedRecords}件のrecord、${scope.sources.length}個のsourceから削除します。`, ["Delete", "Compare", "Cancel"]);
+          answer = await this.choose("フィールドを削除", `${operation.kind === "drop" ? operation.field : "フィールド"}を${scope.affectedRecords}件のレコード、${scope.sources.length}個のソースから削除します。`, ["Delete", "Compare", "Cancel"]);
           if (answer === "Compare") {
             await this.migrationCompare(scope.token,scope.sources[0],scope.sources);
             const shown = this.surface.comparison;
@@ -1281,7 +1281,7 @@ class Desktop {
   private async saveIntent(intent: Record<string, unknown>) {
     if(this.surface.openingProject)return;
     if (this.surface.busy) return;
-    if (this.surface.deliveryCapturing) {this.showError("保存済みinputの取得中です。完了後にSaveを再操作してください。");return;}
+    if (this.surface.deliveryCapturing) {this.showError("保存済み入力の取得中です。完了後に保存を再操作してください。");return;}
     const epoch = this.surface.status.epoch;
     this.publish({ busy: true, error: null });
     try {
@@ -1313,18 +1313,18 @@ class Desktop {
     }
   };
   guard(): Promise<"saved" | "discard" | "cancel"> {
-    if(this.surface.projectOpenUncertain){this.showError("ProjectのOpen結果を確認し、明示的にOpenしてください。");return Promise.resolve("cancel");}
-    if(this.surface.projectCreationUncertain){this.showError("Projectの作成結果を確認し、明示的にOpenしてください。");return Promise.resolve("cancel");}
-    if(this.surface.openingProject){this.showError("ProjectのOpen / Createが完了してから操作してください。");return Promise.resolve("cancel");}
-    if(this.surface.deliveryMutating) {this.showError("実行中のBuild / Publishが確定してからProjectを切り替えるか終了してください。");return Promise.resolve("cancel");}
+    if(this.surface.projectOpenUncertain){this.showError("プロジェクトを開いた結果を確認し、再度開いてください。");return Promise.resolve("cancel");}
+    if(this.surface.projectCreationUncertain){this.showError("プロジェクトの作成結果を確認し、再度開いてください。");return Promise.resolve("cancel");}
+    if(this.surface.openingProject){this.showError("プロジェクトを開く・作成する操作が完了してから操作してください。");return Promise.resolve("cancel");}
+    if(this.surface.deliveryMutating) {this.showError("実行中のビルド・配布が確定してからプロジェクトを切り替えるか終了してください。");return Promise.resolve("cancel");}
     if (this.guardRunning) return this.guardRunning;
     this.guardRunning = (async () => {
       if (this.unconfirmedWriteViews.size) {
-        this.showError("書き込みの完了またはRecheckで結果を確認してから続けてください。");
+        this.showError("書き込みの完了または再確認で結果を確認してから続けてください。");
         return "cancel" as const;
       }
       if (this.surface.heldInputs.length) {
-        const choice = await this.choose("保持中の入力と未保存の変更", "保持中の入力は変更後のsourceへ安全に適用できません。保持中の入力とsourceの未保存変更を破棄して続けますか。", ["Don't Save", "Cancel"]);
+        const choice = await this.choose("保持中の入力と未保存の変更", "保持中の入力は変更後のソースへ安全に適用できません。保持中の入力とソースの未保存変更を破棄して続けますか。", ["Don't Save", "Cancel"]);
         return choice === "Don't Save" ? "discard" as const : "cancel" as const;
       }
       if (!(await this.commit())) return "cancel" as const;
@@ -1339,7 +1339,7 @@ class Desktop {
         return "saved" as const;
       const choice = await this.choose(
         "未保存の変更",
-        "sourceとProject Settingsの変更をどう扱いますか。",
+        "ソースとプロジェクト設定の変更をどう扱いますか。",
         ["Save All", "Don't Save", "Cancel"],
       );
       if (choice === "Cancel") return "cancel" as const;
@@ -1361,7 +1361,7 @@ class Desktop {
       // Read current protection again before allowing a Project session to end.
       const remaining = await this.rpc<Inventory>({ kind: "inventory", epoch: latest.host.epoch });
       if (remaining.data.dirty.length || remaining.data.configDirty || remaining.data.configUncertain || remaining.data.uncertain.length || remaining.data.recoveryRequired) {
-        this.showError("未確定の書き込みが残っています。Recheckで結果を確認してください。");
+        this.showError("未確定の書き込みが残っています。再確認で結果を確認してください。");
         return "cancel" as const;
       }
       return "saved" as const;
@@ -1410,7 +1410,7 @@ class Desktop {
   }
   async recoverMigration(id: string, restoreOld: boolean) {
     const epoch=this.surface.status.epoch;
-    if(restoreOld && await this.choose("Restore OLD", "このMigrationが書いたとfreshに確認できるsourceだけを、保存したOLD bytesへ戻します。",["Restore OLD","Cancel"])!=="Restore OLD") return;
+    if(restoreOld && await this.choose("Restore OLD", "この移行処理による書き込みを直前に確認できるソースだけを、保存した変更前の内容へ戻します。",["Restore OLD","Cancel"])!=="Restore OLD") return;
     this.publish({busy:true,error:null});
     try {
       await this.rpc({kind:"migrationRecovery",epoch,id,restoreOld,authorized:restoreOld});
@@ -1437,7 +1437,7 @@ class Desktop {
     if (!compared) return;
     const choice = await this.choose(
       "Overwrite",
-      "確認した外部sourceをこの保存候補で置き換えます。",
+      "確認した外部ソースをこの保存候補で置き換えます。",
       ["Overwrite", "Cancel"],
     );
     if (choice !== "Overwrite" || this.surface.comparison !== compared) return;
@@ -1467,7 +1467,7 @@ class Desktop {
     const path = source ?? p.source ?? p.table.source;
     const choice = await this.choose(
       "Reload source",
-      "このsourceの未保存変更を破棄してdiskを読み直します。",
+      "このソースの未保存変更を破棄してディスクを読み直します。",
       ["Reload source", "Cancel"],
     );
     if (choice === "Reload source")
@@ -1562,8 +1562,8 @@ class Desktop {
       let at = target.viewIndex;
       if (at === null) {
         const answer = await this.choose(
-          "Searchで非表示のrecord",
-          "Searchを解除して、このProblemのrecordを表示します。",
+          "検索で非表示のレコード",
+          "検索を解除して、この問題のレコードを表示します。",
           ["Clear Search", "Cancel"],
         );
         if (answer !== "Clear Search" || !current()) return;
@@ -1658,7 +1658,7 @@ class Desktop {
                 queryPending: false,
                 query: this.surface.projection?.viewState.search ?? "",
               });
-              this.showError("入力を確定してからSearchをやり直してください。");
+              this.showError("入力を確定してから検索をやり直してください。");
             }
             continue;
           }

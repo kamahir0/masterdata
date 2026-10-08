@@ -1,3 +1,4 @@
+import { uiMessage, statusLabel } from "./language";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState} from "react";
 import {App,Alert,Button,Drawer,Empty,Flex,Input,Modal,Select,Space,Spin,Tabs,Tag,Tooltip,Typography,type InputRef} from "antd";
 import {DeleteOutlined,DiffOutlined,EditOutlined,LeftOutlined,PlusOutlined,ReloadOutlined,RightOutlined,SaveOutlined,SettingOutlined,WarningOutlined} from "@ant-design/icons";
@@ -69,17 +70,17 @@ export function ProjectSettings({s}:{s:Surface}) {
     finally {if(captured===desktop.surface.status.epoch){running.current=false;setBusy(false);}}
   },[read]);
   const commit=useCallback((explicit=false):Promise<boolean>=>{
-    if(uncertain.current){setError("Outcome Unknown: actual configをRecheckしてから続けてください。");return Promise.resolve(false);}
+    if(uncertain.current){setError("Outcome Unknown: 現在の設定を再確認してから続けてください。");return Promise.resolve(false);}
     if(committing.current)return committing.current;
     const t=active.current;
     if(!t||(!explicit&&t.text===t.initial&&(t.kind!=="target"||t.targetKind===null)))return Promise.resolve(true);
     if(t.composing){setError("入力の変換を確定してから続けてください。");return Promise.resolve(false);}
-    if(t.kind==="target"&&!t.targetKind){setError("追加するtargetのkindを選択してください。");return Promise.resolve(false);}
+    if(t.kind==="target"&&!t.targetKind){setError("追加する配布先の種類を選択してください。");return Promise.resolve(false);}
     const captured=epoch.current,intent=desktop.inputIntent;
     const pending:Promise<boolean>=apply(t.revision,operation(t)).then(ok=>{
       if(ok&&active.current===t){
-        const label=t.kind==="tag"?(t.index===null?`Add ${t.exclude?"Exclude":"Include"} tags`:`Edit ${t.exclude?"Exclude":"Include"} tags ${t.index+1}`):
-          t.kind==="path"?`Publish target ${t.index+1} path`:t.kind==="profile"?"New Build Profile":"New Publish target";
+        const label=t.kind==="tag"?(t.index===null?`追加: ${t.exclude?"除外するタグ":"含めるタグ"}`:`編集: ${t.exclude?"除外するタグ":"含めるタグ"} ${t.index+1}`):
+          t.kind==="path"?`配布先 ${t.index+1} パス`:t.kind==="profile"?"ビルドプロファイルを追加":"配布先を追加";
         focusReturn.current={epoch:captured,intent,label};
         update(null);if(t.kind==="profile"){profile.current=t.text;setSelected(t.text);starts.current[2]=0;starts.current[3]=0;void read();}setNewItem(null);
       }
@@ -96,16 +97,16 @@ export function ProjectSettings({s}:{s:Surface}) {
     try {
       const reply=await desktop.rpc<Write>({kind:"configSave",epoch:captured,revision:v.revision});
       if(captured!==desktop.surface.status.epoch)return;
-      if(reply?.data?.source!=="masterdata.toml"||!['Success','Conflict','Failure','OutcomeUnknown','NotAttempted','RecoveryRequired'].includes(reply.data.outcome))throw new Error("Config Saveの応答を確認できません。");
+      if(reply?.data?.source!=="masterdata.toml"||!['Success','Conflict','Failure','OutcomeUnknown','NotAttempted','RecoveryRequired'].includes(reply.data.outcome))throw new Error("設定の保存の応答を確認できません。");
       observed=true;
       if(reply.data.outcome!=="Success")setError(`${reply.data.outcome}: ${reply.data.message}`);
-      else void message.success("Project Settingsを保存しました",1.5);
+      else void message.success("プロジェクト設定を保存しました",1.5);
       await read();await desktop.refreshInventory();
     } catch(e){if(captured===desktop.surface.status.epoch){
       // A native domain rejection is definitive. Loss of the commit reply is
       // not: retain protection even if an earlier status event looked clean.
       const definitive=typeof e==="object"&&e!==null&&"code" in e&&"message" in e;
-      if(!observed&&!definitive){markUncertain(true);setError(`Outcome Unknown: ${describe(e)}`);}else setError(describe(e));
+      if(!observed&&!definitive){markUncertain(true);setError(`結果を確認できません: ${describe(e)}`);}else setError(describe(e));
     }}
     finally {if(captured===desktop.surface.status.epoch){running.current=false;setBusy(false);}}
   },[commit,read,message,markUncertain]);
@@ -119,7 +120,7 @@ export function ProjectSettings({s}:{s:Surface}) {
   },[s.status.epoch,update,markUncertain]);
   useEffect(()=>{
     if(!s.settingsOpen||!s.inventory)return;
-    origin.current=document.querySelector<HTMLButtonElement>('button[aria-label="Project menu"]');openingIntent.current=desktop.inputIntent;
+    origin.current=document.querySelector<HTMLButtonElement>("button[aria-label=\"プロジェクトメニュー\"]");openingIntent.current=desktop.inputIntent;
     void read();
   },[s.settingsOpen,s.status.epoch,read]);
   // External status can arrive after ConfigEdit publishes dirty but before its
@@ -150,7 +151,7 @@ export function ProjectSettings({s}:{s:Surface}) {
     const v=value.current;if(!v)return;
     const captured=epoch.current;
     if(v.dirty||active.current||uncertain.current||v.outcome==="OutcomeUnknown"){
-      const result=await desktop.choose("Project SettingsをReload", "masterdata.tomlの未保存設定と入力を破棄し、diskから読み直します。YAMLのdraftは保持します。",["Reload","Cancel"]);
+      const result=await desktop.choose("プロジェクト設定を再読み込み", "masterdata.tomlの未保存設定と入力を破棄し、ディスクから読み直します。YAMLの未保存の変更は保持します。",["Reload","Cancel"]);
       if(result!=="Reload"||captured!==desktop.surface.status.epoch)return;
     }
     running.current=true;setBusy(true);
@@ -173,21 +174,21 @@ export function ProjectSettings({s}:{s:Surface}) {
       if(e.key==="Enter"){e.preventDefault();void commit(true);}else if(e.key==="Escape"&&!newItem){e.preventDefault();e.stopPropagation();update(null);}}}/>;
   const detail=view?.detail;
   function tags(exclude:boolean,list:ConfigList){
-    const label=exclude?"Exclude tags":"Include tags",current=typing?.kind==="tag"&&typing.exclude===exclude&&typing.profile===detail?.name?typing:null;
+    const label=exclude?"除外するタグ":"含めるタグ",current=typing?.kind==="tag"&&typing.exclude===exclude&&typing.profile===detail?.name?typing:null;
     return <section aria-label={label} className="settings-tag-list">
       <Flex justify="space-between" align="center"><Typography.Text strong>{label}</Typography.Text>
-        <Tooltip title="Tagを追加"><Button type="text" icon={<PlusOutlined/>} aria-label={`Add ${label}`} disabled={blocked||!list.editable}
+        <Tooltip title="タグを追加"><Button type="text" icon={<PlusOutlined aria-hidden="true"/>} aria-label={`追加: ${label}`} disabled={blocked||!list.editable}
           onClick={()=>void begin({kind:"tag",profile:detail!.name,exclude,index:null,revision:view!.revision,initial:"",text:"",composing:false})}/></Tooltip></Flex>
-      {list.reason&&<Alert type="warning" showIcon title={list.reason}/>}
-      <div role="list" aria-label={`${label} entries`}>
+      {list.reason&&<Alert type="warning" showIcon title={uiMessage(list.reason)}/>}
+      <div role="list" aria-label={`${label} の一覧`}>
         {list.entries.map(entry=><div role="listitem" key={entry.index} className="settings-entry">
-          {current?.index===entry.index?textInput(current,`Edit ${label} ${entry.index+1}`):<Button type="text" className="settings-value" disabled={blocked||!list.editable}
-            aria-label={`Edit ${label} ${entry.index+1}`} onClick={()=>void begin({kind:"tag",profile:detail!.name,exclude,index:entry.index,revision:view!.revision,initial:entry.text,text:entry.text,composing:false})}>{entry.text||<Typography.Text type="secondary">Empty tag</Typography.Text>}</Button>}
-          <Tooltip title={entry.reason}><span className="settings-entry-state">{!entry.valid&&<WarningOutlined aria-label={entry.reason??"Invalid tag"}/>}</span></Tooltip>
-          <Tooltip title="削除"><Button type="text" icon={<DeleteOutlined/>} aria-label={`Remove ${label} ${entry.index+1}`} disabled={blocked||!list.editable}
+          {current?.index===entry.index?textInput(current,`編集: ${label} ${entry.index+1}`):<Button type="text" className="settings-value" disabled={blocked||!list.editable}
+            aria-label={`編集: ${label} ${entry.index+1}`} onClick={()=>void begin({kind:"tag",profile:detail!.name,exclude,index:entry.index,revision:view!.revision,initial:entry.text,text:entry.text,composing:false})}>{entry.text||<Typography.Text type="secondary">空のタグ</Typography.Text>}</Button>}
+          <Tooltip title={uiMessage(entry.reason)}><span className="settings-entry-state">{!entry.valid&&<WarningOutlined aria-label={uiMessage(entry.reason??"無効なタグ")}/>}</span></Tooltip>
+          <Tooltip title="削除"><Button type="text" icon={<DeleteOutlined aria-hidden="true"/>} aria-label={`削除: ${label} ${entry.index+1}`} disabled={blocked||!list.editable}
             onClick={()=>void (async()=>{const captured=epoch.current;if(await commit()&&captured===desktop.surface.status.epoch){const v=value.current;if(v)await apply(v.revision,{operation:"tags",profile:detail!.name,exclude,edit:{operation:"remove",index:entry.index}});}})()}/></Tooltip>
         </div>)}
-        {current?.index===null&&<div className="settings-entry">{textInput(current,`New ${label}`)}<Button icon={<PlusOutlined/>} aria-label={`Commit ${label}`} disabled={blocked} onClick={()=>void commit(true)}>Add</Button></div>}
+        {current?.index===null&&<div className="settings-entry">{textInput(current,`新規: ${label}`)}<Button icon={<PlusOutlined aria-hidden="true"/>} aria-label={`確定: ${label}`} disabled={blocked} onClick={()=>void commit(true)}>追加</Button></div>}
         {!list.total&&!current&&<Typography.Text type="secondary">指定なし</Typography.Text>}
       </div>
       <Pages start={list.start} total={list.total} disabled={busy} page={next=>void page(next,exclude?3:2)}/>
@@ -195,70 +196,70 @@ export function ProjectSettings({s}:{s:Surface}) {
   }
   const selectedProfile=view?.profiles.find(p=>p.name===selected),missing=selected!==null&&!detail;
   return <>
-    <Drawer title={<Space><SettingOutlined/>Project Settings</Space>} open={s.settingsOpen} size={510} mask={false} focusable={{trap:false}} className="settings-drawer"
+    <Drawer title={<Space><SettingOutlined aria-hidden="true"/>プロジェクト設定</Space>} open={s.settingsOpen} size={510} mask={false} focusable={{trap:false}} className="settings-drawer"
       afterOpenChange={open=>{if(open&&openingIntent.current===desktop.inputIntent){if(active.current)input.current?.focus();else document.querySelector<HTMLElement>('.settings-sections [role="tab"][aria-selected="true"]')?.focus();}}}
       onClose={()=>{if(busy)return;desktop.projectSettings(false);if(origin.current?.isConnected)origin.current.focus();}}
       extra={<Space size={4}><span className="settings-pending">{loading&&<Spin size="small"/>}</span>
-        <Tooltip title="未保存設定を比較"><Button type="text" icon={<DiffOutlined/>} aria-label="Compare Project Settings" disabled={busy||(!view?.dirty&&!s.settingsInputDirty)} onClick={()=>void compare()}/></Tooltip>
-        <Button type="primary" icon={<SaveOutlined/>} aria-label="Save Project Settings" disabled={blocked||s.deliveryCapturing||s.status.configUncertain} onClick={()=>void save()}>Save</Button></Space>}>
+        <Tooltip title="未保存設定を比較"><Button type="text" icon={<DiffOutlined aria-hidden="true"/>} aria-label="プロジェクト設定を比較" disabled={busy||(!view?.dirty&&!s.settingsInputDirty)} onClick={()=>void compare()}/></Tooltip>
+        <Button type="primary" icon={<SaveOutlined aria-hidden="true"/>} aria-label="プロジェクト設定を保存" disabled={blocked||s.deliveryCapturing||s.status.configUncertain} onClick={()=>void save()}>保存</Button></Space>}>
       <Flex vertical gap={12}>
-        <Flex justify="space-between" align="center"><Typography.Text type="secondary" className="settings-file">masterdata.toml</Typography.Text><span className="settings-state">{(view?.dirty||s.settingsInputDirty)&&<Tag color="processing">Unsaved</Tag>}</span></Flex>
+        <Flex justify="space-between" align="center"><Typography.Text type="secondary" className="settings-file">masterdata.toml</Typography.Text><span className="settings-state">{(view?.dirty||s.settingsInputDirty)&&<Tag color="processing">未保存</Tag>}</span></Flex>
         <SettingsSections section={section} disabled={busy} select={next=>void chooseSection(next)}/>
-        {view?.reason&&<Alert type="warning" showIcon title="設定を編集できません" description={view.reason}/>}
-        {s.status.recoveryRequired&&<Alert type="warning" showIcon title="Recovery Required" description="source-setのRecoveryを完了してから設定を保存してください。"/>}
-        {view?.outcome==="Conflict"&&<Alert type="error" showIcon title="masterdata.tomlが外部で変更されました" description={<Space><Button onClick={()=>void compare(true)}>Compare</Button><Button onClick={()=>void reload()} disabled={busy}>Reload…</Button></Space>}/>}
-        {(writeUncertain||view?.outcome==="OutcomeUnknown")&&<Alert type="warning" showIcon title="保存結果を確認できません" description={<Button onClick={()=>void recheck()} disabled={busy}>Recheck actual config</Button>}/>}
-        {error&&<Alert type="error" showIcon closable onClose={()=>setError(null)} title="設定変更を完了できません" description={error}/>}
+        {view?.reason&&<Alert type="warning" showIcon title="設定を編集できません" description={uiMessage(view.reason)}/>}
+        {s.status.recoveryRequired&&<Alert type="warning" showIcon title="復旧が必要です" description="ソース一式の復旧を完了してから設定を保存してください。"/>}
+        {view?.outcome==="Conflict"&&<Alert type="error" showIcon title="masterdata.tomlが外部で変更されました" description={<Space><Button onClick={()=>void compare(true)}>比較</Button><Button onClick={()=>void reload()} disabled={busy}>再読み込み…</Button></Space>}/>}
+        {(writeUncertain||view?.outcome==="OutcomeUnknown")&&<Alert type="warning" showIcon title="保存結果を確認できません" description={<Button onClick={()=>void recheck()} disabled={busy}>ディスク上の設定を再確認</Button>}/>}
+        {error&&<Alert type="error" showIcon closable onClose={()=>setError(null)} title="設定変更を完了できません" description={uiMessage(error)}/>}
         {section==="profiles"?<>
-          <Flex gap={8}><Select aria-label="Settings Profile" style={{flex:1}} placeholder="Profileを選択" value={selected} disabled={busy}
-            options={[...(view?.profiles??[]).map(p=>({value:p.name,label:p.name})),...(missing&&selected&&!selectedProfile?[{value:selected,label:`${selected} — unavailable`}]:[])]} onChange={name=>void chooseProfile(name)}/>
-            <Button icon={<PlusOutlined/>} aria-label="New Build Profile" disabled={blocked||!view?.canAddProfile} onClick={()=>void add("profile")}>Profile</Button></Flex>
+          <Flex gap={8}><Select aria-label="設定するプロファイル" style={{flex:1}} placeholder="プロファイルを選択" value={selected} disabled={busy}
+            options={[...(view?.profiles??[]).map(p=>({value:p.name,label:p.name})),...(missing&&selected&&!selectedProfile?[{value:selected,label:`${selected} — 利用不可`}]:[])]} onChange={name=>void chooseProfile(name)}/>
+            <Button icon={<PlusOutlined aria-hidden="true"/>} aria-label="ビルドプロファイルを追加" disabled={blocked||!view?.canAddProfile} onClick={()=>void add("profile")}>プロファイル</Button></Flex>
           <Pages start={view?.profileStart??0} total={view?.profileCount??0} disabled={busy} page={next=>void page(next,0)}/>
-          {selectedProfile?.reason&&<Alert type="warning" showIcon title={selectedProfile.reason} description={`masterdata.toml:${selectedProfile.location.line}:${selectedProfile.location.column}`}/>}
-          {detail?<>{tags(false,detail.include)}{tags(true,detail.exclude)}</>:!loading&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={selected?"このProfileは編集できません":"Profileはまだありません"}/>}
+          {selectedProfile?.reason&&<Alert type="warning" showIcon title={uiMessage(selectedProfile.reason)} description={`masterdata.toml:${selectedProfile.location.line}:${selectedProfile.location.column}`}/>}
+          {detail?<>{tags(false,detail.include)}{tags(true,detail.exclude)}</>:!loading&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={selected?"このプロファイルは編集できません":"プロファイルはまだありません"}/>}
         </>:<>
-          <Flex justify="space-between" align="center"><Typography.Text strong>Publish targets</Typography.Text><Button icon={<PlusOutlined/>} aria-label="New Publish target" disabled={blocked||!view?.canAddTarget} onClick={()=>void add("target")}>Target</Button></Flex>
-          <div role="list" aria-label="Publish target occurrences">{view?.targets.map(target=><section role="listitem" key={target.index} className="settings-target">
-            <Flex justify="space-between" align="center"><Space><Typography.Text type="secondary">{target.index+1}</Typography.Text><Tag>{target.kind??"Unknown kind"}</Tag></Space><Typography.Text type="secondary">Line {target.location.line}</Typography.Text></Flex>
-            {typing?.kind==="path"&&typing.index===target.index?textInput(typing,`Publish target ${target.index+1} path`):<Button type="text" className="settings-value settings-path" icon={<EditOutlined/>} aria-label={`Publish target ${target.index+1} path`} disabled={blocked||!target.editable}
-              onClick={()=>void begin({kind:"path",index:target.index,revision:view.revision,initial:target.path??"",text:target.path??"",composing:false})}>{target.path||<Typography.Text type="secondary">Empty path</Typography.Text>}</Button>}
-            {target.reason&&<Typography.Text type="warning">{target.reason}</Typography.Text>}
+          <Flex justify="space-between" align="center"><Typography.Text strong>配布先</Typography.Text><Button icon={<PlusOutlined aria-hidden="true"/>} aria-label="配布先を追加" disabled={blocked||!view?.canAddTarget} onClick={()=>void add("target")}>配布先</Button></Flex>
+          <div role="list" aria-label="配布先の一覧">{view?.targets.map(target=><section role="listitem" key={target.index} className="settings-target">
+            <Flex justify="space-between" align="center"><Space><Typography.Text type="secondary">{target.index+1}</Typography.Text><Tag>{target.kind?statusLabel(target.kind):"不明な種類"}</Tag></Space><Typography.Text type="secondary">行 {target.location.line}</Typography.Text></Flex>
+            {typing?.kind==="path"&&typing.index===target.index?textInput(typing,`配布先 ${target.index+1} パス`):<Button type="text" className="settings-value settings-path" icon={<EditOutlined aria-hidden="true"/>} aria-label={`配布先 ${target.index+1} パス`} disabled={blocked||!target.editable}
+              onClick={()=>void begin({kind:"path",index:target.index,revision:view.revision,initial:target.path??"",text:target.path??"",composing:false})}>{target.path||<Typography.Text type="secondary">空のパス</Typography.Text>}</Button>}
+            {target.reason&&<Typography.Text type="warning">{uiMessage(target.reason)}</Typography.Text>}
           </section>)}</div>
-          {!loading&&!view?.targetCount&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Publish targetはまだありません"/>}
+          {!loading&&!view?.targetCount&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="配布先はまだありません"/>}
           <Pages start={view?.targetStart??0} total={view?.targetCount??0} disabled={busy} page={next=>void page(next,1)}/>
-          <Typography.Text type="secondary">pathの保存ではPublishを実行しません。</Typography.Text>
+          <Typography.Text type="secondary">パスの保存では配布を実行しません。</Typography.Text>
         </>}
-        {view?.problems.length? <Alert type="warning" showIcon title="設定の問題" description={<div className="settings-problems">{view.problems.map((p,i)=><Typography.Paragraph key={i}>{p.message}<Typography.Text type="secondary"> · {p.location.line}:{p.location.column}</Typography.Text></Typography.Paragraph>)}</div>}/>:null}
-        {s.status.environmentError&&view?.outcome!=="Conflict"&&<Alert type="warning" showIcon title="Project serviceを利用できません" description={<Space direction="vertical"><Typography.Text>{s.status.environmentError}</Typography.Text><Button icon={<ReloadOutlined/>} disabled={busy} onClick={()=>void desktop.reloadProject()}>Reload Project…</Button></Space>}/>}
-        <Button type="text" icon={<ReloadOutlined/>} aria-label="Discard Project Settings and reload" disabled={busy} onClick={()=>void reload()}>Discard / Reload…</Button>
+        {view?.problems.length? <Alert type="warning" showIcon title="設定の問題" description={<div className="settings-problems">{view.problems.map((p,i)=><Typography.Paragraph key={i}>{uiMessage(p.message)}<Typography.Text type="secondary"> · {p.location.line}:{p.location.column}</Typography.Text></Typography.Paragraph>)}</div>}/>:null}
+        {s.status.environmentError&&view?.outcome!=="Conflict"&&<Alert type="warning" showIcon title="プロジェクトを利用できません" description={<Space direction="vertical"><Typography.Text>{uiMessage(s.status.environmentError)}</Typography.Text><Button icon={<ReloadOutlined aria-hidden="true"/>} disabled={busy} onClick={()=>void desktop.reloadProject()}>プロジェクトを再読み込み…</Button></Space>}/>}
+        <Button type="text" icon={<ReloadOutlined aria-hidden="true"/>} aria-label="プロジェクト設定を破棄して再読み込み" disabled={busy} onClick={()=>void reload()}>破棄して再読み込み…</Button>
       </Flex>
     </Drawer>
-    <Modal title={newItem==="profile"?"New Build Profile":"New Publish target"} open={newItem!==null} okText="Add" confirmLoading={busy} destroyOnHidden
+    <Modal title={newItem==="profile"?"ビルドプロファイルを追加":"配布先を追加"} open={newItem!==null} okText="追加" confirmLoading={busy} destroyOnHidden
       focusable={{focusTriggerAfterClose:false}} afterOpenChange={open=>{modalVisible.current=open;if(!open)restoreFocus();}}
       okButtonProps={{disabled:blocked}} cancelButtonProps={{disabled:busy}} closable={!busy} maskClosable={false}
-      onCancel={()=>{if(!busy){focusReturn.current={epoch:epoch.current,intent:desktop.inputIntent,label:newItem==="profile"?"New Build Profile":"New Publish target"};setNewItem(null);update(null);}}} onOk={()=>void commit(true)}>
-      {typing?.kind==="profile"&&<Flex vertical gap={8}><Typography.Text>Profile name</Typography.Text>{textInput(typing,"New Profile name")}</Flex>}
+      onCancel={()=>{if(!busy){focusReturn.current={epoch:epoch.current,intent:desktop.inputIntent,label:newItem==="profile"?"ビルドプロファイルを追加":"配布先を追加"};setNewItem(null);update(null);}}} onOk={()=>void commit(true)}>
+      {typing?.kind==="profile"&&<Flex vertical gap={8}><Typography.Text>プロファイル名</Typography.Text>{textInput(typing,"新しいプロファイルの名前")}</Flex>}
       {typing?.kind==="target"&&<Flex vertical gap={12}>
-        <div><Typography.Text>Kind</Typography.Text><Select aria-label="New target kind" style={{width:"100%"}} value={typing.targetKind} placeholder="kindを選択" disabled={busy}
-          options={[{value:"csharp",label:"C# directory"},{value:"binary",label:"MasterMemory binary"}]} onChange={targetKind=>update({...typing,targetKind})}/></div>
-        <div><Typography.Text>Path</Typography.Text>{textInput(typing,"New target path")}</div>
+        <div><Typography.Text>種類</Typography.Text><Select aria-label="新しい配布先の種類" style={{width:"100%"}} value={typing.targetKind} placeholder="種類を選択" disabled={busy}
+          options={[{value:"csharp",label:"C#ディレクトリ"},{value:"binary",label:"MasterMemoryバイナリ"}]} onChange={targetKind=>update({...typing,targetKind})}/></div>
+        <div><Typography.Text>パス</Typography.Text>{textInput(typing,"新しい配布先のパス")}</div>
       </Flex>}
-      {error&&<Alert type="error" showIcon title={error}/>}
+      {error&&<Alert type="error" showIcon title={uiMessage(error)}/>}
     </Modal>
-    <Modal title={comparison?.conflict?"Config Conflict · Compare":"Save candidate · masterdata.toml"} open={comparison!==null} width={960} onCancel={()=>setComparison(null)}
-      footer={<Space>{comparison?.conflict&&<Button onClick={()=>void reload()} disabled={busy}>Reload…</Button>}<Button onClick={()=>setComparison(null)}>Close</Button></Space>}>
-      <div className="comparison-columns"><section><Typography.Text strong>{comparison?.conflict?"Actual disk":"Saved"}</Typography.Text><Input.TextArea aria-label="Config comparison before" value={comparison?.before} readOnly rows={18}/></section>
-        <section><Typography.Text strong>Draft</Typography.Text><Input.TextArea aria-label="Config comparison after" value={comparison?.after} readOnly rows={18}/></section></div>
+    <Modal title={comparison?.conflict?"外部で変更された設定を比較":"保存候補 · masterdata.toml"} open={comparison!==null} width={960} onCancel={()=>setComparison(null)}
+      footer={<Space>{comparison?.conflict&&<Button onClick={()=>void reload()} disabled={busy}>再読み込み…</Button>}<Button onClick={()=>setComparison(null)}>閉じる</Button></Space>}>
+      <div className="comparison-columns"><section><Typography.Text strong>{comparison?.conflict?"ディスク上の内容":"保存済み"}</Typography.Text><Input.TextArea aria-label="設定の比較元" value={comparison?.before} readOnly rows={18}/></section>
+        <section><Typography.Text strong>未保存の変更</Typography.Text><Input.TextArea aria-label="変更後の設定" value={comparison?.after} readOnly rows={18}/></section></div>
     </Modal>
   </>;
 }
 function SettingsSections({section,disabled,select}:{section:string;disabled:boolean;select:(s:string)=>void}){
-  return <Tabs className="settings-sections" size="small" activeKey={section} onChange={select} items={[{key:"profiles",label:"Profiles",disabled},{key:"targets",label:"Publish Targets",disabled}]}/>;
+  return <Tabs className="settings-sections" size="small" activeKey={section} onChange={select} items={[{key:"profiles",label:"プロファイル",disabled},{key:"targets",label:"配布先",disabled}]}/>;
 }
 function Pages({start,total,disabled,page}:{start:number;total:number;disabled:boolean;page:(s:number)=>void}){
   if(total<=64)return null;
   return <Flex justify="space-between" align="center"><Typography.Text type="secondary">{start+1}–{Math.min(start+64,total)} / {total}</Typography.Text><Space size={2}>
-    <Button type="text" icon={<LeftOutlined/>} aria-label="Previous settings page" disabled={disabled||start===0} onClick={()=>page(Math.max(0,start-64))}/>
-    <Button type="text" icon={<RightOutlined/>} aria-label="Next settings page" disabled={disabled||start+64>=total} onClick={()=>page(start+64)}/>
+    <Button type="text" icon={<LeftOutlined aria-hidden="true"/>} aria-label="前の設定ページ" disabled={disabled||start===0} onClick={()=>page(Math.max(0,start-64))}/>
+    <Button type="text" icon={<RightOutlined aria-hidden="true"/>} aria-label="次の設定ページ" disabled={disabled||start+64>=total} onClick={()=>page(start+64)}/>
   </Space></Flex>;
 }

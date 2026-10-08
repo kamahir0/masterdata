@@ -1,3 +1,4 @@
+import { uiMessage } from "./language";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Alert, AutoComplete, Button, Drawer, Empty, Input, Space, Spin, Tooltip, Typography, type InputRef } from "antd";
 import { DeleteOutlined, LeftOutlined, PlusOutlined, RightOutlined, TagsOutlined, WarningOutlined } from "@ant-design/icons";
@@ -59,7 +60,7 @@ export function TagPanel() {
     return desktop.bindEditor(() => commit(), () => {
       const current = typing.current;
       return current ? {source: current.authority.source, revision: current.authority.revision, generation: current.authority.generation,
-        label: "Record Tags", text: current.text, dirty: current.text !== current.initial, cancel} : null;
+        label: "レコードのタグ", text: current.text, dirty: current.text !== current.initial, cancel} : null;
     });
   }, [target, commit, cancel]);
   useLayoutEffect(() => {
@@ -68,7 +69,7 @@ export function TagPanel() {
     const restoring = next?.target === target && next.intent === desktop.inputIntent;
     if(!target || !view || loading || stale || blocked || (!restoring && (focused.current === target || target.inputIntent !== desktop.inputIntent))) return;
     const control = restoring
-      ? (next.index !== null ? body.current?.querySelector<HTMLElement>(`[data-tag-index="${next.index}"] .tag-entry-value`) : null) ?? body.current?.querySelector<HTMLElement>('input[aria-label="New Tag"]')
+      ? (next.index !== null ? body.current?.querySelector<HTMLElement>(`[data-tag-index="${next.index}"] .tag-entry-value`) : null) ?? body.current?.querySelector<HTMLElement>("input[aria-label=\"新しいタグ\"]")
       : body.current?.querySelector<HTMLElement>("input:not(:disabled),button:not(:disabled)");
     control?.focus({preventScroll: true});
     focused.current = target;
@@ -128,38 +129,38 @@ export function TagPanel() {
   };
   const validTarget = !!target && target.epoch === s.status.epoch && target.source === s.projection?.source;
   return <Drawer open={validTarget} placement="right" size={380} mask={false} keyboard={false} onClose={() => void close()}
-    title={<Space><TagsOutlined />Record Tags</Space>} classNames={{body: "tag-panel-body"}}>
+    title={<Space><TagsOutlined aria-hidden="true" />レコードのタグ</Space>} classNames={{body: "tag-panel-body"}}>
     <div ref={body} className="tag-panel" onKeyDown={keys} aria-busy={loading || s.busy}>
-      {error && <Alert type="error" showIcon title={error} />}
-      {view?.reason && <Alert type="warning" showIcon title="Tagsは読み取り専用です" description={view.reason} />}
+      {error && <Alert type="error" showIcon title={uiMessage(error)} />}
+      {view?.reason && <Alert type="warning" showIcon title="タグは読み取り専用です" description={uiMessage(view.reason)} />}
       {loading && !view ? <Spin size="small" /> : view && <>
         <div className="tag-entry-list">
-          {view.total === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Tagsなし" />}
+          {view.total === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="タグなし" />}
           {view.entries.map(entry => <div key={entry.index} className="tag-entry" data-tag-index={entry.index}>
-            {editing === entry.index ? <Input ref={input} aria-label={`Tag ${entry.index + 1}`} value={text} readOnly={blocked || stale}
+            {editing === entry.index ? <Input ref={input} aria-label={`タグ ${entry.index + 1}`} value={text} readOnly={blocked || stale}
               onChange={e => change(e.target.value)}
               onCompositionStart={() => { if(typing.current) typing.current.composing = true; }}
               onCompositionEnd={() => { if(typing.current) typing.current.composing = false; }}
               onBlur={() => { if(!desktop.surface.externalPending) void commit(); }} />
-              : <Tooltip title={entry.reason}><Button type="text" className="tag-entry-value" aria-label={`Edit Tag ${entry.index + 1}`} aria-invalid={!entry.valid}
-                icon={entry.valid ? undefined : <WarningOutlined />} disabled={!view.editable || blocked || stale} onClick={() => void begin(entry.index)}>
-                {entry.text || <Typography.Text type="secondary">空のTag</Typography.Text>}
+              : <Tooltip title={uiMessage(entry.reason)}><Button type="text" className="tag-entry-value" aria-label={`タグを編集: ${entry.index + 1}`} aria-invalid={!entry.valid}
+                icon={entry.valid ? undefined : <WarningOutlined aria-hidden="true" />} disabled={!view.editable || blocked || stale} onClick={() => void begin(entry.index)}>
+                {entry.text || <Typography.Text type="secondary">空のタグ</Typography.Text>}
               </Button></Tooltip>}
-            <Tooltip title="Remove Tag"><Button type="text" icon={<DeleteOutlined />} aria-label={`Remove Tag ${entry.index + 1}`}
+            <Tooltip title="タグを削除"><Button type="text" icon={<DeleteOutlined aria-hidden="true" />} aria-label={`タグを削除: ${entry.index + 1}`}
               disabled={!view.editable || blocked || stale} onClick={() => void remove(entry.index)} /></Tooltip>
           </div>)}
         </div>
-        {view.total > 64 && <Space className="tag-paging"><Button aria-label="Previous Tags" icon={<LeftOutlined />} disabled={view.start === 0 || blocked} onClick={() => {void commit().then(ok => {if(ok && desktop.interaction.tags === target) desktop.tagsPage(Math.max(0, view.start - 64));});}} />
+        {view.total > 64 && <Space className="tag-paging"><Button aria-label="前のタグ" icon={<LeftOutlined aria-hidden="true" />} disabled={view.start === 0 || blocked} onClick={() => {void commit().then(ok => {if(ok && desktop.interaction.tags === target) desktop.tagsPage(Math.max(0, view.start - 64));});}} />
           <Typography.Text type="secondary">{view.start + 1}–{Math.min(view.start + 64, view.total)} / {view.total}</Typography.Text>
-          <Button aria-label="Next Tags" icon={<RightOutlined />} disabled={view.start + 64 >= view.total || blocked} onClick={() => {void commit().then(ok => {if(ok && desktop.interaction.tags === target) desktop.tagsPage(view.start + 64);});}} /></Space>}
+          <Button aria-label="次のタグ" icon={<RightOutlined aria-hidden="true" />} disabled={view.start + 64 >= view.total || blocked} onClick={() => {void commit().then(ok => {if(ok && desktop.interaction.tags === target) desktop.tagsPage(view.start + 64);});}} /></Space>}
         {editing === null && <Space.Compact className="tag-add">
-          <AutoComplete aria-label="New Tag" value={text} options={view.known.map(tag => ({value: tag, label: tag || "空のTag"}))}
+          <AutoComplete aria-label="新しいタグ" value={text} options={view.known.map(tag => ({value: tag, label: tag || "空のタグ"}))}
             filterOption={(query, option) => String(option?.value).includes(query)} onChange={change} disabled={!view.editable}>
-            <Input aria-label="New Tag" placeholder="Tagを追加" readOnly={blocked || stale}
+            <Input aria-label="新しいタグ" placeholder="タグを追加" readOnly={blocked || stale}
               onCompositionStart={() => {if(!typing.current) change(text); if(typing.current) typing.current.composing = true;}}
               onCompositionEnd={() => {if(typing.current) typing.current.composing = false;}} />
           </AutoComplete>
-          <Button icon={<PlusOutlined />} aria-label="Add Tag" disabled={!view.editable || blocked || stale} onClick={add} />
+          <Button icon={<PlusOutlined aria-hidden="true" />} aria-label="タグを追加" disabled={!view.editable || blocked || stale} onClick={add} />
         </Space.Compact>}
         {view.partial && <Typography.Text type="secondary" className="tag-partial">候補は読込済みの範囲です</Typography.Text>}
       </>}

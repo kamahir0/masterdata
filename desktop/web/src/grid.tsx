@@ -1,3 +1,4 @@
+import { uiMessage, complexSummary } from "./language";
 import {
   memo,
   useCallback,
@@ -194,7 +195,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
         id="viewport"
         ref={viewport}
         role="grid"
-        aria-label="Table values"
+        aria-label="テーブルの値"
         tabIndex={0}
         aria-rowcount={(p?.totalRows ?? 0) + 1}
         aria-colcount={(p?.columns.length ?? 0) + 1}
@@ -236,7 +237,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
               rename={beginRename}
             />
           ))}
-          <div className="add-column"><Tooltip title="Add nullable string field"><Button type="text" icon={<PlusOutlined />} aria-label="Add column" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>
+          <div className="add-column"><Tooltip title="Nullを許可するstringフィールドを追加"><Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="列を追加" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>
         </div>
         <div
           id="grid-body"
@@ -313,8 +314,8 @@ const ColumnHeader = memo(
         <div className="column-identity">
           <button
             className="spatial-handle column-grip"
-            aria-label={`Reorder column ${field.name}`}
-            title={`Reorder column ${field.name}`}
+            aria-label={`列を並べ替え ${field.name}`}
+            title={`列を並べ替え ${field.name}`}
             disabled={busy}
             onPointerDown={(e) => beginColumnDrag(e, index)}
             onClick={(e) => {
@@ -323,26 +324,26 @@ const ColumnHeader = memo(
               menu(index, r.left, r.bottom);
             }}
           >
-            <HolderOutlined />
+            <HolderOutlined aria-hidden="true" />
           </button>
           <HeaderName field={field} active={active} editing={renaming} busy={busy} change={rename} />
           <button
             className="spatial-handle column-actions"
-            aria-label={`${field.name} actions`}
-            title={`${field.name} actions`}
+            aria-label={`${field.name} の操作`}
+            title={`${field.name} の操作`}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               menu(index, r.right - 180, r.bottom);
             }}
           >
-            <MoreOutlined />
+            <MoreOutlined aria-hidden="true" />
           </button>
         </div>
         <div className="column-shape">
           {active ? (
             <>
               <Select
-                aria-label={`${field.name} type`}
+                aria-label={`${field.name} の型`}
                 variant="borderless"
                 value={field.typeName}
                 options={options}
@@ -353,12 +354,12 @@ const ColumnHeader = memo(
                 className="field-type"
                 popupMatchSelectWidth={160}
               />
-              <Tooltip title="Nullable">
+              <Tooltip title="Nullを許可">
                 <Button
                   type="text"
                   className={field.nullable ? "modifier active" : "modifier"}
-                  icon={<QuestionOutlined />}
-                  aria-label={`${field.name} nullable`}
+                  icon={<QuestionOutlined aria-hidden="true" />}
+                  aria-label={`${field.name} Null許容`}
                   aria-pressed={field.nullable}
                   disabled={busy}
                   onClick={() =>
@@ -368,12 +369,12 @@ const ColumnHeader = memo(
                   }
                 />
               </Tooltip>
-              <Tooltip title="Array">
+              <Tooltip title="配列">
                 <Button
                   type="text"
                   className={field.array ? "modifier active" : "modifier"}
-                  icon={<SwapOutlined />}
-                  aria-label={`${field.name} array`}
+                  icon={<SwapOutlined aria-hidden="true" />}
+                  aria-label={`${field.name} 配列`}
                   aria-pressed={field.array}
                   disabled={busy}
                   onClick={() =>
@@ -444,8 +445,8 @@ const GridRow = memo(function GridRow({
       <div className="row-identity" role="rowheader">
         <button
           className="spatial-handle row-grip"
-          aria-label={`Reorder row ${row.occurrence}`}
-          title="Reorder row"
+          aria-label={`行を並べ替え ${row.occurrence}`}
+          title="行を並べ替え"
           disabled={
             row.pendingDelete ||
             !!p.viewState.search ||
@@ -462,25 +463,25 @@ const GridRow = memo(function GridRow({
             menu(row, r.left, r.bottom);
           }}
         >
-          <HolderOutlined />
+          <HolderOutlined aria-hidden="true" />
         </button>
         <span
           title={
-            row.pendingDelete ? "Pending Delete" : row.added ? "Added Row" : ""
+            row.pendingDelete ? "削除予定" : row.added ? "追加した行" : ""
           }
         >
           {row.occurrence}
         </span>
         <button
           className="spatial-handle row-actions"
-          aria-label={`Row ${row.occurrence} actions`}
-          title="Row actions"
+          aria-label={`行 ${row.occurrence} の操作`}
+          title="行の操作"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             menu(row, r.left, r.bottom);
           }}
         >
-          <MoreOutlined />
+          <MoreOutlined aria-hidden="true" />
         </button>
       </div>
       {row.cells.slice(first, last).map((cell, at) => {
@@ -497,9 +498,9 @@ const GridRow = memo(function GridRow({
             data-column={column}
             style={{ gridColumn: column + 2 }}
             title={
-              cell.problem
-                ? `${cell.problem.code} ${cell.problem.message}`
-                : (cell.reason ?? undefined)
+              uiMessage(cell.problem
+                ? `${cell.problem.code}: ${uiMessage(cell.problem.message)}`
+                : (cell.reason ?? undefined))
             }
             onPointerDown={(e) => {
               beginRangeSelection(e, row, column);
@@ -517,7 +518,7 @@ const GridRow = memo(function GridRow({
               menu(row, e.clientX, e.clientY);
             }}
           >
-            {cell.display}
+            {complexSummary(cell.display, cell.value?.kind === "sequence" || cell.value?.kind === "mapping")}
           </div>
         );
       })}
@@ -562,8 +563,8 @@ function SelectionOverlay({
     <>
       <span className="sr-only" role="status" aria-live="polite">
         {anchor
-          ? `${Math.abs(anchor.row - s.row) + 1} rows, ${Math.abs(anchor.column - s.column) + 1} columns selected`
-          : `Row ${s.row + 1}, ${s.field ?? "cell"}`}
+          ? `${Math.abs(anchor.row - s.row) + 1} 行、${Math.abs(anchor.column - s.column) + 1} 列を選択`
+          : `行 ${s.row + 1}, ${s.field ?? "セル"}`}
       </span>
       {anchor && (
         <div
@@ -632,7 +633,7 @@ function CellInput({ editor, pending }: { editor: Editor; pending:boolean }) {
     desktop.closeEditor();
   }, []);
   useLayoutEffect(() => {
-    const unbind = desktop.bindEditor(commit, () => ({ source: editor.source, revision: editor.revision, generation: editor.generation, label: `${editor.field} · Row ${editor.rowIndex + 1}`, text: value.current, dirty: value.current !== editor.initial, cancel }));
+    const unbind = desktop.bindEditor(commit, () => ({ source: editor.source, revision: editor.revision, generation: editor.generation, label: `${editor.field} · 行 ${editor.rowIndex + 1}`, text: value.current, dirty: value.current !== editor.initial, cancel }));
     input.current?.focus({ cursor: "all", preventScroll:true });
     return unbind;
   }, [commit, cancel]);
@@ -652,7 +653,7 @@ function CellInput({ editor, pending }: { editor: Editor; pending:boolean }) {
     >
       <Input
         ref={input}
-        aria-label={`${editor.field} row ${editor.rowIndex + 1}`}
+        aria-label={`${editor.field} 行 ${editor.rowIndex + 1}`}
         value={text}
         onChange={(e) => {
           value.current = e.target.value;
@@ -744,17 +745,17 @@ function HeaderName({field,active,editing,busy,change}:{field:Field;active:boole
     if(!editing)return;
     return desktop.bindEditor(commit,()=>{
       const p=origin.current;
-      return p ? {source:p.table.source,revision:p.schemaRevision,generation:p.generation,label:`${field.name} name`,text:text.current,dirty:text.current!==field.name,cancel} : null;
+      return p ? {source:p.table.source,revision:p.schemaRevision,generation:p.generation,label:`${field.name} 名前`,text:text.current,dirty:text.current!==field.name,cancel} : null;
     });
   },[editing,field.name,commit,cancel]);
   // Keep the Input and suffix DOM stable during pending/error feedback: replacing
   // Ant's affix structure or disabling the input loses the user's keyboard focus.
   return <span className="field-name" title={field.name}>
-    {editing ? <Tooltip title={reason}><Input ref={input} aria-label={`Rename ${field.name}`} aria-invalid={!!reason} aria-busy={busy} status={reason ? "error" : undefined} value={value} readOnly={busy} suffix={<span>{reason && <WarningOutlined/>}</span>} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;}} onChange={e=>{text.current=e.target.value;setValue(e.target.value);setReason(null);}} onKeyDown={e=>{
+    {editing ? <Tooltip title={uiMessage(reason)}><Input ref={input} aria-label={`名前を変更: ${field.name}`} aria-invalid={!!reason} aria-busy={busy} status={reason ? "error" : undefined} value={value} readOnly={busy} suffix={<span>{reason && <WarningOutlined aria-hidden="true"/>}</span>} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;}} onChange={e=>{text.current=e.target.value;setValue(e.target.value);setReason(null);}} onKeyDown={e=>{
       if(e.nativeEvent.isComposing || e.keyCode===229)return;
       if(e.key==="Escape"){e.preventDefault();e.stopPropagation();const clicked=origin.current?.clicked,intent=desktop.inputIntent;cancel();requestAnimationFrame(()=>{if(desktop.surface.target===clicked&&!desktop.surface.pending&&intent===desktop.inputIntent)desktop.viewport?.querySelector<HTMLButtonElement>(`.column[data-field="${CSS.escape(field.name)}"] .field-name-button`)?.focus();});}
       else if(e.key==="Enter" || e.key==="Tab"){e.preventDefault();e.stopPropagation();void commit();}
-    }} /></Tooltip> : active ? <Button type="text" className="field-name-button" aria-label={`Rename ${field.name}`} disabled={busy} onClick={()=>void change(field.name)}>{field.name}</Button> : field.name}
+    }} /></Tooltip> : active ? <Button type="text" className="field-name-button" aria-label={`名前を変更: ${field.name}`} disabled={busy} onClick={()=>void change(field.name)}>{field.name}</Button> : field.name}
   </span>;
 }
 function GridMenu({
@@ -772,59 +773,59 @@ function GridMenu({
     if (row.pendingDelete)
       items.push({
         key: "restore",
-        label: "Undo Delete",
-        icon: <UndoOutlined />,
+        label: "削除を取り消す",
+        icon: <UndoOutlined aria-hidden="true" />,
       });
     else
       items.push(
-        {key: "tags", label: "Tags…", icon: <TagsOutlined />},
+        {key: "tags", label: "タグ…", icon: <TagsOutlined aria-hidden="true" />},
         {type: "divider"},
         {
           key: "above",
-          label: "Insert Above",
-          icon: <PlusOutlined />,
+          label: "上に挿入",
+          icon: <PlusOutlined aria-hidden="true" />,
           disabled: position || !p.canAdd,
         },
         {
           key: "below",
-          label: "Insert Below",
-          icon: <PlusOutlined />,
+          label: "下に挿入",
+          icon: <PlusOutlined aria-hidden="true" />,
           disabled: position || !p.canAdd,
         },
         { type: "divider" },
         {
           key: "up",
-          label: "Move Up",
-          icon: <ArrowUpOutlined />,
+          label: "上に移動",
+          icon: <ArrowUpOutlined aria-hidden="true" />,
           disabled: position,
         },
         {
           key: "down",
-          label: "Move Down",
-          icon: <ArrowDownOutlined />,
+          label: "下に移動",
+          icon: <ArrowDownOutlined aria-hidden="true" />,
           disabled: position,
         },
         { type: "divider" },
         {
           key: "delete",
-          label: "Delete",
-          icon: <DeleteOutlined />,
+          label: "削除",
+          icon: <DeleteOutlined aria-hidden="true" />,
           danger: true,
         },
       );
   } else if (target?.column !== undefined) {
     items.push(
-      {key:"insertLeft",label:"Insert Left",icon:<PlusOutlined/>},
-      {key:"insertRight",label:"Insert Right",icon:<PlusOutlined/>},
+      {key:"insertLeft",label:"左に挿入",icon:<PlusOutlined aria-hidden="true"/>},
+      {key:"insertRight",label:"右に挿入",icon:<PlusOutlined aria-hidden="true"/>},
       {type:"divider"},
-      { key: "left", label: "Move Left", disabled: target.column === 0 },
+      { key: "left", label: "左に移動", disabled: target.column === 0 },
       {
         key: "right",
-        label: "Move Right",
+        label: "右に移動",
         disabled: target.column === target.p.columns.length - 1,
       },
       {type:"divider"},
-      {key:"drop",label:"Drop Field…",icon:<DeleteOutlined/>,danger:true},
+      {key:"drop",label:"フィールドを削除…",icon:<DeleteOutlined aria-hidden="true"/>,danger:true},
     );
   }
   return (

@@ -26,6 +26,10 @@ Project Settings / Delivery / Build等のProject areaは上部Project command su
 
 ## Presentation quality
 
+### GUI-SHELL-LANGUAGE-001
+
+Desktopは日本語を第一言語とする。操作名、説明文（設定項目を含む）、状態、確認・エラー・診断表示、accessible label、標準UI componentの文言を日本語で提供する（MUST）。製品・システム名、path / filename、schemaのfield / type / enum member / identifier、入力値、コード、format、CLI command、Diagnostic Code等のtechnical identityは翻訳・変更しない（MUST NOT）。説明中の一般語は日本語にする。外部tool由来のtechnical detailは原文を保持してよい。言語選択設定や追加の多言語対応は要求しない。
+
 ### GUI-SHELL-PRESENTATION-001
 
 Desktopのordinary workflowは、compact professional densityと一貫したvisual hierarchyを持たなければならない（MUST）。chrome、Explorer、Table / grid、dirty / selected / focused / pending / diagnostic state、menu、dialog、Complex、Conflict / Compare、Migration、Build / Publishは共通のUI system / semantic tokens / typography / iconographyへ統合する。一般controls / overlaysをbrowser default controlの寄せ集めとして残してはならない（MUST NOT）。icon-only actionにはaccessible labelとtooltipを与える。high-performance custom gridは共通visual languageへ統合する。

@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
-    "build": "tsc --noEmit && vite build",
-    "check": "tsc --noEmit"
+    "build": "npm run check && vite build",
+    "check": "tsc --noEmit && node --test tests/language.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "6.3.4",

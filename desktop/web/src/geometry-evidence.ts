@@ -25,9 +25,9 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     await desktop.selectTarget(SOURCE,'geometry-setup',false);
     const viewport=desktop.viewport!,header=viewport.querySelector<HTMLElement>('#grid-header')!,corner=header.querySelector<HTMLElement>('[role=columnheader]')!;
     const width=header.querySelector<HTMLElement>('[data-field="id"]')!.getBoundingClientRect().width;
-    const grip=header.querySelector<HTMLElement>('[aria-label="Reorder column id"]')!.getBoundingClientRect();
-    const name=header.querySelector<HTMLElement>('[aria-label="Rename id"]')!.getBoundingClientRect();
-    const action=header.querySelector<HTMLElement>('[aria-label="id actions"]')!.getBoundingClientRect();
+    const grip=header.querySelector<HTMLElement>("[aria-label=\"列を並べ替え id\"]")!.getBoundingClientRect();
+    const name=header.querySelector<HTMLElement>('[aria-label="名前を変更: id"]')!.getBoundingClientRect();
+    const action=header.querySelector<HTMLElement>("[aria-label=\"id の操作\"]")!.getBoundingClientRect();
     assert(grip.right<=name.left&&name.right<=action.left,'field name, handle and action hit areas overlap');
     checks.push('header-name-handle-action-separate');
     for(const theme of ['light','dark'] as const){
@@ -85,7 +85,7 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     assert(visible,'no complete row context visible');unobstructed(visible,'rowheader');
     assert(last.textContent==='4018'&&viewport.querySelectorAll('.grid-row').length<=64,'last value / bounded projection mismatch');
     checks.push('long-wide-sticky-context-and-exact-value');
-    const combo=header.querySelector<HTMLInputElement>('input[aria-label="field19 type"]')!;
+    const combo=header.querySelector<HTMLInputElement>('input[aria-label="field19 の型"]')!;
     assert(combo,'last field control missing');combo.focus();combo.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',keyCode:40,which:40,bubbles:true}));
     await until(()=>!!document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option'),'type popup not visible');
     const option=document.querySelector<HTMLElement>('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')!;

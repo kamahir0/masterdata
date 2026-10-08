@@ -121,7 +121,7 @@ async function focusCell(row: number, column: number) {
 async function undo() {
   const revision = desktop.surface.projection!.revision,
     schema = desktop.surface.projection!.schemaRevision;
-  find('button[aria-label="Undo"]').click();
+  find("button[aria-label=\"元に戻す\"]").click();
   await until(
     () =>
       desktop.surface.projection!.revision !== revision ||
@@ -375,7 +375,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       ...document.querySelectorAll<HTMLButtonElement>(
         ".ant-drawer-body button",
       ),
-    ].find((b) => b.textContent?.trim() === "Element");
+    ].find((b) => b.textContent?.trim() === "要素");
     assert(add, "Array Add missing");
     add.click();
     await until(
@@ -417,7 +417,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       ...document.querySelectorAll<HTMLButtonElement>(
         ".ant-drawer-body button",
       ),
-    ].find((b) => b.textContent?.trim() === "Element")!;
+    ].find((b) => b.textContent?.trim() === "要素")!;
     secondAdd.click();
     const search = find("#search");
     search.focus();
@@ -471,7 +471,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       stableGrid: true,
       latestGeneration: problem.generation,
     });
-    find('button[aria-label="Close Problems"]').click();
+    find("button[aria-label=\"問題を閉じる\"]").click();
     key(document.activeElement as HTMLElement, "Escape");
     await until(
       () => !desktop.interaction.complex,

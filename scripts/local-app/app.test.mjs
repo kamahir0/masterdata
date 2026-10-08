@@ -87,7 +87,9 @@ test('native launcher resolves its script from another working directory with sp
     await writeFile(join(directory, file), await readFile(join(original, file)));
   }
   const result = process.platform === 'win32'
-    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `""${join(directory, 'app.bat')}" --help"`], { cwd: root, encoding: 'utf8' })
+    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `""${join(directory, 'app.bat')}" --help"`], {
+      cwd: root, encoding: 'utf8', windowsVerbatimArguments: true,
+    })
     : spawnSync('sh', [join(directory, 'app.command'), '--help'], { cwd: root, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Usage:/);

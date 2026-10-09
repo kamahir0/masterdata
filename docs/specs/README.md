@@ -79,8 +79,7 @@ Requirement IDは、uppercase ASCII segmentをhyphenで区切り、末尾に3桁
 IDを追加する前に、既存のすべてのspecification definitionを検索して割り当てる。一度公開したIDは、
 rename、reassign、削除後の再利用をしてはならない（MUST NOT）。意味を変更する場合は新しいIDを
 割り当て、predecessor/deprecation noteを付ける。同じnormative ruleは1つのcanonical specificationに
-置き、他のdocumentからはそのIDへlinkし、内容をcopyしない。軽量な `cargo xtask check-specs`
-commandは、明示的なrequirement definitionとreference、duplicate definition、malformed ID、
+置き、他のdocumentからはそのIDへlinkし、内容をcopyしない。spec integrity checkは、明示的なrequirement definitionとreference、duplicate definition、malformed ID、
 status/header metadata、duplicate ADR number、RFC/proposal numberingとmetadata、broken relative linkを
 検査する。`See PROJECT-001` のようなrequirement referenceはownerではない。
 
@@ -158,6 +157,7 @@ code/document workflowで扱ってよい。semantic boundaryが不明な場合�
   - [Custom Types仕様](type-system/custom-types.md)
 - [Table / Primary Key / Secondary Key仕様](table-and-keys.md) — `Status: Approved`
 - [Index / reference仕様](index-and-reference.md) — `Status: Approved`（Reference core semanticsを所有。Table/Keyのsemantic ownerは別document）
+- [Table Declaration Mutation仕様](table-declaration-mutation.md) — `Status: Approved`
 - [Source Record Edit仕様](source-edit.md) — `Status: Approved`
 - [Source Path Mutation仕様](source-path-mutation.md) — `Status: Approved`
 - [Build Selection仕様](build-selection.md) — `Status: Approved`

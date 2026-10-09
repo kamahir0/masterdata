@@ -102,7 +102,7 @@ test / CI / documentation / workflowは第二passのsupporting evidenceとして
 
 ## 構造参照checkとの分離
 
-`cargo xtask check-rationale`は、機械的に高い確度で検証できる次の参照だけを対象とする。
+`current branchのrationale integrity check`は、機械的に高い確度で検証できる次の参照だけを対象とする。
 
 - comment内のRequirement IDがcanonical specificationで定義されていること
 - `ADR-NNNN` / `RFC-NNNN`参照に対応する番号付きdocumentが存在すること
@@ -205,11 +205,13 @@ implementation completed
         -> review-code self-review
         -> Blocking fixes, if safely possible
         -> affected tests / review-code re-check
-        -> cargo xtask check-rationale
-        -> cargo xtask check-all
+        -> current branchのrationale integrity check
+        -> current branchのscope適合repository check
         -> diff / scope self-review
         -> commit / push
         -> Development State: verification-ready
 ```
 
 tests passだけ、またはreferenceが存在するだけでreviewを省略してはならない。verification-readyへ渡すのはこのself-review後のfinal candidateであり、rationaleが不要になった場合も、protected invariantが消えたか別のevidenceへ移ったことを確認してから削除する。
+
+clean-slate branchでは[handoff](../../docs/rewrite-preparation/clean-room-handoff.md)に従い、退役済みproduct tests / mixed toolingを要求せず、`python3 tools/check-clean-slate.py`を使う。新runtimeが存在する将来の検証とは分離する。

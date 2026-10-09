@@ -4,7 +4,7 @@
 
 測定日: 2026-09-18（JST）
 
-この文書はDesktop制作v1の固定入力に対する実測値であり、製品のSLAや上限値を宣言するものではない。入力生成と計測の再現手順は [`desktop_v1_performance.rs`](../../crates/masterdata-app/examples/desktop_v1_performance.rs) に固定している。
+この文書はDesktop制作v1の固定入力に対する実測値であり、製品のSLAや上限値を宣言するものではない。入力生成と計測の再現手順は [旧implementation evidence: `desktop_v1_performance.rs`](https://github.com/kamahir0/masterdata/blob/legacy-final/crates/masterdata-app/examples/desktop_v1_performance.rs) に固定している。
 
 ## 固定入力
 

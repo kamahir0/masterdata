@@ -27,8 +27,8 @@ Document role: Canonical glossary
 - **Table**: source fileのpathに依存せず、宣言されたproject-localな `table` identityによって識別されるrecordの論理的なcollection。
 - **Record**: tableに属する1つのinstanceまたはrow。
 - **Field**: recordまたはCustom Typeのnamed・typed member。persisted fieldはsource `name`、value `type`、およびMessagePack serialization metadataである`key`を持つ。`key`はfield nameとは別のlogical identityを表さない。
-- **Schema AST**: schema declarationを表すtyped Rust structure。
-- **Data AST**: data documentのshapeを表すtyped data structure。type resolutionまで、field leafのYAML valueを保持する。
+- **Schema representation**: schema declarationの意味を表す表現。具体的なAST / Rust型は内部設計。
+- **Data representation**: data documentのsource表現。schema-directed resolutionとsource lexical preservationを可能にする。具体的な型は指定しない。
 - **Table identity**: `table` fieldが持つproject-localなstable identity。generated C# type nameおよびsource fileのpathとは別物である。現在のcontractは2つ目の `tableId` identity、global identity、rename lineage、legacy migration、cross-project identityを定義しない。詳細は`SCHEMA-TABLE-002`が所有する。
 - **Generated C# type name**: Tableのpresentation/code-generation name。`csharpName` があればそれを使用し、なければgeneratorが導出する。compatibility specificationが許す場合に限り、独立して変更してもよい（MAY）。Value Object / Custom Typeのtype declaration nameから生成するidentifierは、別途C#命名仕様が管理する。
 - **Generated C# identifier**: type declarationまたはCustom Type fieldから生成されるpublic C# type、property、constructor parameterのidentifier。Value Object / Custom Typeのmapping ruleはC#命名仕様が所有し、automatic repairを行ってはならない（MUST NOT）。
@@ -48,8 +48,8 @@ Document role: Canonical glossary
 - **Fixture**: 固定されたversion-controlled test input。toolはdevelopment projectへcopyしてもよいが、通常のCLI/GUI executionはそれを書き換えてはならない（MUST NOT）。
 - **Generated Artifact**: generated C#やbinaryなど、source inputから導出される再現可能なoutput。editのauthorityではない。
 - **Source of Truth**: 人間が編集・reviewするcanonical input。project schema/dataではYAML documentがSource of Truthである。
-- **Build plan**: validated documentとdeterministicなschema source-content hashを含み、Rustから.NET builder boundaryへ渡すinput。
-- **Schema source-content hash**: current scaffoldにおけるschema source bytesのdeterministicなhash。semantic schema hashでもbuilder cache keyでもない。
-- **Semantic schema hash**: parsed/resolvedされたschema meaningのcanonical formから将来計算するhash。現在は実装されていない。
+- **Build plan**: validated saved inputからdelivery生成に必要な意味を表す計画。具体的なinternal request shapeは指定しない。
+- **Schema source-content hash**: schema source bytesのdeterministicなhash（historical implementation vocabulary）。semantic schema hashでもbuilder cache keyでもない。
+- **Semantic schema hash**: parsed/resolvedされたschema meaningのcanonical formから将来計算するhash。rewriteの必須実装項目ではない。
 - **Builder cache key**: 再利用可能なbuilder outputを識別する将来のcomposite identity。source-content hashともsemantic schema hashとも別物である。
 - **Builder**: .NET側のprocess。Rustからinternal requestで受け取ったvalidated valueをgenerated C#の型へ復元し、MasterMemory v3 Source Generator、binary build、binary reload validationを行う。YAML semanticsのprimary ownerではない。

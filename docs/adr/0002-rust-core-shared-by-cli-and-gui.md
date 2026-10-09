@@ -9,14 +9,14 @@ GUIからCLIをsubprocess callすると、error handling、testing、lifecycle b
 
 ## 決定（Decision）
 
-`masterdata-app` はproject info、validation、build preparation、C# generation、.NET boundaryなどの
-shared application orchestrationを所有する。`masterdata-core` はshared domain/document operationを
-所有する。CLIとTauriはRust libraryとしてapplication serviceを呼び出し、どちらのfrontendもdomain
+shared Rust application boundary はproject info、validation、build preparation、C# generation、.NET boundaryなどの
+shared application orchestrationを所有する。shared Rust domain semantics はshared domain/document operationを
+所有する。CLIとDesktopはRust libraryとしてapplication serviceを呼び出し、どちらのfrontendもdomain
 logicを再実装したり、CLI subprocessを呼び出したりしてはならない。
 
 ## 結果（Consequences）
 
 Core/application APIにはstructuredでserializableなresultとdiagnosticが必要になる。UI固有のformattingは
-adapterに置く。project semanticsへの変更はcore boundaryで一度だけ行い、一度だけtestする。Tauriは
+adapterに置く。project semanticsへの変更はcore boundaryで一度だけ行い、一度だけtestする。Desktop adapterは
 diagnostic code、kind、source location、schema path、record identity、suggestion、related requirement
-referenceをerror DTOに保持する。
+referenceをstructured errorとして保持する。

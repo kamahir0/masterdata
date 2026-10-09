@@ -1,3 +1,5 @@
+> FORENSIC ONLY: legacy-finalに対するhistorical implementation evidence。現行rewrite contractでもarchitecture templateでもない。
+
 # Source Creation実装とself-review
 
 本書は実装根拠と検証範囲を記録するnon-normativeなメモである。

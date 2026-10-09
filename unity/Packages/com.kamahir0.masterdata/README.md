@@ -1,34 +1,38 @@
-# MasterData Unity Integration
+# MasterData Unity package
 
-This repository package is a thin Unity delivery boundary. Configure the
-MasterData project with its existing `publish.targets`, for example:
+Unity Package Managerの「Add package from disk」でこのdirectoryの`package.json`を指定する。API baselineはUnity 2022.3。実Editor / Playerでの検証はportable .NET検証とは別に行う。
 
-```toml
-[[publish.targets]]
-kind = "csharp"
-path = "../unity/Assets/MasterData/Generated"
-
-[[publish.targets]]
-kind = "binary"
-path = "../unity/Assets/StreamingAssets/masterdata.bytes"
-```
-
-The generic publisher owns generated C# files, the explicit binary, and its
-publish manifest. Unity owns `.meta` files and AssetDatabase lifecycle. The
-package does not parse MasterData YAML, infer publish paths, generate GUIDs, or
-delete orphan metadata.
-
-The runtime API delegates database construction to the generated MasterMemory
-type supplied by the Unity project. With the repository's pinned
-MasterMemory 3.0.4 / MessagePack 3.1.3 setup, a consumer can compose:
+Build / Publish先は既存target設定を使う。generated C#を`Assets/MasterData/Generated`、binaryを`Assets/StreamingAssets/masterdata.bytes`へ配布できる。consumer側でMasterMemory 3.0.4 / MessagePack 3.1.3を導入する。
 
 ```csharp
-var database = await MasterDataRuntime.LoadStreamingAssetsAsync(
-    "masterdata.bytes",
-    bytes => new MemoryDatabase(bytes),
-    cancellationToken);
+using MasterData.UnityRuntime;
+
+// Explicit bytes. The caller retains the returned database.
+var result = SavedDatabaseLoader.LoadBytes(bytes,
+    data => new Masterdata.Generated.MemoryDatabase(data));
+if (!result.Succeeded)
+    UnityEngine.Debug.LogError(result.Error.Code + ": " + result.Error.Message);
+else
+    database = result.Database;
+
+// Inside a caller-owned coroutine. Reload uses another explicit call.
+yield return StreamingAssetsDatabase.Load("masterdata.bytes",
+    data => new Masterdata.Generated.MemoryDatabase(data),
+    loaded => {
+        if (loaded.Succeeded) database = loaded.Database;
+        else UnityEngine.Debug.LogError(loaded.Error.Code + ": " + loaded.Error.Message);
+    });
 ```
 
-The caller owns `database` and explicitly repeats the load to create a new
-instance. The Editor menu `MasterData/Delivery Status` observes exact selected
-asset paths and keeps Publish, import, compile, and runtime status separate.
+Editorの`Window > MasterData > Delivery`でexact generated C# directoryとbinary fileを指定し、`Observe selected artifacts`を実行する。compiler callbacksをまだ観測していなければcompileは`unknown`。Publish、import、compile、runtime loadの結果はそれぞれ独立して確認する。
+
+verification:
+
+```sh
+python verification/check_unity_package.py
+dotnet build verification/unity-compatibility/UnityCompatibility.csproj
+dotnet run --project verification/unity-boundary/UnityBoundary.csproj
+cargo test -p masterdata-engine --features native-consumer --test build_consumer unity_caller
+```
+
+Unity Test Frameworkではpackageを`testables`へ追加し、`MasterData.UnityTests` EditMode assemblyを実行する。actual Unity import / compile / attached window / StreamingAssets readはこの段階で検証する。

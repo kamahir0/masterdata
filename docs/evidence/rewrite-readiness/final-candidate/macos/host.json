@@ -1,0 +1,14 @@
+{
+  "sha": "45b74bb6ac883398f993b6a04988b81c3c01048d",
+  "platform": "darwin",
+  "arch": "arm64",
+  "release": "23.6.0",
+  "cpus": [
+    "Apple M1 (Virtual)",
+    "Apple M1 (Virtual)",
+    "Apple M1 (Virtual)"
+  ],
+  "memoryBytes": 7516192768,
+  "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "node": "v22.23.2"
+}

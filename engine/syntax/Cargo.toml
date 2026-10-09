@@ -1,0 +1,15 @@
+[package]
+name = "tree-sitter-yaml"
+version = "0.7.2"
+edition = "2021"
+license = "MIT"
+build = "build.rs"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+tree-sitter-language = "0.1"
+
+[build-dependencies]
+cc = "1"

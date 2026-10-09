@@ -27,7 +27,7 @@ Source: [navigation evidence](../evidence/interactive-navigation.md)、[最終ex
 
 ### 100k evidenceの扱い
 
-固定 **100,000 records / 10 data files / 20 columns / 10,000 paste cells（1,000 × 10）** はcapacity regression assetとして残す。[harness](../../crates/masterdata-app/examples/desktop_v1_performance.rs) はone-shot load / query / preview / validationを測り、Explorer → usable gridを測っていない。
+固定 **100,000 records / 10 data files / 20 columns / 10,000 paste cells（1,000 × 10）** はcapacity regression assetとして残す。[旧implementation evidence: harness](https://github.com/kamahir0/masterdata/blob/legacy-final/crates/masterdata-app/examples/desktop_v1_performance.rs) はone-shot load / query / preview / validationを測り、Explorer → usable gridを測っていない。
 
 final Linux EPYC7763 / 4 vCPU: load 78,161ms、query 82,069ms、preview 91,766ms、validation 77,237ms、peak RSS 1,811,608KiB。baseline EPYC9V74や過去Mac debug sampleとの比較で因果的な改善・退行を主張しない。[旧performance evidence](../evidence/desktop-v1-performance.md) の短い別sampleも同一条件ではない。
 

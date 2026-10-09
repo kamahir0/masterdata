@@ -1,0 +1,28 @@
+name: Clean-slate integrity
+
+on:
+  push:
+    branches: [rewrite/clean-room]
+  pull_request:
+    branches: [rewrite/clean-room]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: YAML integrity checker dependency only
+        run: python -m pip install PyYAML==6.0.2
+      - name: Docs, state, corpus, retirement and tag integrity
+        run: python tools/check-clean-slate.py
+      - name: Whitespace integrity
+        run: git diff --check legacy-final HEAD

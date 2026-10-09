@@ -1,0 +1,38 @@
+import {invoke} from "@tauri-apps/api/core";
+import {desktop} from "./workspace";
+const SOURCE="sources/catalog-data.yaml";
+const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+async function until(test:()=>boolean,message:string){const deadline=performance.now()+10000;while(!test()){if(performance.now()>deadline)throw new Error(message);await frame();}}
+function assert(test:unknown,message:string):asserts test{if(!test)throw new Error(message);}
+function findButton(label:string){return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.getClientRects().length&&(b.getAttribute('aria-label')===label||b.textContent===label));}
+function button(label:string){const el=findButton(label);assert(el,`missing button ${label}`);return el;}
+function fieldInput(name:string){const el=document.querySelector<HTMLInputElement>(`input[aria-label="名前を変更: ${name}"]`);assert(el,`missing field input ${name}`);return el;}
+function text(name:string,value:string){const el=fieldInput(name);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));}
+function enter(name:string,isComposing=false){fieldInput(name).dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,which:13,isComposing,bubbles:true}));}
+async function menu(field:string,item:string){button(`${field} の操作`).click();await until(()=>[...document.querySelectorAll<HTMLElement>('.ant-dropdown:not(.ant-dropdown-hidden) [role="menuitem"]')].some(el=>el.textContent===item),`missing ${item}`);[...document.querySelectorAll<HTMLElement>('.ant-dropdown:not(.ant-dropdown-hidden) [role="menuitem"]')].find(el=>el.textContent===item)!.click();}
+export async function run({startup}:{startup:Record<string,unknown>}){
+ const checks:string[]=[];
+ try {
+  await until(()=>!!desktop.surface.inventory,"Project not open");await desktop.selectTarget(SOURCE,"migration-setup",false);
+  const initial=desktop.surface.projection!,rows=initial.rows.map(r=>r.id),top=desktop.viewport!.getBoundingClientRect().top;
+  desktop.viewport!.scrollLeft=11*160;await frame();await frame();
+  await until(()=>!!findButton('名前を変更: name'),'scrolled name header did not become visible');
+  button('名前を変更: name').click();await until(()=>!!document.querySelector('input[aria-label="名前を変更: name"]'),"inline name input not open");
+  text('name','title');enter('name',true);await frame();assert(desktop.surface.projection!.columns.some(c=>c.field.name==='name'),"composition Enter renamed field");
+  fieldInput('name').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!document.querySelector('input[aria-label="名前を変更: name"]'),"Escape did not cancel rename");await until(()=>document.activeElement?.getAttribute('aria-label')==='名前を変更: name',"Escape lost header focus");checks.push('inline-rename-composition-cancel');
+  button('名前を変更: name').click();await until(()=>!!document.querySelector('input[aria-label="名前を変更: name"]'),"name input missing");text('name','enabled');enter('name');
+  await until(()=>fieldInput('name').getAttribute('aria-invalid')==='true'&&!desktop.surface.busy,"invalid rename did not stay inline");assert(fieldInput('name').value==='enabled',"failed rename lost typing");await until(()=>document.activeElement===fieldInput('name'),"failed rename lost keyboard focus");checks.push('failed-rename-preserves-input');
+  text('name','title');enter('name');await until(()=>desktop.surface.projection?.columns.some(c=>c.field.name==='title')===true&&!desktop.surface.busy,"direct rename failed");
+  assert(!desktop.surface.choice && !desktop.surface.comparison,"normal rename required Plan / Apply UI");assert(JSON.stringify(desktop.surface.projection!.rows.map(r=>r.id))===JSON.stringify(rows),"rename replaced record occurrences");checks.push('direct-rename-exact-occurrences');
+  button("列を追加").click();await until(()=>desktop.surface.projection?.columns.some(c=>c.field.name==='field')===true&&!desktop.surface.busy,"tail Add failed");
+  const added=desktop.surface.projection!.columns.findIndex(c=>c.field.name==='field');assert(desktop.surface.projection!.columns[added].field.nullable&&desktop.surface.projection!.columns[added].field.typeName==='string',"wrong Add default");assert(desktop.surface.projection!.rows.every(r=>r.cells[added].value?.kind==='null'),"new field did not use explicit null");
+  await until(()=>document.activeElement?.getAttribute('aria-label')==="名前を変更: field","created column focus missing");checks.push('tail-add-explicit-null-focus');
+  desktop.viewport!.scrollLeft=0;await frame();await frame();await menu('code',"左に挿入");await until(()=>desktop.surface.projection?.columns[1]?.field.name==='field1'&&!desktop.surface.busy,"relative insert failed");checks.push('relative-column-insert');
+  await menu('field1',"フィールドを削除…");await until(()=>!!desktop.surface.choice&&!!findButton("比較"),"rendered destructive confirmation missing");button("比較").click();await until(()=>!!desktop.surface.comparison,"structural Compare missing");assert(desktop.surface.comparison!.migration?.sources.length===2,"Compare omitted affected source");assert(desktop.surface.comparison!.before.includes('field1: null')&&!desktop.surface.comparison!.after.includes('field1: null'),"record Compare did not use exact reviewed bytes");
+  await until(()=>!!document.querySelector("input[aria-label=\"比較するソース\"]"),"Compare source selector missing");const combo=document.querySelector<HTMLInputElement>("input[aria-label=\"比較するソース\"]")!;combo.focus();combo.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',keyCode:40,which:40,bubbles:true}));
+  await until(()=>[...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content')].some(el=>el.textContent==='sources/catalog-schema.yaml'),"affected schema choice missing");[...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content')].find(el=>el.textContent==='sources/catalog-schema.yaml')!.click();
+  await until(()=>desktop.surface.comparison?.source==='sources/catalog-schema.yaml',"Compare did not switch affected source");assert(!desktop.surface.choice,"source switch dismissed Compare review");assert(desktop.surface.comparison!.before.includes('name: field1')&&!desktop.surface.comparison!.after.includes('name: field1'),"schema Compare did not use reviewed bytes");[...combo.closest('[role="dialog"]')!.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent==="閉じる")!.click();await until(()=>!!desktop.surface.choice&&!!findButton("削除"),"Compare did not render explicit confirmation");button("削除").click();await until(()=>!desktop.surface.projection?.columns.some(c=>c.field.name==='field1')&&!desktop.surface.busy,"authorized Drop failed");checks.push('drop-compare-explicit-authorization');
+  assert(desktop.viewport!.getBoundingClientRect().top===top,"structural authoring shifted grid");assert(desktop.surface.status.dirty.length===0,"structural commit dirtied unrelated source");assert((startup.browserErrors as string[]).length===0,"browser errors");
+  await invoke('evidence_write',{report:{kind:'migration',checks,columns:desktop.surface.projection!.columns.map(c=>c.field),rows:desktop.surface.projection!.rows.map(r=>r.id),dirty:desktop.surface.status.dirty,visibility:document.visibilityState,focused:document.hasFocus(),startup}});
+ }catch(error){await invoke('evidence_write',{report:{kind:'migration',error:String(error),checks,startup,status:desktop.surface.status,projection:desktop.surface.projection,surfaceError:desktop.surface.error,active:document.activeElement?.outerHTML.slice(0,1000),dialog:document.querySelector('[role="dialog"]')?.outerHTML}});}
+}

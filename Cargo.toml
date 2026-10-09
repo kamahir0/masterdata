@@ -1,36 +1,29 @@
 [workspace]
+members = ["engine", "command", "desktop/native"]
 resolver = "2"
-members = [
-  "crates/masterdata-app",
-  "crates/masterdata-core",
-  "crates/masterdata-codegen-csharp",
-  "crates/masterdata-dotnet",
-  "crates/masterdata-cli",
-  "crates/xtask",
-  "apps/gui/src-tauri",
-]
-default-members = [
-    "crates/masterdata-core",
-    "crates/masterdata-codegen-csharp",
-    "crates/masterdata-dotnet",
-    "crates/masterdata-cli",
-    "crates/xtask",
-]
+exclude = ["engine/syntax"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
 license = "MIT"
-authors = ["masterdata contributors"]
+
+[workspace.metadata.masterdata]
+clean-room-rewrite = true
 
 [workspace.dependencies]
-clap = { version = "4.5", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.9"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
 sha2 = "0.10"
-same-file = "1.0"
-tempfile = "3.13"
-thiserror = "2.0"
-toml = "0.8"
+tree-sitter = "0.27"
+tree-sitter-yaml = "0.7.2"
+yaml-rust2 = "0.13"
+toml = "0.9"
+tempfile = "3"
+thiserror = "2"
+
+[profile.release]
+lto = "thin"
+
+[patch.crates-io]
+tree-sitter-yaml = { path = "engine/syntax" }

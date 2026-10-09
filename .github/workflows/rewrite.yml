@@ -1,0 +1,245 @@
+name: Clean-room implementation
+
+on:
+  push:
+    branches: [rewrite/clean-room]
+  pull_request:
+    branches: [rewrite/clean-room]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Local installer failure safety and native launcher paths
+        run: node --test scripts/local-app/app.test.mjs
+
+  unity-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: UPM layout, runtime/editor separation and stable diagnostics
+        run: python verification/check_unity_package.py
+      - name: Pure package APIs on .NET Standard 2.1 / C# 8 (no Unity assemblies)
+        run: dotnet build verification/unity-compatibility/UnityCompatibility.csproj --configuration Release
+      - name: Caller-owned runtime and fresh scoped compile evidence (portable; no Unity execution)
+        run: dotnet run --project verification/unity-boundary/UnityBoundary.csproj --configuration Release
+
+  native-consumer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: native-consumer
+      - name: Generated C# compilation, actual MasterMemory reload and independent queries
+        # .NET 8 first-use NuGet migration has shared named-mutex initialization.
+        # Keep native process cases sequential; shared Rust tests stay parallel.
+        run: cargo test -p masterdata-engine --locked --features native-consumer --test build_consumer -- --nocapture --test-threads=1
+      - name: CLI Build, receipt-only Publish and combined result boundary
+        run: cargo test -p masterdata-command --locked --features native-consumer --test cli_delivery -- --nocapture --test-threads=1
+      - name: Long-lived Desktop delivery, live navigation and captured saved inputs
+        run: cargo test -p masterdata-desktop --locked --features native-consumer --test delivery -- --nocapture --test-threads=1
+
+  shared-engine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Shared semantics and independent oracle adapters
+        run: cargo test --workspace --locked --features masterdata-engine/oracle-faults
+
+  capacity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: capacity
+      - run: cargo build -p masterdata-engine --locked --release --example capacity
+      - name: Fixed 100k corpus, all candidate cells and exact 10k paste bytes
+        shell: bash
+        run: |
+          executable=target/release/examples/capacity
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_capacity.py --binary "$executable" --output verification/results/capacity-native.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capacity-${{ matrix.os }}
+          path: verification/results
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop
+      - run: npm --prefix desktop/web ci
+      - run: npm --prefix desktop/web run build
+      - run: cargo clippy -p masterdata-desktop --features desktop-evidence --all-targets -- -D warnings
+      - run: cargo build -p masterdata-desktop --release --locked --features desktop-evidence
+      - name: Native Desktop warm navigation, latest selection and bounded projection
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --output verification/results/desktop.json
+      - name: Native keyboard pane focus and input evidence integrity
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case focus --output verification/results/focus.json
+      - name: Native long-wide grid hit areas and sticky-layer safety
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case geometry --output verification/results/geometry.json
+      - name: Native Desktop 100k capacity, bounded long/wide grid and ordinary 10k paste
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case capacity --output verification/results/capacity-desktop.json
+      - name: Native Desktop Build and explicit receipt-only Publish confirmation
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case delivery --output verification/results/delivery.json
+      - name: Native WebView authoring events, spatial previews, cancellation and nested Problems
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case authoring --output verification/results/authoring.json
+      - name: Native contextual Tag authoring, lossless entries and Problems focus
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case tags --output verification/results/tags.json
+      - name: Native Project Settings, config-only Save and all-dirty guards
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case settings --output verification/results/settings.json
+      - name: Native Project creation, recent roots and explicit artifact workflow
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case project --output verification/results/project.json
+      - name: Native filesystem observation and current authoring view lifetime
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case external --output verification/results/external.json
+      - name: Native source creation through inline and Advanced authoring
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case creation --output verification/results/creation.json
+      - name: Native source path mutation with physical-source Save / Discard guard
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case path --output verification/results/path.json
+      - name: Native direct column authoring and reviewed destructive migration
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case migration --output verification/results/migration.json
+      - name: Native Type Editor, typed initializer and reviewed source-set Apply
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case type --output verification/results/type.json
+      - name: Native Table declarations, Key / Reference review and uncertain commit recovery
+        shell: bash
+        run: |
+          executable=target/release/masterdata-desktop
+          if [ "$RUNNER_OS" = Windows ]; then executable="$executable.exe"; fi
+          python verification/run_desktop.py --binary "$executable" --case declaration --output verification/results/declaration.json
+      - name: Local production package, per-user install and staged launch smoke
+        run: node scripts/local-app/app.mjs --no-launch
+      - name: Packaging leaves tracked inputs unchanged
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ matrix.os }}
+          path: verification/results

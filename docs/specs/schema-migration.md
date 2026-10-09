@@ -62,6 +62,8 @@ query、binary mutationはv1 scope外であり、Migration v1の成功operation�
 
 後続の[Field Declaration Mutation](field-declaration-mutation.md)は独立した追加operationであり、このv1のoperation setや既存command semanticsを変更しない。source-preserving Plan / Applyの安全境界は共有する。
 
+[Table Declaration Mutation](table-declaration-mutation.md)も独立したauthoring operationであり、Migration v1とCLIのoperation setを変更しない。
+
 ### MIGRATION-003
 
 Migration Command semantic modelは、text edit命令ではなく、logical Table identity、field

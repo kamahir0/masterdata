@@ -4,7 +4,7 @@ Historical Evidence。Current authorityはGUI spec / ADR / Development State。b
 
 ## Baseline（2026-10-01 JST）
 
-開始HEAD: `1194a59f9d7493b186a92cc418efbeeac449443d`。この文書と同時のinstrumentation checkpointで測定。macOS / Apple Silicon、release build。固定入力は[navigation_performance.rs](../../crates/masterdata-app/examples/navigation_performance.rs)が所有する（3 Table、8 source、12,000 records、表示sourceごと2,000行×20列、inline / separate / mixed）。
+開始HEAD: `1194a59f9d7493b186a92cc418efbeeac449443d`。この文書と同時のinstrumentation checkpointで測定。macOS / Apple Silicon、release build。固定入力は[旧implementation evidence: navigation_performance.rs](https://github.com/kamahir0/masterdata/blob/legacy-final/crates/masterdata-app/examples/navigation_performance.rs)が所有する（3 Table、8 source、12,000 records、表示sourceごと2,000行×20列、inline / separate / mixed）。
 
 Command: `cargo run --release -p masterdata-app --example navigation_performance`。single pass、ms。phaseはinclusiveであり加算しない。
 
@@ -22,7 +22,7 @@ Command: `cargo run --release -p masterdata-app --example navigation_performance
 
 ## Desktop evidence
 
-[Navigation Desktop harness](../../apps/gui/tests/navigation-desktop.mjs)は実Tauri/WebKitでpointer / keyboard、React commit、paint opportunity、first usable interaction、timer / frame gap、rapid selectionを記録する。Rust traceはopt-inの`MASTERDATA_READ_TRACE`でcommand threadとphase countを記録する。実GPU paintの完了時刻をJSだけで断言せず、rAFはpaint opportunityとして扱う。
+[旧implementation evidence: Navigation Desktop harness](https://github.com/kamahir0/masterdata/blob/legacy-final/apps/gui/tests/navigation-desktop.mjs)は実Tauri/WebKitでpointer / keyboard、React commit、paint opportunity、first usable interaction、timer / frame gap、rapid selectionを記録する。Rust traceはopt-inの`MASTERDATA_READ_TRACE`でcommand threadとphase countを記録する。実GPU paintの完了時刻をJSだけで断言せず、rAFはpaint opportunityとして扱う。
 
 Baseline: [Desktop Evidence run 36790153897](https://github.com/kamahir0/masterdata/actions/runs/36790153897)、Candidate input `16d8077e620beb8ff2218f8d0c467f31922e8fdc`。Linux / WebKit / release。cold openは7,408ms。通常初回のgrid到達4,731ms、再訪2,534ms、同Table切替2,540ms、別Table4,738ms、schema selection6,919ms。first usable操作を含むW3C往復はgrid到達後に約250msを加えるため、product latencyの判定ではfrontend traceも併記する。
 

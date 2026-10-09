@@ -2,20 +2,23 @@
 
 ## Objective
 
-**Rewrite Readiness Gap Closure。nested Value Object consumer defectのfirst-loss boundaryを同定し最小production correctionを行う。controlled Tier1 actual Desktop baselineを取得し、正式rewrite inputのReady / Not Readyを再判定する。rewriteは開始しない。**
+**Clean-room Rewrite**。`rewrite/clean-room`上で、精製済みProduct Constitution / canonical contracts / independent oracleからMasterDataをfreshに再実装し、Humanがmainへのcutoverを判断できる状態へ到達する。
 
-## Completion slices
+## Completion boundary
 
-- minimal / full consumer reproduction、value-path観測、first-loss boundary、direct / nested / key-order regression、actual consumerとBuild determinism。
-- 少なくとも1つのcontrolled Tier1 Desktopでclean / same Table / cross Table / schema / dirty / rapidを測定。invalid environmentを分離しstage別distributionを記録。
-- macOS / Windows native hard invariant evidenceのreconciliation、fresh review / check-all / required CI、readiness再判定。
+- contractからのarchitecture導出、buildable workspaceとCI、instrumentされたDesktop vertical slice。
+- [ordinary authoring baseline](gui/rewrite-baseline.md)、[canonical domain](specs/README.md)、[Desktop contracts](gui/README.md)の実装。
+- [Desktop presentation quality](gui/app-shell.md#presentation-quality)とReact / Ant Design baseline、theme / motion / actual visual review。
+- [日本語を第一言語とするDesktop](gui/app-shell.md#gui-shell-language-001)（2026-10-09 Human-selected追加scope）。
+- source / schema / type mutation、write safety、Migration、CLI、Build / Publish、native MasterMemory delegationとactual consumer。
+- [independent oracle](../fixtures/rewrite-oracle/v1/README.md)の全category、[acceptance matrix](rewrite-preparation/acceptance-matrix.md)、source exact bytes、100k capacity。
+- [performance contract](gui/performance.md)のdistribution / work counts、macOS arm64 / Windows x64 actual Desktop、fresh Candidate reviewとrequired CI。
+- 未解決Blockingなしの**Cutover-ready**。内部milestoneはこのObjectiveのcompletionではない。
 
-## Authority / output routing
+## Authority / non-scope
 
-consumer authorityは[Value Object](specs/type-system/value-objects.md)、[Custom Type](specs/type-system/custom-types.md)、[Build](specs/build-pipeline.md)、[portable consumer oracle](../fixtures/rewrite-oracle/v1/consumer/scenario.json)。performance targetは[GUI performance](gui/performance.md)と[rewrite performance](rewrite-preparation/performance.md)。
+[formal inputs](rewrite-preparation/README.md)、[constitution](rewrite-preparation/constitution.md)、[domain / safety](rewrite-preparation/domain-safety.md)、[handoff](rewrite-preparation/clean-room-handoff.md)。
 
-Human-selected Gap ClosureのDecision Aは最小consumer correctness修正を許可する。Decision Bはrewrite前baselineにcontrolled Tier1 actual Desktop少なくとも1platform、rewrite final conformanceに双方を要求する。成果と限界は[readiness report](evidence/rewrite-readiness/report.md)へrouteする。
+旧production code / topologyをdefault input、template、copy sourceにしない。mainへのmerge、release、scope外featureの追加は行わない。
 
-## Explicit non-scope
-
-clean-room rewrite、architecture全面刷新、GUI redesign / general performance optimization、新機能、D1〜D6再審査、source format再設計、broad cleanup、unrelated warnings / dependency upgrade。
+2026-10-07 Human completion decisionにより、completion boundaryは現在のApproved canonical requirements / oracle / acceptance matrix / Human decisionsへ固定する。required target、stretch、non-blocking polishを区別し、未取得の外部環境証拠はspecific Human gateへrouteする。

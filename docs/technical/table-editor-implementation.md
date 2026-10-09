@@ -1,3 +1,5 @@
+> FORENSIC ONLY: legacy-finalに対するhistorical implementation evidence。現行rewrite contractでもarchitecture templateでもない。
+
 # Table Editor v1 実装とself-review
 
 2026-09-13のimplementation work packageの記録。確定Candidateに対するfinal verificationは別passで行う。

@@ -24,6 +24,28 @@ Projectが開いている間、DesktopはProject名とcurrent selectionを識別
 
 Project Settings / Delivery / Build等のProject areaは上部Project command surfaceから、Tableのsource構成 / Build inclusionは関連Table / Build文脈から理解できなければならない（MUST）。Build、Validate、Project Reload、Saveへの到達を失ってはならない（MUST NOT）。file / area間の移動だけでdirty bufferを保存・破棄・確認してはならない（MUST NOT）。navigationとcommandはkeyboardで到達・実行でき、選択対象と展開状態をassistive technologyから識別できなければならない（MUST）。
 
+## Presentation quality
+
+### GUI-SHELL-LANGUAGE-001
+
+Desktopは日本語を第一言語とする。操作名、説明文（設定項目を含む）、状態、確認・エラー・診断表示、accessible label、標準UI componentの文言を日本語で提供する（MUST）。製品・システム名、path / filename、schemaのfield / type / enum member / identifier、入力値、コード、format、CLI command、Diagnostic Code等のtechnical identityは翻訳・変更しない（MUST NOT）。説明中の一般語は日本語にする。外部tool由来のtechnical detailは原文を保持してよい。言語選択設定や追加の多言語対応は要求しない。
+
+### GUI-SHELL-PRESENTATION-001
+
+Desktopのordinary workflowは、compact professional densityと一貫したvisual hierarchyを持たなければならない（MUST）。chrome、Explorer、Table / grid、dirty / selected / focused / pending / diagnostic state、menu、dialog、Complex、Conflict / Compare、Migration、Build / Publishは共通のUI system / semantic tokens / typography / iconographyへ統合する。一般controls / overlaysをbrowser default controlの寄せ集めとして残してはならない（MUST NOT）。icon-only actionにはaccessible labelとtooltipを与える。high-performance custom gridは共通visual languageへ統合する。
+
+richnessはvisual / interaction qualityから得る。正常状態の常設説明、dashboard、能力ごとのpersistent panel、過剰な余白を追加してはならない（MUST NOT）。appearanceは[Color Theme](color-theme/spec.md)、surface scopeは[Rewrite baseline](rewrite-baseline.md)が所有する。React / Ant Design baselineとcustom grid例外の理由は[ADR 0009](../adr/0009-clean-room-desktop-workspace.md)へrouteする。
+
+### GUI-SHELL-PRESENTATION-002
+
+menu / overlay、selection / focus、contextual feedback、direct manipulationのmotionはhierarchy / causality / continuityを理解できるものにする（MUST）。ordinary transitionは100–200ms級を中心に短くresponsiveにする（SHOULD）。animation終了まで不必要に入力をblockせず、routine status到着でgrid geometryを変えない（MUST）。`prefers-reduced-motion`では不要なtransitionを除去・短縮し、state informationと操作correctnessを保持する（MUST）。
+
+dragged objectのpointer追従・neighbor displacement・cancelは[Grid Authoring](data-editor/grid-authoring.md)が所有する。whole-grid / offscreen / unbounded animationを導入せず、backend latencyをmotionで隠してはならない（MUST NOT）。[Performance](performance.md)のpublication / React commit / paint opportunity / accepted interactionを区別して測定する。
+
+### GUI-SHELL-PRESENTATION-003
+
+completion evidenceにはactual Desktop visual / interaction reviewを含めなければならない（MUST）。Welcome / Open、normal / dirty Table、Problems、Complex、menu、Conflict、Migration review、Build / Publish、Dark、long / wide Table、dragを確認する。functional DOM assertionだけでvisual quality完了とせず、reduced motion、stable geometry、bounded rendering、motionによるlatency regression、persistent surface bloatもfresh reviewする（MUST）。implementation-specific pixel位置はacceptance authorityにしない。
+
 ## Project open / reload
 
 ### GUI-SHELL-PROJECT-001

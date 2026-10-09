@@ -211,4 +211,8 @@ write-capable control authorityはHumanが明示開始したsession、freshness 
 
 ## Integrity check
 
-`crates/xtask/tests/execution_state.rs`はallowed Stage、Candidate / Work base shape、Active work / Blocking consistency、owner discoverability、recovery section等のmechanical invariantだけを検証する。policy判断やdocumentation品質を文字数・文字列一致だけで証明しない。
+clean-slate branchでは`python3 tools/check-clean-slate.py`がStage、Candidate / Work base shape、Active work / Blocking consistency、owner discoverability、corpus / docs integrityを検証する。旧runtime / mixed workspace checkerはlegacy-finalに退役している。これはproduct testの代替成功ではない。policy判断やdocumentation品質を機械checkだけで証明しない。
+
+## Clean-slate checkpoint
+
+Human-selected decommission境界ではproduct runtimeが意図的に存在しない。broken implementation checkpointとは区別し、docs / spec / state / corpus / tag / branch integrityとclean-slate CIをdelivery gateにする。新implementation用のworkspaceをCI修復のために作らない。次の実装は[handoff](rewrite-preparation/clean-room-handoff.md)からfresh contextで開始する。

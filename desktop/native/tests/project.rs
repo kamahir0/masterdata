@@ -22,6 +22,45 @@ fn metadata() -> Metadata {
     }
 }
 #[tokio::test(flavor = "current_thread")]
+async fn accepted_empty_external_root_does_not_break_desktop_open() {
+    let t = tempfile::tempdir().unwrap();
+    let project = t.path().join("project");
+    copy(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/rewrite-oracle/v1/save-both/input"),
+        &project,
+    );
+    fs::create_dir(t.path().join("outside")).unwrap();
+    let config = project.join("masterdata.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config).unwrap().replace(
+            "roots = [\"sources\"]",
+            "roots = [\"sources\", \"../outside\"]",
+        ),
+    )
+    .unwrap();
+    let data = fs::read(project.join("sources/data.yaml")).unwrap();
+    let session = Session::default();
+    let opened: Value = serde_json::from_str(
+        &session
+            .request_at(
+                Intent::Open {
+                    path: project.to_string_lossy().into(),
+                    discard: false,
+                },
+                0,
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let sources = opened["data"]["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 3);
+    assert!(sources.iter().any(|s| s["path"] == "sources/data.yaml"));
+    assert_eq!(fs::read(project.join("sources/data.yaml")).unwrap(), data);
+}
+#[tokio::test(flavor = "current_thread")]
 async fn project_creation_guard_failure_and_obsolete_requests_preserve_the_old_workspace() {
     let t = tempfile::tempdir().unwrap();
     let parent = t.path().canonicalize().unwrap();

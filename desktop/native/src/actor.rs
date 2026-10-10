@@ -749,7 +749,10 @@ fn watch(
 }
 fn inventory(w: &Workspace) -> Value {
     json!({"project":w.read.config.project,"root":w.read.root,"roots":w.read.config.sources.roots,
-        "sourceRootPaths":w.read.roots.iter().map(|root|root.strip_prefix(&w.read.root).unwrap().to_string_lossy().replace('\\',"/")).collect::<Vec<_>>(),"folders":w.read.folders,
+        // An empty configured root outside the Project can be accepted by the
+        // engine. Keep its configured identity rather than panicking while
+        // deriving display paths; source provenance remains engine-owned.
+        "sourceRootPaths":w.read.roots.iter().zip(&w.read.config.sources.roots).map(|(root,configured)|root.strip_prefix(&w.read.root).map(|p|p.to_string_lossy().replace('\\',"/")).unwrap_or_else(|_|configured.clone())).collect::<Vec<_>>(),"folders":w.read.folders,
         "sources":w.read.sources.values().map(|s|json!({"path":s.path,"kind":s.kind,"binding":s.binding,"error":s.error})).collect::<Vec<_>>(),
         "logicalTables":w.read.tables.values().map(|table|json!({"name":table.name,"source":table.source})).collect::<Vec<_>>(),
         "logicalTypes":w.read.type_sources.iter().map(|(name,source)|json!({"name":name,"source":source})).collect::<Vec<_>>(),

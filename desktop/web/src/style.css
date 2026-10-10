@@ -114,7 +114,7 @@ html[data-theme="dark"] body {
 #explorer .ant-tree-node-content-wrapper { border-radius: var(--md-radius); }
 #explorer .ant-tree-node-content-wrapper.ant-tree-node-selected {
   background: var(--md-selected);
-  color: var(--md-accent);
+  color: var(--md-text);
   box-shadow: inset 2px 0 var(--md-accent);
 }
 #explorer .ant-tree-title { font-weight: 500; }

@@ -1,12 +1,12 @@
 # Development State
 
-Stage: correction-ready
-Candidate: ba2f5457dfd222349d0432823c893f0381f724c6
+Stage: decision-required
+Candidate: 03d77b60263a0418e62d78ccc684dba0b425d0b7
 Work base: edc633a03b3406a7ba5741ee8f63b3b540a1a1c4
 
 ## Active work
 
-Completed: Human-selected GUI磨き込みの実装 / focused Desktop回帰（55 checks）/ warm測定。In progress: actual reviewで発見したDarkの選択済みソース名の低contrastをGUI-SHELL-PRESENTATION-001のforeground tokenで修正し、fresh actual review / required CIを閉じる。既存external evidence gatesは維持する。
+Completed: GUI-SHELL-PRESENTATION-001 / 002のHuman-selected磨き込み。actual macOS review / source hashes / fresh review / production app更新、固定Candidateの全17 required CI jobs / integrityがPASS。結果は[GUI磨き込みevidence](evidence/clean-room-candidate.md#gui磨き込み追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 
 Completed: 2026-10-10 Human-selected Desktop操作feedback（0056）の実装 / macOS actual review / source hashes / fresh review。固定Candidate全17 required CI jobs / integrityがPASS。結果は[追加scope evidence](evidence/clean-room-candidate.md#desktop操作feedback追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 
@@ -17,8 +17,6 @@ Completed: 許可済みmacOS実IMEで発見した`GUI-GRID-006`違反をcell / n
 Remaining: [Candidate evidence / finite ledger](evidence/clean-room-candidate.md#human-gates--verdict)のrequired external evidence。許可済みCGEvent helperはzero-input permission preflightで停止し、入力・product変更なし。未取得の証拠を追加実装や新しいacceptanceで置換しない。
 
 ## Blocking findings
-
-Correction: Dark Explorerの選択済みfilenameに背景と近いaccentを使用していた。foreground tokenで可読性を回復し、修正Candidateのactual画面で再確認する。
 
 Evidence gaps: macOS actual first-accepted <150ms証明 / held-drag Escape（CGEvent permission不足、設定変更禁止）、Windows x64 actual OS interaction / performance、Unity actual Editor / runtime。実IMEのconcrete Blockingは修正・再検証済みで他の既知製品Blockingは未検出。Cutover-ready / objective-complete未達。
 

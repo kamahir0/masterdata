@@ -8,6 +8,40 @@ Review Candidate: `f7cf90d857124602a918bdcad1dda2ef2e031850`（2026-10-07、実I
 
 **Not cutover-ready — macOS dense input / held drag、Windows actual Desktop、Unity actual環境のrequired evidence gaps。** `f57102e`の実IME違反は`f7cf90d`で修正し、scalar / nestedのactual IMEとrequired CIで再検証した。2026-10-09にHumanがPR #16をmainへmergeしたが、未取得の外部証拠は免除していない。以下の旧Candidate evidenceは当時の記録として保持する。
 
+## GUI磨き込み追加scope（2026-10-10）
+
+Candidate: `03d77b60263a0418e62d78ccc684dba0b425d0b7`、Work base: `edc633a03b3406a7ba5741ee8f63b3b540a1a1c4`。Humanが比較を依頼したfront-end-sample / codex-schedulerから、paneの連続性とAnt標準feedbackを既存`GUI-SHELL-PRESENTATION-001 / 002`へ反映した。新しい機能・常設surface・acceptance dimensionは追加していない。
+
+| Finite追加evidence | 結果 |
+| --- | --- |
+| pane / standard feedback | content幅を保つ開閉、即時inert / focus退避、rapid reversalのobsolete focus拒否、標準Tooltip、100 / 160 / 200ms token、Explorer / Welcome / Problemsの階層、pending / disabled feedback。Project adapterの既存開閉checkで途中frame / selection保持も確認 |
+| focused回帰 | local native Project14 / geometry9 / authoring13 / focus6 / creation6 / delivery7の計55 checks PASS。表示境界3 tests / TypeScript / Vite / Rust fmt / clippy / integrity PASS。local rawは実行時HEAD / dirty / binary hashを保持 |
+| actual macOS | 専用bundle28でWelcome / Recent Open、Dark Table、⌘B、menu / Tooltip、Problems、Light / Settings、invalid scalar→Problems focus→Escape / Undo、Build/Publish Drawerを確認。全9 filesのSHA-256一致。今回は既存surfaceへの変更に絞ったreview |
+| correction / actual再確認 | Darkの選択済みfilenameが背景に近いaccent色となるregressionを発見し、foreground tokenへ修正。clean Candidateのbundle29でDark / Light、System復帰、設定focus復帰を再確認。全9 filesのSHA-256一致、33 rows / 264 cells / active editor0 / dirty0 |
+| Reduced Motion | OS設定は変更していない。今回の実機prefはOFF。reduced tokenの0sとCSSのduration / delay除去をfresh reviewし、旧Candidateのactual ON / OFF結果は当時の証拠として保持する。ONの新実機測定へ読み替えない |
+| Candidate CI | [implementation run 38031936820](https://github.com/kamahir0/masterdata/actions/runs/38031936820): SUCCESS、全17 jobs。両Tier1でfocused55 checksずつ、全15 native Desktop categoryとcontrolled navigation / 100k capacityを通過。[integrity run 38031937025](https://github.com/kamahir0/masterdata/actions/runs/38031937025): SUCCESS |
+| local app / cleanup | `node scripts/local-app/app.mjs --no-launch`のproduction build / staged smoke / install PASS。`~/Applications/masterdata-local.app`をCandidateへ更新。専用bundle28 / 29は通常Quit、対象process残存0。Unity Editorは今回起動していない |
+
+bundle28は`ba2f545`のproduct / Development Stateだけdirty、binary SHA-256 `36a6160a70576adcf31ce262c36a04d08c1e98aace7e30fa96a6420eb01fd0c6`。bundle29はclean correction Candidate、binary SHA-256 `c85b4c04ca3d62b00ed89fd6fd0c3e20cf51ccca9d58b4415961223ad864a638`。production installed binaryは`4636e59221274b3a0df3b68405b9a67877970d43fa2426cab7bef2b1a146ab65`でpackageと同一。CUA native pointer / keyboardでの実画面reviewであり、physical human input / CGEvent helper / dense OS performanceの証拠へ改称しない。
+
+local controlled navigationは`ba2f545`（Development Stateだけdirty）で実測。3 Tables / 8 sources / 12,000 records / selected 2,000×20、全warm discovery / enumeration / YAML parse / validation = 0、mounted rows最大33。修正Candidateへのlocal測定の読み替えは行わない。
+
+| case | n | accepted median / p95 / max ms | backend p95 ms |
+| --- | ---: | ---: | ---: |
+| first source | 1 | 97（single） | 3.76（single） |
+| revisit | 300 | 61 / 67 / 73 | 3.38 |
+| same Table | 300 | 64 / 71 / 181 | 3.39 |
+| cross Table | 300 | 61 / 67 / 132 | 3.26 |
+| schema | 300 | 64 / 72 / 96 | 3.36 |
+| dirty revisit | 100 | 45 / 67 / 78 | 4.53 |
+| rapid | 100 | 47 / 53 / 56 | 3.33 |
+
+cold Open→inventory publicationは793ms、boot readyは99ms（各n1）。non-obsolete invalid0、obsolete300は意図どおり拒否。境界はcontrolled input / selection publication / backend / freshness / projection / serialization / IPC / React commit / layout / target-filtered rAF paint opportunity / controlled first acceptedを分離する。rAFをGPU presentationと呼ばず、controlled <150ms target通過を未取得のdense OS target証明の代わりにしない。passing metricの追加optimizationは行っていない。
+
+修正CandidateのCI controlled accepted p95は、macOSでrevisit111 / same110 / cross104 / schema107 / dirty113 / rapid72ms、Windowsで95.8 / 95.1 / 91.1 / 97.0 / 94.9 / 61.8ms。全warm project-wide countsは0。100k Desktop warm p95はmacOS122 / Windows90.2ms（各n100）、bounded rendering / 10k paste / source exact checks PASS。これはnative WebView / controlled handlersの証拠で、既存Windows actual OS gateを解消するものではない。全samples / RSS / stage latency / environmentはmachine evidenceへ保持する。
+
+Scope: base→Candidateのpresentation diffを同じagentの別passでfresh review。Specification Conformance: Pass。Tests and Regression Evidence: 上記のfocused / exact source / latency / CI。Rationale Freshness: Still accurate（固定幅contentのclip、closing時の即時inert、context / input intentを持つfocus取消、幅変更時はvisible列boundaryが変わる時だけReactへ公開）。Evidence Integrity: current canonicalとADR 0009へ照合、fixtures / engine / native builderは不変。Architecture / Scope: Rust authority、long-lived Workspace、physical draft / history、fresh write authorization、bounded projectionを保持。Findings: contrast regression修正・再確認済み、今回scopeのBlockingなし。Verdict: GUI磨き込みscope complete、required CI reconciliation完了。Clean-room全体の既存28項目ledger / 4 external gatesは不変。[machine evidence](clean-room-candidate-data.json.gz)の`guiPolish`へ今回scopeを分離する。
+
 ## Desktop操作feedback追加scope（2026-10-10）
 
 Candidate: `dc7a0eb3e29930684e9ec608cd457208fec6a3cf`、Work base: `8191c05c29e6adf2074d64da9bc683a498d6e2f3`（HumanによるPR #16 merge）。authorityは[0056](../spec-changes/0056-desktop-authoring-feedback.md)とそのcanonical owners。今回の9点以外へcompletion boundaryを拡張しない。

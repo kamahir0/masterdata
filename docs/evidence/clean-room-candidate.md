@@ -8,6 +8,25 @@ Review Candidate: `f7cf90d857124602a918bdcad1dda2ef2e031850`（2026-10-07、実I
 
 **Not cutover-ready — macOS dense input / held drag、Windows actual Desktop、Unity actual環境のrequired evidence gaps。** `f57102e`の実IME違反は`f7cf90d`で修正し、scalar / nestedのactual IMEとrequired CIで再検証した。2026-10-09にHumanがPR #16をmainへmergeしたが、未取得の外部証拠は免除していない。以下の旧Candidate evidenceは当時の記録として保持する。
 
+## 開発者用語の見直し追加scope（2026-10-10）
+
+Candidate: `f8d7d4969c69425634f6e0822d512d961d6a486b`、Work base: `79781b66aa43f83315ed2f614c7596d398b75324`。authorityは[GUI-SHELL-LANGUAGE-001](../gui/app-shell.md#gui-shell-language-001)と[Desktop表示語](../product/terminology.md#desktop表示語)。[0057](../spec-changes/0057-desktop-developer-terminology.md)のHuman-selected実装scopeだけを対象にする。
+
+| Finite追加evidence | 結果 |
+| --- | --- |
+| 表示境界 / 回帰 | 表示境界4 tests、TypeScript / Vite / Rust fmt / integrity PASS。native message / status / action辞書のkeyはbaseと不変。local native 11カテゴリ / 101 checks PASS。各rawの実行時HEAD / dirty / binary hashを保持し、commit後の測定へ読み替えない |
+| actual macOS | 専用bundle30、Candidateと同一product tree、Development State metadataだけdirty。CUA native pointer / keyboardでEnum / Flags / Value Object / Custom Type、作成menu / Advanced modal、Table / テーブル定義 / Complex、Project設定、Light / Dark / Systemを確認。作成modalとComplexは変更せず閉じた |
+| actual Build / Publish文言 | 専用fixtureの保存済み12,002 recordsからBuild成功、native binary reload。Publish previewを明示キャンセルして成果物を保持。成果物のreceipt / hash再確認でもsource freshness / Unity未検証の説明を保持 |
+| source safety / cleanup | YAML16 files + masterdata.tomlの全17 SHA-256がbefore / after一致。専用appの外観を元のLightへ復帰、通常Quit、対象process残存0。OS設定 / CGEvent helperは操作していない。Unity Editorは今回起動していない |
+| local production app | production build / staged smoke / install PASS。`~/Applications/masterdata-local.app`をCandidateへ更新。installed / package binary SHA-256は共に`75b2a2c282c482295848a6a04f6472d0e2bb9cb6759757c7f199109f62b77428` |
+| Candidate required CI | [implementation run 38045139703](https://github.com/kamahir0/masterdata/actions/runs/38045139703): 全17 jobs SUCCESS。shared engine / oracle、native consumer、portable Unity、capacityは3OS、Desktop / production packageは両Tier1で通過。[integrity run 38045139694](https://github.com/kamahir0/masterdata/actions/runs/38045139694): SUCCESS |
+
+actual bundle30のbinary SHA-256は`92a30862504515fb01ade944fabb6108f82e9a8ffadcc30a7fe3332872ff8c75`。CUA実画面reviewをphysical human input / CGEvent / dense OS latencyの証拠へ改称しない。declaration adapterではtab切替後の即時control lookupが表示より先に進むfailureを確認し、既存のvisible / enabled待機を使って同じ削除・復旧scenarioを再実行した。assertion / product semantics / timeoutは変更していない。
+
+CI controlled accepted p95（revisit / same / cross / schema / dirty / rapid）はmacOS 141 / 144 / 139 / 139 / 175 / 114ms、Windows 90.5 / 96.5 / 86.3 / 95.4 / 87.8 / 65ms。全warm project-wide countsは0。macOS dirty tailを含め、この異なるCI環境でreference hardwareの<150ms達成を主張しない。100kもcapacity / correctness evidenceであり、reference 2,000×20のSLAへ置換しない。既存actual OS measurement gateは維持し、passing metricの追加optimizationは行っていない。
+
+Scope: base→Candidateのpresentationと既存evidence selectorsを同じagentの別passでfresh review。Specification Conformance: Pass。Tests and Regression Evidence: 上記の表示境界・native回帰・actual input file hashes。Rationale Freshness: Still accurate（Rustが解決したcategory名だけを表示へmapping、technical placeholder / wire key保持、adapterはobservable actionを待機）。Evidence Integrity: Requirement ownerと0057、既存regressionを照合、ADR 0009のboundaryを維持。旧performance samplesは新Candidateへ流用しない。Architecture: Rust / write authority / workspace lifetime / bounded projectionは不変。Findings: None identified。Verdict: 表示scopeはReady to merge: Yes、required CI reconciliation完了。全体の28項目ledger / 4 external gatesは不変。[machine evidence](clean-room-candidate-data.json.gz)の`developerTerminology`へ分離する。
+
 ## GUI磨き込み追加scope（2026-10-10）
 
 Candidate: `03d77b60263a0418e62d78ccc684dba0b425d0b7`、Work base: `edc633a03b3406a7ba5741ee8f63b3b540a1a1c4`。Humanが比較を依頼したfront-end-sample / codex-schedulerから、paneの連続性とAnt標準feedbackを既存`GUI-SHELL-PRESENTATION-001 / 002`へ反映した。新しい機能・常設surface・acceptance dimensionは追加していない。

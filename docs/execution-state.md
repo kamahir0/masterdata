@@ -1,12 +1,12 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: decision-required
+Candidate: f8d7d4969c69425634f6e0822d512d961d6a486b
 Work base: 79781b66aa43f83315ed2f614c7596d398b75324
 
 ## Active work
 
-In progress: Human-selected [開発者用語の見直し](spec-changes/0057-desktop-developer-terminology.md)の実装とfocused validationが完了。actual Desktop表示と新Candidateのrequired CIを確認する。既存external evidence gatesは維持する。
+Completed: Human-selected [開発者用語の見直し](spec-changes/0057-desktop-developer-terminology.md)の実装 / actual macOS表示 / source hashes / fresh review / production app更新、固定Candidate全17 required CI jobs / integrityがPASS。[追加scope evidence](evidence/clean-room-candidate.md#開発者用語の見直し追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 
 Completed: GUI-SHELL-PRESENTATION-001 / 002のHuman-selected磨き込み。actual macOS review / source hashes / fresh review / production app更新、固定Candidateの全17 required CI jobs / integrityがPASS。結果は[GUI磨き込みevidence](evidence/clean-room-candidate.md#gui磨き込み追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 

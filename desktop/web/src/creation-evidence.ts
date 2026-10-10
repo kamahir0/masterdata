@@ -75,7 +75,7 @@ export async function run({startup}:{startup:Record<string,unknown>}) {
     assert(desktop.surface.projection!.table.name==='fresh-table'&&desktop.surface.projection!.totalRows===0,"filename changed Table identity or implicit rows appeared");
     checks.push("explicit-data-binding-yml");
 
-    await begin("列挙型","huge-token.yaml");button("作成内容の詳細").click();
+    await begin("Enum","huge-token.yaml");button("作成内容の詳細").click();
     await until(()=>!!document.querySelector("[role=\"dialog\"] input[aria-label=\"ソースの識別子\"]"),"Advanced dialog missing");
     text(input("ソースの識別子"),"HugeToken");
     await choose("基になる型","ulong");

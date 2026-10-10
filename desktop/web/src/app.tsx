@@ -70,7 +70,7 @@ import { ProjectSettings } from "./settings";
 import { CreateProjectModal } from "./project";
 import { useTableDeclaration } from "./table-declaration";
 import jaJP from "antd/locale/ja_JP";
-import { actionLabel, uiMessage, statusLabel } from "./language";
+import { actionLabel, uiMessage, statusLabel, sourceCategoryLabel, uiTerms } from "./language";
 
 export const useSurface = () =>
   useSyncExternalStore(desktop.subscribe, desktop.snapshot);
@@ -219,7 +219,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     },
     { type: "divider" },
     {key:"projectSettings",label:<Space>プロジェクト設定…{(s.status.configDirty||s.settingsInputDirty)&&<Badge status="processing"/>}</Space>,icon:<SettingOutlined aria-hidden="true"/>,disabled:!s.inventory},
-    {key:"delivery",label:"ビルド・配布…",icon:<BuildOutlined aria-hidden="true"/>,disabled:!s.inventory},
+    {key:"delivery",label:`${uiTerms.buildPublish}…`,icon:<BuildOutlined aria-hidden="true"/>,disabled:!s.inventory},
 
   ];
   return (
@@ -256,7 +256,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               type="text"
               icon={<FolderOpenOutlined aria-hidden="true" />}
               disabled={s.deliveryMutating||!!s.openingProject}
-              title={s.deliveryMutating?"ビルド・配布の完了後にプロジェクトを開いてください。":undefined}
+              title={s.deliveryMutating?"Build / Publishの完了後にプロジェクトを開いてください。":undefined}
               onClick={desktop.pickProject}
             >
 
@@ -370,7 +370,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               {!s.status.environmentError&&!s.inventory.sources.length&&<div className="project-guides"><Typography.Title level={5}>プロジェクトを始める</Typography.Title>
                 <Typography.Paragraph type="secondary">テーブル、型、フォルダーを個別に作成できます。</Typography.Paragraph>
                 <Space><Button type="primary" aria-label="テーブルを作成" disabled={!s.canCreateSource} icon={<PlusOutlined aria-hidden="true"/>} onClick={()=>desktop.newSource("table")}>テーブルを作成</Button>
-                  <Dropdown trigger={["click"]} menu={{items:[{key:"valueObject",label:"値オブジェクト"},{key:"enum",label:"列挙型"},{key:"flags",label:"フラグ列挙型"},{key:"custom",label:"カスタム型"}],onClick:({key})=>desktop.newSource(key as "valueObject"|"enum"|"flags"|"custom")}}><Button disabled={!s.canCreateSource} aria-label="型を作成">型を作成</Button></Dropdown>
+                  <Dropdown trigger={["click"]} menu={{items:["valueObject","enum","flags","custom"].map(key=>({key,label:sourceCategoryLabel(key)})),onClick:({key})=>desktop.newSource(key as "valueObject"|"enum"|"flags"|"custom")}}><Button disabled={!s.canCreateSource} aria-label="型を作成">型を作成</Button></Dropdown>
                   <Button disabled={!s.canCreateSource} icon={<FolderOpenOutlined aria-hidden="true"/>} onClick={()=>desktop.newSource("folder")}>フォルダーを作成</Button></Space>
               </div>}
             </div>
@@ -605,8 +605,8 @@ function TableSurface({ s }: { s: Surface }) {
     s.status.recoveryRequired ||
     !!uncertain;
   const items: MenuProps["items"] = [
-    {key:"declaration",label:"テーブルの詳細…",icon:<SettingOutlined aria-hidden="true"/>,disabled:disabled||!p||!!s.uncertainField},
-    {key:"delivery",label:"ビルド・配布…",icon:<BuildOutlined aria-hidden="true"/>},
+    {key:"declaration",label:`${uiTerms.tableDefinition}…`,icon:<SettingOutlined aria-hidden="true"/>,disabled:disabled||!p||!!s.uncertainField},
+    {key:"delivery",label:`${uiTerms.buildPublish}…`,icon:<BuildOutlined aria-hidden="true"/>},
     {
       key: "compare",
       label: "保存前の変更を比較",
@@ -781,7 +781,7 @@ function TableSurface({ s }: { s: Surface }) {
             description={<span className="error-detail">{uiMessage(s.error)}</span>}
           />
         )}
-        {s.uncertainField && <Alert className="context-alert" type="warning" showIcon title="構造変更の結果を確認できません" description={<Button disabled={s.busy} onClick={()=>void desktop.recheckFieldOperation()}>現在のソース一式を再確認</Button>} />}
+        {s.uncertainField && <Alert className="context-alert" type="warning" showIcon title="構造変更の結果を確認できません" description={<Space direction="vertical" size={4}><Typography.Text>{uiTerms.sourceRecheckDescription}</Typography.Text><Button aria-label="状態を再確認（対象ソース一式）" disabled={s.busy} onClick={()=>void desktop.recheckFieldOperation()}>{uiTerms.recheck}</Button></Space>} />}
         {s.heldInputs.length > 0 && <HeldInputs s={s} />}
         <ComplexPanel />
         <TagPanel />
@@ -990,11 +990,11 @@ function CompareModal({ s }: { s: Surface }) {
 }
 function RecoveryDrawer({s,open,close}:{s:Surface;open:boolean;close:()=>void}) {
   const information=s.inventory?.recovery ?? [],[index,setIndex]=useState(0),info=information[Math.min(index,Math.max(0,information.length-1))];
-  return <Drawer title="構造変更の復旧が必要です" open={open} onClose={close} size={520} destroyOnHidden footer={<Space><Button disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,false);}}>現在のソース一式を再確認</Button><Button danger disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,true);}}>変更前の状態に復元…</Button></Space>}>
+  return <Drawer title="構造変更の復旧が必要です" open={open} onClose={close} size={520} destroyOnHidden footer={<Space><Button aria-label="状態を再確認（復旧対象のソース一式）" disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,false);}}>{uiTerms.recheck}</Button><Button danger disabled={s.busy || !info?.id} onClick={()=>{if(info)void desktop.recoverMigration(info.id,true);}}>変更前の状態に復元…</Button></Space>}>
     <Space direction="vertical" size={12} className="recovery-detail">
-      <Alert type="error" showIcon title="ソースの変更とビルドを停止しています" description="変更前・変更後の状態を確認してください。閉じても保護状態は解除されません。"/>
+      <Alert type="error" showIcon title="ソースの変更とBuildを停止しています" description="変更前・変更後の状態を確認してください。閉じても保護状態は解除されません。"/>
       {information.length>1 && <Select aria-label="復旧する操作" value={index} options={information.map((record,i)=>({value:i,label:record.id || record.directory}))} onChange={setIndex}/>}
-      <Typography.Paragraph>{uiMessage(info?.message)}</Typography.Paragraph>
+      <Typography.Paragraph>{uiTerms.sourceRecheckDescription}</Typography.Paragraph><Typography.Paragraph>{uiMessage(info?.message)}</Typography.Paragraph>
       {info?.files.map(file=><div className="recovery-file" key={file.source}><Space><Tag>{statusLabel(file.state)}</Tag><Typography.Text strong>{file.source}</Typography.Text></Space><Typography.Paragraph type="secondary" copyable>{file.oldCopy}</Typography.Paragraph><Typography.Paragraph type="secondary" copyable>{file.newCopy}</Typography.Paragraph></div>)}
       <Typography.Text type="secondary" copyable>{info?.directory}</Typography.Text>
     </Space>

@@ -1,4 +1,4 @@
-import { uiMessage, statusLabel } from "./language";
+import { uiMessage, statusLabel, uiTerms } from "./language";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState} from "react";
 import {App,Alert,Button,Drawer,Empty,Flex,Input,Modal,Select,Space,Spin,Tabs,Tag,Tooltip,Typography,type InputRef} from "antd";
 import {DeleteOutlined,DiffOutlined,EditOutlined,LeftOutlined,PlusOutlined,ReloadOutlined,RightOutlined,SaveOutlined,SettingOutlined,WarningOutlined} from "@ant-design/icons";
@@ -80,7 +80,7 @@ export function ProjectSettings({s}:{s:Surface}) {
     const pending:Promise<boolean>=apply(t.revision,operation(t)).then(ok=>{
       if(ok&&active.current===t){
         const label=t.kind==="tag"?(t.index===null?`追加: ${t.exclude?"除外するタグ":"含めるタグ"}`:`編集: ${t.exclude?"除外するタグ":"含めるタグ"} ${t.index+1}`):
-          t.kind==="path"?`配布先 ${t.index+1} パス`:t.kind==="profile"?"ビルドプロファイルを追加":"配布先を追加";
+          t.kind==="path"?`配布先 ${t.index+1} パス`:t.kind==="profile"?"Buildプロファイルを追加":"配布先を追加";
         focusReturn.current={epoch:captured,intent,label};
         update(null);if(t.kind==="profile"){profile.current=t.text;setSelected(t.text);starts.current[2]=0;starts.current[3]=0;void read();}setNewItem(null);
       }
@@ -208,12 +208,12 @@ export function ProjectSettings({s}:{s:Surface}) {
         {view?.reason&&<Alert type="warning" showIcon title="設定を編集できません" description={uiMessage(view.reason)}/>}
         {s.status.recoveryRequired&&<Alert type="warning" showIcon title="復旧が必要です" description="ソース一式の復旧を完了してから設定を保存してください。"/>}
         {view?.outcome==="Conflict"&&<Alert type="error" showIcon title="masterdata.tomlが外部で変更されました" description={<Space><Button onClick={()=>void compare(true)}>比較</Button><Button onClick={()=>void reload()} disabled={busy}>再読み込み…</Button></Space>}/>}
-        {(writeUncertain||view?.outcome==="OutcomeUnknown")&&<Alert type="warning" showIcon title="保存結果を確認できません" description={<Button onClick={()=>void recheck()} disabled={busy}>ディスク上の設定を再確認</Button>}/>}
+        {(writeUncertain||view?.outcome==="OutcomeUnknown")&&<Alert type="warning" showIcon title="保存結果を確認できません" description={<Space direction="vertical" size={4}><Typography.Text>masterdata.tomlの現在の状態を確認します。保存は再試行しません。</Typography.Text><Button aria-label="保存結果を再確認（masterdata.toml）" onClick={()=>void recheck()} disabled={busy}>保存結果を再確認</Button></Space>}/>}
         {error&&<Alert type="error" showIcon closable onClose={()=>setError(null)} title="設定変更を完了できません" description={uiMessage(error)}/>}
         {section==="profiles"?<>
           <Flex gap={8}><Select aria-label="設定するプロファイル" style={{flex:1}} placeholder="プロファイルを選択" value={selected} disabled={busy}
             options={[...(view?.profiles??[]).map(p=>({value:p.name,label:p.name})),...(missing&&selected&&!selectedProfile?[{value:selected,label:`${selected} — 利用不可`}]:[])]} onChange={name=>void chooseProfile(name)}/>
-            <Button icon={<PlusOutlined aria-hidden="true"/>} aria-label="ビルドプロファイルを追加" disabled={blocked||!view?.canAddProfile} onClick={()=>void add("profile")}>プロファイル</Button></Flex>
+            <Button icon={<PlusOutlined aria-hidden="true"/>} aria-label={`${uiTerms.buildProfile}を追加`} disabled={blocked||!view?.canAddProfile} onClick={()=>void add("profile")}>プロファイル</Button></Flex>
           <Pages start={view?.profileStart??0} total={view?.profileCount??0} disabled={busy} page={next=>void page(next,0)}/>
           {selectedProfile?.reason&&<Alert type="warning" showIcon title={uiMessage(selectedProfile.reason)} description={`masterdata.toml:${selectedProfile.location.line}:${selectedProfile.location.column}`}/>}
           {detail?<>{tags(false,detail.include)}{tags(true,detail.exclude)}</>:!loading&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={selected?"このプロファイルは編集できません":"プロファイルはまだありません"}/>}
@@ -227,17 +227,17 @@ export function ProjectSettings({s}:{s:Surface}) {
           </section>)}</div>
           {!loading&&!view?.targetCount&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="配布先はまだありません"/>}
           <Pages start={view?.targetStart??0} total={view?.targetCount??0} disabled={busy} page={next=>void page(next,1)}/>
-          <Typography.Text type="secondary">パスの保存では配布を実行しません。</Typography.Text>
+          <Typography.Text type="secondary">パスの保存ではPublishを実行しません。</Typography.Text>
         </>}
         {view?.problems.length? <Alert type="warning" showIcon title="設定の問題" description={<div className="settings-problems">{view.problems.map((p,i)=><Typography.Paragraph key={i}>{uiMessage(p.message)}<Typography.Text type="secondary"> · {p.location.line}:{p.location.column}</Typography.Text></Typography.Paragraph>)}</div>}/>:null}
         {s.status.environmentError&&view?.outcome!=="Conflict"&&<Alert type="warning" showIcon title="プロジェクトを利用できません" description={<Space direction="vertical"><Typography.Text>{uiMessage(s.status.environmentError)}</Typography.Text><Button icon={<ReloadOutlined aria-hidden="true"/>} disabled={busy} onClick={()=>void desktop.reloadProject()}>プロジェクトを再読み込み…</Button></Space>}/>}
         <Button type="text" icon={<ReloadOutlined aria-hidden="true"/>} aria-label="プロジェクト設定を破棄して再読み込み" disabled={busy} onClick={()=>void reload()}>破棄して再読み込み…</Button>
       </Flex>
     </Drawer>
-    <Modal title={newItem==="profile"?"ビルドプロファイルを追加":"配布先を追加"} open={newItem!==null} okText="追加" confirmLoading={busy} destroyOnHidden
+    <Modal title={newItem==="profile"?`${uiTerms.buildProfile}を追加`:"配布先を追加"} open={newItem!==null} okText="追加" confirmLoading={busy} destroyOnHidden
       focusable={{focusTriggerAfterClose:false}} afterOpenChange={open=>{modalVisible.current=open;if(!open)restoreFocus();}}
       okButtonProps={{disabled:blocked}} cancelButtonProps={{disabled:busy}} closable={!busy} maskClosable={false}
-      onCancel={()=>{if(!busy){focusReturn.current={epoch:epoch.current,intent:desktop.inputIntent,label:newItem==="profile"?"ビルドプロファイルを追加":"配布先を追加"};setNewItem(null);update(null);}}} onOk={()=>void commit(true)}>
+      onCancel={()=>{if(!busy){focusReturn.current={epoch:epoch.current,intent:desktop.inputIntent,label:newItem==="profile"?`${uiTerms.buildProfile}を追加`:"配布先を追加"};setNewItem(null);update(null);}}} onOk={()=>void commit(true)}>
       {typing?.kind==="profile"&&<Flex vertical gap={8}><Typography.Text>プロファイル名</Typography.Text>{textInput(typing,"新しいプロファイルの名前")}</Flex>}
       {typing?.kind==="target"&&<Flex vertical gap={12}>
         <div><Typography.Text>種類</Typography.Text><Select aria-label="新しい配布先の種類" style={{width:"100%"}} value={typing.targetKind} placeholder="種類を選択" disabled={busy}

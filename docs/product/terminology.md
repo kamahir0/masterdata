@@ -53,3 +53,25 @@ Document role: Canonical glossary
 - **Semantic schema hash**: parsed/resolvedされたschema meaningのcanonical formから将来計算するhash。rewriteの必須実装項目ではない。
 - **Builder cache key**: 再利用可能なbuilder outputを識別する将来のcomposite identity。source-content hashともsemantic schema hashとも別物である。
 - **Builder**: .NET側のprocess。Rustからinternal requestで受け取ったvalidated valueをgenerated C#の型へ復元し、MasterMemory v3 Source Generator、binary build、binary reload validationを行う。YAML semanticsのprimary ownerではない。
+
+
+## Desktop表示語
+
+表示方針のauthorityは[GUI-SHELL-LANGUAGE-001](../gui/app-shell.md#gui-shell-language-001)。この対応表は表示名と既存概念を結び、domain semanticsを変更しない。
+
+| 概念 | Desktop表示 |
+| --- | --- |
+| Value Object / Enum / Flags Enum / Custom Type | Value Object / Enum / Flags / Custom Type |
+| Array / Nullable / Required | 配列 / nullを許可 / 必須 |
+| Underlying Type | 基になる型 |
+| Project / Schema / Table / Field / Record / Source | プロジェクト / スキーマ / テーブル / フィールド / レコード / ソース |
+| Primary Key / Secondary Key / Reference | 主キー / 副キー / 参照 |
+| Table declaration surface | テーブル定義 |
+| Build / Publish | Build / Publish |
+| Build Profile | Buildプロファイル（同じ文脈内では「プロファイル」） |
+| Migration / Plan / Apply / Compare | 構造変更 / 変更計画 / 適用 / 比較 |
+| Save / Save All / Undo / Redo / Find | 保存 / すべて保存 / 元に戻す / やり直す / 検索 |
+| Light / Dark / System | ライト / ダーク / システムに合わせる |
+| Conflict / Outcome Unknown / Recovery Required | 外部変更との競合 / 結果を確認できません / 復旧が必要です |
+
+FlagsはFlags Enumの表示上の短縮。Build / Publishを指す説明にも同じ操作名を使い、配布先・成果物・生成等の一般語は日本語を保つ。technical identity（製品名・規格・path・識別子・値・config key等）は原語・原値のまま扱う。

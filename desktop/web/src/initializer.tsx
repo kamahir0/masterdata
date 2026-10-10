@@ -34,7 +34,7 @@ export function TypedInitializer({shape,value,onChange,disabled=false}:{shape:Sh
   return <div className="typed-initializer" aria-label="型に合わせた初期値">
     <Flex gap={8} align="center" className="initializer-heading">
       {!!path.length&&<Button type="text" icon={<LeftOutlined aria-hidden="true"/>} aria-label="親の初期値に戻る" onClick={()=>{setPath(path.slice(0,-1));setPage(1);}}/>}
-      <Typography.Text strong>{path.map(key=>typeof key==="number"?String(key+1):key).join(" / ")||"Constant value"}</Typography.Text>
+      <Typography.Text strong>{path.map(key=>typeof key==="number"?String(key+1):key).join(" / ")||"初期値"}</Typography.Text>
       <Tag>{resolved.typeName}{resolved.array?"[]":resolved.nullable?"?":""}</Tag>
       <Space className="initializer-actions"><Button type="text" disabled={disabled} onClick={()=>set(unset)}>未設定</Button>{resolved.nullable&&<Button type="text" disabled={disabled} onClick={()=>set({kind:"null"})}>nullを使用</Button>}</Space>
     </Flex>

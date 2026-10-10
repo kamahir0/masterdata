@@ -1,4 +1,4 @@
-import { uiMessage } from "./language";
+import { uiMessage, sourceCategoryLabel } from "./language";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Divider, Flex, Form, Input, Modal, Select, Space, Spin, Tooltip, Typography, type MenuProps } from "antd";
 import { ArrowDownOutlined, ArrowUpOutlined, CloseOutlined, DeleteOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
@@ -21,7 +21,7 @@ type Preview = {valid:boolean;identity:string|null;category:Category;diagnostics
 type Request = {root:string;path:string;artifact:Artifact};
 type Result = {source:string;outcome:string;message:string};
 type Draft = {id:number;root:string;folder:string;filename:string;category:Category;artifact:Artifact|null;advanced:boolean;pending:boolean;result:Result|null;error:string|null;preview:Preview|null};
-const categories: [Category,string][] = [["folder","フォルダー"],["table","テーブル"],["data","データ"],["valueObject","値オブジェクト"],["enum","列挙型"],["flags","フラグ列挙型"],["custom","カスタム型"]];
+const categories: [Category,string][] = (["folder","table","data","valueObject","enum","flags","custom"] as Category[]).map(category=>[category,sourceCategoryLabel(category)]);
 const join = (folder:string,name:string) => folder && folder!=="."?`${folder}/${name}`:name;
 const parent = (path:string) => path.includes("/")?path.slice(0,path.lastIndexOf("/")):".";
 const errorText = (error:unknown) => error && typeof error==="object" && "message" in error ? `${"code" in error?String(error.code)+": ":""}${String(error.message)}`:String(error);
@@ -153,7 +153,7 @@ function Declaration({artifact:a,choices,update,disabled}:{artifact:Artifact;cho
     {a.category==="valueObject"&&<Space direction="vertical"><Checkbox checked={a.fromImplicit} onChange={e=>update({...a,fromImplicit:e.target.checked})}>基になる型からの暗黙の変換</Checkbox><Checkbox checked={a.toImplicit} onChange={e=>update({...a,toImplicit:e.target.checked})}>基になる型への暗黙の変換</Checkbox></Space>}
     {(a.category==="enum"||a.category==="flags")&&<>
       <div className="creation-list-heading"><Typography.Text>メンバー</Typography.Text><Button icon={<PlusOutlined aria-hidden="true"/>} onClick={()=>update({...a,members:[...a.members,["",""]]})}>メンバーを追加</Button></div>
-      <div role="list" aria-label="列挙型のメンバー">{a.members.map(([name,value],i)=><Flex role="listitem" className="creation-list-row" key={i} gap={8} align="center"><Input aria-label={`メンバー ${i+1} 名前`} value={name} placeholder="名前" onChange={e=>update({...a,members:a.members.map((m,j)=>i===j?[e.target.value,m[1]]:m)})}/><Input aria-label={`メンバー ${i+1} 値`} value={value} placeholder="整数を明示" inputMode="numeric" onChange={e=>update({...a,members:a.members.map((m,j)=>i===j?[m[0],e.target.value]:m)})}/><OrderButtons index={i} count={a.members.length} label="メンバー" move={delta=>update({...a,members:reorder(a.members,i,delta)})} remove={()=>update({...a,members:a.members.filter((_,j)=>i!==j)})}/></Flex>)}</div>
+      <div role="list" aria-label={`${sourceCategoryLabel(a.category)}のメンバー`}>{a.members.map(([name,value],i)=><Flex role="listitem" className="creation-list-row" key={i} gap={8} align="center"><Input aria-label={`メンバー ${i+1} 名前`} value={name} placeholder="名前" onChange={e=>update({...a,members:a.members.map((m,j)=>i===j?[e.target.value,m[1]]:m)})}/><Input aria-label={`メンバー ${i+1} 値`} value={value} placeholder="整数を明示" inputMode="numeric" onChange={e=>update({...a,members:a.members.map((m,j)=>i===j?[m[0],e.target.value]:m)})}/><OrderButtons index={i} count={a.members.length} label="メンバー" move={delta=>update({...a,members:reorder(a.members,i,delta)})} remove={()=>update({...a,members:a.members.filter((_,j)=>i!==j)})}/></Flex>)}</div>
     </>}
   </>;
 }
@@ -171,7 +171,7 @@ function FieldList({fields,choices,update,disabled}:{fields:Field[];choices:stri
     <div className="creation-list-heading"><Typography.Text>フィールド</Typography.Text><Button icon={<PlusOutlined aria-hidden="true"/>} disabled={disabled} onClick={()=>void add().catch(desktop.showError)}>フィールドを追加</Button></div>
     <div role="list" aria-label="フィールドの宣言">{fields.map((f,i)=><div role="listitem" className="creation-field" key={i}>
       <Flex gap={8} align="center"><Input className="creation-key" aria-label={`フィールド ${i+1} MessagePackキー`} value={f.key} inputMode="numeric" onChange={e=>set(i,{key:e.target.value})}/><Input aria-label={`フィールド ${i+1} 名前`} value={f.name} placeholder="名前" onChange={e=>set(i,{name:e.target.value})}/><Select aria-label={`フィールド ${i+1} の型`} value={f.typeName} options={options(choices)} onChange={typeName=>set(i,{typeName})}/><OrderButtons index={i} count={fields.length} label="フィールド" move={delta=>update(reorder(fields,i,delta))} remove={()=>update(fields.filter((_,j)=>i!==j))}/></Flex>
-      <Space size={16}><Checkbox checked={f.nullable} onChange={e=>set(i,{nullable:e.target.checked})}>Nullを許可</Checkbox><Checkbox checked={f.array} onChange={e=>set(i,{array:e.target.checked})}>配列</Checkbox></Space>
+      <Space size={16}><Checkbox checked={f.nullable} onChange={e=>set(i,{nullable:e.target.checked})}>nullを許可</Checkbox><Checkbox checked={f.array} onChange={e=>set(i,{array:e.target.checked})}>配列</Checkbox></Space>
     </div>)}</div>
     <Divider/>
   </>;

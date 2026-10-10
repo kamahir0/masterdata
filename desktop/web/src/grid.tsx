@@ -259,7 +259,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
         </div>
         <SelectionOverlay projection={p} />
       </div>
-      {!pending&&p&&<div className="add-column" style={{height:GRID.header}}><Tooltip title="Nullを許可するstringフィールドを追加"><Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="列を追加" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>}
+      {!pending&&p&&<div className="add-column" style={{height:GRID.header}}><Tooltip title="nullを許可するstringフィールドを追加"><Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="列を追加" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>}
       <ActiveEditor pending={pending || !p} />
       <GridMenu
         target={menu}
@@ -356,12 +356,12 @@ const ColumnHeader = memo(
                 className="field-type"
                 popupMatchSelectWidth={160}
               />
-              <Tooltip title="Nullを許可">
+              <Tooltip title="nullを許可">
                 <Button
                   type="text"
                   className={field.nullable ? "modifier active" : "modifier"}
                   icon={<QuestionOutlined aria-hidden="true" />}
-                  aria-label={`${field.name} Null許容`}
+                  aria-label={`${field.name} null許容`}
                   aria-pressed={field.nullable}
                   disabled={busy}
                   onClick={() =>

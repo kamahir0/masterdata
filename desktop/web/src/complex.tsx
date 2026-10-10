@@ -536,7 +536,7 @@ export function ComplexPanel() {
               )}
               {root.shape?.nullable && (
                 <Checkbox
-                  aria-label={`${root.label} Null`}
+                  aria-label={`${root.label} null`}
                   disabled={!root.editable}
                   checked={root.kind === "null" && !nonNull}
                   onChange={(e) => {
@@ -553,7 +553,7 @@ export function ComplexPanel() {
                     }
                   }}
                 >
-                  Null
+                  null
                 </Checkbox>
               )}
               {!root.shape || !root.editable ? (
@@ -656,8 +656,8 @@ export function ComplexPanel() {
                   {root.shape.array
                     ? "配列を作成"
                     : root.shape.category === "flags"
-                      ? "フラグを作成"
-                      : "カスタム値を作成"}
+                      ? "Flagsの値を作成"
+                      : "Custom Typeの値を作成"}
                 </Button>
               ) : root.kind !== "null" || nonNull || !root.shape.nullable ? (
                 <div

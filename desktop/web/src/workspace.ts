@@ -1316,7 +1316,7 @@ class Desktop {
     if(this.surface.projectOpenUncertain){this.showError("プロジェクトを開いた結果を確認し、再度開いてください。");return Promise.resolve("cancel");}
     if(this.surface.projectCreationUncertain){this.showError("プロジェクトの作成結果を確認し、再度開いてください。");return Promise.resolve("cancel");}
     if(this.surface.openingProject){this.showError("プロジェクトを開く・作成する操作が完了してから操作してください。");return Promise.resolve("cancel");}
-    if(this.surface.deliveryMutating) {this.showError("実行中のビルド・配布が確定してからプロジェクトを切り替えるか終了してください。");return Promise.resolve("cancel");}
+    if(this.surface.deliveryMutating) {this.showError("実行中のBuild / Publishが確定してからプロジェクトを切り替えるか終了してください。");return Promise.resolve("cancel");}
     if (this.guardRunning) return this.guardRunning;
     this.guardRunning = (async () => {
       if (this.unconfirmedWriteViews.size) {

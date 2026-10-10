@@ -30,7 +30,7 @@ Project Settings / Delivery / Build等のProject areaは上部Project command su
 
 ### GUI-SHELL-LANGUAGE-001
 
-Desktopは日本語を第一言語とする。操作名、説明文（設定項目を含む）、状態、確認・エラー・診断表示、accessible label、標準UI componentの文言を日本語で提供する（MUST）。製品・システム名、path / filename、schemaのfield / type / enum member / identifier、入力値、コード、format、CLI command、Diagnostic Code等のtechnical identityは翻訳・変更しない（MUST NOT）。説明中の一般語は日本語にする。外部tool由来のtechnical detailは原文を保持してよい。言語選択設定や追加の多言語対応は要求しない。
+Desktopは日本語を第一言語とし、説明文（設定項目を含む）、確認・エラー・診断の説明、標準UI componentの一般文言を日本語で提供する（MUST）。操作名・状態・accessible labelは日本語を基本とし、コード・CLI・設定と対応する概念名には製品で統一した開発者の慣用表記を使用してよい（MAY）。短い操作ラベルと、対象・影響を説明する文を役割に応じて分け、accessible nameにもvisible labelと共通の操作名を使う（SHOULD）。対象の識別や破棄・上書き・復旧等の判断に必要な情報を短縮で失ってはならない（MUST NOT）。製品・システム名、path / filename、schemaのfield / type / enum member / identifier、入力値、コード、format、CLI command、Diagnostic Code等のtechnical identityは翻訳・変更しない（MUST NOT）。表示用語の対応はProduct terminologyへrouteする。外部tool由来のtechnical detailは原文を保持してよい。言語選択設定や追加の多言語対応は要求しない。
 
 ### GUI-SHELL-PRESENTATION-001
 

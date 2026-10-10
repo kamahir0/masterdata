@@ -1,6 +1,6 @@
 # GUI仕様: Color Theme
 
-Status: Approved
+Status: Implemented
 
 ## 目的
 

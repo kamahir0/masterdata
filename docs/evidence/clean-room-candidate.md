@@ -6,7 +6,27 @@ Review Candidate: `f7cf90d857124602a918bdcad1dda2ef2e031850`（2026-10-07、実I
 
 基準Candidate: `f57102e2d098a4a3385081dc111982e5c065d4ff`。既存のperformance raw samplesはこの基準binaryの実測として保持し、新SHAへ読み替えない。
 
-**Not cutover-ready — macOS dense input / held drag、Windows actual Desktop、Unity actual環境のrequired evidence gaps。** `f57102e`の実IME違反は`f7cf90d`で修正し、scalar / nestedのactual IMEとrequired CIで再検証した。完成・cutover・main mergeは承認していない。
+**Not cutover-ready — macOS dense input / held drag、Windows actual Desktop、Unity actual環境のrequired evidence gaps。** `f57102e`の実IME違反は`f7cf90d`で修正し、scalar / nestedのactual IMEとrequired CIで再検証した。2026-10-09にHumanがPR #16をmainへmergeしたが、未取得の外部証拠は免除していない。以下の旧Candidate evidenceは当時の記録として保持する。
+
+## Desktop操作feedback追加scope（2026-10-10）
+
+Candidate: `dc7a0eb3e29930684e9ec608cd457208fec6a3cf`、Work base: `8191c05c29e6adf2074d64da9bc683a498d6e2f3`（HumanによるPR #16 merge）。authorityは[0056](../spec-changes/0056-desktop-authoring-feedback.md)とそのcanonical owners。今回の9点以外へcompletion boundaryを拡張しない。
+
+| Finite追加evidence | 状態 / exact evidence |
+| --- | --- |
+| Welcome / Explorer / appearance | Recent 0件の空状態、再起動後の履歴と明示Open、全paneの開閉 / ⌘B / 選択保持、単一root省略、WelcomeからLight / Dark / Systemへ到達。macOS専用bundle25 / 26で確認 |
+| inline / menu / viewport Add | 通常表示と入力の同じ書体。row menuは外側click / 再click / Escapeで閉鎖。横長Table最終列へのArrow移動でも列Addはviewport右端、行Addは左下。actual Tableで確認 |
+| drag / source preservation | actual row上下 / column左右dropと各Undoでcleanへ復帰。local native authoring 13 checksで両方向の途中frame補間を確認。bundle25 / 26の全10 Project filesのSHA-256はbefore / after一致 |
+| focused回帰 / warm navigation | local native geometry 9、authoring 13、Project 14、focus 6、creation 6の計48 checks。12k corpusの全warm project-wide discovery / enumeration / YAML parse / validation = 0。controlled accepted p95はrevisit 64 / same 68 / cross 64 / schema 68 / dirty 64 / rapid 50ms。actual OS timingの代替ではない |
+| required Candidate CI | [implementation run 38016344291](https://github.com/kamahir0/masterdata/actions/runs/38016344291) / [integrity run 38016344363](https://github.com/kamahir0/masterdata/actions/runs/38016344363): SUCCESS、全17 jobs。両Tier1 native Desktopでfocused geometry / authoring / Project / focus / creation / delivery計55 checksずつがPASS |
+
+actual binary SHA-256は`d303d5122dd0f9e457a9d51da42543f3d934442eac7ed5a1d3b3eebac692c2d0`、presentation Candidate `ffeeff67`。bundle25はclean、26はDevelopment State metadataだけdirty。native pickerのCUA入力は完了できなかったため、このrunのOpen成功はRecent buttonによるものだけとする。CUA横scrollも変化を観測できなかったため、実機の右端確認にはArrow navigationを使った。OS設定やCGEvent helperは操作していない。
+
+製品修正Candidate `0114d09`のbundle27（binary SHA-256 `1f64d54c470e41142e8a370f7e146dc81d9e175338af8cc276b48602c3973722`、evidence / state文書だけdirty）でもRecent Open、root省略、System復帰 / Dark、設定focus復帰、inline / Escape、row menu閉鎖、⌘B、最終列での固定Addを再確認。全10 file hashes一致。production build / staged smokeを通した`~/Applications/masterdata-local.app`を`0114d09`へ更新した。後続Candidateは検証codeのみの変更。専用bundle25 / 26 / 27の対象process終了も確認済み。Unity Editorは今回起動していない。
+
+CIのmacOS / Windows geometryは、overlay入力が先にmountし仮想表示cellの描画前に書体比較して失敗した。`fa280b0`でobservable待機へ修正しlocal geometry 9 checksを再実行した。別pass reviewで新root表示の`strip_prefix().unwrap()`がshared engineの受理する空の外部rootでpanicすることも確認し、`0114d09`でconfigured identityを保持するfallbackへ修正した。Desktop Open integration 2 tests / clippy / integrityがPASS。source scopeやengineの受理規則は変えていない。設定確認を追加したProject adapterでも、programmatic clickが作成ボタンへfocusを移さず、設定ボタンへの正しい復帰を作成の復帰先と誤認していた。`b070388`で設定のfocus復帰完了とCreateのkeyboard originを明示し、local Project 14 checksを再実行した。製品codeは`0114d09`から不変。WindowsのDelivery adapterでは検証用ack fileのtruncate / write間をnative readerが読み、EOFで中断した（Build / actual reloadは成功済み）。`dc7a0eb`で完成JSONをsame-directory replaceで公開し、local Delivery 7 checksを再実行した。
+
+Scope review: Specification Conformance: Pass。Rationale Freshness: Still accurate（bounded virtual cellの描画待機、rc-dropdownの遅延focus取消、visible neighbourのCSS補間保持）。Architecture / Scope: long-lived Workspace / physical draft / fresh write authorityは保持し、Rustが解決したroot表示pathのみinventoryへ追加。Evidence Integrity: local raw HEAD / dirty / hash、初回failureを保持し、actual observationsをdense OS performanceやheld-drag Escapeへ流用しない。同じagentの別passで、独立reviewerを主張しない。Findings: known defects corrected、今回scopeのBlockingなし。Verdict: feedback追加scope complete、required CI reconciliation完了。Clean-room全体はNot cutover-ready。[machine evidence](clean-room-candidate-data.json.gz)の`desktopFeedback`にraw metadata / checks / hashesを分離する。既存28項目ledgerと4 external gatesは不変。
 
 ## 日本語Desktop追加scope（2026-10-09）
 

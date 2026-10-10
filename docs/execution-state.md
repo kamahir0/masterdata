@@ -1,12 +1,12 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: decision-required
+Candidate: dc7a0eb3e29930684e9ec608cd457208fec6a3cf
 Work base: 8191c05c29e6adf2074d64da9bc683a498d6e2f3
 
 ## Active work
 
-In progress: 2026-10-10 Human-selected Desktop操作feedback（0056）。current mainはPR #16 merge済み。presentation / drag / menu / viewport geometryだけを修正し、既存external evidence gatesは維持する。
+Completed: 2026-10-10 Human-selected Desktop操作feedback（0056）の実装 / macOS actual review / source hashes / fresh review。固定Candidate全17 required CI jobs / integrityがPASS。結果は[追加scope evidence](evidence/clean-room-candidate.md#desktop操作feedback追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 
 Completed: `GUI-SHELL-LANGUAGE-001`の日本語化、focused検証、macOS actual日本語UI確認、日本語Candidateの全17 required CI jobs / integrity reconciliation。既存external evidence gateは維持する。
 

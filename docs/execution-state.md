@@ -6,6 +6,8 @@ Work base: edc633a03b3406a7ba5741ee8f63b3b540a1a1c4
 
 ## Active work
 
+Completed: Human-selected日本語・開発者用語の全体見直しと[修正plan（Proposed）](spec-changes/0057-desktop-developer-terminology.md)。今回は計画策定のみ。canonical / product未変更、Candidateと既存external evidence gatesは維持する。
+
 Completed: GUI-SHELL-PRESENTATION-001 / 002のHuman-selected磨き込み。actual macOS review / source hashes / fresh review / production app更新、固定Candidateの全17 required CI jobs / integrityがPASS。結果は[GUI磨き込みevidence](evidence/clean-room-candidate.md#gui磨き込み追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 
 Completed: 2026-10-10 Human-selected Desktop操作feedback（0056）の実装 / macOS actual review / source hashes / fresh review。固定Candidate全17 required CI jobs / integrityがPASS。結果は[追加scope evidence](evidence/clean-room-candidate.md#desktop操作feedback追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。

@@ -39,12 +39,15 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     button('アプリケーション設定').click();
     await until(()=>!!document.querySelector('.ant-radio-group'),'Welcome lacks appearance settings');
     assert(document.querySelectorAll('.ant-radio-button-wrapper').length===3,'Light / Dark / System choices missing');
-    button('完了').click();await until(()=>!desktop.surface.appearance,'appearance settings did not close');
+    button('完了').click();await until(()=>!desktop.surface.appearance&&document.activeElement===button('アプリケーション設定'),'appearance settings did not close and restore focus');
     checks.push('welcome-recent-and-appearance-entry');
     // Use the caller-selected test path for new destinations. Windows native
     // canonical roots are verbatim paths, where '/..' is not a path component.
     fixtureRoot=desktop.surface.recentProjects[0].root;
-    button("プロジェクトを作成").click();await fill(`${fixtureRoot}/../welcome-cancel`);
+    // HTMLElement.click() does not focus its trigger. Establish the keyboard
+    // origin explicitly; the completed Settings dialog correctly returned to
+    // its own button and must not be mistaken for the Create action's origin.
+    const createButton=button("プロジェクトを作成");createButton.focus();createButton.click();await fill(`${fixtureRoot}/../welcome-cancel`);
     key(input("プロジェクト名"),'ArrowLeft');projectButton("キャンセル").click();
     await until(()=>!desktop.surface.projectCreation&&document.activeElement?.getAttribute('aria-label')==="プロジェクトを作成",'Welcome Cancel did not return keyboard focus to Create Project');
     assert(!desktop.surface.inventory&&desktop.surface.recentProjects.length===2,'Welcome Cancel changed Project / recent state');

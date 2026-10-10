@@ -26,6 +26,7 @@ import {
   Space,
   Spin,
   Tree,
+  Tooltip,
   Typography,
   Tag,
   theme,
@@ -118,6 +119,9 @@ export function Application({ platform }: { platform: string }) {
         motion: !reduced,
         motionUnit: 0.06,
         motionBase: 0,
+        motionDurationFast: reduced ? "0s" : "0.1s",
+        motionDurationMid: reduced ? "0s" : "0.16s",
+        motionDurationSlow: reduced ? "0s" : "0.2s",
         wireframe: false,
       },
       components: {
@@ -145,11 +149,19 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   const { token } = theme.useToken();
   const [recoveryOpen,setRecoveryOpen]=useState(false);
   const [explorerOpen,setExplorerOpen]=useState(true);
+  const explorerVisible=useRef(true),explorerFocus=useRef<number|null>(null);
+  useEffect(()=>()=>{if(explorerFocus.current!==null)cancelAnimationFrame(explorerFocus.current);},[]);
   const toggleExplorer=()=>{
-    const opening=!explorerOpen,intent=desktop.inputIntent;
+    const opening=!explorerVisible.current,intent=desktop.inputIntent,epoch=s.status.epoch,target=s.target;
+    if(explorerFocus.current!==null)cancelAnimationFrame(explorerFocus.current);
+    explorerVisible.current=opening;
     if(!opening&&document.activeElement?.closest('#explorer'))document.getElementById('editor-pane')?.focus({preventScroll:true});
     setExplorerOpen(opening);
-    if(opening)requestAnimationFrame(()=>{if(intent===desktop.inputIntent&&!document.getElementById('workbench')?.inert)document.querySelector<HTMLElement>('#explorer [role="tree"]')?.focus({preventScroll:true});});
+    if(opening)explorerFocus.current=requestAnimationFrame(()=>{
+      explorerFocus.current=null;
+      if(explorerVisible.current&&intent===desktop.inputIntent&&epoch===desktop.surface.status.epoch&&target===desktop.surface.target&&!document.getElementById('workbench')?.inert)
+        document.querySelector<HTMLElement>('#explorer [role="tree"]')?.focus({preventScroll:true});
+    });
   };
   useEffect(()=>{if(s.status.recoveryRequired)void desktop.refreshInventory().catch(desktop.showError);},[s.status.recoveryRequired]);
   const variables = useMemo(() => ({
@@ -171,6 +183,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     "--md-error-bg": token.colorErrorBg,
     "--md-warning": token.colorWarning,
     "--md-shadow": token.boxShadowSecondary,
+    "--md-shadow-light": token.boxShadowTertiary,
     "--md-radius": `${token.borderRadius}px`,
     "--md-font": token.fontFamily,
     "--md-motion": token.motionDurationMid,
@@ -238,7 +251,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
         </div>
         <nav aria-label="プロジェクトの操作">
           <Space size={2}>
-            {s.inventory&&<Button type="text" icon={explorerOpen?<MenuFoldOutlined aria-hidden="true"/>:<MenuUnfoldOutlined aria-hidden="true"/>} aria-label={explorerOpen?"エクスプローラーを閉じる":"エクスプローラーを開く"} aria-expanded={explorerOpen} title="エクスプローラーを切り替え（⌘/Ctrl+B）" onClick={toggleExplorer}/>}
+            {s.inventory&&<Tooltip title="エクスプローラーを切り替え（⌘/Ctrl+B）"><Button type="text" icon={explorerOpen?<MenuFoldOutlined aria-hidden="true"/>:<MenuUnfoldOutlined aria-hidden="true"/>} aria-label={explorerOpen?"エクスプローラーを閉じる":"エクスプローラーを開く"} aria-expanded={explorerOpen} aria-controls="explorer" onClick={toggleExplorer}/></Tooltip>}
             <Button
               type="text"
               icon={<FolderOpenOutlined aria-hidden="true" />}
@@ -296,20 +309,21 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
               }}
               trigger={["click"]}
             >
-              <Button
+              <Tooltip title="プロジェクトメニュー"><Button
                 type="text"
                 icon={<MoreOutlined aria-hidden="true" />}
                 aria-label="プロジェクトメニュー"
-                title="プロジェクトメニュー"
-              />
+              /></Tooltip>
             </Dropdown>
-            <Button type="text" icon={<SettingOutlined aria-hidden="true"/>} aria-label="アプリケーション設定" title="アプリケーション設定（外観）" onClick={()=>desktop.appearance(true)}/>
+            <Tooltip title="アプリケーション設定（外観）"><Button type="text" icon={<SettingOutlined aria-hidden="true"/>} aria-label="アプリケーション設定" onClick={()=>desktop.appearance(true)}/></Tooltip>
             {s.status.recoveryRequired && <Button danger type="text" icon={<WarningOutlined aria-hidden="true"/>} onClick={()=>setRecoveryOpen(true)}>復旧が必要です</Button>}
           </Space>
         </nav>
       </header>
       <div id="workbench" inert={!!s.openingProject||!!s.projectCreation||!!s.projectOpenUncertain}>
-        {s.inventory && <Explorer s={s} reveal={()=>setExplorerOpen(true)} />}
+        {s.inventory && <div className="explorer-shell" inert={!explorerOpen} aria-hidden={!explorerOpen}>
+          <Explorer s={s} reveal={()=>{explorerVisible.current=true;setExplorerOpen(true);}} />
+        </div>}
         <main id="editor-pane" aria-label="エディター" tabIndex={-1}>
           {!s.inventory ? (
             <section id="welcome">
@@ -330,7 +344,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                 {!s.recentProjects.length&&<Typography.Paragraph type="secondary" className="recent-empty">まだ開いたプロジェクトはありません。</Typography.Paragraph>}
                 {s.recentProjects.map(project=><Flex key={project.root} align="center" gap={6} className="recent-project">
                   <Button type="text" icon={<FolderOpenOutlined aria-hidden="true"/>} title={project.root} onClick={()=>void desktop.openRecent(project.root)}><span>{project.name}</span></Button>
-                  <Button type="text" icon={<DeleteOutlined aria-hidden="true"/>} aria-label={`最近開いた項目を削除: ${project.name}`} title="最近開いたプロジェクトから削除" onClick={()=>void desktop.removeRecent(project.root)}/>
+                  <Tooltip title="最近開いたプロジェクトから削除"><Button type="text" icon={<DeleteOutlined aria-hidden="true"/>} aria-label={`最近開いた項目を削除: ${project.name}`} onClick={()=>void desktop.removeRecent(project.root)}/></Tooltip>
                 </Flex>)}
               </div>
               {s.error && (
@@ -496,7 +510,7 @@ function Explorer({ s, reveal }: { s: Surface; reveal:()=>void }) {
           <Dropdown menu={creation.menu} trigger={["click"]}>
             <Button type="text" icon={<PlusOutlined aria-hidden="true"/>} aria-label="ソースを作成" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft||pathMutation.open}>新規作成</Button>
           </Dropdown>
-          <Dropdown menu={sourceItems} trigger={["click"]}><Button type="text" icon={<MoreOutlined aria-hidden="true"/>} aria-label="ソースの操作" title="ソースの操作"/></Dropdown>
+          <Dropdown menu={sourceItems} trigger={["click"]}><Tooltip title="ソースの操作"><Button type="text" icon={<MoreOutlined aria-hidden="true"/>} aria-label="ソースの操作"/></Tooltip></Dropdown>
         </Space>
       </div>
         <Dropdown menu={sourceItems} trigger={["contextMenu"]}>
@@ -640,22 +654,20 @@ function TableSurface({ s }: { s: Surface }) {
           )}
         </span>
         <div className="context-actions">
-          <Button
+          <Tooltip title="元に戻す（⌘/Ctrl+Z）"><Button
             type="text"
             icon={<UndoOutlined aria-hidden="true" />}
             aria-label="元に戻す"
-            title="元に戻す"
             disabled={disabled || !history.undo}
             onClick={() => void desktop.undo(false)}
-          />
-          <Button
+          /></Tooltip>
+          <Tooltip title="やり直す（⌘/Ctrl+Shift+Z）"><Button
             type="text"
             icon={<RedoOutlined aria-hidden="true" />}
             aria-label="やり直す"
-            title="やり直す"
             disabled={disabled || !history.redo}
             onClick={() => void desktop.undo(true)}
-          />
+          /></Tooltip>
           <Input
             id="search"
             className="source-search"
@@ -671,12 +683,11 @@ function TableSurface({ s }: { s: Surface }) {
             trigger={["click"]}
             menu={{ items, onClick: ({key}) => key==="declaration"?void declaration.open():key==="delivery"?delivery.open():void desktop.compare() }}
           >
-            <Button
+            <Tooltip title="テーブルの操作"><Button
               type="text"
               icon={<MoreOutlined aria-hidden="true" />}
               aria-label="テーブルの操作"
-              title="テーブルの操作"
-            />
+            /></Tooltip>
           </Dropdown>
         </div>
       </div>
@@ -807,8 +818,8 @@ function ProblemsBar({ s }: { s: Surface }) {
 
           問題{s.status.problemCount ? ` (${s.status.problemCount})` : ""}
         </Button>
-        <span className="background-status" role="status">
-          {s.status.diagnosticsPending ? "確認中…" : ""}
+        <span className={`background-status ${s.status.diagnosticsPending ? "status-pending" : ""}`} role="status">
+          {s.status.diagnosticsPending && <><Spin size="small"/>確認中…</>}
         </span>
         <span id="position" aria-live="polite">
           {!s.pending && p

@@ -38,6 +38,9 @@ html[data-theme="dark"] body {
 .mac #titlebar {
   padding-left: 82px;
 }
+#drag-region strong { font-weight: 650; letter-spacing: -.015em; }
+#titlebar .ant-btn { transition: color var(--md-motion) var(--md-ease), background var(--md-motion) var(--md-ease), opacity var(--md-motion) var(--md-ease); }
+#titlebar .ant-btn:disabled { opacity: .65; }
 #drag-region {
   flex: 1;
   min-width: 0;
@@ -70,14 +73,30 @@ html[data-theme="dark"] body {
   outline: 1px solid var(--md-accent);
   outline-offset: -1px;
 }
-.explorer-hidden #explorer { display: none; }
+.explorer-shell {
+  width: 224px;
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  transition: width var(--md-drag-motion) var(--md-ease);
+}
+.explorer-hidden .explorer-shell { width: 0; }
+.explorer-hidden #explorer {
+  opacity: 0;
+  transform: translateX(-12px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--md-motion) var(--md-ease), transform var(--md-drag-motion) var(--md-ease), visibility 0s linear var(--md-drag-motion);
+}
 #explorer {
   width: 224px;
+  height: 100%;
   flex: none;
   background: var(--md-app);
   border-right: 1px solid var(--md-border);
   overflow: auto;
   padding: 0 8px 16px;
+  transition: opacity var(--md-motion) var(--md-ease), transform var(--md-drag-motion) var(--md-ease), visibility 0s;
 }
 .pane-heading {
   position: sticky;
@@ -92,6 +111,13 @@ html[data-theme="dark"] body {
 #explorer .ant-tree {
   background: transparent;
 }
+#explorer .ant-tree-node-content-wrapper { border-radius: var(--md-radius); }
+#explorer .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: var(--md-selected);
+  color: var(--md-accent);
+  box-shadow: inset 2px 0 var(--md-accent);
+}
+#explorer .ant-tree-title { font-weight: 500; }
 #explorer .ant-tree-node-content-wrapper {
   display: flex;
   align-items: center;
@@ -153,8 +179,16 @@ main {
   padding-bottom: 24px;
 }
 .welcome-mark {
-  font-size: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  font-size: 26px;
   color: var(--md-accent);
+  background: var(--md-selected);
+  border-radius: calc(var(--md-radius) * 2);
+  box-shadow: var(--md-shadow-light);
   margin-bottom: 14px;
 }
 #welcome .ant-alert {
@@ -170,7 +204,10 @@ main {
 .project-guides {text-align:center;padding:0 20px;}
 .recent-projects {margin-top:28px;}
 .recent-empty {margin-top:12px;}
-.recent-project {height:36px;}
+.recent-project {height:36px; border-radius:var(--md-radius); transition:background var(--md-motion) var(--md-ease);}
+.recent-project:hover {background:var(--md-hover);}
+.recent-project>.ant-btn:last-child {opacity:.4; transition:opacity var(--md-motion) var(--md-ease);}
+.recent-project:hover>.ant-btn:last-child, .recent-project:focus-within>.ant-btn:last-child {opacity:1;}
 .recent-project>.ant-btn:first-child {flex:1;min-width:0;justify-content:flex-start;}
 .recent-project>.ant-btn:first-child span:last-child {overflow:hidden;text-overflow:ellipsis;}
 .project-pending {position:absolute;inset:42px 0 0;z-index:50;background:var(--md-bg);display:flex;align-items:center;justify-content:center;gap:12px;padding:20px;}
@@ -217,6 +254,7 @@ main {
 .table-name {
   flex: none;
   font-size: 15px;
+  letter-spacing: -.015em;
 }
 .selection-label {
   min-width: 0;
@@ -601,7 +639,13 @@ main {
   color: var(--md-faint);
   font-size: 11px;
   width: 70px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
+.background-status { opacity: 0; transition: opacity var(--md-motion) var(--md-ease); }
+.background-status.status-pending { opacity: 1; }
+.background-status .ant-spin { font-size: 10px; }
 #position {
   margin-left: auto;
   color: var(--md-muted);
@@ -616,7 +660,9 @@ main {
   z-index: 9;
   overflow: auto;
   background: var(--md-elevated);
-  border-top: 1px solid var(--md-border);
+  border: 1px solid var(--md-border);
+  border-bottom: none;
+  border-radius: var(--md-radius) var(--md-radius) 0 0;
   box-shadow: var(--md-shadow);
   transform: translateY(12px);
   opacity: 0;
@@ -643,6 +689,7 @@ main {
   top: 0;
   background: var(--md-elevated);
   z-index: 1;
+  border-bottom: 1px solid var(--md-border);
 }
 .problem-item.ant-btn {
   display: flex;
@@ -758,11 +805,14 @@ main {
   *::after {
     animation-duration: 0s !important;
     transition-duration: 0s !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }
 /* Delivery is contextual, with a stable nonmodal boundary to the authoring grid. */
 .delivery-drawer .ant-typography { margin-bottom: 6px; }
+.delivery-profile { transition:opacity var(--md-motion) var(--md-ease); }
+.delivery-profile[aria-busy="true"] { opacity:.65; }
 .delivery-label { display: block; margin-bottom: 6px; color: var(--md-muted); }
 .delivery-progress { display: flex; gap: 12px; align-items: flex-start; }
 .delivery-caption { margin: 4px 0; font-size: 12px; color: var(--md-muted); }

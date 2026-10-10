@@ -11,6 +11,7 @@
 - [Desktop presentation quality](gui/app-shell.md#presentation-quality)とReact / Ant Design baseline、theme / motion / actual visual review。
 - [日本語を第一言語とするDesktop](gui/app-shell.md#gui-shell-language-001)（2026-10-09 Human-selected追加scope）。
 - [Desktop操作feedback修正](spec-changes/0056-desktop-authoring-feedback.md)（2026-10-10 Human-selected追加scope）。
+- [既存GUIのmotion / 操作feedbackの磨き込み](gui/app-shell.md#gui-shell-presentation-002)（2026-10-10 Human-selected追加scope）。
 - source / schema / type mutation、write safety、Migration、CLI、Build / Publish、native MasterMemory delegationとactual consumer。
 - [independent oracle](../fixtures/rewrite-oracle/v1/README.md)の全category、[acceptance matrix](rewrite-preparation/acceptance-matrix.md)、source exact bytes、100k capacity。
 - [performance contract](gui/performance.md)のdistribution / work counts、macOS arm64 / Windows x64 actual Desktop、fresh Candidate reviewとrequired CI。

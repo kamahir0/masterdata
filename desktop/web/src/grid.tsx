@@ -81,10 +81,11 @@ export const AuthoringGrid = memo(function AuthoringGrid({
     const v = viewport.current;
     if (!v) return;
     const update = () => {
-      setColumns({
-        first: Math.max(0, Math.floor(v.scrollLeft / GRID.column) - 1),
-        last: Math.ceil((v.scrollLeft + v.clientWidth) / GRID.column) + 1,
-      });
+      const first=Math.max(0,Math.floor(v.scrollLeft/GRID.column)-1),
+        last=Math.ceil((v.scrollLeft+v.clientWidth)/GRID.column)+1;
+      // Pane motion changes viewport width each frame; only a changed visible
+      // column boundary needs a React publication, not every resize sample.
+      setColumns(previous=>previous.first===first&&previous.last===last?previous:{first,last});
       void desktop.ensureWindow();
     };
     const observer = new ResizeObserver(update);

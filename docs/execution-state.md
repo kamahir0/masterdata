@@ -1,10 +1,12 @@
 # Development State
 
-Stage: decision-required
-Candidate: dc7a0eb3e29930684e9ec608cd457208fec6a3cf
-Work base: 8191c05c29e6adf2074d64da9bc683a498d6e2f3
+Stage: implementation-ready
+Candidate: none
+Work base: edc633a03b3406a7ba5741ee8f63b3b540a1a1c4
 
 ## Active work
+
+In progress: Human-selected GUI磨き込み。GUI-SHELL-PRESENTATION-001 / 002の範囲でpaneの連続した開閉、標準Tooltip、token-driven feedback / hierarchyを整える。focused Desktop回帰 / actual macOS review / warm performance / required CIまで閉じ、既存external evidence gatesへ戻る。
 
 Completed: 2026-10-10 Human-selected Desktop操作feedback（0056）の実装 / macOS actual review / source hashes / fresh review。固定Candidate全17 required CI jobs / integrityがPASS。結果は[追加scope evidence](evidence/clean-room-candidate.md#desktop操作feedback追加scope2026-10-10)へ記録。今回scopeのactive implementationなし、既存external evidence gatesは維持する。
 

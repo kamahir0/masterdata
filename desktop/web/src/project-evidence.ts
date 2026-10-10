@@ -67,10 +67,29 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     const selection=desktop.interaction.selection;
     const retainedTree=document.querySelector('#explorer [role="tree"]'),sourceProjection=desktop.surface.projection;
     const beforeWidth=document.getElementById('editor-pane')!.getBoundingClientRect().width;
+    const explorer=document.getElementById('explorer')!,shell=explorer.parentElement!,paneWidth=shell.getBoundingClientRect().width;
+    const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    (retainedTree as HTMLElement).focus();
     button('エクスプローラーを閉じる').click();await frame();
+    assert(shell.inert&&shell.getAttribute('aria-hidden')==='true'&&!explorer.contains(document.activeElement),'closing sidebar retained interactive / keyboard content');
+    await until(()=>!shown(explorer)&&shell.getBoundingClientRect().width<1,'sidebar did not finish closing');
     assert(!shown(document.getElementById('explorer')!)&&document.getElementById('editor-pane')!.getBoundingClientRect().width>beforeWidth,'sidebar close did not release working space');
     key(document.getElementById('editor-pane')!,'b',{ctrlKey:true});await frame();
+    await until(()=>shell.getBoundingClientRect().width>=paneWidth-.5,'sidebar did not finish opening');
     assert(shown(document.getElementById('explorer')!)&&retainedTree===document.querySelector('#explorer [role="tree"]')&&desktop.surface.projection===sourceProjection&&desktop.interaction.selection===selection,'sidebar toggle discarded tree / projection / selection');
+    // Interrupt the actual transition, rather than asserting only its two
+    // endpoint classes. The content must keep its width while the viewport clips.
+    const widths:number[]=[];
+    button('エクスプローラーを閉じる').click();await frame();
+    const samplePane=()=>{const width=shell.getBoundingClientRect().width;widths.push(width);assert(Math.abs(explorer.getBoundingClientRect().width-paneWidth)<.5,'pane content reflowed during motion');return width<1;};
+    await until(samplePane,'pane motion did not settle');
+    if(!reducedMotion)assert(widths.some(width=>width>1&&width<paneWidth-1),'pane jumped directly without an intermediate state');
+    key(document.getElementById('editor-pane')!,'b',{ctrlKey:true});await frame();
+    key(document.getElementById('editor-pane')!,'b',{ctrlKey:true});await frame();
+    await until(()=>shell.inert&&!shown(explorer),'interrupted reopen did not remain closed');
+    assert(!explorer.contains(document.activeElement),'obsolete reopen stole focus into the closed pane');
+    key(document.getElementById('editor-pane')!,'b',{ctrlKey:true});
+    await until(()=>!shell.inert&&shell.getBoundingClientRect().width>=paneWidth-.5,'final reopen did not win');
     checks.push('sidebar-whole-pane-state-preserved');
     await openFind();text(input("テーブルまたは型を検索"),'not a target');
     input("テーブルまたは型を検索").closest('.ant-modal')!.querySelector<HTMLButtonElement>("button[aria-label=\"閉じる\"]")!.click();

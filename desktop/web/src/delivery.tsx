@@ -54,7 +54,7 @@ export function DeliveryDrawer({s}:{s:Surface}) {
         {key:"dirty",label:"未保存ソース",children:<Space><Tag>{dirty}</Tag><Typography.Text type="secondary">ビルドには含めません</Typography.Text><Button icon={<SaveOutlined aria-hidden="true"/>} disabled={s.busy||s.deliveryCapturing||s.status.recoveryRequired||!!s.status.uncertain.length} onClick={()=>void desktop.saveAll()}>すべて保存</Button></Space>},
         {key:"config",label:"設定",children:<Typography.Text>保存済みmasterdata.toml{(s.status.configDirty||s.settingsInputDirty)&&" · 未保存設定は使用しません"}</Typography.Text>},
       ]}/>
-      <div><Typography.Text className="delivery-label">ビルドプロファイル</Typography.Text><Select aria-label="ビルドプロファイル" style={{width:"100%"}} value={v.profile??""} status={missing?"error":undefined} disabled={busy}
+      <div className="delivery-profile" aria-busy={busy}><Typography.Text className="delivery-label">ビルドプロファイル</Typography.Text><Select aria-label="ビルドプロファイル" style={{width:"100%"}} value={v.profile??""} status={missing?"error":undefined} disabled={busy}
         options={[{value:"",label:"すべてのレコード"},...(context?.profiles??[]).map(value=>({value,label:value})),...(missing?[{value:v.profile!,label:`${v.profile} — 見つかりません`}]:[])]}
         onChange={value=>delivery.profile(value||null)}/></div>
       {buildReason&&<Alert type="warning" showIcon title="ビルドを開始できません" description={uiMessage(buildReason)}/>}

@@ -111,6 +111,7 @@ export interface Inventory {
   project: { id: string; name: string; version: string };
   root: string;
   roots: string[];
+  sourceRootPaths: string[];
   folders: string[];
   sources: {
     path: string;

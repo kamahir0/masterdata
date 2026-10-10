@@ -1,10 +1,12 @@
 # Development State
 
-Stage: decision-required
-Candidate: 20b3a3a304adbe3a61bd535ac9400de792a4a21a
-Work base: b919fa5e4ec2120b523cabca5d8a0a31cf8cd8da
+Stage: implementation-ready
+Candidate: none
+Work base: 8191c05c29e6adf2074d64da9bc683a498d6e2f3
 
 ## Active work
+
+In progress: 2026-10-10 Human-selected Desktop操作feedback（0056）。current mainはPR #16 merge済み。presentation / drag / menu / viewport geometryだけを修正し、既存external evidence gatesは維持する。
 
 Completed: `GUI-SHELL-LANGUAGE-001`の日本語化、focused検証、macOS actual日本語UI確認、日本語Candidateの全17 required CI jobs / integrity reconciliation。既存external evidence gateは維持する。
 

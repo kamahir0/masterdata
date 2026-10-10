@@ -53,6 +53,8 @@ import {
   BuildOutlined,
   SettingOutlined,
   DeleteOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { desktop, basename, type Preference, type Surface } from "./workspace";
 import { AuthoringGrid } from "./grid";
@@ -142,6 +144,13 @@ export function Application({ platform }: { platform: string }) {
 function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
   const { token } = theme.useToken();
   const [recoveryOpen,setRecoveryOpen]=useState(false);
+  const [explorerOpen,setExplorerOpen]=useState(true);
+  const toggleExplorer=()=>{
+    const opening=!explorerOpen,intent=desktop.inputIntent;
+    if(!opening&&document.activeElement?.closest('#explorer'))document.getElementById('editor-pane')?.focus({preventScroll:true});
+    setExplorerOpen(opening);
+    if(opening)requestAnimationFrame(()=>{if(intent===desktop.inputIntent&&!document.getElementById('workbench')?.inert)document.querySelector<HTMLElement>('#explorer [role="tree"]')?.focus({preventScroll:true});});
+  };
   useEffect(()=>{if(s.status.recoveryRequired)void desktop.refreshInventory().catch(desktop.showError);},[s.status.recoveryRequired]);
   const variables = useMemo(() => ({
     "--md-bg": token.colorBgContainer,
@@ -165,6 +174,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     "--md-radius": `${token.borderRadius}px`,
     "--md-font": token.fontFamily,
     "--md-motion": token.motionDurationMid,
+    "--md-drag-motion": token.motionDurationSlow,
     "--md-ease": token.motionEaseInOut,
     "--md-hover": token.colorFillTertiary,
   }) as CSSProperties, [token]);
@@ -197,25 +207,22 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     { type: "divider" },
     {key:"projectSettings",label:<Space>プロジェクト設定…{(s.status.configDirty||s.settingsInputDirty)&&<Badge status="processing"/>}</Space>,icon:<SettingOutlined aria-hidden="true"/>,disabled:!s.inventory},
     {key:"delivery",label:"ビルド・配布…",icon:<BuildOutlined aria-hidden="true"/>,disabled:!s.inventory},
-    {
-      key: "appearance",
-      label: "アプリケーション設定",
-      icon: <DesktopOutlined aria-hidden="true" />,
-    },
+
   ];
   return (
     <div
-      className={`desktop-frame ${platform === "macos" ? "mac" : ""}`}
+      className={`desktop-frame ${platform === "macos" ? "mac" : ""} ${explorerOpen ? "" : "explorer-hidden"}`}
       style={variables}
       onPointerDownCapture={desktop.noteInputIntent}
       onKeyDownCapture={desktop.noteInputIntent}
       onClickCapture={desktop.inputCapture?desktop.noteClickInput:undefined}
       onKeyDown={event=>{
+        if(s.inventory&&(event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="b"&&!event.nativeEvent.isComposing&&event.keyCode!==229&&!(event.target instanceof Element&&event.target.closest('.ant-modal,.ant-drawer'))){event.preventDefault();toggleExplorer();return;}
         if(event.key!=="F6"||event.nativeEvent.isComposing||event.altKey||event.metaKey||event.ctrlKey)return;
         if(!(event.target instanceof Element)||!event.target.closest('#workbench'))return;
         const tree=document.querySelector<HTMLElement>('#explorer [role="tree"]');
         const editor=document.getElementById('editor-pane');
-        if(!tree||!editor||editor.closest('[inert]'))return;
+        if(!explorerOpen||!tree||!editor||editor.closest('[inert]'))return;
         event.preventDefault();
         if(tree.contains(document.activeElement)) {
           const target=!desktop.surface.pending?editor.querySelector<HTMLElement>('#viewport:not([inert]),.type-body'):null;
@@ -231,6 +238,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
         </div>
         <nav aria-label="プロジェクトの操作">
           <Space size={2}>
+            {s.inventory&&<Button type="text" icon={explorerOpen?<MenuFoldOutlined aria-hidden="true"/>:<MenuUnfoldOutlined aria-hidden="true"/>} aria-label={explorerOpen?"エクスプローラーを閉じる":"エクスプローラーを開く"} aria-expanded={explorerOpen} title="エクスプローラーを切り替え（⌘/Ctrl+B）" onClick={toggleExplorer}/>}
             <Button
               type="text"
               icon={<FolderOpenOutlined aria-hidden="true" />}
@@ -295,12 +303,13 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
                 title="プロジェクトメニュー"
               />
             </Dropdown>
+            <Button type="text" icon={<SettingOutlined aria-hidden="true"/>} aria-label="アプリケーション設定" title="アプリケーション設定（外観）" onClick={()=>desktop.appearance(true)}/>
             {s.status.recoveryRequired && <Button danger type="text" icon={<WarningOutlined aria-hidden="true"/>} onClick={()=>setRecoveryOpen(true)}>復旧が必要です</Button>}
           </Space>
         </nav>
       </header>
       <div id="workbench" inert={!!s.openingProject||!!s.projectCreation||!!s.projectOpenUncertain}>
-        {s.inventory && <Explorer s={s} />}
+        {s.inventory && <Explorer s={s} reveal={()=>setExplorerOpen(true)} />}
         <main id="editor-pane" aria-label="エディター" tabIndex={-1}>
           {!s.inventory ? (
             <section id="welcome">
@@ -317,12 +326,13 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
 
                 プロジェクトを開く
               </Button><Button aria-label="プロジェクトを作成" icon={<PlusOutlined aria-hidden="true"/>} onClick={()=>void desktop.beginProjectCreation()}>プロジェクトを作成</Button></Space>
-              {!!s.recentProjects.length&&<div className="recent-projects"><Typography.Text type="secondary">最近開いたプロジェクト</Typography.Text>
+              <div className="recent-projects"><Typography.Text type="secondary">最近開いたプロジェクト</Typography.Text>
+                {!s.recentProjects.length&&<Typography.Paragraph type="secondary" className="recent-empty">まだ開いたプロジェクトはありません。</Typography.Paragraph>}
                 {s.recentProjects.map(project=><Flex key={project.root} align="center" gap={6} className="recent-project">
                   <Button type="text" icon={<FolderOpenOutlined aria-hidden="true"/>} title={project.root} onClick={()=>void desktop.openRecent(project.root)}><span>{project.name}</span></Button>
                   <Button type="text" icon={<DeleteOutlined aria-hidden="true"/>} aria-label={`最近開いた項目を削除: ${project.name}`} title="最近開いたプロジェクトから削除" onClick={()=>void desktop.removeRecent(project.root)}/>
                 </Flex>)}
-              </div>}
+              </div>
               {s.error && (
                 <Alert
                   type="error"
@@ -369,7 +379,7 @@ function ThemeFrame({ platform, s }: { platform: string; s: Surface }) {
     </div>
   );
 }
-function Explorer({ s }: { s: Surface }) {
+function Explorer({ s, reveal }: { s: Surface; reveal:()=>void }) {
   const findOptions=useMemo(()=>[
     ...s.inventory!.logicalTables.map(table=>({value:table.source,label:`テーブル · ${table.name} — ${table.source}`})),
     ...s.inventory!.logicalTypes.map(type=>({value:type.source,label:`型 · ${type.name} — ${type.source}`})),
@@ -380,7 +390,7 @@ function Explorer({ s }: { s: Surface }) {
     findRestore.current={input:desktop.inputIntent,epoch:s.status.epoch,target:s.target};
     setFindEpoch(null);
   };
-  const [expanded, setExpanded] = useState(true);
+
   const [keys,setKeys]=useState<string[]>(()=>s.inventory!.folders.map(p=>`folder:${p||"."}`));
   const [selected,setSelected]=useState(s.target);
   const [activeKey,setActiveKey]=useState<string|null>(null);
@@ -407,7 +417,7 @@ function Explorer({ s }: { s: Surface }) {
   const creationPending=useRef(false);creationPending.current=!!creation.draft;
   const createFromGuide=useRef(creation.begin);createFromGuide.current=creation.begin;
   const creationReady=creation.ready&&!creation.draft&&!s.status.recoveryRequired&&!s.status.environmentError;
-  useEffect(()=>creationReady?desktop.bindSourceCreation(category=>createFromGuide.current(category)):undefined,[creationReady,s.status.epoch]);
+  useEffect(()=>creationReady?desktop.bindSourceCreation(category=>{reveal();createFromGuide.current(category);}):undefined,[creationReady,s.status.epoch]);
   useEffect(()=>{setKeys(s.inventory!.folders.map(path=>`folder:${path||"."}`));activate(null);setFocusRequest(null);setFindEpoch(null);findRestore.current=null;},[s.status.epoch]);
   const pathMutation=useSourcePath(s.status.epoch,(source,destination,inputIntent)=>{
     setKeys(old=>[...new Set([...old,...ancestors(destination.split("/").slice(0,-1).join("/"))])]);
@@ -462,7 +472,8 @@ function Explorer({ s }: { s: Surface }) {
       });
     }
     if(creation.draft)ensureFolder(creation.draft.folder).push({key:"creation:temporary",title:creation.draft.filename,isLeaf:true,selectable:false});
-    return roots;
+    const sourceRoots=s.inventory?.sourceRootPaths??[];
+    return sourceRoots.length===1 ? folders.get(sourceRoots[0]||".")?.children??roots : roots;
   }, [s.inventory,creation.draft?.folder,creation.draft?.filename,creation.draft?.id]);
   return (
     <aside id="explorer" ref={container} onKeyDownCapture={event=>{
@@ -480,15 +491,7 @@ function Explorer({ s }: { s: Surface }) {
       document.getElementById('editor-pane')?.focus({preventScroll:true});
     }}>
       <div className="pane-heading">
-        <Button
-          type="text"
-          size="small"
-          onClick={() => setExpanded(!expanded)}
-          aria-expanded={expanded}
-        >
-
-          ソース
-        </Button>
+        <Typography.Text type="secondary">ソース</Typography.Text>
         <Space size={0}>
           <Dropdown menu={creation.menu} trigger={["click"]}>
             <Button type="text" icon={<PlusOutlined aria-hidden="true"/>} aria-label="ソースを作成" disabled={!creation.ready||s.status.recoveryRequired||!!s.status.environmentError||!!creation.draft||pathMutation.open}>新規作成</Button>
@@ -496,7 +499,6 @@ function Explorer({ s }: { s: Surface }) {
           <Dropdown menu={sourceItems} trigger={["click"]}><Button type="text" icon={<MoreOutlined aria-hidden="true"/>} aria-label="ソースの操作" title="ソースの操作"/></Dropdown>
         </Space>
       </div>
-      {expanded && (
         <Dropdown menu={sourceItems} trigger={["contextMenu"]}>
         <Tree
           ref={tree}
@@ -543,7 +545,6 @@ function Explorer({ s }: { s: Surface }) {
           )}
         />
         </Dropdown>
-      )}
       <Modal title="テーブル・型を検索" open={findEpoch===s.status.epoch} onCancel={closeFind}
         footer={null} width={640} destroyOnHidden focusable={{focusTriggerAfterClose:false}}
         afterOpenChange={open=>{
@@ -555,7 +556,7 @@ function Explorer({ s }: { s: Surface }) {
           placeholder="テーブル / 型名を検索" style={{width:"100%"}} options={findOptions} value={undefined}
           onSelect={source=>{
             if(findEpoch!==desktop.surface.status.epoch)return;
-            findRestore.current=null;setFindEpoch(null);setExpanded(true);
+            findRestore.current=null;setFindEpoch(null);
             setKeys(old=>[...new Set([...old,...ancestors(source.split("/").slice(0,-1).join("/"))])]);
             setSelected(source);activate(source);
             // Logical names resolve through shared inventory; the selected
@@ -1000,7 +1001,7 @@ function AppearanceModal({ s }: { s: Surface }) {
       afterOpenChange={open=>{
         const request=closed.current,current=desktop.surface;
         if(!open&&request&&request.input===desktop.inputIntent&&request.epoch===current.status.epoch&&request.target===current.target&&!current.choice&&!current.projectCreation&&!current.openingProject)
-          document.querySelector<HTMLElement>("button[aria-label=\"プロジェクトメニュー\"]")?.focus();
+          document.querySelector<HTMLElement>("button[aria-label=\"アプリケーション設定\"]")?.focus();
       }}
       footer={
         <Button type="primary" onClick={close}>

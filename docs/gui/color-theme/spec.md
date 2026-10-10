@@ -1,6 +1,6 @@
 # GUI仕様: Color Theme
 
-Status: Implemented
+Status: Approved
 
 ## 目的
 
@@ -120,7 +120,7 @@ OSのhigh contrast / forced colors対応は本仕様の必須範囲には含め�
 
 ### GUI-THEME-007
 
-Theme preferenceはProject Settingsとは分離されたApplication Settingsから変更できなければならない（MUST）。
+Theme preferenceはProject Settingsとは分離されたApplication Settingsから変更できなければならない（MUST）。Project未選択のWelcomeからも同じ設定へ明確に到達できる（MUST）。
 
 
 control上では現在の選択値として以下を明示する。

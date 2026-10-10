@@ -2,9 +2,9 @@ name: Clean-slate integrity
 
 on:
   push:
-    branches: [rewrite/clean-room]
+    branches: [main, rewrite/clean-room]
   pull_request:
-    branches: [rewrite/clean-room]
+    branches: [main, rewrite/clean-room]
   workflow_dispatch:
 
 permissions:

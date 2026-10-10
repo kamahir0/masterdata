@@ -35,6 +35,12 @@ export async function run({startup}:{startup:Record<string,unknown>}){
   try {
     await until(()=>document.hasFocus(),'native window not focused');
     assert(!desktop.surface.inventory&&desktop.surface.recentProjects.length===2,'Welcome auto-opened a Project or lost recent entries');
+    assert(document.querySelector('.recent-projects')?.textContent?.includes('最近開いたプロジェクト'),'Welcome recent section missing');
+    button('アプリケーション設定').click();
+    await until(()=>!!document.querySelector('.ant-radio-group'),'Welcome lacks appearance settings');
+    assert(document.querySelectorAll('.ant-radio-button-wrapper').length===3,'Light / Dark / System choices missing');
+    button('完了').click();await until(()=>!desktop.surface.appearance,'appearance settings did not close');
+    checks.push('welcome-recent-and-appearance-entry');
     // Use the caller-selected test path for new destinations. Windows native
     // canonical roots are verbatim paths, where '/..' is not a path component.
     fixtureRoot=desktop.surface.recentProjects[0].root;
@@ -53,9 +59,16 @@ export async function run({startup}:{startup:Record<string,unknown>}){
 
     await desktop.selectTarget(SOURCE,'project-setup',false);
     const treeLabels=[...document.querySelectorAll<HTMLElement>('#explorer .source')].map(e=>e.textContent!.trim()).sort();
-    const physicalLabels=['sources',...desktop.surface.inventory!.sources.map(source=>source.path.split('/').at(-1)!)].sort();
+    const physicalLabels=desktop.surface.inventory!.sources.map(source=>source.path.split('/').at(-1)!).sort();
     assert(JSON.stringify(treeLabels)===JSON.stringify(physicalLabels),'Explorer mixed domain groups into the physical source hierarchy');
     const selection=desktop.interaction.selection;
+    const retainedTree=document.querySelector('#explorer [role="tree"]'),sourceProjection=desktop.surface.projection;
+    const beforeWidth=document.getElementById('editor-pane')!.getBoundingClientRect().width;
+    button('エクスプローラーを閉じる').click();await frame();
+    assert(!shown(document.getElementById('explorer')!)&&document.getElementById('editor-pane')!.getBoundingClientRect().width>beforeWidth,'sidebar close did not release working space');
+    key(document.getElementById('editor-pane')!,'b',{ctrlKey:true});await frame();
+    assert(shown(document.getElementById('explorer')!)&&retainedTree===document.querySelector('#explorer [role="tree"]')&&desktop.surface.projection===sourceProjection&&desktop.interaction.selection===selection,'sidebar toggle discarded tree / projection / selection');
+    checks.push('sidebar-whole-pane-state-preserved');
     await openFind();text(input("テーブルまたは型を検索"),'not a target');
     input("テーブルまたは型を検索").closest('.ant-modal')!.querySelector<HTMLButtonElement>("button[aria-label=\"閉じる\"]")!.click();
     await until(()=>!document.querySelector("input[aria-label=\"テーブルまたは型を検索\"]")&&!!document.activeElement?.closest('[role="tree"]'),'Find Cancel did not restore Explorer keyboard focus');

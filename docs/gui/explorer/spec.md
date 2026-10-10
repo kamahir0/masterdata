@@ -13,6 +13,8 @@ Explorerはdomain treeではなくworkspace navigationであり、folder配置�
 
 Desktop authoring画面は左側にWorkspace Explorerを持たなければならない（MUST）。ExplorerはProjectに設定されたsource rootごとのfile / folder hierarchyのみを密なtreeとして表示し、中央typed editorとは独立したnavigation surfaceとして扱う。folder展開、file選択、dirty / loading / error状態は該当行で識別できなければならない（MUST）。
 
+単一source rootの場合は、そのroot自体の冗長なfolder行を省略し直下のfile / folderから表示する（SHOULD）。表示省略によってphysical path、creation destination、selection identityを変更してはならない（MUST NOT）。
+
 複数source rootがある場合は、利用者がどのconfigured rootに属する項目か識別できなければならない（MUST）。source root外の`.masterdata/output`、cache、generated artifact等をExplorerのsource treeへ暗黙に混在させてはならない（MUST NOT）。
 
 ### GUI-EXPLORER-002

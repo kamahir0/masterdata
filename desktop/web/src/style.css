@@ -70,6 +70,7 @@ html[data-theme="dark"] body {
   outline: 1px solid var(--md-accent);
   outline-offset: -1px;
 }
+.explorer-hidden #explorer { display: none; }
 #explorer {
   width: 224px;
   flex: none;
@@ -121,6 +122,7 @@ html[data-theme="dark"] body {
   color: var(--md-accent);
   font-size: 8px;
 }
+.pane-heading > .ant-space { margin-left: auto; }
 .pane-heading > .ant-dropdown-trigger { margin-left: auto; }
 .creation-inline { padding: 2px 0 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; width: 100%; line-height: 1.4; }
 .creation-inline .ant-input-affix-wrapper, .creation-inline > .ant-select { width: 100%; }
@@ -146,6 +148,9 @@ main {
 #welcome {
   margin: min(13vh, 100px) auto 0;
   width: min(420px, calc(100% - 64px));
+  max-height: calc(100% - min(13vh, 100px));
+  overflow-y: auto;
+  padding-bottom: 24px;
 }
 .welcome-mark {
   font-size: 30px;
@@ -164,6 +169,7 @@ main {
 }
 .project-guides {text-align:center;padding:0 20px;}
 .recent-projects {margin-top:28px;}
+.recent-empty {margin-top:12px;}
 .recent-project {height:36px;}
 .recent-project>.ant-btn:first-child {flex:1;min-width:0;justify-content:flex-start;}
 .recent-project>.ant-btn:first-child span:last-child {overflow:hidden;text-overflow:ellipsis;}
@@ -311,7 +317,7 @@ main {
 .field-name .field-name-button { width: 100%; min-width: 0; padding-inline: 0; text-align: left; justify-content: flex-start; font-weight: inherit; height: 22px; }
 .field-name .field-name-button > span { overflow: hidden; text-overflow: ellipsis; }
 .field-name .ant-input-affix-wrapper, .field-name .ant-input { height: 22px; padding-block: 0; }
-.add-column { display: grid; place-items: center; border-right: 1px solid var(--md-border); }
+.add-column { position: absolute; top: 0; right: 16px; z-index: 8; width: 44px; display: grid; place-items: center; background: var(--md-panel); border-left: 1px solid var(--md-border); border-bottom: 1px solid var(--md-border); }
 .recovery-detail { width: 100%; }
 .recovery-file { border-bottom: 1px solid var(--md-border); padding-block: 8px; }
 .recovery-file .ant-typography { overflow-wrap: anywhere; margin-block: 6px; }
@@ -445,7 +451,7 @@ main {
   visibility: hidden;
 }
 .spatial-displaced {
-  transition: transform var(--md-motion) var(--md-ease);
+  transition: transform var(--md-drag-motion) var(--md-ease);
 }
 .column-preview > .column {
   width: 100%;
@@ -525,6 +531,9 @@ main {
   box-shadow: none;
   border: 2px solid var(--md-accent);
   padding: 0 8px;
+  font-family: var(--md-font);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 #pending {
   position: absolute;
@@ -538,7 +547,7 @@ main {
 }
 .add-row {
   position: absolute;
-  right: 22px;
+  left: 16px;
   bottom: 16px;
   z-index: 8;
   background: var(--md-elevated);

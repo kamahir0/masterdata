@@ -118,11 +118,11 @@ export const AuthoringGrid = memo(function AuthoringGrid({
   };
   const openRowMenu = useCallback((row: Row, x: number, y: number) => {
     const p = desktop.surface.projection;
-    if (p) setMenu({ p, row, x, y });
+    if (p) setMenu(old=>old?.row?.id===row.id?null:{ p, row, x, y });
   }, []);
   const openColumnMenu = useCallback((column: number, x: number, y: number) => {
     const p = desktop.surface.projection;
-    if (p) setMenu({ p, column, x, y });
+    if (p) setMenu(old=>old?.column===column?null:{ p, column, x, y });
   }, []);
   const keydown = (e: KeyboardEvent) => {
     if (isInput(e.target) || e.nativeEvent.isComposing || pending) return;
@@ -237,7 +237,7 @@ export const AuthoringGrid = memo(function AuthoringGrid({
               rename={beginRename}
             />
           ))}
-          <div className="add-column"><Tooltip title="Nullを許可するstringフィールドを追加"><Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="列を追加" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>
+
         </div>
         <div
           id="grid-body"
@@ -258,12 +258,13 @@ export const AuthoringGrid = memo(function AuthoringGrid({
         </div>
         <SelectionOverlay projection={p} />
       </div>
+      {!pending&&p&&<div className="add-column" style={{height:GRID.header}}><Tooltip title="Nullを許可するstringフィールドを追加"><Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="列を追加" disabled={!p || busy || pending || desktop.surface.status.recoveryRequired} onClick={()=>{if(p) void desktop.fieldAction({kind:"add",neighbor:null,after:false},p);}} /></Tooltip></div>}
       <ActiveEditor pending={pending || !p} />
       <GridMenu
         target={menu}
-        close={() => {
+        close={(restore=true) => {
           setMenu(null);
-          viewport.current?.focus();
+          if(restore)viewport.current?.focus({preventScroll:true});
         }}
       />
     </>
@@ -763,8 +764,33 @@ function GridMenu({
   close,
 }: {
   target: MenuTarget | null;
-  close: () => void;
+  close: (restore?:boolean) => void;
 }) {
+  const dismiss=useRef(close);dismiss.current=close;
+  useEffect(()=>{
+    if(!target)return;
+    const outside=(e:PointerEvent)=>{
+      if(e.target instanceof Element&&e.target.closest('.grid-context-menu,.menu-anchor,.row-actions,.column-actions,.column-grip,.row-grip'))return;
+      dismiss.current(false);
+    };
+    const escape=(e:globalThis.KeyboardEvent)=>{if(e.key==='Escape'&&!e.isComposing&&e.keyCode!==229){e.preventDefault();e.stopImmediatePropagation();dismiss.current(true);}};
+    const blur=()=>dismiss.current(false);
+    document.addEventListener('pointerdown',outside,true);
+    document.addEventListener('keydown',escape,true);
+    window.addEventListener('blur',blur);
+    // rc-dropdown's autoFocus schedules an uncancelled three-frame callback.
+    // Own this focus request so immediate Escape / outside input cannot be
+    // overridden by focus arriving after the menu was dismissed.
+    const intent=desktop.inputIntent;let focusFrame=0;
+    const focus=()=>{
+      if(intent!==desktop.inputIntent)return;
+      const item=document.querySelector<HTMLElement>('.grid-context-menu [role="menuitem"]:not(.ant-dropdown-menu-item-disabled)');
+      if(item?.getClientRects().length)item.focus({preventScroll:true});
+      else focusFrame=requestAnimationFrame(focus);
+    };
+    focusFrame=requestAnimationFrame(focus);
+    return()=>{cancelAnimationFrame(focusFrame);document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',escape,true);window.removeEventListener('blur',blur);};
+  },[target]);
   const items: MenuProps["items"] = [];
   if (target?.row) {
     const row = target.row,
@@ -830,9 +856,10 @@ function GridMenu({
   }
   return (
     <Dropdown
+      classNames={{root:"grid-context-menu"}}
       open={!!target}
       trigger={[]}
-      autoFocus
+      autoFocus={false}
       onOpenChange={(open) => {
         if (!open) close();
       }}

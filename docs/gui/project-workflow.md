@@ -17,6 +17,7 @@ Create画面はnative directory pickerと手入力でdestinationを指定でき�
 ### GUI-PROJECT-002
 
 Explorerのsource treeを維持し、Table/sourceを見つけて同じTable contextへ、Type sourceからtyped authoringへ到達できなければならない（MUST）。一覧はshared workspace情報を使い、pathからidentityを導出しない。どの入口も同一sourceのbufferを共有する。
+WelcomeにはRecent Projectsを表示し、履歴0件でも簡潔な空状態を示す（MUST）。
 Recent Projectsはuser-localに最大10件、successful open順で保持する（MUST）。同じhostで同じcanonical rootは一件として扱い、missing/permission failureで他Projectを破壊しない。removeはrecent entryだけを消しdiskを変更しない。自動openや自動Buildを行わず、path情報をProjectのGit管理configやremoteへ送らない（MUST NOT）。
 
 ## 受け入れ証拠

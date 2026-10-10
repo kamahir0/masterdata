@@ -65,7 +65,16 @@ require(set(git("ls-tree", "-r", "--name-only", "legacy-final").splitlines()) ==
         "decommission manifest does not inventory exact frozen tree")
 for ref in ("refs/heads/main", "refs/remotes/origin/main"):
     if subprocess.run(["git", "show-ref", "--quiet", "--verify", ref]).returncode == 0:
-        if implementation:
+        if implementation and subprocess.run([
+            "git", "merge-base", "--is-ancestor",
+            "8191c05c29e6adf2074d64da9bc683a498d6e2f3", ref,
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            # Human merged PR #16 into main; it now owns the new product. This
+            # repository integration does not claim the gated final evidence.
+            # The immutable legacy tag/corpus checks above and below still apply.
+            require(subprocess.run(["git", "merge-base", "--is-ancestor", freeze, ref]).returncode == 0,
+                    f"{ref} does not descend from frozen main")
+        elif implementation:
             # The immutable tag owns the frozen product. External agent-skill
             # additions do not cut over that product; changes to any frozen
             # asset or new runtime on main still fail this boundary check.

@@ -10,7 +10,9 @@ Desktop hostをthin adapterとして保ち、Project open、Workspace Explorer�
 
 ### GUI-SHELL-LAYOUT-001
 
-Desktop authoring画面は、左のworkbench navigation内に開閉可能な[Workspace Explorer](explorer/spec.md)と中央のtyped editor areaを主要surfaceとして持たなければならない（MUST）。record data YAMLを選択した場合、中央は[Data Editor](data-editor/spec.md)を表示する。
+Desktop authoring画面は、左のworkbench navigation内に開閉可能な[Workspace Explorer](explorer/spec.md)と中央のtyped editor areaを主要surfaceとして持たなければならない（MUST）。左ペインは全体を閉じて中央の編集領域を広げ、明確なbutton / keyboard操作で再度開ける（MUST）。開閉だけでtree展開、draft、history、selectionを破棄してはならない（MUST NOT）。
+
+record data YAMLを選択した場合、中央は[Data Editor](data-editor/spec.md)を表示する。
 
 validation diagnosticsはData Editorが定義する下部`Problems` panelへ表示できなければならず（MUST）、unsaved candidate / Conflict / Migrationのcompareへ必要文脈から到達できなければならない（MUST）。常設right inspectorを初期sliceの必須要件にはしない。
 

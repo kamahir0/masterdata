@@ -42,6 +42,9 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     viewport.scrollLeft=0;desktop.setSelection(0,0);desktop.beginEditor();
     await until(()=>!!document.querySelector('.active-cell-editor input'),'single active editor missing');
     const input=document.querySelector<HTMLInputElement>('.active-cell-editor input')!;
+    const valueStyle=getComputedStyle(document.getElementById('cell-0-0')!),editorStyle=getComputedStyle(input);
+    assert(valueStyle.fontSize===editorStyle.fontSize&&valueStyle.fontFamily===editorStyle.fontFamily,'inline editor changed typography');
+    checks.push('inline-editor-matches-display-typography');
     viewport.scrollLeft=width*.6;
     const row=viewport.querySelector<HTMLElement>('[aria-rowindex="2"] [role="rowheader"]')!;
     unobstructed(row,'rowheader');
@@ -68,10 +71,30 @@ export async function run({startup}:{startup:Record<string,unknown>}){
       document.getElementById('cell-0-0')!.textContent==='2000','Escape / blur committed temporary input');
     checks.push('sticky-row-context-occludes-active-editor');
     checks.push('scroll-preserves-temporary-input-and-escape-discards');
+    const menuButton=viewport.querySelector<HTMLButtonElement>('.row-actions')!;
+    const menuVisible=()=>[...document.querySelectorAll<HTMLElement>('.grid-context-menu')].some(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden');
+    menuButton.click();await until(menuVisible,'row menu did not open');
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!menuVisible(),'Escape did not dismiss row menu');
+    assert(document.activeElement===viewport,'Escape did not restore grid focus');
+    menuButton.click();await until(menuVisible,'row menu did not reopen');
+    menuButton.click();await until(()=>!menuVisible(),'second button click did not close menu');
+    menuButton.click();await until(menuVisible,'row menu did not open for outside click');
+    const search=document.querySelector<HTMLInputElement>('#search')!;search.focus();
+    search.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0}));await until(()=>!menuVisible(),'outside click did not dismiss row menu');
+    assert(document.activeElement===search,'outside menu dismissal stole focus');
+    checks.push('row-menu-dismiss-and-focus');
+    const addColumn=document.querySelector<HTMLElement>('.add-column')!,addRow=document.querySelector<HTMLElement>('.add-row')!;
+    const columnPosition=addColumn.getBoundingClientRect(),rowPosition=addRow.getBoundingClientRect();
     viewport.scrollLeft=viewport.scrollWidth-viewport.clientWidth;
     viewport.scrollTop=viewport.scrollHeight-viewport.clientHeight;
     await until(()=>!!document.getElementById('cell-1999-19'),'last row / column did not become visible');
     const view=viewport.getBoundingClientRect(),head=header.getBoundingClientRect();
+    const columnScrolled=addColumn.getBoundingClientRect(),rowScrolled=addRow.getBoundingClientRect();
+    assert(Math.abs(columnPosition.right-columnScrolled.right)<1&&Math.abs(columnPosition.top-columnScrolled.top)<1&&
+      Math.abs(rowPosition.left-rowScrolled.left)<1&&Math.abs(rowPosition.bottom-rowScrolled.bottom)<1&&
+      rowScrolled.left<view.left+view.width/2&&columnScrolled.right<=view.right&&rowScrolled.bottom<=view.bottom,'Add actions did not stay at viewport right / bottom-left');
+    for(const action of [addColumn,addRow]){const r=action.getBoundingClientRect();assert(action.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)),'viewport-fixed Add action obstructed');}
+    checks.push('viewport-fixed-add-actions');
     const last=document.getElementById('cell-1999-19')!;
     const identity=last.closest('[role="row"]')!.querySelector<HTMLElement>('[role="rowheader"]')!;
     assert(Math.abs(head.top-view.top)<=1&&Math.abs(identity.getBoundingClientRect().left-view.left)<=1,'sticky context detached from viewport');

@@ -74,7 +74,7 @@ one knowledge, one owner。入口文書、Current Objective、Development State�
 
 ## Clean-room boundary
 
-このbranchは意図的にproduct runtimeを持たない。[Clean-room Handoff](docs/rewrite-preparation/clean-room-handoff.md)に従い、legacy tag/historyはforensic fallbackだけに使う。新実装は次のHuman-selected Objectiveをfresh contextで受けるまで始めない。
+Human-selected Clean-room Rewriteの新runtimeをPR #16でmainへ取り込み済み。[Clean-room Handoff](docs/rewrite-preparation/clean-room-handoff.md)のsource authority境界は維持し、legacy tag/historyはforensic fallbackだけに使う。mainへの取り込みを未取得のfinal conformance evidenceの代わりにしない。
 
 ## Architecture anchors
 

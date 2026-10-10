@@ -50,6 +50,12 @@ Column / Record Row共通で、pointercancel / Escape / window blur / grid外dro
 
 Array item handleのdrag/dropは0045の一つのcomplex value operationへ変換し、one Undo unitとする（MUST）。既存item menuのMove Up/Down/Removeをkeyboard fallbackとして維持する。nested sequence identity、diagnostic path、focusは移動したitemへ追従しなければならない（MUST）。
 
+### GUI-GRID-008 — Stable inline controls
+
+cell入力時は通常表示と同じfont size / family / baselineを保ち、inlineの連続性を維持する（MUST）。列追加actionはgrid viewport右端、行追加actionはviewport左下で、縦横scrollにより隠れず到達できる（MUST）。スクロールバーと既存sticky contextの操作を妨げない。
+
+row / column context menuはEscape、外側click、再度のmenu button操作で閉じられる（MUST）。閉じるだけでsource / historyを変えず、Escapeではgridのkeyboard操作へ戻る。外側click時はそのclick先のfocus intentを奪わない（MUST）。
+
 ## 既存Data Editor contractへの適用
 
 - `GUI-DATA-EDIT-001`のsingle-cell editingを維持し、本仕様のrange / paste / Undo/Redoを追加する。fill handle、非連続range、bulk row add/deleteは対象外。

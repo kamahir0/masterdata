@@ -397,17 +397,32 @@ function begin(
       overlay.style.height = `${p.clip.height}px`;
       ghost.style.transform = `translate(${p.x - p.clip.left}px, ${p.y - p.clip.top}px)`;
       ghost.dataset.dropValid = String(p.valid);
-      // Restore the previous bounded window before applying its current subset.
-      // Detached windows are never retained as the user scrolls through a Table.
-      clearNeighbours();
-      for (const [element, x, y] of p.neighbours) {
-        painted.set(element, {
-          transform: element.style.transform,
-          transition: element.style.transition,
-        });
-        element.classList.add("spatial-displaced");
-        element.style.transform = `translate(${x}px, ${y}px)`;
+      // Keep each visible neighbour's transition alive across frames. Removing
+      // the class and resetting transform every frame cancels CSS interpolation,
+      // especially when the displacement is positive (left/up gestures).
+      const next=new Map(p.neighbours.map(([element,x,y])=>[element,`translate(${x}px, ${y}px)`]));
+      for(const [element,style] of painted) {
+        if(!element.isConnected || !v.contains(element)) {
+          element.style.transform=style.transform;element.style.transition=style.transition;
+          element.classList.remove("spatial-displaced");painted.delete(element);continue;
+        }
+        const rect=element.getBoundingClientRect();
+        if(!next.has(element)&&(rect.right<=p.clip.left||rect.left>=p.clip.right||rect.bottom<=p.clip.top||rect.top>=p.clip.bottom)) {
+          element.style.transform=style.transform;element.style.transition=style.transition;
+          element.classList.remove("spatial-displaced");painted.delete(element);continue;
+        }
+        if(!next.has(element))next.set(element,style.transform);
       }
+      let added:HTMLElement|null=null;
+      for(const element of next.keys())if(!painted.has(element)) {
+        painted.set(element,{transform:element.style.transform,transition:element.style.transition});
+        element.classList.add("spatial-displaced");added=element;
+      }
+      // Newly participating nodes need an accepted baseline style before their
+      // first target transform. One flush per changed bounded set, never per cell
+      // or on ordinary navigation. Subsequent frames only update changed targets.
+      if(added)getComputedStyle(added).transform;
+      for(const [element,transform] of next)if(element.style.transform!==transform)element.style.transform=transform;
     }
     frame = requestAnimationFrame(paint);
   };

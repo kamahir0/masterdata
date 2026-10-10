@@ -55,7 +55,7 @@ def check_authoring(report):
     assert report['visibility'] == 'visible' and report['focused'], 'native window not usable'
     assert [item['name'] for item in report['checks']] == [
         'scalar-composition', 'pointer-range', 'row-drag-cancel', 'row-drag-drop',
-        'between-frame-row-drop', 'column-drag-drop', 'array-drag-drop', 'complex-typing-add', 'complex-focus-intent', 'nested-problem-focus', 'complex-navigation',
+        'bidirectional-row-motion', 'between-frame-row-drop', 'column-drag-drop', 'bidirectional-column-motion', 'array-drag-drop', 'complex-typing-add', 'complex-focus-intent', 'nested-problem-focus', 'complex-navigation',
     ], report['checks']
     assert report['source']['before'] == report['source']['after']
     assert report['schema']['before'] == report['schema']['after']
@@ -182,8 +182,8 @@ def check_settings(report):
 def check_project(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused']
-    assert report['checks'] == ['welcome-create-cancel-focus', 'welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen',
-                               'source-only-tree-contextual-find-cancel', 'contextual-find-type-table-warm-zero', 'create-all-dirty-guard-cancel',
+    assert report['checks'] == ['welcome-recent-and-appearance-entry', 'welcome-create-cancel-focus', 'welcome-recents-explicit-open-remove', 'unknown-open-reply-explicit-reopen',
+                               'sidebar-whole-pane-state-preserved', 'source-only-tree-contextual-find-cancel', 'contextual-find-type-table-warm-zero', 'create-all-dirty-guard-cancel',
                                'create-form-cancel-composition', 'nonempty-failure-retains-workspace',
                                'unknown-creation-reply-explicit-open', 'guided-schema-explicit-no-record-source',
                                'explicit-data-logical-navigation-shared-draft', 'recent-canonical-root-order-dedup']
@@ -217,8 +217,8 @@ def check_geometry(report):
     assert not report.get('error'), report.get('error')
     assert report['visibility'] == 'visible' and report['focused']
     assert report['checks'] == ['header-name-handle-action-separate', 'sticky-corner-occludes-scrolled-controls',
-                               'sticky-row-context-occludes-active-editor', 'scroll-preserves-temporary-input-and-escape-discards',
-                               'long-wide-sticky-context-and-exact-value',
+                               'inline-editor-matches-display-typography', 'sticky-row-context-occludes-active-editor', 'scroll-preserves-temporary-input-and-escape-discards',
+                               'row-menu-dismiss-and-focus', 'viewport-fixed-add-actions', 'long-wide-sticky-context-and-exact-value',
                                'contextual-popup-remains-interactive']
     assert report['mountedRows'] <= 64 and not report['dirty'] and not report['startup']['browserErrors']
     return {'checks': len(report['checks']), 'stickyHitAreasProtected': True}

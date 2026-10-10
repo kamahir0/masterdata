@@ -83,6 +83,21 @@ async function drag(handle: HTMLElement, destination: HTMLElement) {
   );
   return { start, end, ghost };
 }
+async function neighbourMotion(axis:"x"|"y",sign:number) {
+  const element=[...document.querySelectorAll<HTMLElement>('.spatial-displaced')].find(el=>axis==='x'?el.classList.contains('column'):el.classList.contains('grid-row'));
+  assert(element,'visible neighbour missing');
+  const value=()=>{const matrix=new DOMMatrixReadOnly(getComputedStyle(element).transform);return axis==='x'?matrix.m41:matrix.m42;};
+  const destination=(axis==='x'?GRID.column:GRID.row)*sign;
+  const samples:number[]=[];let completed=false;
+  await until(()=>{
+    const displacement=value();samples.push(displacement);
+    if(Math.abs(displacement-destination)<.5){completed=true;return true;}
+    return false;
+  },'neighbour interpolation did not reach its destination');
+  const intermediate=samples.some(x=>Math.abs(x)>0.1&&Math.abs(x)<Math.abs(destination)-.5);
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches)assert(intermediate,'neighbour jumped directly instead of interpolating');
+  assert(completed,'neighbour target missing');
+}
 async function settle() {
   await until(
     () =>
@@ -225,6 +240,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       find(".grid-row .row-grip"),
       find(".grid-row:nth-child(2) .row-identity"),
     );
+    await neighbourMotion("y",-1);
     assert(
       gesture.ghost.querySelector(".row-identity") &&
         gesture.ghost.querySelector(".cell"),
@@ -260,6 +276,10 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       "row drop was not one Undo",
     );
     record("row-drag-drop", { oneUndo: true });
+    gesture=await drag(find('.grid-row:nth-child(2) .row-grip'),find('.grid-row .row-identity'));
+    await neighbourMotion("y",1);key(document.body,'Escape');await settle();
+    assert((await bytes()).after===base.after&&!desktop.surface.projection!.canUndo,'upward preview / cancel changed source');
+    record('bidirectional-row-motion');
     const quickStart = point(find(".grid-row .row-grip")),
       quickEnd = point(find(".grid-row:nth-child(2) .row-identity"));
     pointer(find(".grid-row .row-grip"), "pointerdown", quickStart);
@@ -278,6 +298,7 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       find(".column .column-grip"),
       find(".column:nth-child(4) .column-grip"),
     );
+    await neighbourMotion("x",-1);
     assert(
       gesture.ghost.querySelector(".column") &&
         gesture.ghost.querySelector(".cell"),
@@ -305,6 +326,10 @@ export async function run({ startup }: { startup: Record<string, unknown> }) {
       "column drop was not one schema Undo",
     );
     record("column-drag-drop", { oneUndo: true, separateDataPreserved: true });
+    gesture=await drag(find('.column:nth-child(4) .column-grip'),find('.column .column-grip'));
+    await neighbourMotion("x",1);key(document.body,'Escape');await settle();
+    assert((await bytes(SCHEMA)).after===schemaBase.after&&!desktop.surface.projection!.schemaCanUndo,'leftward preview / cancel changed schema');
+    record('bidirectional-column-motion');
     await focusCell(1, 15);
     key(desktop.viewport!, "Enter");
     await until(

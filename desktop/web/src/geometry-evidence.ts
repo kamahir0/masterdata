@@ -41,6 +41,9 @@ export async function run({startup}:{startup:Record<string,unknown>}){
     checks.push('sticky-corner-occludes-scrolled-controls');
     viewport.scrollLeft=0;desktop.setSelection(0,0);desktop.beginEditor();
     await until(()=>!!document.querySelector('.active-cell-editor input'),'single active editor missing');
+    // The single overlay can mount before the virtualized display column has
+    // returned from the previous horizontal scroll. Compare after both exist.
+    await until(()=>!!document.getElementById('cell-0-0'),'editing display cell did not return after horizontal scroll');
     const input=document.querySelector<HTMLInputElement>('.active-cell-editor input')!;
     const valueStyle=getComputedStyle(document.getElementById('cell-0-0')!),editorStyle=getComputedStyle(input);
     assert(valueStyle.fontSize===editorStyle.fontSize&&valueStyle.fontFamily===editorStyle.fontFamily,'inline editor changed typography');

@@ -339,7 +339,13 @@ def run(binary: Path, output: Path, case: str):
                                 if phase not in handled:
                                     external_phase(phase)
                                     handled.add(phase)
-                                    report_path.with_suffix('.ack').write_text(json.dumps({'phase': phase, 'complete': True}), encoding='utf-8')
+                                    # The native reader can poll between truncate
+                                    # and write. Publish a complete acknowledgement
+                                    # instead of exposing an empty JSON document.
+                                    acknowledgement = report_path.with_suffix('.ack')
+                                    pending = report_path.with_suffix('.ack.pending')
+                                    pending.write_text(json.dumps({'phase': phase, 'complete': True}), encoding='utf-8')
+                                    pending.replace(acknowledgement)
                             else: break
                     time.sleep(.1)
                 report['environment'] = {'os': platform.system(), 'release': platform.release(),

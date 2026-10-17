@@ -70,6 +70,7 @@ import { FieldEditor } from "./ui/fields";
 import { NestedEditor, type Cursor } from "./ui/nested";
 import { Settings } from "./ui/settings";
 import { Entry } from "./ui/inputs";
+import { EditorBoundary } from "./ui/editor-boundary";
 function SourceText({ source }: { source: Source }) {
   const [draft, setDraft] = useState(() =>
     serialize(source, session.getState().saved.get(source.id)),
@@ -618,27 +619,42 @@ function Workspace({
                     items={tabs}
                   />
                   <section className="editor-content">
-                    {tab === "source" || source.syntaxError ? (
-                      <>
-                        <SourceText key={source.id} source={source} />
-                      </>
-                    ) : source.data?.kind === "type" ? (
-                      <TypeEditor source={source} snapshot={snapshot} />
-                    ) : tab === "data" ? (
-                      <GridEditor
-                        key={source.id}
-                        source={source}
-                        snapshot={snapshot}
-                        problems={problems}
-                        onOpen={setCursor}
-                        navigate={select}
-                        profile={profile}
-                        findRef={find}
-                        jump={jump}
-                      />
-                    ) : tab === "fields" ? (
-                      <div className="editor-scroll">
-                        <FieldEditor
+                    <EditorBoundary
+                      key={`${active}:${tab}`}
+                      revision={revision}
+                      onSource={() => setTab("source")}
+                    >
+                      {tab === "source" || source.syntaxError ? (
+                        <>
+                          <SourceText key={source.id} source={source} />
+                        </>
+                      ) : source.data?.kind === "type" ? (
+                        <TypeEditor source={source} snapshot={snapshot} />
+                      ) : tab === "data" ? (
+                        <GridEditor
+                          key={source.id}
+                          source={source}
+                          snapshot={snapshot}
+                          problems={problems}
+                          onOpen={setCursor}
+                          navigate={select}
+                          profile={profile}
+                          findRef={find}
+                          jump={jump}
+                        />
+                      ) : tab === "fields" ? (
+                        <div className="editor-scroll">
+                          <FieldEditor
+                            source={
+                              tables(snapshot).find(
+                                (t) => t.name === source.data?.table,
+                              )?.source ?? source
+                            }
+                            snapshot={snapshot}
+                          />
+                        </div>
+                      ) : (
+                        <Relationships
                           source={
                             tables(snapshot).find(
                               (t) => t.name === source.data?.table,
@@ -646,17 +662,8 @@ function Workspace({
                           }
                           snapshot={snapshot}
                         />
-                      </div>
-                    ) : (
-                      <Relationships
-                        source={
-                          tables(snapshot).find(
-                            (t) => t.name === source.data?.table,
-                          )?.source ?? source
-                        }
-                        snapshot={snapshot}
-                      />
-                    )}
+                      )}
+                    </EditorBoundary>
                     <NestedEditor
                       cursor={cursor}
                       snapshot={snapshot}

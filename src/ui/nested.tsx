@@ -105,15 +105,13 @@ export function NestedEditor({
         <>
           <div className="breadcrumb-scroll">
             <Breadcrumb
-              items={cursor.path
-                .slice(2)
-                .map((part, i) => ({
-                  title: (
-                    <button onClick={() => navigate(i + 2)}>
-                      {typeof part === "number" ? `[${part}]` : part}
-                    </button>
-                  ),
-                }))}
+              items={cursor.path.slice(2).map((part, i) => ({
+                title: (
+                  <button onClick={() => navigate(i + 2)}>
+                    {typeof part === "number" ? `[${part}]` : part}
+                  </button>
+                ),
+              }))}
             />
           </div>
           {!valid ? (

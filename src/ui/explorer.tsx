@@ -176,7 +176,10 @@ export function Explorer({
         .flatMap((item) => {
           const nested = item.folder ? build(item.path) : undefined;
           const label = item.path.split("/").at(-1)!;
-          const matches = label.toLowerCase().includes(search.toLowerCase());
+          const matches =
+            `${label} ${item.source?.data?.name ?? ""} ${item.source?.data?.table ?? ""}`
+              .toLowerCase()
+              .includes(search.toLowerCase());
           if (search && !matches && !nested?.length) return [];
           const title =
             renaming?.path === item.path ? (

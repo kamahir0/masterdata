@@ -43,80 +43,124 @@ export function defaultValue(
     fieldsOf(type).map((f) => [f.name, defaultValue(snapshot, f, next)]),
   );
 }
-export function newRecord(
+export function recordAllocator(
   snapshot: Snapshot,
   table: TableInfo,
-  template?: Data,
-): Data {
-  const result = template
-    ? structuredClone(template)
-    : Object.fromEntries(
-        table.fields.map((f) => [f.name, defaultValue(snapshot, f)]),
-      );
+): (template?: Data) => Data {
   const rows = table.sources.flatMap((s) =>
     Array.isArray(s.data?.records) ? s.data.records : [],
   );
   const keys: string[][] = [
     table.source.data.primaryKey?.fields,
     ...list(table.source.data.secondaryKeys)
-      .filter((k: any) => !k.nonUnique)
-      .map((k: any) => k.fields),
+      .filter((k) => !k.nonUnique)
+      .map((k) => k.fields),
   ].filter((k): k is string[] => Array.isArray(k) && !!k.length);
-  for (let attempt = 0; attempt < 10000; attempt++) {
-    const conflict = keys.find((key) =>
-      rows.some((r) => key.every((k) => text(r?.[k]) === text(result[k]))),
-    );
-    if (!conflict) return result;
-    const name = [...conflict].reverse().find((n) => {
-      const f = table.fields.find((f) => f.name === n);
-      return f && !f.array && !f.nullable;
-    });
-    if (!name)
-      throw new Error(
-        "重複しないキーを作成できません。キーの設定を確認してください。",
-      );
-    const f = table.fields.find((f) => f.name === name)!;
-    const t = typeSource(snapshot, f.type);
-    const primitive = t?.data?.valueObject?.underlying ?? f.type;
-    if (primitive === "string")
-      result[name] = `${template?.[name] || "new"}-${attempt + 1}`;
-    else if (["int", "uint", "long", "ulong"].includes(primitive)) {
-      const used = new Set(rows.map((r) => String(r?.[name])));
-      let maximum = 0n;
-      for (const row of rows) {
-        try {
-          const n = BigInt(row?.[name]);
-          if (n > maximum) maximum = n;
-        } catch {}
-      }
-      const limit =
-        primitive === "int"
-          ? 2147483647n
-          : primitive === "uint"
-            ? 4294967295n
-            : primitive === "long"
-              ? 9223372036854775807n
-              : 18446744073709551615n;
-      let candidate = maximum + 1n;
-      if (candidate > limit) {
-        candidate = 0n;
-        while (used.has(String(candidate)) && candidate <= BigInt(used.size))
-          candidate++;
-      }
-      if (candidate > limit || used.has(String(candidate)))
-        throw new Error("キーの空きを割り当てられません。");
-      result[name] = candidate;
-    } else if (t?.data?.enum) {
-      const members = t.data.enum.members ?? [];
-      if (attempt >= members.length)
-        throw new Error("このEnumの一意な値は使い切られています。");
-      result[name] = members[attempt]?.name;
-    } else
-      throw new Error(
-        "このキーは自動割り当てできません。設定を確認してください。",
-      );
+  const signature = (key: string[], row: Data) =>
+    JSON.stringify(key.map((n) => text(row?.[n])));
+  const indexes = keys.map(
+    (key) => new Set(rows.map((row) => signature(key, row))),
+  );
+  const keyNames = [...new Set(keys.flat())];
+  const used = new Map(
+    keyNames.map((name) => [name, new Set(rows.map((r) => text(r?.[name])))]),
+  );
+  const maxima = new Map<string, bigint>();
+  const counters = new Map<string, number>();
+  for (const name of keyNames) {
+    let max = 0n;
+    for (const row of rows) {
+      try {
+        const n = BigInt(row?.[name]);
+        if (n > max) max = n;
+      } catch {}
+    }
+    maxima.set(name, max);
   }
-  throw new Error("一意なキー候補を割り当てられませんでした。");
+  return (template?: Data) => {
+    const result = template
+      ? structuredClone(template)
+      : Object.fromEntries(
+          table.fields.map((f) => [f.name, defaultValue(snapshot, f)]),
+        );
+    for (let attempt = 0; attempt < 10000; attempt++) {
+      const conflict = keys.findIndex((key, i) =>
+        indexes[i].has(signature(key, result)),
+      );
+      if (conflict < 0) {
+        keys.forEach((key, i) => indexes[i].add(signature(key, result)));
+        keyNames.forEach((name) => {
+          used.get(name)!.add(text(result[name]));
+          try {
+            const n = BigInt(result[name]);
+            if (n > (maxima.get(name) ?? 0n)) maxima.set(name, n);
+          } catch {}
+        });
+        return result;
+      }
+      const components = [...keys[conflict]]
+        .reverse()
+        .map((name) => table.fields.find((f) => f.name === name))
+        .filter((f): f is Field => !!f && !f.array && !f.nullable);
+      // Prefer a numeric/string component of a composite key; cycling only its Enum component can falsely exhaust a valid key space.
+      const field =
+        components.find((f) =>
+          ["int", "uint", "long", "ulong", "string"].includes(
+            primitiveOf(snapshot, f),
+          ),
+        ) ?? components[0];
+      if (!field)
+        throw new Error(
+          "一意なキーを作成できません。キーの設定を確認してください。",
+        );
+      const primitive = primitiveOf(snapshot, field);
+      const values = used.get(field.name)!;
+      if (primitive === "string") {
+        let i = counters.get(field.name) ?? 0;
+        let candidate: string;
+        do {
+          candidate = `${template?.[field.name] || "new"}-${++i}`;
+        } while (values.has(candidate));
+        counters.set(field.name, i);
+        result[field.name] = candidate;
+      } else if (["int", "uint", "long", "ulong"].includes(primitive)) {
+        const limit =
+          primitive === "int"
+            ? 2147483647n
+            : primitive === "uint"
+              ? 4294967295n
+              : primitive === "long"
+                ? 9223372036854775807n
+                : 18446744073709551615n;
+        let candidate = (maxima.get(field.name) ?? 0n) + 1n;
+        if (candidate > limit) {
+          candidate = 0n;
+          while (
+            values.has(String(candidate)) &&
+            candidate <= BigInt(values.size)
+          )
+            candidate++;
+        }
+        if (candidate > limit || values.has(String(candidate)))
+          throw new Error("キーの空きを割り当てられません。");
+        result[field.name] = candidate;
+      } else {
+        const members =
+          typeSource(snapshot, field.type)?.data?.enum?.members ?? [];
+        if (attempt >= members.length)
+          throw new Error("このEnumの一意な値は使い切られています。");
+        result[field.name] = members[attempt]?.name;
+      }
+    }
+    throw new Error("一意なキー候補を割り当てられませんでした。");
+  };
+}
+export function newRecord(
+  snapshot: Snapshot,
+  table: TableInfo,
+  template?: Data,
+): Data {
+  return recordAllocator(snapshot, table)(template);
 }
 export function flagsChange(current: Data, names: string[]): string[] {
   const previous = Array.isArray(current) ? current : [];

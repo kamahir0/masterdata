@@ -247,3 +247,38 @@ test("large folder toggles perform no discovery I/O; large table remains virtual
   await page.locator(".grid-editor").press("Control+End");
   await expect(page.getByLabel("id 行400", { exact: true })).toBeAttached();
 });
+test("paste extends records, preserves quoted TSV, and does not alter data from the search box", async () => {
+  await page.getByLabel("id 行3", { exact: true }).click();
+  await page.getByLabel("id 行3", { exact: true }).evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData(
+      "text/plain",
+      '40\t"ひとつ\tの値"\n41\t次の行\n42\t最後の行',
+    );
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(page.getByLabel("id 行5", { exact: true })).toHaveValue("42");
+  await expect(page.getByLabel("message 行3", { exact: true })).toHaveValue(
+    "ひとつ\tの値",
+  );
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("id 行5", { exact: true })).toHaveCount(0);
+  await page.getByLabel("表を検索", { exact: true }).evaluate((element) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "99\t検索への貼り付け");
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
+});

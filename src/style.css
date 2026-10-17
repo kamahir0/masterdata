@@ -1194,7 +1194,8 @@ button:focus-visible,
     width: 160px;
   }
   .save-state {
-    display: none;
+    min-width: auto;
+    font-size: 10px;
   }
   .explorer {
     width: 220px;

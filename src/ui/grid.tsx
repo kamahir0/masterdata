@@ -42,11 +42,20 @@ import {
   selected,
   isObject,
   list,
+  searchText,
 } from "../core/types";
 import { identity } from "../core/identity";
 import { useLayoutMotion } from "./motion";
 import { session } from "../core/session";
-import { defaultValue } from "../core/schema";
+import { defaultValue, recordAllocator } from "../core/schema";
+import {
+  writeTsv,
+  readTsv,
+  cellText,
+  parseCell,
+  encodeCells,
+  decodeCells,
+} from "../core/clipboard";
 import { fingerprint } from "../core/validation";
 import {
   Entry,
@@ -82,9 +91,9 @@ export function GridEditor({
   findRef: React.RefObject<any>;
   jump?: { source: string; path: (string | number)[]; nonce: number };
 }) {
-  const table = tables(snapshot).find(
-    (t) => t.source.id === source.id || t.name === source.data?.table,
-  );
+  const table =
+    tables(snapshot).find((t) => t.source.id === source.id) ??
+    tables(snapshot).find((t) => t.name === source.data?.table);
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [chosen, setChosen] = useState("all");
@@ -190,7 +199,8 @@ export function GridEditor({
     session.change("レコードを削除", (s) => ({
       ...s,
       sources: s.sources.map((f) =>
-        Array.isArray(f.data?.records)
+        Array.isArray(f.data?.records) &&
+        f.data.records.some((r: any) => targets.has(`${f.id}:${identity(r)}`))
           ? {
               ...f,
               data: {
@@ -441,6 +451,18 @@ export function GridEditor({
             "data-column-index": col,
             className: `data-cell ${pk ? "primary-cell" : ""} ${selectedCell ? "selected-cell" : ""} ${issues.length ? "error-cell" : ""}`,
             title: issues.map((p) => p.message).join("\n"),
+            onClickCapture: (e: React.MouseEvent) => {
+              if (e.shiftKey && cell && (cell.row !== i || cell.col !== col)) {
+                e.preventDefault();
+                e.stopPropagation();
+                setCell({
+                  row: i,
+                  col,
+                  anchorRow: cell.anchorRow,
+                  anchorCol: cell.anchorCol,
+                });
+              }
+            },
             onClick: (e: React.MouseEvent) =>
               setCell((old) => ({
                 row: i,
@@ -560,26 +582,50 @@ export function GridEditor({
   const copy = (event: React.ClipboardEvent) => {
     const target = event.target as HTMLInputElement;
     if (
-      !cell ||
+      !event.clipboardData ||
+      (!cell && !rowKeys.length) ||
+      (!target.closest(".data-cell") &&
+        target !== event.currentTarget &&
+        !rowKeys.length) ||
       (target.tagName === "INPUT" &&
         target.selectionStart !== target.selectionEnd)
     )
       return;
+    if (rowKeys.length) {
+      const selected = new Set(rowKeys);
+      const values = rows
+        .filter((r) => selected.has(r.key))
+        .map((r) => table.fields.map((f) => r.record?.[f.name]));
+      event.clipboardData.setData(
+        "text/plain",
+        writeTsv(values.map((row) => row.map(cellText))),
+      );
+      event.clipboardData.setData(
+        "application/x-masterdata",
+        encodeCells(values),
+      );
+      event.preventDefault();
+      return;
+    }
+    if (!cell) return;
     const firstRow = Math.min(cell.row, cell.anchorRow),
       lastRow = Math.max(cell.row, cell.anchorRow);
     const firstCol = Math.min(cell.col, cell.anchorCol),
       lastCol = Math.max(cell.col, cell.anchorCol);
+    const values = rows
+      .slice(firstRow, lastRow + 1)
+      .map((r) =>
+        table.fields
+          .slice(firstCol, lastCol + 1)
+          .map((f) => r.record?.[f.name]),
+      );
     event.clipboardData.setData(
       "text/plain",
-      rows
-        .slice(firstRow, lastRow + 1)
-        .map((r) =>
-          table.fields
-            .slice(firstCol, lastCol + 1)
-            .map((f) => text(r.record?.[f.name]))
-            .join("\t"),
-        )
-        .join("\n"),
+      writeTsv(values.map((row) => row.map(cellText))),
+    );
+    event.clipboardData.setData(
+      "application/x-masterdata",
+      encodeCells(values),
     );
     event.preventDefault();
   };
@@ -587,43 +633,81 @@ export function GridEditor({
     const target = (event.target as HTMLElement).closest<HTMLElement>(
       ".data-cell",
     );
+    if (!target && event.target !== event.currentTarget) return;
     const key = target?.closest("[data-row-key]")?.getAttribute("data-row-key");
     const index = rows.findIndex((r) => r.key === key);
     const anchor =
       target && index >= 0
         ? { row: index, col: Number(target.dataset.columnIndex) }
-        : cell;
-    if (!anchor) return;
+        : (cell ?? { row: 0, col: 0 });
     const content = event.clipboardData?.getData("text/plain") ?? "";
-    if (!content.includes("\t") && !content.includes("\n")) return;
+    const rich = event.clipboardData?.getData("application/x-masterdata") ?? "";
+    const field = table.fields[anchor.col];
+    if (!field || (!content && !rich)) return;
+    if (
+      !rich &&
+      !content.includes("\t") &&
+      !content.includes("\n") &&
+      (event.target as HTMLElement).tagName === "INPUT"
+    )
+      return;
     event.preventDefault();
-    (event.target as HTMLElement).blur();
-    const cells = content
-      .replace(/\r/g, "")
-      .replace(/\n$/, "")
-      .split("\n")
-      .map((row) => row.split("\t"));
-    session.change("セルを貼り付け", (snapshot) => ({
-      ...snapshot,
-      sources: snapshot.sources.map((source) => {
-        let data = source.data;
-        cells.forEach((values, i) =>
-          values.forEach((value, j) => {
-            const row = rows[anchor.row + i];
-            const field = table.fields[anchor.col + j];
-            if (row?.source.id === source.id && field)
-              data = setIn(
-                data,
-                ["records", row.index, field.name],
-                value === "null" && field.nullable
-                  ? null
-                  : parseInput(value, field.type),
-              );
-          }),
+    safe(() => {
+      const cells = rich ? decodeCells(rich) : readTsv(content);
+      if (!Array.isArray(cells) || !cells.every(Array.isArray))
+        throw new Error("貼り付けるデータを読み取れません。");
+      if (cells.some((row) => row.length > table.fields.length - anchor.col))
+        throw new Error(
+          "貼り付け先の列が足りません。必要な列を追加してから貼り付けてください。",
         );
-        return data === source.data ? source : { ...source, data };
-      }),
-    }));
+      (event.target as HTMLElement).blur();
+      session.change("セルを貼り付け", (snapshot) => {
+        const allocate = recordAllocator(
+          snapshot,
+          tables(snapshot).find((t) => t.source.id === table.source.id)!,
+        );
+        const targets = rows.map((row) => ({
+          source: row.source.id,
+          index: row.index,
+        }));
+        const targetId = rows[anchor.row]?.source.id ?? destination;
+        const source =
+          snapshot.sources.find((s) => s.id === targetId) ?? table.source;
+        const original = Array.isArray(source.data?.records)
+          ? source.data.records
+          : [];
+        const added: any[] = [];
+        while (targets.length < anchor.row + cells.length) {
+          targets.push({
+            source: source.id,
+            index: original.length + added.length,
+          });
+          added.push(allocate());
+        }
+        return {
+          ...snapshot,
+          sources: snapshot.sources.map((s) => {
+            let data =
+              s.id === source.id && added.length
+                ? { ...s.data, records: [...original, ...added] }
+                : s.data;
+            cells.forEach((values, i) =>
+              values.forEach((value, j) => {
+                const row = targets[anchor.row + i];
+                const field = table.fields[anchor.col + j];
+                if (row.source === s.id)
+                  data = setIn(
+                    data,
+                    ["records", row.index, field.name],
+                    rich ? value : parseCell(snapshot, field, value),
+                  );
+              }),
+            );
+            return data === s.data ? s : { ...s, data };
+          }),
+        };
+      });
+    });
   };
   return (
     <div
@@ -636,6 +720,51 @@ export function GridEditor({
           (e.target as HTMLElement).closest("input, textarea, [role=combobox]")
         )
           return;
+        if (
+          (e.metaKey || e.ctrlKey) &&
+          e.key.toLowerCase() === "a" &&
+          rows.length
+        ) {
+          e.preventDefault();
+          setRowKeys([]);
+          setCell({
+            row: rows.length - 1,
+            col: table.fields.length - 1,
+            anchorRow: 0,
+            anchorCol: 0,
+          });
+          return;
+        }
+        if (e.key === "Delete" && cell && !rowKeys.length) {
+          e.preventDefault();
+          session.change("セルをクリア", (s) => ({
+            ...s,
+            sources: s.sources.map((source) => {
+              let data = source.data;
+              for (
+                let i = Math.min(cell.row, cell.anchorRow);
+                i <= Math.max(cell.row, cell.anchorRow);
+                i++
+              )
+                for (
+                  let j = Math.min(cell.col, cell.anchorCol);
+                  j <= Math.max(cell.col, cell.anchorCol);
+                  j++
+                ) {
+                  const row = rows[i],
+                    field = table.fields[j];
+                  if (row?.source.id === source.id && field)
+                    data = setIn(
+                      data,
+                      ["records", row.index, field.name],
+                      defaultValue(s, field),
+                    );
+                }
+              return data === source.data ? source : { ...source, data };
+            }),
+          }));
+          return;
+        }
         if (e.key === "Escape") {
           setRowKeys([]);
           setCell(null);
@@ -802,7 +931,10 @@ export function GridEditor({
           pagination={false}
           rowSelection={{
             selectedRowKeys: rowKeys,
-            onChange: setRowKeys,
+            onChange: (keys) => {
+              setRowKeys(keys);
+              setCell(null);
+            },
             columnWidth: 36,
             fixed: true,
           }}

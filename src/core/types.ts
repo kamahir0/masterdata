@@ -213,3 +213,8 @@ export function selected(record: Data, profile?: Profile): boolean {
     !profile.exclude.some((t) => tags.includes(t))
   );
 }
+
+export const searchText = (value: Data): string =>
+  value && typeof value === "object"
+    ? Object.values(value).map(searchText).join(" ")
+    : text(value);

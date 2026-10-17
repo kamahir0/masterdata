@@ -299,7 +299,10 @@ export class Session {
         snapshot,
         source.data.custom ? null : source.data.table,
         source.data.custom ? source.data.name : null,
-        (record) => ({ ...record, [name]: defaultValue(snapshot, field) }),
+        (record) =>
+          name in record
+            ? record
+            : { ...record, [name]: defaultValue(snapshot, field) },
       );
       return {
         ...snapshot,
@@ -405,7 +408,18 @@ export class Session {
     const source = this.state.snapshot.sources.find((f) => f.id === id)!;
     const fields = fieldsOf(source);
     const old = fields[index]?.name;
-    if (!old || old === name) return;
+    if (old === name) return;
+    if (!old) {
+      this.update(
+        id,
+        source.data?.custom
+          ? ["custom", "fields", index, "name"]
+          : ["fields", index, "name"],
+        name,
+        "項目名を修復",
+      );
+      return;
+    }
     if (fields.some((f, i) => i !== index && f.name === name))
       throw new Error("同名の項目があります。");
     const isCustom = !!source.data?.custom;
@@ -466,7 +480,9 @@ export class Session {
             if (data[key]) {
               const updateKey = (k: any) => ({
                 ...k,
-                fields: k.fields?.map((n: string) => (n === old ? name : n)),
+                fields: Array.isArray(k.fields)
+                  ? k.fields.map((n: string) => (n === old ? name : n))
+                  : k.fields,
               });
               data = {
                 ...data,
@@ -476,18 +492,29 @@ export class Session {
               };
             }
         }
-        if (!isCustom && Array.isArray(data?.references))
+        if (
+          !isCustom &&
+          Array.isArray(data?.references) &&
+          data.references.some(
+            (r: any) =>
+              r?.target?.table === source.data.table &&
+              Array.isArray(r.target.fields) &&
+              r.target.fields.includes(old),
+          )
+        )
           data = {
             ...data,
             references: data.references.map((r: any) =>
-              r.target?.table === source.data.table
+              r?.target?.table === source.data.table
                 ? {
                     ...r,
                     target: {
                       ...r.target,
-                      fields: r.target.fields?.map((n: string) =>
-                        n === old ? name : n,
-                      ),
+                      fields: Array.isArray(r.target.fields)
+                        ? r.target.fields.map((n: string) =>
+                            n === old ? name : n,
+                          )
+                        : r.target.fields,
                     },
                   }
                 : r,
@@ -499,15 +526,17 @@ export class Session {
             data = {
               ...data,
               records: data.records.map((r: any) =>
-                Object.fromEntries(
-                  Object.entries(r).map(([k, v]) => {
-                    const field = table.fields.find((f) => f.name === k);
-                    return [
-                      k,
-                      field ? rewrite(v, field.type, field, new Set()) : v,
-                    ];
-                  }),
-                ),
+                !r || typeof r !== "object" || Array.isArray(r)
+                  ? r
+                  : Object.fromEntries(
+                      Object.entries(r).map(([k, v]) => {
+                        const field = table.fields.find((f) => f.name === k);
+                        return [
+                          k,
+                          field ? rewrite(v, field.type, field, new Set()) : v,
+                        ];
+                      }),
+                    ),
               ),
             };
         }
@@ -519,11 +548,16 @@ export class Session {
     const source = this.state.snapshot.sources.find((f) => f.id === id)!;
     const key = source.data?.kind === "type" ? "name" : "table";
     const old = source.data?.[key];
+    if (!source.data || source.syntaxError)
+      throw new Error("ソースの形式を先に修正してください。");
     this.change("定義名を変更", (s) => ({
       ...s,
       sources: s.sources.map((f) => {
         let data = f.data;
-        if (key === "table" && data?.table === old)
+        if (
+          key === "table" &&
+          (f.id === id || (typeof old === "string" && data?.table === old))
+        )
           data = { ...data, table: name };
         if (key === "name") {
           if (f.id === id) data = { ...data, name };
@@ -535,11 +569,16 @@ export class Session {
               fields.map((f) => (f.type === old ? { ...f, type: name } : f)),
             );
         }
-        if (key === "table" && Array.isArray(data?.references))
+        if (
+          key === "table" &&
+          typeof old === "string" &&
+          Array.isArray(data?.references) &&
+          data.references.some((r: any) => r?.target?.table === old)
+        )
           data = {
             ...data,
             references: data.references.map((r: any) =>
-              r.target?.table === old
+              typeof old === "string" && r?.target?.table === old
                 ? { ...r, target: { ...r.target, table: name } }
                 : r,
             ),

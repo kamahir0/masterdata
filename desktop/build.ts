@@ -17,6 +17,41 @@ import {
 import { inProfile } from "../src/core/schema";
 import { validate } from "../src/core/validation";
 import { safePath, optionalRead, digest, type Workspace } from "./files";
+// Finder does not inherit a terminal's PATH. Resolve the SDK in the native host,
+// keeping Build usable when the packaged app is opened normally.
+export async function dotnetExecutable(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
+  const filename = process.platform === "win32" ? "dotnet.exe" : "dotnet";
+  const candidates = [
+    ...(env.PATH ?? "")
+      .split(path.delimiter)
+      .filter(Boolean)
+      .map((dir) => path.join(dir, filename)),
+    ...(env.DOTNET_ROOT ? [path.join(env.DOTNET_ROOT, filename)] : []),
+    ...(process.platform === "win32"
+      ? [path.join(env.ProgramFiles || "C:\\Program Files", "dotnet", filename)]
+      : [
+          "/usr/local/share/dotnet/dotnet",
+          "/opt/homebrew/bin/dotnet",
+          "/usr/share/dotnet/dotnet",
+          "/usr/local/bin/dotnet",
+          "/usr/bin/dotnet",
+        ]),
+  ];
+  for (const candidate of candidates) {
+    if (
+      await fs
+        .stat(candidate)
+        .then((s) => s.isFile())
+        .catch(() => false)
+    )
+      return candidate;
+  }
+  throw new Error(
+    ".NET SDKが見つかりません。.NET 8以降のSDKをインストールしてください。編集と保存はそのまま利用できます。",
+  );
+}
 export const publicName = (name: string) =>
   name.replace(/(^|[-_ ])([a-zA-Z])/g, (_, __, c) => c.toUpperCase());
 const quote = (s: string) => JSON.stringify(s);
@@ -175,8 +210,9 @@ export function generate(snapshot: Snapshot): {
   };
 }
 async function run(root: string, args: string[]): Promise<string> {
+  const executable = await dotnetExecutable();
   return await new Promise((resolve, reject) => {
-    const child = spawn("dotnet", args, {
+    const child = spawn(executable, args, {
       cwd: root,
       env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1" },
       stdio: ["ignore", "pipe", "pipe"],

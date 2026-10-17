@@ -50,8 +50,6 @@ python3 tools/check_workspace.py
 git diff --check
 ```
 
-製品の実装・テスト・起動コマンドは、技術選定と実装に合わせて追加します。
-
 ## 旧プロジェクトとの境界
 
 旧リポジトリは [masterdata-legacy2](https://github.com/kamahir0/masterdata-legacy2) として独立して保持しています。引き継ぎの境界は[開発ワークフロー](docs/execution-workflow.md#legacy-boundary)が所有します。

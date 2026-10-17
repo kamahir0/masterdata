@@ -516,6 +516,17 @@ test("explorer menus match objects and folder titles toggle without disturbing t
   await page
     .getByRole("button", { name: "モーション: OFF", exact: true })
     .click();
+  await folder.click();
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
+  await page.getByLabel("項目の名前", { exact: true }).press("Escape");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  expect(
+    await fs.readFile(path.join(root, "sources/types/NewType1.yaml"), "utf8"),
+  ).toContain("kind: type");
 });
 
 test("horizontal viewport and column positions stay fixed through switch and nullable edits", async () => {

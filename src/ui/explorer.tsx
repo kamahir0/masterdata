@@ -352,7 +352,12 @@ export function Explorer({
             multiple
             draggable={{ icon: false }}
             onSelect={(selected, info) => {
-              setKeys(selected);
+              const event = info.nativeEvent;
+              setKeys(
+                event.ctrlKey || event.metaKey || event.shiftKey
+                  ? selected
+                  : [info.node.key],
+              );
               const key = String(info.node.key);
               if (key.startsWith("folder:")) {
                 setExpanded((old) =>

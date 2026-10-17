@@ -7,6 +7,7 @@ import {
   UpOutlined,
   DownOutlined,
   MoreOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import {
   type Source,
@@ -15,6 +16,7 @@ import {
   fieldsOf,
 } from "../core/types";
 import { session } from "../core/session";
+import { identity } from "../core/identity";
 import { Entry, TypeSelect } from "./inputs";
 export function ModifierButtons({
   field,
@@ -73,7 +75,7 @@ export function FieldEditor({
       <Table
         size="small"
         pagination={false}
-        rowKey={(_, i) => String(i)}
+        rowKey={(field) => identity(field)}
         dataSource={fields}
         scroll={{ x: 620 }}
         onRow={(_, index) => ({
@@ -154,6 +156,7 @@ export function FieldEditor({
               <Dropdown
                 menu={{
                   items: [
+                    { key: "copy", label: "複製", icon: <CopyOutlined /> },
                     {
                       key: "up",
                       label: "上へ",
@@ -174,9 +177,11 @@ export function FieldEditor({
                     },
                   ],
                   onClick: ({ key }) =>
-                    key === "delete"
-                      ? session.removeField(source.id, i)
-                      : move(i, key === "up" ? i - 1 : i + 1),
+                    key === "copy"
+                      ? (setFocusIndex(i + 1), session.addField(source.id, i))
+                      : key === "delete"
+                        ? session.removeField(source.id, i)
+                        : move(i, key === "up" ? i - 1 : i + 1),
                 }}
               >
                 <Button

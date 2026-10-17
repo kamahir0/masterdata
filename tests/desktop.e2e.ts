@@ -105,6 +105,20 @@ test("Custom Type adds fields inline and uses the same modifiers", async () => {
   expect(
     await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"),
   ).toContain("luck");
+  await page.getByRole("button", { name: "項目1の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /複製/ }).click();
+  await expect(page.getByLabel("項目2の名前", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("項目2の名前", { exact: true })).toHaveValue(
+    "attackCopy1",
+  );
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  const copied = parse(
+    await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"),
+  );
+  expect(
+    copied.records.every((r: any) => r.stats.attackCopy1 === r.stats.attack),
+  ).toBe(true);
 });
 test("top-level and nested bool share controls; nested nullable can be cleared", async () => {
   await selectSource("common");
@@ -331,4 +345,42 @@ test("welcome creates a project, adds a table, edits and saves default records",
   expect(
     await fs.readFile(path.join(created, "sources/new-table1.yaml"), "utf8"),
   ).toContain("id: 0");
+});
+
+test("column selection and duplication preserve values; search matches values rather than field names", async () => {
+  const search = page.getByLabel("表を検索", { exact: true });
+  await search.fill("message");
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveCount(0);
+  await search.fill("");
+  await page
+    .getByRole("button", { name: "messageの操作", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: /列を選択/ }).click();
+  await expect(page.locator(".selected-cell")).toHaveCount(3);
+  await page.locator(".grid-editor").press("Delete");
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue("");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "冒険へようこそ",
+  );
+  await page
+    .getByRole("button", { name: "messageの操作", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: /列を複製/ }).click();
+  await expect(page.getByLabel("列3の名前", { exact: true })).toBeFocused();
+  await expect(
+    page.getByLabel("messageCopy1 行1", { exact: true }),
+  ).toHaveValue("冒険へようこそ");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  const saved = parse(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  );
+  expect(saved.records.every((r: any) => r.messageCopy1 === r.message)).toBe(
+    true,
+  );
+  expect(new Set(saved.fields.map((f: any) => f.key)).size).toBe(3);
 });

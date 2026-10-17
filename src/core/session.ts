@@ -284,18 +284,27 @@ export class Session {
       ),
     }));
   }
-  addField(id: string): string {
+  addField(id: string, copyIndex?: number): string {
     const source = this.state.snapshot.sources.find((f) => f.id === id)!;
     const fields = fieldsOf(source);
+    const template = copyIndex === undefined ? undefined : fields[copyIndex];
+    const prefix = template ? `${template.name}Copy` : "field";
     let n = 1;
-    while (fields.some((f) => f.name === `field${n}`)) n++;
-    const name = `field${n}`;
+    while (fields.some((f) => f.name === `${prefix}${n}`)) n++;
+    const name = `${prefix}${n}`;
     const field: Field = {
-      key: Math.max(-1, ...fields.map((f) => Number(f.key ?? -1))) + 1,
+      ...template,
+      key:
+        Math.max(
+          -1,
+          ...fields.map((f) => Number(f.key ?? -1)).filter(Number.isFinite),
+        ) + 1,
       name,
-      type: "string",
+      type: template?.type ?? "string",
     };
-    this.change("項目を追加", (snapshot) => {
+    const next = [...fields];
+    next.splice(template ? copyIndex! + 1 : fields.length, 0, field);
+    this.change(template ? "項目を複製" : "項目を追加", (snapshot) => {
       const sources = mapRecords(
         snapshot,
         source.data.custom ? null : source.data.table,
@@ -303,7 +312,13 @@ export class Session {
         (record) =>
           name in record
             ? record
-            : { ...record, [name]: defaultValue(snapshot, field) },
+            : {
+                ...record,
+                [name]:
+                  template && Object.hasOwn(record, template.name)
+                    ? structuredClone(record[template.name])
+                    : defaultValue(snapshot, field),
+              },
       );
       return {
         ...snapshot,
@@ -314,7 +329,7 @@ export class Session {
                 data: setIn(
                   s.data,
                   source.data.custom ? ["custom", "fields"] : ["fields"],
-                  [...fields, field],
+                  next,
                 ),
               }
             : s,

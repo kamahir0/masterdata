@@ -26,6 +26,7 @@ import {
   MoreOutlined,
   PlusOutlined,
   SearchOutlined,
+  TableOutlined,
   UpOutlined,
 } from "@ant-design/icons";
 import {
@@ -56,7 +57,6 @@ import {
   encodeCells,
   decodeCells,
 } from "../core/clipboard";
-import { fingerprint } from "../core/validation";
 import {
   Entry,
   TypeSelect,
@@ -143,7 +143,7 @@ export function GridEditor({
             .filter(
               (row) =>
                 !deferred ||
-                fingerprint(row.record)
+                searchText(row.record)
                   .toLowerCase()
                   .includes(deferred.toLowerCase()),
             ),
@@ -371,6 +371,13 @@ export function GridEditor({
                 menu={{
                   items: [
                     {
+                      key: "select",
+                      label: "列を選択",
+                      icon: <TableOutlined />,
+                      disabled: !rows.length,
+                    },
+                    { key: "copy", label: "列を複製", icon: <CopyOutlined /> },
+                    {
                       key: "left",
                       label: "左へ",
                       icon: <UpOutlined />,
@@ -390,9 +397,25 @@ export function GridEditor({
                     },
                   ],
                   onClick: ({ key }) =>
-                    key === "delete"
-                      ? session.removeField(table.source.id, col)
-                      : columnMove(col, key === "left" ? col - 1 : col + 1),
+                    safe(() => {
+                      if (key === "select") {
+                        setRowKeys([]);
+                        setCell({
+                          row: rows.length - 1,
+                          col,
+                          anchorRow: 0,
+                          anchorCol: col,
+                        });
+                        viewport.current
+                          ?.closest<HTMLElement>(".grid-editor")
+                          ?.focus();
+                      } else if (key === "copy") {
+                        pendingColumn.current = col + 1;
+                        session.addField(table.source.id, col);
+                      } else if (key === "delete")
+                        session.removeField(table.source.id, col);
+                      else columnMove(col, key === "left" ? col - 1 : col + 1);
+                    }),
                 }}
               >
                 <Button

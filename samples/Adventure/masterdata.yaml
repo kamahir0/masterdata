@@ -1,0 +1,14 @@
+name: 冒険の道具箱
+profiles:
+  production:
+    include: []
+    exclude: [debug, event]
+  development:
+    include: []
+    exclude: [event]
+  event:
+    include: [common, event]
+    exclude: []
+publish:
+  csharp: output/Generated
+  binary: output/masterdata.bytes

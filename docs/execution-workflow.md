@@ -34,6 +34,8 @@ cleanでupstreamへstrictly behindなbranchはsafe fast-forwardしてよい。�
 
 HumanがObjectiveを選択した時点で、その範囲の調査、仕様の具体化、review、承認可能な判断、実装、検証、修正、通常のdeliveryを委任したものとして扱う。stageやsub-featureの完了はturn boundaryではない。
 
+2026-10-17の実装Objectiveでは、Humanは通常の製品・技術判断をlegacy2の資料と新製品の目的から補完・導出することも明示委任した。資料に答えがあっても旧制約を無条件に採用せず、新GUIとの適合性を判断してAgent Decisionとして残す。この委任内の選択をHuman gateへ戻さない。実データの破棄・secret・公開release等へは拡張しない。
+
 実装案を機械的に処理するだけでなく、ユーザーが達成したい作業、問題の一般性、類似箇所、より単純な設計を検討する。細かい内部選択やroutine approvalだけを理由にHumanへ戻さない。
 
 「continue」「進める」は選択済みObjectiveの範囲で継続する指示。完了後の新しい製品範囲や、future ideaを自動で選択する指示にはしない。Humanが明示した停止範囲を守る。

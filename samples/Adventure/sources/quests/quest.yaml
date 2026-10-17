@@ -1,0 +1,15 @@
+kind: schema
+table: quest
+csharpName: Quest
+fields:
+  - {key: 0, name: id, type: int}
+  - {key: 1, name: name, type: string}
+  - {key: 2, name: rewardItemId, type: int}
+  - {key: 3, name: rewardAmount, type: int}
+primaryKey: {fields: [id]}
+references:
+  - name: rewardItem
+    fields: [rewardItemId]
+    target: {table: item, fields: [id]}
+records:
+  - {id: 1, name: 凍てつく峠, rewardItemId: 2001, rewardAmount: 1, $tags: [common]}

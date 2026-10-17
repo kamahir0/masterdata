@@ -1,0 +1,24 @@
+# 冒険に登場するアイテム。定義内にも直接レコードを追加できます。
+kind: schema
+table: item
+csharpName: Item
+fields:
+  - {key: 0, name: id, type: int}
+  - {key: 1, name: code, type: ItemCode}
+  - {key: 2, name: name, type: string}
+  - {key: 3, name: rarity, type: Rarity}
+  - {key: 4, name: enabled, type: bool}
+  - {key: 5, name: price, type: int}
+  - {key: 6, name: stats, type: CombatStats}
+  - {key: 7, name: effects, type: Effect, array: true}
+  - {key: 8, name: materials, type: string, array: true}
+  - {key: 9, name: note, type: string, nullable: true}
+  - {key: 10, name: tradable, type: bool, nullable: true}
+  - {key: 11, name: tags, type: ItemFlags}
+  - {key: 12, name: maxPower, type: ulong}
+primaryKey:
+  fields: [id]
+secondaryKeys:
+  - {fields: [code]}
+  - {fields: [rarity], nonUnique: true}
+records: []

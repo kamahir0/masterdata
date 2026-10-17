@@ -1,0 +1,10 @@
+kind: schema
+table: announcement
+fields:
+  - {key: 0, name: id, type: int}
+  - {key: 1, name: message, type: string}
+primaryKey: {fields: [id]}
+records:
+  - {id: 1, message: 冒険へようこそ, $tags: [common]}
+  - {id: 2, message: 開発環境のお知らせ, $tags: [debug]}
+  - {id: 3, message: 収穫祭が始まりました, $tags: [event]}

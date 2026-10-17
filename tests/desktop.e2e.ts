@@ -36,10 +36,19 @@ test.beforeEach(async ({}, info) => {
       );
   }
   app = await electron.launch({
-    args: [path.resolve("desktop/main.cjs"), "--project", root],
+    args: [
+      path.resolve("desktop/main.cjs"),
+      ...(info.title.startsWith("welcome") ? [] : ["--project", root]),
+    ],
     env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "true" },
   });
   page = await app.firstWindow();
+  if (info.title.startsWith("welcome")) {
+    await expect(
+      page.getByRole("button", { name: /プロジェクトを開く/ }),
+    ).toBeVisible();
+    return;
+  }
   await expect(
     page.getByText("冒険の道具箱", { exact: true }).first(),
   ).toBeVisible();
@@ -281,4 +290,19 @@ test("paste extends records, preserves quoted TSV, and does not alter data from 
     );
   });
   await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
+});
+
+test("welcome opens the first project without a phantom unsaved-change prompt", async () => {
+  await app.evaluate(({ dialog }, root) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [root],
+    });
+  }, root);
+  await page.getByRole("button", { name: /プロジェクトを開く/ }).click();
+  await expect(
+    page.getByText("冒険の道具箱", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
 });

@@ -74,6 +74,7 @@ export class Session {
     );
   }
   get dirty() {
+    if (!this.state.project) return false;
     return (
       this.state.snapshot.sources.some((s) => this.dirtySource(s)) ||
       this.savedSources.size !== this.state.snapshot.sources.length ||

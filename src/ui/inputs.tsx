@@ -272,7 +272,7 @@ export function ValueControl({
         }
         options={members.map((m: any) => ({
           value: m.name,
-          label: m.name === "None" ? "None · なし" : m.name,
+          label: m.name,
         }))}
         onChange={(v) =>
           onChange(kind === "flags" ? flagsChange(value, v as string[]) : v)

@@ -35,6 +35,12 @@ test.beforeEach(async ({}, info) => {
         `kind: type\nname: Extra${i}\ncustom:\n  fields: []\n`,
       );
   }
+  if (info.title.startsWith("diagnostic")) {
+    const file = path.join(root, "sources/announcements/announcement.yaml");
+    const data = parse(await fs.readFile(file, "utf8"));
+    data.records[0].id = "broken";
+    await fs.writeFile(file, stringify(data));
+  }
   app = await electron.launch({
     args: [
       path.resolve("desktop/main.cjs"),
@@ -52,7 +58,11 @@ test.beforeEach(async ({}, info) => {
   await expect(
     page.getByText("冒険の道具箱", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /0 件の問題/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: info.title.startsWith("diagnostic") ? /1 件の問題/ : /0 件の問題/,
+    }),
+  ).toBeVisible();
 });
 test.afterEach(async () => {
   if (app) {
@@ -72,6 +82,11 @@ async function selectSource(name: string) {
 }
 test("Enum adds inline with focused name; Save keeps Undo and values persist", async () => {
   await selectSource("rarity");
+  await page.getByRole("tab", { name: /ソース/ }).click();
+  await expect(page.getByLabel("YAMLソース")).toHaveValue(
+    await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8"),
+  );
+  await page.getByRole("tab", { name: "型の定義", exact: true }).click();
   await page.getByRole("button", { name: "候補を追加" }).click();
   const name = page.getByLabel("候補4の名前");
   await expect(name).toBeFocused();
@@ -79,15 +94,20 @@ test("Enum adds inline with focused name; Save keeps Undo and values persist", a
   await name.press("Enter");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   const saved = await fs.readFile(
     path.join(root, "sources/types/rarity.yaml"),
     "utf8",
   );
   expect(saved).toContain("Legendary");
+  expect(saved).not.toContain("{");
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(name).toHaveValue("Member1");
-  await expect(page.getByText("未保存の変更", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "未保存の変更", exact: true }),
+  ).toBeVisible();
 });
 test("Custom Type adds fields inline and uses the same modifiers", async () => {
   await selectSource("combat-stats");
@@ -101,7 +121,9 @@ test("Custom Type adds fields inline and uses the same modifiers", async () => {
     page.getByRole("button", { name: "配列", exact: true }),
   ).toHaveCount(5);
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   expect(
     await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"),
   ).toContain("luck");
@@ -112,7 +134,9 @@ test("Custom Type adds fields inline and uses the same modifiers", async () => {
     "attackCopy1",
   );
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   const copied = parse(
     await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"),
   );
@@ -156,7 +180,9 @@ test("type mismatch retains original value, does not block edits or Save, and ca
   await page.getByLabel("name 行1", { exact: true }).fill("不整合中も編集可能");
   await page.getByLabel("name 行1", { exact: true }).press("Enter");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   expect(
     await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"),
   ).toContain("enabled: true");
@@ -194,7 +220,9 @@ test("folder creation, rename and deletion are inline, reversible, and saved", a
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(folder).toBeVisible();
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   expect(
     (
       await fs.stat(path.join(root, "sources/announcements/sandbox"))
@@ -318,7 +346,9 @@ test("welcome opens the first project without a phantom unsaved-change prompt", 
     page.getByText("冒険の道具箱", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
 });
 
 test("welcome creates a project, adds a table, edits and saves default records", async () => {
@@ -341,7 +371,9 @@ test("welcome creates a project, adds a table, edits and saves default records",
   await page.getByRole("button", { name: /レコードを追加/ }).click();
   await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("0");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   expect(
     await fs.readFile(path.join(created, "sources/new-table1.yaml"), "utf8"),
   ).toContain("id: 0");
@@ -372,7 +404,9 @@ test("column selection and duplication preserve values; search matches values ra
     page.getByLabel("messageCopy1 行1", { exact: true }),
   ).toHaveValue("冒険へようこそ");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
   const saved = parse(
     await fs.readFile(
       path.join(root, "sources/announcements/announcement.yaml"),
@@ -383,4 +417,186 @@ test("column selection and duplication preserve values; search matches values ra
     true,
   );
   expect(new Set(saved.fields.map((f: any) => f.key)).size).toBe(3);
+});
+
+test("nested navigation mounts each target independently and returns to its array", async () => {
+  await selectSource("common");
+  await page
+    .getByRole("button", { name: "effects 行1を開く", exact: true })
+    .click();
+  await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
+  const parent = await page
+    .getByRole("switch", { name: "enabled", exact: true })
+    .elementHandle();
+  await expect(
+    page.getByRole("switch", { name: "enabled", exact: true }),
+  ).toBeChecked();
+  await page.getByRole("button", { name: "statsを開く", exact: true }).click();
+  await expect(
+    page.getByRole("switch", { name: "enabled", exact: true }),
+  ).not.toBeChecked();
+  expect(await parent!.evaluate((element) => element.isConnected)).toBe(false);
+  expect(
+    await page
+      .getByRole("switch", { name: "enabled", exact: true })
+      .evaluate((element) =>
+        element
+          .getAnimations({ subtree: true })
+          .some((a) => a instanceof CSSTransition),
+      ),
+  ).toBe(false);
+  await page
+    .getByRole("button", { name: "一つ上の値へ戻る", exact: true })
+    .click();
+  await expect(
+    page.getByRole("switch", { name: "enabled", exact: true }),
+  ).toBeChecked();
+  await page
+    .locator(".breadcrumb-scroll")
+    .getByRole("button", { name: "effects", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "要素1を開く", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "一つ上の値へ戻る", exact: true }),
+  ).toBeDisabled();
+});
+
+test("diagnostic navigation is consumed once and does not erase subsequent search input", async () => {
+  await page.getByRole("button", { name: /1 件の問題/ }).click();
+  await page.locator(".problem-item").first().click();
+  const search = page.getByLabel("表を検索", { exact: true });
+  await search.fill("収穫祭");
+  await expect(page.getByLabel("message 行3", { exact: true })).toBeVisible();
+  await expect(search).toHaveValue("収穫祭");
+  await page.getByRole("button", { name: "問題を閉じる", exact: true }).click();
+  await expect(search).toHaveValue("収穫祭");
+  await search.press("End");
+  await search.pressSequentially("test");
+  await expect(search).toHaveValue("収穫祭test");
+});
+
+test("explorer menus match objects and folder titles toggle without disturbing the editor", async () => {
+  const folder = page.locator(".tree-name").filter({ hasText: /^types$/ });
+  await folder.click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: /新しいEnum/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toBeHidden();
+  await folder.click();
+  await expect(
+    page.locator(".tree-name").filter({ hasText: /^rarity$/ }),
+  ).toBeVisible();
+  await folder.click();
+  await expect(
+    page.locator(".tree-name").filter({ hasText: /^rarity$/ }),
+  ).toHaveCount(0);
+  const file = page.locator(".tree-name").filter({ hasText: /^announcement$/ });
+  await file.click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: /名前を変更/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /新しい/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("message 行1", { exact: true })).toBeVisible();
+  await expect(page.getByText(/ファイル · メモリ上/)).toHaveCount(0);
+  await page.getByRole("button", { name: /レコードを追加/ }).click();
+  await expect(
+    page.getByRole("status", { name: "未保存の変更", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".save-state")).toHaveText("");
+  await page
+    .getByRole("button", { name: "モーション: ON", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "モーション: OFF", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "モーション: OFF", exact: true })
+    .click();
+});
+
+test("horizontal viewport and column positions stay fixed through switch and nullable edits", async () => {
+  await selectSource("common");
+  const header = page.locator(".ant-table-header");
+  await page.locator(".ant-table-tbody-virtual-holder").evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaX: 650,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await header.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect
+    .poll(() => header.evaluate((element) => element.scrollLeft))
+    .toBe(650);
+  const control = page.getByRole("switch", {
+    name: "enabled 行1",
+    exact: true,
+  });
+  await expect(control).toBeVisible();
+  const anchor = page.getByLabel("列5の名前", { exact: true });
+  await anchor.evaluate((element) => {
+    const win = window as any;
+    win.columnPositions = [];
+    const sample = () => {
+      win.columnPositions.push({
+        left: element.getBoundingClientRect().left,
+        scroll: document.querySelector(".ant-table-header")!.scrollLeft,
+      });
+      if (win.columnPositions.length < 30) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await control.click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).columnPositions.length))
+    .toBe(30);
+  const points = await page.evaluate(
+    () => (window as any).columnPositions as { left: number; scroll: number }[],
+  );
+  expect(
+    Math.max(...points.map((p) => p.left)) -
+      Math.min(...points.map((p) => p.left)),
+  ).toBeLessThan(2);
+  expect(points.every((p) => Math.abs(p.scroll - 650) < 2)).toBe(true);
+  await page.locator(".ant-table-tbody-virtual-holder").evaluate((element) => {
+    element.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaX: 1750 - document.querySelector(".ant-table-header")!.scrollLeft,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect
+    .poll(() => header.evaluate((element) => element.scrollLeft))
+    .toBe(1750);
+  const clear = page.getByRole("button", {
+    name: "note 行2をnullにする",
+    exact: true,
+  });
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(
+    page.getByRole("button", { name: "note 行2に値を作成", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() => header.evaluate((element) => element.scrollLeft))
+    .toBe(1750);
+  await page
+    .getByRole("button", { name: "note 行2に値を作成", exact: true })
+    .click();
+  await expect
+    .poll(() => header.evaluate((element) => element.scrollLeft))
+    .toBe(1750);
 });

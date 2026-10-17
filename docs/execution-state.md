@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 6683b976156be5d98b870815c84eb97f6c29b865
-Work base: 37f1a9c052e7b98a24ec2ee3165a47739a2add33
+Stage: implementation-ready
+Candidate: none
+Work base: 85fc854bca9e4df8f9502739d0f7e74f826b65df
 
 ## Active work
 
-None.
+Completed: 仕様適用、YAML・navigation・入力とscroll保持・表示・motionの修正、20件のcore/nativeと16件のDesktop回帰、macOS別bundle。In progress: fresh reviewと配布版実操作。Remaining: Candidate CIとcompletion reconciliation。
 
 ## Blocking findings
 

@@ -4,6 +4,7 @@ import {
   isMap,
   isSeq,
   isScalar,
+  visit,
   type Node,
 } from "yaml";
 import { type Source, type SavedFile, uid, isObject } from "./types";
@@ -36,7 +37,8 @@ export function serialize(source: Source, saved?: SavedFile): string {
   });
   if (doc.errors.length) return stringify(source.data, { lineWidth: 0 });
   // YAML is patched at the persistence boundary; ordinary input never reparses or serializes a file.
-  // Keep existing nodes for unchanged shapes to preserve comments, quoting, and unrelated spelling.
+  // Keep AST nodes for comments and quoting, not for historical flow/block choices.
+  // Every edited document uses the same block layout, including newly appended entries.
   function sync(node: any, next: any): any {
     if (isMap(node) && isObject(next)) {
       for (const pair of [...node.items])
@@ -64,6 +66,9 @@ export function serialize(source: Source, saved?: SavedFile): string {
     return doc.createNode(next);
   }
   doc.contents = sync(doc.contents, source.data) as any;
+  visit(doc, (_, node) => {
+    if (isMap(node) || isSeq(node)) node.flow = false;
+  });
   const output = doc.toString({ lineWidth: 0 });
   return original.includes("\r\n") ? output.replace(/\r?\n/g, "\r\n") : output;
 }

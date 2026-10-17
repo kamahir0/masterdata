@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Dropdown, Empty, Input, Tree, Typography } from "antd";
+import { Button, Dropdown, Empty, Input, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
   ApartmentOutlined,
@@ -205,8 +205,9 @@ export function Explorer({
                 trigger={["contextMenu"]}
                 menu={{
                   items: [
-                    ...createItems,
-                    { type: "divider" },
+                    ...(item.folder
+                      ? [...createItems, { type: "divider" as const }]
+                      : []),
                     {
                       key: "rename",
                       icon: <EditOutlined />,
@@ -352,8 +353,14 @@ export function Explorer({
             draggable={{ icon: false }}
             onSelect={(selected, info) => {
               setKeys(selected);
-              if (!String(info.node.key).startsWith("folder:"))
-                onSelect(String(info.node.key));
+              const key = String(info.node.key);
+              if (key.startsWith("folder:")) {
+                setExpanded((old) =>
+                  old.includes(key)
+                    ? old.filter((k) => k !== key)
+                    : [...old, key],
+                );
+              } else onSelect(key);
             }}
             onDrop={(info) =>
               run(() => {
@@ -381,11 +388,6 @@ export function Explorer({
             </Button>
           </Empty>
         )}
-      </div>
-      <div className="explorer-footer">
-        <Typography.Text type="secondary">
-          {snapshot.sources.length} ファイル · メモリ上で編集中
-        </Typography.Text>
       </div>
     </aside>
   );

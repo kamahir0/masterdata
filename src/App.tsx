@@ -71,14 +71,18 @@ import { NestedEditor, type Cursor } from "./ui/nested";
 import { Settings } from "./ui/settings";
 import { Entry } from "./ui/inputs";
 import { EditorBoundary } from "./ui/editor-boundary";
+import { quickTransition, easeOutExpoCss } from "./ui/motion";
 function SourceText({ source }: { source: Source }) {
-  const [draft, setDraft] = useState(() =>
-    serialize(source, session.getState().saved.get(source.id)),
-  );
+  const readText = () => {
+    const saved = session.getState().saved.get(source.id);
+    return saved && !session.dirtySource(source)
+      ? saved.text
+      : serialize(source, saved);
+  };
+  const [draft, setDraft] = useState(readText);
   const [changed, setChanged] = useState(false);
   useEffect(() => {
-    if (!changed)
-      setDraft(serialize(source, session.getState().saved.get(source.id)));
+    if (!changed) setDraft(readText());
   }, [source]);
   const apply = () => {
     if (changed) {
@@ -218,6 +222,7 @@ function Workspace({
     };
   }, []);
   const select = (id: string) => {
+    setJump(undefined);
     setActive(id);
     setOpened((old) => (old.includes(id) ? old : [...old, id]));
     setCursor(null);
@@ -231,6 +236,7 @@ function Workspace({
     setProfile("");
     setBuildResult(null);
     setBuildError("");
+    setJump(undefined);
     const first =
       value.snapshot.sources.find((s) => s.data?.kind === "schema") ??
       value.snapshot.sources[0];
@@ -497,17 +503,19 @@ function Workspace({
                   onClick={() => session.redo()}
                 />
               </Tooltip>
-              <span className="save-state">
-                {dirty ? (
-                  <>
-                    <span className="dirty-dot" /> 未保存の変更
-                  </>
-                ) : (
-                  <>
-                    <CheckCircleOutlined /> 保存済み
-                  </>
-                )}
-              </span>
+              <Tooltip title={dirty ? "未保存の変更" : "保存済み"}>
+                <span
+                  className="save-state"
+                  role="status"
+                  aria-label={dirty ? "未保存の変更" : "保存済み"}
+                >
+                  {dirty ? (
+                    <span className="dirty-dot" />
+                  ) : (
+                    <CheckCircleOutlined />
+                  )}
+                </span>
+              </Tooltip>
             </Space>
             <Space>
               <Select
@@ -693,7 +701,7 @@ function Workspace({
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 230, opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.18 }}
+                    transition={quickTransition}
                   >
                     <div className="problems-heading">
                       <Space>
@@ -755,7 +763,7 @@ function Workspace({
               <span>UTF-8</span>
               <span>YAML</span>
               <button onClick={() => setReduced(!reduced)}>
-                {reduced ? "動きを減らす: ON" : "モーション: ON"}
+                {`モーション: ${reduced ? "OFF" : "ON"}`}
               </button>
             </Space>
           </footer>
@@ -1029,9 +1037,11 @@ export default function Root() {
             '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif',
           fontSize: 13,
           motion: !reduced,
-          motionDurationFast: ".12s",
-          motionDurationMid: ".18s",
-          motionDurationSlow: ".24s",
+          motionDurationFast: ".08s",
+          motionDurationMid: ".12s",
+          motionDurationSlow: ".16s",
+          motionEaseOut: easeOutExpoCss,
+          motionEaseInOut: easeOutExpoCss,
         },
         components: {
           Table: { cellPaddingBlockSM: 5, cellPaddingInlineSM: 8 },
@@ -1039,7 +1049,10 @@ export default function Root() {
             defaultShadow: "none",
             primaryShadow: "0 3px 10px #5a67d824",
           },
-          Tree: { nodeSelectedBg: dark ? "#262d50" : "#e9edff" },
+          Tree: {
+            nodeSelectedBg: dark ? "#262d50" : "#e9edff",
+            motionDurationSlow: ".1s",
+          },
         },
       }}
     >

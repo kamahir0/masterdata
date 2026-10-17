@@ -107,6 +107,7 @@ export function GridEditor({
   } | null>(null);
   const [height, setHeight] = useState(400);
   const pendingColumn = useRef<number | null>(null);
+  const handledJump = useRef<number | undefined>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
   const tableRef = useRef<any>(null);
   useEffect(() => {
@@ -123,7 +124,6 @@ export function GridEditor({
     setCell(null);
     setQuery("");
   }, [source.id]);
-  useLayoutMotion(viewport, snapshot.sources);
   const rows = useMemo(
     () =>
       !table
@@ -149,12 +149,24 @@ export function GridEditor({
             ),
     [snapshot.sources, source.id, chosen, deferred],
   );
+  // Value edits preserve row/field identity and must not replay structural motion.
+  useLayoutMotion(
+    viewport,
+    rows.map((row) => row.key).join("|") +
+      ":" +
+      (table?.fields.map(identity).join("|") ?? ""),
+  );
   useEffect(() => {
-    if (!jump) return;
+    // A diagnostic jump is a command, not a constraint on every later search.
+    if (!jump || handledJump.current === jump.nonce) return;
     const i = rows.findIndex(
       (r) => r.source.id === jump.source && r.index === jump.path[1],
     );
     if (i < 0) {
+      if (!deferred && chosen === "all") {
+        handledJump.current = jump.nonce;
+        return;
+      }
       setQuery("");
       setChosen("all");
       return;
@@ -165,6 +177,7 @@ export function GridEditor({
     );
     setCell({ row: i, col, anchorRow: i, anchorCol: col });
     tableRef.current?.scrollTo({ index: i });
+    handledJump.current = jump.nonce;
   }, [jump?.nonce, rows.length, chosen, deferred]);
   useEffect(() => {
     if (pendingColumn.current === null) return;

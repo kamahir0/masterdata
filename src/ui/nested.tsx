@@ -16,6 +16,7 @@ import {
   PlusOutlined,
   UpOutlined,
   DownOutlined,
+  ArrowLeftOutlined,
 } from "@ant-design/icons";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -30,6 +31,7 @@ import { defaultValue } from "../core/schema";
 import { identity } from "../core/identity";
 import { session } from "../core/session";
 import { ValueControl } from "./inputs";
+import { quickTransition } from "./motion";
 export interface Cursor {
   source: string;
   path: (string | number)[];
@@ -61,8 +63,7 @@ export function NestedEditor({
     update(next);
   };
   const navigate = (depth: number) => {
-    if (!cursor || depth < 3) return;
-    let f = cursor.field;
+    if (!cursor || depth < 2) return;
     let schema = snapshot.sources.find(
       (s) => s.data?.table === source?.data?.table && s.data?.kind === "schema",
     );
@@ -81,6 +82,14 @@ export function NestedEditor({
     <Drawer
       title={
         <div className="nested-title">
+          <Button
+            type="text"
+            size="small"
+            icon={<ArrowLeftOutlined />}
+            aria-label="一つ上の値へ戻る"
+            disabled={!cursor || cursor.path.length <= 3}
+            onClick={() => cursor && navigate(cursor.path.length - 2)}
+          />
           <Tag color="blue">{array ? "[ ] 配列" : field?.type}</Tag>
           <Typography.Text>値を編集</Typography.Text>
         </div>
@@ -102,12 +111,17 @@ export function NestedEditor({
       }}
     >
       {cursor && field && source && (
-        <>
+        <React.Fragment key={JSON.stringify([source.id, ...cursor.path])}>
           <div className="breadcrumb-scroll">
             <Breadcrumb
               items={cursor.path.slice(2).map((part, i) => ({
                 title: (
-                  <button onClick={() => navigate(i + 2)}>
+                  <button
+                    aria-current={
+                      i === cursor.path.length - 3 ? "page" : undefined
+                    }
+                    onClick={() => navigate(i + 2)}
+                  >
                     {typeof part === "number" ? `[${part}]` : part}
                   </button>
                 ),
@@ -160,7 +174,7 @@ export function NestedEditor({
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.16 }}
+                        transition={quickTransition}
                         className="array-item"
                         key={
                           item && typeof item === "object"
@@ -329,7 +343,7 @@ export function NestedEditor({
               )}
             </>
           )}
-        </>
+        </React.Fragment>
       )}
     </Drawer>
   );

@@ -390,3 +390,27 @@ test("session identities survive row and column edits but duplicates have indepe
     await fs.rm(root, { recursive: true });
   }
 });
+
+test("edited YAML normalizes old and appended collections to block layout without losing annotations or values", () => {
+  const source = parseSource(
+    "rarity.yaml",
+    '# rarity\r\nkind: type\r\nname: Rarity\r\nenum:\r\n  underlying: ulong\r\n  members:\r\n    - {name: "Common", value: 0} # first\r\n    - {name: Epic, value: 18446744073709551615}\r\n',
+  );
+  const data = {
+    ...source.data,
+    enum: {
+      ...source.data.enum,
+      members: [...source.data.enum.members, { name: "Member1", value: 3n }],
+    },
+  };
+  const output = serialize({ ...source, data });
+  assert(!output.includes("{"));
+  assert(output.includes('    - name: "Common"'));
+  assert(output.includes("    - name: Member1\r\n      value: 3"));
+  assert(output.includes("# first"));
+  assert(output.includes("# rarity\r\n"));
+  assert(!/(?<!\r)\n/.test(output));
+  const reopened = parseSource("rarity.yaml", output);
+  assert.deepEqual(reopened.data, data);
+  assert.equal(serialize(reopened), output);
+});

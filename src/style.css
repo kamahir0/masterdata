@@ -118,7 +118,8 @@ button:focus-visible,
   display: flex;
   gap: 6px;
   align-items: center;
-  min-width: 115px;
+  min-width: 20px;
+  justify-content: center;
 }
 .save-state .anticon-check-circle {
   color: #6bb397;
@@ -225,14 +226,6 @@ button:focus-visible,
 }
 .tree-scroll .ant-tree-indent-unit {
   width: 16px !important;
-}
-.explorer-footer {
-  font-size: 10px;
-  padding: 10px 15px;
-  border-top: 1px solid var(--line);
-}
-.explorer-footer .ant-typography {
-  font-size: 10px;
 }
 .main-area {
   flex: 1;
@@ -1154,7 +1147,8 @@ button:focus-visible,
 .ant-btn,
 .ant-switch,
 .ant-select-selector {
-  transition-duration: 0.15s;
+  transition-duration: 0.12s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 .ant-btn:active {
   transform: translateY(1px);
@@ -1171,7 +1165,7 @@ button:focus-visible,
 }
 .definition-table .ant-table-row,
 .array-item {
-  animation: row-enter 0.16s ease-out;
+  animation: row-enter 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .ant-drawer-content {
   background: var(--surface) !important;

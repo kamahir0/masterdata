@@ -171,19 +171,36 @@ app.whenReady().then(async () => {
     return result.canceled ? null : openRoot(result.filePaths[0]);
   });
   handle("project:create", async (name: string) => {
-    const result = await dialog.showSaveDialog(window, {
-      title: "新しいプロジェクトの保存先",
-      defaultPath: path.join(app.getPath("documents"), name || "MasterData"),
-      buttonLabel: "プロジェクトを作成",
+    if (writing || building)
+      throw new Error("保存・生成処理が完了するまでお待ちください。");
+    const folderName = name.trim();
+    if (
+      !folderName ||
+      folderName === "." ||
+      folderName === ".." ||
+      /[<>:"/\\|?*\x00-\x1f]/.test(folderName)
+    )
+      throw new Error(
+        "プロジェクト名にはフォルダ名に使える文字を入力してください。",
+      );
+    // A project is a directory, not a file. Choose its parent with the OS folder
+    // picker; macOS's file-save sheet can leave extensionless destinations disabled.
+    const result = await dialog.showOpenDialog(window, {
+      title: "プロジェクトを作成する保存先フォルダ",
+      defaultPath: app.getPath("documents"),
+      properties: ["openDirectory", "createDirectory"],
+      buttonLabel: "ここに作成",
     });
-    if (result.canceled || !result.filePath) return null;
-    await fs.mkdir(result.filePath);
-    await fs.mkdir(path.join(result.filePath, "sources"));
+    if (result.canceled || !result.filePaths[0]) return null;
+    const destination = path.join(result.filePaths[0], folderName);
+    // mkdir without recursive refuses an existing project rather than overwriting it.
+    await fs.mkdir(destination);
+    await fs.mkdir(path.join(destination, "sources"));
     await fs.writeFile(
-      path.join(result.filePath, "masterdata.yaml"),
-      stringify(defaultConfig(name)),
+      path.join(destination, "masterdata.yaml"),
+      stringify(defaultConfig(folderName)),
     );
-    return openRoot(result.filePath);
+    return openRoot(destination);
   });
   handle("project:sample", async () => {
     const source = app.isPackaged

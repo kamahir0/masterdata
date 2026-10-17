@@ -306,3 +306,29 @@ test("welcome opens the first project without a phantom unsaved-change prompt", 
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
 });
+
+test("welcome creates a project, adds a table, edits and saves default records", async () => {
+  const created = path.join(root, "新規作業");
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [filePath],
+    });
+  }, root);
+  await page.getByRole("button", { name: /新しく作る/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByLabel("新しいプロジェクト名").fill("新規作業");
+  await page.getByRole("button", { name: "保存先を選択", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByText("新規作業", { exact: true }).first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /テーブルを作成/ }).click();
+  await page.getByRole("button", { name: /レコードを追加/ }).click();
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("0");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  expect(
+    await fs.readFile(path.join(created, "sources/new-table1.yaml"), "utf8"),
+  ).toContain("id: 0");
+});

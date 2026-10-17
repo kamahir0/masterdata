@@ -863,6 +863,12 @@ function Workspace({
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
         />
+        <Typography.Paragraph
+          type="secondary"
+          style={{ marginTop: 12, marginBottom: 0 }}
+        >
+          次に選ぶ保存先の中へ、この名前のフォルダを作成します。
+        </Typography.Paragraph>
       </Modal>
       <Settings
         open={settings}

@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 3e17d083d3a4ed8ebb1b4ff5d7bd9ac51b5e8036
-Work base: 630407d730245f8f2ab5963984a013fb9bf23409
+Stage: designing
+Candidate: none
+Work base: 1f41c5727cb566b6ae0042fda211518d02d6136f
 
 ## Active work
 
-None.
+In progress: Human追加のUIフレームワーク活用・motion方針の反映。Remaining: review、文書検証とdelivery。
 
 ## Blocking findings
 

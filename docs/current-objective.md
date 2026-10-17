@@ -6,6 +6,8 @@
 
 選択根拠: 2026-10-17 Human request「legacy2を参考に、ユーザー目線で具体的にこんな機能や特徴を持ったGUIアプリにする、という像を言語化してみて（細かい技術仕様ではない）」。
 
+追加scope: 同日Humanが示した、Ant Designのようなフレームワークの広範な活用と、ほとんどの操作に伴うアニメーションによる豊かなフィードバックを製品像へ反映する。
+
 ## Completion boundary
 
 - [Product Direction](product/direction.md)に、利用者、代表的な作業、機能と使い心地、対象外を提案として整理する。

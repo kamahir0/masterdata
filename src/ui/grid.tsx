@@ -47,6 +47,7 @@ import {
 } from "../core/types";
 import { identity } from "../core/identity";
 import { useLayoutMotion } from "./motion";
+import { useTableViewport } from "./table-viewport";
 import { session } from "../core/session";
 import { defaultValue, recordAllocator } from "../core/schema";
 import {
@@ -110,6 +111,7 @@ export function GridEditor({
   const handledJump = useRef<number | undefined>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
   const tableRef = useRef<any>(null);
+  useTableViewport(viewport, tableRef, table?.source.id);
   useEffect(() => {
     const observer = new ResizeObserver((entries) =>
       setHeight(Math.max(150, entries[0].contentRect.height - 86)),

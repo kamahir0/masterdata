@@ -611,3 +611,34 @@ test("horizontal viewport and column positions stay fixed through switch and nul
     .poll(() => header.evaluate((element) => element.scrollLeft))
     .toBe(1750);
 });
+
+test("offscreen nested buttons and header focus keep body cells aligned with their columns", async () => {
+  await selectSource("common");
+  const aligned = async (column: number) => {
+    await expect
+      .poll(() =>
+        page.evaluate((column) => {
+          const header = document
+            .querySelector(`[aria-label="列${column + 1}の名前"]`)!
+            .closest("th")!;
+          const cell = document.querySelector(
+            `.data-cell[data-column-index="${column}"]`,
+          )!;
+          return Math.abs(
+            header.getBoundingClientRect().left -
+              cell.getBoundingClientRect().left,
+          );
+        }, column),
+      )
+      .toBeLessThan(2);
+  };
+  await page
+    .getByRole("button", { name: "effects 行1を開く", exact: true })
+    .click();
+  await aligned(7);
+  await page.locator(".ant-drawer-close").click();
+  await page.getByLabel("列13の名前", { exact: true }).focus();
+  await aligned(12);
+  await page.getByLabel("maxPower 行1", { exact: true }).focus();
+  await aligned(12);
+});

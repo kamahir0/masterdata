@@ -65,3 +65,7 @@ jobs:
       - name: Native startup (macOS / Windows)
         if: runner.os != 'Linux'
         run: node scripts/smoke.mjs
+      - name: Windows development install workflow
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: app.bat --no-launch

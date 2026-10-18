@@ -5,6 +5,6 @@ set "STATUS=%ERRORLEVEL%"
 if not "%STATUS%"=="0" (
   echo.
   echo Build or install failed. Press any key to close.
-  pause >nul
+  if not defined CI pause >nul
 )
 exit /b %STATUS%

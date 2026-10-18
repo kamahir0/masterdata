@@ -28,7 +28,7 @@ test("development identity and install target stay stable across builds on macOS
   assert.equal(
     matchingProcesses(
       "123 /Users/a/Applications/MasterData [Dev].app/Contents/MacOS/masterdata-desktop\n124 /Users/a/Applications/MasterData.app/Contents/MacOS/masterdata-desktop",
-      join("/Users/a", "Applications", "MasterData [Dev].app"),
+      "/Users/a/Applications/MasterData [Dev].app",
       "darwin",
     ).length,
     1,

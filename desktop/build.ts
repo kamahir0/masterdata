@@ -225,6 +225,7 @@ async function run(root: string, args: string[]): Promise<string> {
         DOTNET_CLI_USE_MSBUILD_SERVER: "0",
       },
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     children.add(child);
     let output = "";

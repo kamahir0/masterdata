@@ -25,6 +25,16 @@ struct Host {
     data: PathBuf,
     smoke: bool,
 }
+fn app_navigation(url: &tauri::Url) -> bool {
+    matches!(
+        (url.scheme(), url.host_str(), url.port()),
+        ("tauri", Some("localhost"), None) | ("http" | "https", Some("tauri.localhost"), None)
+    ) || (cfg!(debug_assertions)
+        && url.scheme() == "http"
+        && url.host_str() == Some("127.0.0.1")
+        && url.port() == Some(5173))
+}
+
 fn wire(args: Value) -> String {
     json!([args, []]).to_string()
 }
@@ -293,7 +303,9 @@ fn main() {
                 smoke,
             });
             let config = &app.config().app.windows[0];
-            let window = tauri::WebviewWindowBuilder::from_config(app, config)?;
+            let window = tauri::WebviewWindowBuilder::from_config(app, config)?
+                .on_navigation(app_navigation)
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
             // Set the webview attribute explicitly: the config-only window inset is
             // overwritten by the webview's default inset in the pinned Tauri runtime.
             #[cfg(target_os = "macos")]
@@ -339,4 +351,31 @@ fn main() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+    #[test]
+    fn native_bridge_stays_on_the_app_origin() {
+        for url in [
+            "tauri://localhost/index.html",
+            "http://tauri.localhost/",
+            "https://tauri.localhost/",
+        ] {
+            assert!(app_navigation(&tauri::Url::parse(url).unwrap()));
+        }
+        for url in [
+            "https://example.org/",
+            "http://tauri.localhost.attacker.test/",
+            "file:///tmp/index.html",
+            "http://127.0.0.1:8888/",
+        ] {
+            assert!(!app_navigation(&tauri::Url::parse(url).unwrap()));
+        }
+        assert_eq!(
+            app_navigation(&tauri::Url::parse("http://127.0.0.1:5173/").unwrap()),
+            cfg!(debug_assertions)
+        );
+    }
 }

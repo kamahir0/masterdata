@@ -10,7 +10,7 @@ Status: Accepted
 
 ## Decision
 
-Agent DecisionとしてElectron + TypeScript + React / Ant Designを採用する。rendererのimmutable Project draftが操作と履歴を所有する。意味検証はpureなmoduleとして分離し、backgroundで実行する。UIは同じ値入力componentを表・nestedで使い、native hostはopen / save / build / publishだけを提供する。
+2026-10-18 Human requestによりdesktop shellをTauriへ移行する。TypeScript + React / Ant Designは維持する。rendererのimmutable Project draftが操作と履歴を所有する。意味検証はpureなmoduleとして分離し、backgroundで実行する。UIは同じ値入力componentを表・nestedで使い、native hostはopen / save / build / publishだけを提供する。
 
 保存済みbaseと編集historyを分ける。dataはメモリ内の値として変更し、YAMLへのpatch / serializationはSaveまたは明示text表示時に行う。これにより入力やfolder開閉でdisk / 全量parseを待たない。snapshotは変更していないsource / recordを共有し、履歴は有限にする。
 
@@ -21,9 +21,9 @@ YAMLとMasterMemoryの利用目的は維持する。出力は.NETへ委譲し、
 ## 比較した選択
 
 - 旧Rust applicationの再利用: 厳密なcommandとdraftの変換を再導入しやすく、今回の編集モデルから独立して導けないため採用しない。
-- Tauri + 新Rust model: 可能だが、メモリdraftを跨ぐmodelの複製とserialization boundaryを先に増やす。今回の規模ではTypeScriptの単一modelを優先する。
+- Tauriへdomain modelも移す案: 採用しない。Tauri自体はRustへのmodel移植を要求しない。TSの編集modelは維持し、検証済みの保存transaction / .NET生成はNode SEAのstdio専用hostとして同梱する。Rustはwindow / menu / dialogと限定bridgeを担当する。最小Tauriよりサイズは増えるが、保存安全性と生成の不要な再実装を避ける。端末にNode.jsを要求せず、network listenerも設けない。旧Electron選定時の「Tauriならmodel複製が必要」という比較は撤回する。
 - 独自HTML UI: 統一された入力・keyboard・テーマ・motionを再実装するため採用しない。
 
 ## 根拠
 
-[Desktop Authoring](../specs/desktop.md)、HumanのGUI単独・標準部品・豊かなmotion・legacy2を参考に自律導出する指示。Electronの[context isolation](https://www.electronjs.org/docs/latest/tutorial/context-isolation)と[限定したIPC](https://www.electronjs.org/docs/latest/tutorial/ipc)、Ant Designの[Table](https://ant.design/components/table/)と[theme / motion](https://ant.design/docs/react/customize-theme/)を確認した。
+[Desktop Authoring](../specs/desktop.md)、HumanのGUI単独・標準部品・豊かなmotion・legacy2を参考に自律導出する指示。Tauriの[command境界](https://v2.tauri.app/develop/calling-rust/)、[WebView](https://v2.tauri.app/reference/webview-versions/)、Nodeの[SEA](https://nodejs.org/api/single-executable-applications.html)、Ant Designの[Table](https://ant.design/components/table/)と[theme / motion](https://ant.design/docs/react/customize-theme/)を確認した。

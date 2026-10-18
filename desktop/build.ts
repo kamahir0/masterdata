@@ -209,14 +209,24 @@ export function generate(snapshot: Snapshot): {
     ),
   };
 }
+const children = new Set<ReturnType<typeof spawn>>();
+process.on("SIGTERM", () => {
+  for (const child of children) child.kill("SIGKILL");
+});
 async function run(root: string, args: string[]): Promise<string> {
   const executable = await dotnetExecutable();
   return await new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd: root,
-      env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1" },
+      env: {
+        ...process.env,
+        DOTNET_CLI_TELEMETRY_OPTOUT: "1",
+        MSBUILDDISABLENODEREUSE: "1",
+        DOTNET_CLI_USE_MSBUILD_SERVER: "0",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    children.add(child);
     let output = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
@@ -237,6 +247,7 @@ async function run(root: string, args: string[]): Promise<string> {
       reject(new Error(`.NET SDKを確認してください: ${error.message}`));
     });
     child.on("close", (code) => {
+      children.delete(child);
       clearTimeout(timer);
       if (code === 0) resolve(output);
       else reject(new Error(output.slice(-16000)));
@@ -280,6 +291,7 @@ export async function buildWorkspace(
     "-o",
     "bin",
     "--nologo",
+    "--disable-build-servers",
   ]);
   log += await run(directory, [
     "bin/Builder.dll",

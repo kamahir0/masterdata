@@ -2,14 +2,14 @@
 
 ## Objective
 
-サンプル操作で指摘されたYAML書式、nested navigation、入力・scroll保持、Explorerの対象別操作、表示とmotionを修正し、配布アプリまで更新する。
+現状のUI・操作・motionを維持してElectronからTauriへ移行し、ローカルcheckoutのbuildから識別可能な開発版の固定先install・起動までを.command / .batで一括実行できるようにする。
 
-選択根拠: 2026-10-17 Humanによる具体的なGUIレビュー。通常判断は既存の自律実装委任と製品像に従う。
+選択根拠: 2026-10-18 Human request。通常の技術判断は既存の自律実装委任内で行う。
 
 ## Completion boundary
 
-[Desktop Authoring](specs/desktop.md)の関連要件、focused回帰、macOS配布版の実操作、通常commit / pushと各OS CI。
+[Desktop Authoring](specs/desktop.md)と[Tauri移行提案](spec-changes/0002-tauri-development-install.md)の関連要件、focused回帰、macOS実アプリとinstallの確認、通常commit / push、各OS CI。
 
 ## Non-scope
 
-新しい製品機能、CLI、公開release、実ユーザーデータの破棄。
+公開release、UI再設計、CLI、実データ破棄、識別できない既存アプリの削除。

@@ -1,0 +1,25 @@
+{
+  "productName": "MasterData [Dev]",
+  "identifier": "dev.kamahir0.masterdata.dev",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "MasterData [Dev]",
+        "width": 1480,
+        "height": 960,
+        "minWidth": 1000,
+        "minHeight": 680,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 30
+        },
+        "backgroundColor": "#f6f8fc",
+        "create": false,
+        "dragDropEnabled": false
+      }
+    ]
+  }
+}

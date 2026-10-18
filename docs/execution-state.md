@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 0a6f4ba7551410bd8e704f7da6af3f5a8ddc77a4
-Work base: 85fc854bca9e4df8f9502739d0f7e74f826b65df
+Stage: implementation-ready
+Candidate: none
+Work base: f3c2752683cf9ac8f0db683e55ab541a7f6c97bf
 
 ## Active work
 
-None.
+In progress: Tauri移行と開発版の固定インストール。
 
 ## Blocking findings
 

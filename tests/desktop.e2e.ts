@@ -1,18 +1,16 @@
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parse, stringify } from "yaml";
-let app: ElectronApplication;
+import { ProjectService } from "../desktop/service";
+import { encode, decode } from "../src/core/wire";
+let service: ProjectService;
+let calls: string[];
+let dialogPath: string;
 let page: Page;
 let root: string;
-test.beforeEach(async ({}, info) => {
+test.beforeEach(async ({ browser }, info) => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "masterdata-e2e-"));
   await fs.cp(path.resolve("samples/Adventure"), root, { recursive: true });
   if (info.title.startsWith("large")) {
@@ -41,14 +39,40 @@ test.beforeEach(async ({}, info) => {
     data.records[0].id = "broken";
     await fs.writeFile(file, stringify(data));
   }
-  app = await electron.launch({
-    args: [
-      path.resolve("desktop/main.cjs"),
-      ...(info.title.startsWith("welcome") ? [] : ["--project", root]),
-    ],
-    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "true" },
-  });
-  page = await app.firstWindow();
+  service = new ProjectService();
+  calls = [];
+  dialogPath = root;
+  page = await browser.newPage({ viewport: { width: 1480, height: 960 } });
+  await page.exposeFunction(
+    "__native",
+    async (method: string, payload: string) => {
+      calls.push(method);
+      let args = decode<any[]>(payload);
+      if (method === "initial")
+        args = info.title.startsWith("welcome") ? [] : [root];
+      if (method === "open") args = [dialogPath];
+      if (method === "create") args = [args[0], dialogPath];
+      if (method === "sample")
+        args = [
+          path.resolve("samples/Adventure"),
+          path.join(root, ".user-data"),
+        ];
+      return encode(await service.request(method, args));
+    },
+  );
+  await page.addInitScript(`(() => {
+    const encode = ${encode.toString()};
+    const decode = ${decode.toString()};
+    const request = async (method, args = []) => decode(await window.__native(method, encode(args)));
+    window.desktop = {
+      initial: () => request("initial"), open: () => request("open"),
+      create: name => request("create", [name]), sample: () => request("sample"),
+      save: value => request("save", [value]), build: (...args) => request("build", args),
+      publish: (...args) => request("publish", args), reveal: async () => {},
+      dirty: () => {}, close: async () => {}, onCommand: () => () => {},
+    };
+  })()`);
+  await page.goto("http://127.0.0.1:5173");
   if (info.title.startsWith("welcome")) {
     await expect(
       page.getByRole("button", { name: /プロジェクトを開く/ }),
@@ -65,10 +89,7 @@ test.beforeEach(async ({}, info) => {
   ).toBeVisible();
 });
 test.afterEach(async () => {
-  if (app) {
-    await page.evaluate(() => window.desktop.dirty(false)).catch(() => {});
-    await app.close();
-  }
+  await page?.context().close();
   await fs.rm(root, { recursive: true, force: true });
 });
 async function selectSource(name: string) {
@@ -231,12 +252,7 @@ test("folder creation, rename and deletion are inline, reversible, and saved", a
 });
 test("drag reorder retains visible rows and TSV paste is a single Undo", async () => {
   const handles = page.getByLabel("レコードを移動", { exact: true });
-  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await handles.first().dispatchEvent("dragstart", { dataTransfer });
-  await page
-    .locator("[data-row-key]")
-    .nth(2)
-    .dispatchEvent("drop", { dataTransfer });
+  await handles.first().dragTo(page.locator("[data-row-key]").nth(2));
   await expect(page.getByLabel("id 行3", { exact: true })).toHaveValue("1");
   await expect(page.locator("[data-row-key]")).toHaveCount(3);
   await page.getByLabel("id 行1", { exact: true }).click();
@@ -266,24 +282,14 @@ test("large folder toggles perform no discovery I/O; large table remains virtual
     .locator(".tree-name")
     .filter({ hasText: /^many$/ })
     .locator('xpath=ancestor::*[@role="treeitem"]');
-  await app.evaluate(() => {
-    const fsp = process.getBuiltinModule("fs/promises") as any;
-    (globalThis as any).readCalls = 0;
-    for (const key of ["readdir", "readFile"]) {
-      const original = fsp[key];
-      fsp[key] = (...args: any[]) => {
-        (globalThis as any).readCalls++;
-        return original(...args);
-      };
-    }
-  });
+  calls.length = 0;
   await folder.locator(".ant-tree-switcher").click();
   await expect(
     page.locator(".tree-name").filter({ hasText: /^type-0$/ }),
   ).toBeVisible();
   await folder.locator(".ant-tree-switcher").click();
   await folder.locator(".ant-tree-switcher").click();
-  expect(await app.evaluate(() => (globalThis as any).readCalls)).toBe(0);
+  expect(calls).toEqual([]);
   expect(await page.locator("[data-row-key]").count()).toBeLessThan(100);
   await page.getByRole("button", { name: /件の問題/ }).click();
   await expect(page.locator(".problems-panel")).toBeVisible();
@@ -335,12 +341,7 @@ test("paste extends records, preserves quoted TSV, and does not alter data from 
 });
 
 test("welcome opens the first project without a phantom unsaved-change prompt", async () => {
-  await app.evaluate(({ dialog }, root) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [root],
-    });
-  }, root);
+  dialogPath = root;
   await page.getByRole("button", { name: /プロジェクトを開く/ }).click();
   await expect(
     page.getByText("冒険の道具箱", { exact: true }).first(),
@@ -353,12 +354,7 @@ test("welcome opens the first project without a phantom unsaved-change prompt", 
 
 test("welcome creates a project, adds a table, edits and saves default records", async () => {
   const created = path.join(root, "新規作業");
-  await app.evaluate(({ dialog }, filePath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [filePath],
-    });
-  }, root);
+  dialogPath = root;
   await page.getByRole("button", { name: /新しく作る/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("新しいプロジェクト名").fill("新規作業");
@@ -472,7 +468,7 @@ test("diagnostic navigation is consumed once and does not erase subsequent searc
   await expect(search).toHaveValue("収穫祭");
   await page.getByRole("button", { name: "問題を閉じる", exact: true }).click();
   await expect(search).toHaveValue("収穫祭");
-  await search.press("End");
+  await search.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
   await search.pressSequentially("test");
   await expect(search).toHaveValue("収穫祭test");
 });
@@ -641,4 +637,23 @@ test("offscreen nested buttons and header focus keep body cells aligned with the
   await aligned(12);
   await page.getByLabel("maxPower 行1", { exact: true }).focus();
   await aligned(12);
+});
+
+test("native pointer drag reorders nested array elements without losing their editors", async () => {
+  await selectSource("common");
+  await page
+    .getByRole("button", { name: "effects 行1を開く", exact: true })
+    .click();
+  await page.getByRole("button", { name: "要素を複製", exact: true }).click();
+  await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
+  await page.getByLabel("name", { exact: true }).fill("FirstEffect");
+  await page.getByLabel("name", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "一つ上の値へ戻る" }).click();
+  await page
+    .getByLabel("要素1を移動", { exact: true })
+    .dragTo(page.getByLabel("要素2を移動", { exact: true }));
+  await page.getByRole("button", { name: "要素2を開く", exact: true }).click();
+  await expect(page.getByLabel("name", { exact: true })).toHaveValue(
+    "FirstEffect",
+  );
 });

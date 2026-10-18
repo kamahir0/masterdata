@@ -12,3 +12,8 @@ desktop/*.cjs
 playwright-report/
 test-results/
 .masterdata/
+
+.build/
+src-tauri/target/
+src-tauri/binaries/masterdata-host*
+src-tauri/gen/schemas/

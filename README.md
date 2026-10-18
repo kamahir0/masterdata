@@ -4,7 +4,17 @@
 
 ## アプリを起動する
 
-Node.js 22.12以降、npm、Build用に.NET 8 SDK以降を用意します。
+開発・ローカルbuildにはNode.js 22.12以降、npm、Rust toolchain、OSの[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)、.NET 8 SDK以降を用意します。完成したアプリの利用にはNode.js / Rustは不要です。Build機能には.NET SDKが必要です。
+
+macOSはルートの`app.command`、Windowsは`app.bat`を実行すると、現在のcheckoutの依存install・検証・build・開発版install・起動まで行います。Gitのpullはしません。
+
+- アプリ名: **MasterData [Dev]**。通常版とidentifier・設定を分離します。
+- macOS: `~/Applications/MasterData [Dev].app`
+- Windows: `%LOCALAPPDATA%\Programs\MasterData-Dev`。スタートメニューの`MasterData [Dev]`から起動できます。
+- 再実行は固定先を更新します。起動中なら更新を止めるので、変更を保存して終了してから再実行してください。
+- `./app.command --no-launch` / `app.bat --no-launch`でinstall後の起動を省略できます。初回buildはRust依存のcompileに時間がかかります。
+
+rendererのhot reloadを使う開発起動は次の通りです。
 
 ```sh
 npm ci
@@ -25,13 +35,17 @@ npm start
 npm run check
 npm test
 npm run build
+npm run test:native
 npm run test:ui
-npm run pack
+npm run pack -- --bundles app # macOS
+# Windows / Linux: npm run pack -- --no-bundle
 ```
 
-`npm test`は実.NETでのcompile / reloadを含みます。`.NET`がない環境での限定検証は`SKIP_NATIVE_BUILD=1 npm test`で行えます。`npm run test:ui`は作業用コピーを使うElectronの回帰テストです。Linuxでは`xvfb-run -a npm run test:ui`を使います。`pack`は`release/`へローカルアプリを作成します。
+`npm test`は保存保護と実.NETのcompile / reloadを含みます。`.NET`なしの限定検証は`SKIP_NATIVE_BUILD=1 npm test`で行えます。`npm run test:native`はRust bridgeから同梱hostへの通信・64bit整数・保存競合・Build / Publishを検証します（先に`npm run build`）。`npm run test:ui`は作業用コピーを使い、Chromium / WebKitでUIを回帰確認します。初回は`npx playwright install --with-deps chromium webkit`が必要です。これらのbrowser回帰はOS固有動作の証明ではないため、Tauri実アプリでも代表操作を確認します。
 
-開発中のrendererは`npm run dev`で起動し、別terminalで`MASTERDATA_DEV_URL=http://127.0.0.1:5173 npm exec electron .`を実行できます。
+Tauriの成果物は`src-tauri/target/release/`以下です。通常利用にはbuild directoryのコピーを増やさず、上記scriptの固定install先を使います。単一起動なので再起動操作は既存windowを前面にします。install失敗時は既存版を保持・復旧します。強制中断後に`.install-lock`が残った場合は、別installが動いていないことを確認してそのlock directoryだけを取り除きます。
+
+React側が編集sessionを所有し、Tauriがwindow / menu / dialogを担当します。保存transaction・検証・.NET生成は専用Node SEA hostを同梱し、stdioだけで接続します。Electronは使いません。Node同梱により最小Tauriよりサイズは増えますが、利用者に別runtimeのinstallは要求しません。設計理由は[ADR](docs/adr/0001-desktop-session.md)に記録しています。
 
 ## 開始する
 

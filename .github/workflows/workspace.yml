@@ -27,7 +27,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: 2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -40,16 +42,26 @@ jobs:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: 8.0.x
+      - name: Tauri Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf
       - run: npm ci
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Linux GUI dependencies
-        if: runner.os == 'Linux'
-        run: npx playwright install-deps chromium
-      - name: Desktop regression (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:ui
-      - name: Desktop regression (macOS / Windows)
-        if: runner.os != 'Linux'
+      - run: npm run test:native
+      - run: npx playwright install --with-deps chromium webkit
+      - name: UI regression (Chromium and WebKit)
         run: npm run test:ui
+      - name: Tauri package (macOS)
+        if: runner.os == 'macOS'
+        run: npm run pack -- --bundles app -- --locked
+      - name: Tauri executable (Windows / Linux)
+        if: runner.os != 'macOS'
+        run: npm run pack -- --no-bundle -- --locked
+      - name: Native startup (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/smoke.mjs
+      - name: Native startup (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: node scripts/smoke.mjs

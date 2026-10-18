@@ -34,6 +34,15 @@ test.beforeEach(async ({ browser }, info) => {
         `kind: type\nname: Extra${i}\ncustom:\n  fields: []\n`,
       );
   }
+  if (info.title.startsWith("hierarchy")) {
+    await fs.mkdir(
+      path.join(
+        root,
+        "sources/types/outer/inner/deep-folder-with-a-very-long-name",
+      ),
+      { recursive: true },
+    );
+  }
   if (info.title.startsWith("diagnostic")) {
     const file = path.join(root, "sources/announcements/announcement.yaml");
     const data = parse(await fs.readFile(file, "utf8"));
@@ -955,6 +964,7 @@ test("structural motion previews pointer reorder, cancels safely and commits one
             (this as HTMLElement).dataset.rowKey ||
             (this as HTMLElement).dataset.motionKey,
           frames,
+          options,
         });
       return animate.call(this, frames, options);
     };
@@ -965,6 +975,14 @@ test("structural motion previews pointer reorder, cancels safely and commits one
       (window as any).__motions.some((m: any) => m.frames[0].opacity === 0),
     ),
   ).toBe(true);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__motions
+        .filter((m: any) => m.frames[0].opacity === 0)
+        .every((m: any) => m.options.duration === 280),
+    ),
+  ).toBe(true);
+  await expect(page.getByLabel("id 行4", { exact: true })).toBeFocused();
   await pointerPreview(
     page.getByLabel("レコードを移動", { exact: true }).first(),
     page.getByLabel("レコードを移動", { exact: true }).nth(2),
@@ -1043,15 +1061,16 @@ test("generation results reopen without repeating Build or Publish", async () =>
   await page.getByRole("button", { name: "Publishする" }).click();
   await page.getByRole("button", { name: "配置する", exact: true }).click();
   await expect(
-    page.getByText("Publish完了 · rev.0 · すべてのデータ", { exact: true }),
+    page.getByText("Publish完了 · rev.0 · プロファイル未選択", { exact: true }),
   ).toBeVisible();
   const count = calls.filter((c) => c === "build" || c === "publish").length;
   const drawer = page
     .locator(".ant-drawer")
     .filter({ hasText: "Build / Publish" });
   await drawer.locator(".ant-drawer-close").click();
+  await page.getByRole("button", { name: "ビルドの操作", exact: true }).click();
   await page
-    .getByRole("button", { name: "生成結果を表示", exact: true })
+    .getByRole("menuitem", { name: "実行結果を表示", exact: true })
     .click();
   await expect(
     page.getByText("成果物を生成しました", { exact: true }),
@@ -1446,4 +1465,368 @@ test("discard restores a saved file even if Undo removed it while close confirma
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
+});
+
+test("hierarchy aligns each child arrow with its parent icon and source kinds have coherent icons", async () => {
+  await page.getByLabel("表・型を検索").fill("deep-folder");
+  const node = (title: string) =>
+    page
+      .locator(`.tree-name[title="${title}"]`)
+      .locator("xpath=ancestor::*[contains(@class,'ant-tree-treenode')][1]");
+  for (const [parent, child] of [
+    ["types", "types/outer"],
+    ["types/outer", "types/outer/inner"],
+    [
+      "types/outer/inner",
+      "types/outer/inner/deep-folder-with-a-very-long-name",
+    ],
+  ]) {
+    const icon = (await node(parent)
+      .locator(".ant-tree-iconEle")
+      .boundingBox())!;
+    const arrow = (await node(child)
+      .locator(".ant-tree-switcher")
+      .boundingBox())!;
+    expect(
+      Math.abs(icon.x + icon.width / 2 - arrow.x - arrow.width / 2),
+    ).toBeLessThan(1);
+  }
+  await page.screenshot({
+    path: test.info().outputPath("hierarchy-centers.png"),
+  });
+  for (const [name, kind, label] of [
+    ["announcement", "table", "テーブル"],
+    ["common", "data", "データ"],
+    ["rarity", "enum", "Enum（単一選択）"],
+    ["item-flags", "flags", "Flags（複数選択）"],
+    ["combat-stats", "custom", "Custom Type（構造）"],
+    ["item-code", "valueObject", "Value Object（値の包み）"],
+  ]) {
+    await selectSource(name);
+    const icon = page.locator('.file-tab[aria-selected="true"] .source-icon');
+    await expect(icon).toHaveAttribute("data-source-kind", kind);
+    await expect(icon).toHaveAccessibleName(label);
+    await expect(
+      page
+        .locator(`.tree-name[title$="/${name}.yaml"]`)
+        .locator("xpath=ancestor::*[contains(@class,'ant-tree-treenode')][1]")
+        .locator(".source-icon"),
+    ).toHaveAttribute("data-source-kind", kind);
+  }
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  for (const kind of ["table", "enum", "flags", "custom", "valueObject"])
+    await expect(
+      page.getByRole("menu").locator(`[data-source-kind="${kind}"]`),
+    ).toBeVisible();
+  await expect(page.locator(".ant-dropdown:visible")).not.toHaveClass(
+    /ant-slide-up-(?:appear|enter)(?:-|\s|$)/,
+  );
+  for (const kind of ["table", "enum", "flags", "custom", "valueObject"]) {
+    const gap = await page
+      .getByRole("menu")
+      .locator(`[data-source-kind="${kind}"]`)
+      .evaluate((icon) => {
+        const item = icon.closest('[role="menuitem"]')!;
+        const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+        let node: Node | null;
+        while ((node = walker.nextNode()))
+          if (node.textContent?.includes("新しい")) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            return (
+              range.getBoundingClientRect().left -
+              icon.getBoundingClientRect().right
+            );
+          }
+        return 0;
+      });
+    expect(gap).toBeGreaterThanOrEqual(7);
+  }
+  await page.screenshot({
+    path: test.info().outputPath("source-kind-icons.png"),
+  });
+});
+
+test("closing a pinned tab animates its neighbours while edits and folder reveals do not replay additions", async () => {
+  await page.evaluate(() => {
+    (window as any).__motions = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (frames, options) {
+      const element = this as HTMLElement;
+      if (element.dataset.motionKey || element.dataset.rowKey)
+        (window as any).__motions.push({
+          key: element.dataset.motionKey || element.dataset.rowKey,
+          frames,
+          options,
+        });
+      return animate.call(this, frames, options);
+    };
+  });
+  for (const name of ["announcement", "rarity", "combat-stats"]) {
+    await selectSource(name);
+    await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  }
+  await page.evaluate(() => ((window as any).__motions = []));
+  await page
+    .locator(".file-tab")
+    .nth(1)
+    .getByRole("button", { name: /閉じる/ })
+    .click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__motions.some(
+        (m: any) =>
+          m.key.startsWith("tab-") &&
+          m.frames[0].translate &&
+          m.options.duration === 260,
+      ),
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: /フィールドを追加/ }).click();
+  await expect(page.getByLabel("項目5の名前", { exact: true })).toBeFocused();
+  await page.getByLabel("項目5の名前", { exact: true }).fill("newFieldEdited");
+  await page.getByLabel("項目5の名前", { exact: true }).press("Enter");
+  await page.evaluate(() => ((window as any).__motions = []));
+  await page.getByLabel("項目1の名前", { exact: true }).fill("AttackEdited");
+  await page.getByLabel("項目1の名前", { exact: true }).press("Enter");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__motions.filter((m: any) => m.frames[0].opacity === 0),
+    ),
+  ).toHaveLength(0);
+  await selectSource("rarity");
+  await page.getByRole("button", { name: /候補を追加/ }).click();
+  await expect(page.getByLabel("候補4の名前", { exact: true })).toBeFocused();
+  await page.getByLabel("候補4の名前", { exact: true }).fill("NewRarity");
+  await page.getByLabel("候補4の名前", { exact: true }).press("Enter");
+  await selectSource("item-flags");
+  await page.getByRole("button", { name: /候補を追加/ }).click();
+  await expect(page.getByLabel("候補5の名前", { exact: true })).toBeFocused();
+  await page.getByLabel("候補5の名前", { exact: true }).fill("NewFlag");
+  await page.getByLabel("候補5の名前", { exact: true }).press("Enter");
+  await page.evaluate(() => ((window as any).__motions = []));
+  await page.getByLabel("表・型を検索").fill("types");
+  await page.getByLabel("表・型を検索").fill("");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__motions.filter(
+        (m: any) => m.key.startsWith("node-") && m.frames[0].opacity === 0,
+      ),
+    ),
+  ).toHaveLength(0);
+});
+
+test("large additions reveal a virtual new record and a new column without delaying input", async () => {
+  await page.evaluate(() => {
+    (window as any).__motions = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (frames, options) {
+      const element = this as HTMLElement;
+      if (element.dataset.motionKey || element.dataset.rowKey)
+        (window as any).__motions.push({
+          key: element.dataset.motionKey || element.dataset.rowKey,
+          frames,
+          options,
+        });
+      return animate.call(this, frames, options);
+    };
+  });
+  await page
+    .locator(".ant-table-header")
+    .evaluate((element) => (element.scrollLeft = 800));
+  await page
+    .getByRole("textbox", { name: "表を検索", exact: true })
+    .fill("レコード1");
+  await page.getByRole("button", { name: /レコードを追加/ }).click();
+  const added = page.getByLabel("id 行401", { exact: true });
+  await expect(added).toBeFocused();
+  await expect(
+    page.getByRole("textbox", { name: "表を検索", exact: true }),
+  ).toHaveValue("");
+  await expect(added).toHaveValue("0");
+  const rowKey = await added
+    .locator("xpath=ancestor::*[@data-row-key][1]")
+    .getAttribute("data-row-key");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) =>
+          (window as any).__motions.some(
+            (m: any) =>
+              m.key === key &&
+              m.frames[0].opacity === 0 &&
+              m.options.duration === 280,
+          ),
+        rowKey,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page
+        .locator(".ant-table-header")
+        .evaluate((element) => element.scrollLeft),
+    )
+    .toBe(0);
+  await added.fill("9001");
+  await added.press("Enter");
+  await expect(added).toHaveValue("9001");
+  await page.getByRole("button", { name: /列を追加/ }).click();
+  const column = page.getByLabel("列63の名前", { exact: true });
+  await expect(column).toBeFocused();
+  await column.fill("lastField");
+  await column.press("Enter");
+  await expect(column).toHaveValue("lastField");
+  const columnKey = await column
+    .locator("xpath=ancestor::*[@data-motion-key][1]")
+    .getAttribute("data-motion-key");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) =>
+          (window as any).__motions.some(
+            (m: any) =>
+              m.key === key &&
+              m.frames[0].opacity === 0 &&
+              m.options.duration === 280,
+          ),
+        columnKey,
+      ),
+    )
+    .toBe(true);
+  await page.screenshot({
+    path: test.info().outputPath("virtual-additions.png"),
+  });
+});
+
+test("Build profile starts unselected, can be cleared, and Publish menu only opens the review panel", async () => {
+  const profile = page.getByRole("combobox", {
+    name: "出力プロファイル",
+    exact: true,
+  });
+  await expect(page.locator(".profile-select")).toContainText(
+    "プロファイルを選択",
+  );
+  await profile.click();
+  await expect(
+    page.getByRole("option", { name: "すべてのデータ", exact: true }),
+  ).toHaveCount(0);
+  await page.locator('.ant-select-item-option[title="production"]').click();
+  await page.getByRole("button", { name: "ビルドの操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Publish…", exact: true }).click();
+  const drawer = page
+    .locator(".ant-drawer")
+    .filter({ hasText: "Build / Publish" });
+  await expect(drawer.getByText("production", { exact: true })).toBeVisible();
+  expect(calls.filter((c) => c === "build" || c === "publish")).toHaveLength(0);
+  await drawer.locator(".ant-drawer-close").click();
+  await page.locator(".profile-select .ant-select-clear").click();
+  await expect(page.locator(".profile-select")).toContainText(
+    "プロファイルを選択",
+  );
+  await page.getByRole("button", { name: "ビルドの操作", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "実行結果を表示", exact: true })
+    .click();
+  await expect(
+    drawer.getByText("プロファイル未選択", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByText("タグの絞り込みなし", { exact: true }),
+  ).toBeVisible();
+  expect(calls.filter((c) => c === "build" || c === "publish")).toHaveLength(0);
+  await expect(drawer.locator(".ant-drawer-content-wrapper")).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await expect(page.locator(".ant-dropdown:visible")).toHaveCount(0);
+  await page.screenshot({
+    path: test.info().outputPath("build-panel-unselected.png"),
+  });
+  await drawer.locator(".ant-drawer-close").click();
+  await profile.click();
+  await page.locator('.ant-select-item-option[title="production"]').click();
+  await page
+    .getByRole("button", { name: "プロジェクト設定", exact: true })
+    .click();
+  const settings = page.getByRole("dialog", {
+    name: "プロジェクト設定",
+    exact: true,
+  });
+  await page
+    .getByRole("button", { name: "productionを削除", exact: true })
+    .click();
+  await settings.locator(".ant-drawer-close").click();
+  await expect(page.locator(".profile-select")).toContainText(
+    "プロファイルを選択",
+  );
+});
+
+test("Build commands coalesce while busy, preserve editing, and release the guard after failure", async () => {
+  await page.evaluate(() => {
+    const state = window as any;
+    state.__outputCalls = [];
+    const gate = new Promise<void>(
+      (resolve) => (state.__releaseBuild = resolve),
+    );
+    window.desktop.build = async (_token, _snapshot, profile, revision) => {
+      state.__outputCalls.push({ profile, revision });
+      if (state.__rejectBuild) throw new Error("試験用のBuild失敗");
+      await gate;
+      return {
+        directory: "test",
+        revision,
+        profile,
+        tables: 3,
+        records: 7,
+        log: "",
+        files: [],
+        hashes: {},
+      };
+    };
+    state.__command("build");
+    state.__command("build");
+  });
+  expect(await page.evaluate(() => (window as any).__outputCalls)).toEqual([
+    { profile: "", revision: 0 },
+  ]);
+  const drawer = page
+    .locator(".ant-drawer")
+    .filter({ hasText: "Build / Publish" });
+  await drawer.locator(".ant-drawer-close").click();
+  await page.getByLabel("message 行1", { exact: true }).fill("Build中も編集");
+  await page.getByLabel("message 行1", { exact: true }).press("Enter");
+  await page.evaluate(() => (window as any).__releaseBuild());
+  await expect(
+    page.locator(".build-controls").getByRole("button", { name: /Build/ }),
+  ).not.toHaveClass(/ant-btn-loading/);
+  await page.getByRole("button", { name: "ビルドの操作", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "実行結果を表示", exact: true })
+    .click();
+  await expect(
+    drawer.getByText("Build後に編集内容または出力条件が変わっています", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.evaluate(() => ((window as any).__rejectBuild = true));
+  await page.getByRole("button", { name: "Buildする" }).click();
+  await expect(
+    drawer.getByText("試験用のBuild失敗", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByText("成果物を生成しました", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => ((window as any).__rejectBuild = false));
+  await page.getByRole("button", { name: "Buildする" }).click();
+  await expect(
+    drawer.getByText("試験用のBuild失敗", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    drawer.getByText("Build後に編集内容または出力条件が変わっています", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__outputCalls.length)).toBe(
+    3,
+  );
 });

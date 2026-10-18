@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import { captureDropPositions, easeOutExpoCss } from "./motion";
+import { captureDropPositions, easeOutExpoCss, finishLayoutMotion } from "./motion";
 
 // Preview is DOM-only: persistence, diagnostics and Undo see one edit at drop.
 // Individual translate composes with the virtual table's own row positioning.
@@ -47,6 +47,7 @@ export function usePointerSort(
       flushSync(() => (document.activeElement as HTMLElement | null)?.blur());
       const from = item.dataset.sortKey!;
       const horizontal = group === "columns";
+      finishLayoutMotion(host);
       const origin = item.getBoundingClientRect();
       let x = event.clientX,
         y = event.clientY,

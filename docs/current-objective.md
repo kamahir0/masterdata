@@ -2,12 +2,12 @@
 
 ## Objective
 
-2026-10-18 HumanのVS Code比較レビューに基づき、ファイルのプレビュー・定着・安全なタブclose、Explorer開閉、独立したエディター設定、緑のアクセントと無彩色のsurface、作業領域を広く取るcompact layoutを実装する。
+2026-10-18 20:44のHumanレビューに基づき、Explorerの親iconと子switcherの整列、意味が誤解されないsource icon、操作を妨げない豊かな結果motion、profile未選択の表現、Build / Publish / 結果への入口を整理する。
 
 ## Completion boundary
 
-仕様の別pass reviewと承認、実装、途中入力・部分保存・close取消と失敗のfocused検証、代表作業と実画面の確認、self-review、通常commit / pushと各OS CI。
+仕様の別pass reviewと承認、実装、代表操作・途中入力・reduced motion・Build / Publishの副作用境界のfocused検証、実画面、self-review、通常commit / pushと3 OS CI。
 
 ## Non-scope
 
-VS Codeの拡張機能・コード編集機能の再現、ユーザーの既存作業の保存・破棄、CLI、公開release。
+出力formatやprofileの絞り込み規則の変更、ユーザー作業の保存・破棄、公開release、Unity起動。

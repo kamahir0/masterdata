@@ -80,7 +80,7 @@ export function FieldEditor({
     session.update(source.id, base, next, "項目を並べ替え");
   };
   const root = useRef<HTMLDivElement>(null);
-  useLayoutMotion(root, fields.map(identity).join("|"));
+  useLayoutMotion(root, fields.map(identity));
   usePointerSort(root, (_, from, to) =>
     move(
       fields.findIndex((f) => identity(f) === from),

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { Button, Tooltip } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 import type { Source } from "../core/types";
+import { useLayoutMotion } from "./motion";
 import { SourceIcon } from "./explorer";
 
 // AntD Tabs hides overflow items before layout. Keep every file tab mounted
@@ -26,6 +27,11 @@ export function FileTabs({
   close: (id: string) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  useLayoutMotion(
+    container,
+    sources.map((source) => `tab-${source.id}`),
+    { context: wrap },
+  );
   useLayoutEffect(() => {
     container.current
       ?.querySelector('[aria-selected="true"]')
@@ -68,6 +74,7 @@ export function FileTabs({
         return (
           <div
             key={source.id}
+            data-motion-key={`tab-${source.id}`}
             role="tab"
             aria-label={name}
             aria-description={`${temporary ? "プレビュー。ダブルクリックで保持。" : ""}${dirty(source) ? "未保存の変更" : ""}`}

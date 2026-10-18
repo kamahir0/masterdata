@@ -2,41 +2,18 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Dropdown, Empty, Input, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
-  ApartmentOutlined,
   DeleteOutlined,
   EditOutlined,
   FolderAddOutlined,
   FolderOutlined,
-  FileTextOutlined,
   PlusOutlined,
   SearchOutlined,
-  TableOutlined,
-  TagOutlined,
-  BranchesOutlined,
-  DatabaseOutlined,
 } from "@ant-design/icons";
-import {
-  type Snapshot,
-  type Source,
-  type SavedFile,
-  typeKind,
-} from "../core/types";
+import { type Snapshot, type Source, type SavedFile } from "../core/types";
 import { session } from "../core/session";
-export function SourceIcon({ source }: { source?: Source }) {
-  return source?.data?.kind === "schema" ? (
-    <TableOutlined />
-  ) : source?.data?.kind === "data" ? (
-    <DatabaseOutlined />
-  ) : typeKind(source) === "enum" || typeKind(source) === "flags" ? (
-    <TagOutlined />
-  ) : typeKind(source) === "custom" ? (
-    <ApartmentOutlined />
-  ) : typeKind(source) === "valueObject" ? (
-    <BranchesOutlined />
-  ) : (
-    <FileTextOutlined />
-  );
-}
+export { SourceIcon } from "./source-icon";
+import { SourceKindIcon, SourceIcon } from "./source-icon";
+import { useLayoutMotion } from "./motion";
 export function Explorer({
   snapshot,
   active,
@@ -160,18 +137,38 @@ export function Explorer({
     });
   }
   const createItems = [
-    { key: "table", icon: <TableOutlined />, label: "新しいテーブル" },
-    { key: "enum", icon: <TagOutlined />, label: "新しいEnum" },
-    { key: "flags", icon: <TagOutlined />, label: "新しいFlags" },
-    { key: "custom", icon: <ApartmentOutlined />, label: "新しいCustom Type" },
+    {
+      key: "table",
+      icon: <SourceKindIcon kind="table" />,
+      label: "新しいテーブル",
+    },
+    { key: "enum", icon: <SourceKindIcon kind="enum" />, label: "新しいEnum" },
+    {
+      key: "flags",
+      icon: <SourceKindIcon kind="flags" />,
+      label: "新しいFlags",
+    },
+    {
+      key: "custom",
+      icon: <SourceKindIcon kind="custom" />,
+      label: "新しいCustom Type",
+    },
     {
       key: "valueObject",
-      icon: <BranchesOutlined />,
+      icon: <SourceKindIcon kind="valueObject" />,
       label: "新しいValue Object",
     },
     { type: "divider" as const },
     { key: "folder", icon: <FolderAddOutlined />, label: "新しいフォルダ" },
   ];
+  useLayoutMotion(
+    container,
+    [
+      ...snapshot.sources.map((source) => `node-${source.id}`),
+      ...[...allPaths.folders].map((path) => `node-${path}`),
+    ],
+    { layout: false, enterOnGrowth: true },
+  );
   const tree = useMemo(() => {
     const build = (folder: string): DataNode[] => {
       const children = [...(allPaths.children.get(folder) ?? [])];
@@ -193,6 +190,7 @@ export function Explorer({
               <Input
                 autoFocus
                 aria-label="項目の名前"
+                data-motion-key={`node-${item.source?.id ?? item.path}`}
                 size="small"
                 value={renaming.value}
                 onClick={(e) => e.stopPropagation()}
@@ -242,6 +240,7 @@ export function Explorer({
                 }}
               >
                 <span
+                  data-motion-key={`node-${item.source?.id ?? item.path}`}
                   className={`tree-name ${item.source?.syntaxError ? "tree-error" : ""}`}
                   title={item.path}
                 >

@@ -79,7 +79,10 @@ export function NestedEditor({
         return `${key}:${occurrence}`;
       })
     : [];
-  useLayoutMotion(body, itemKeys.join("|"));
+  useLayoutMotion(body, itemKeys, {
+    enterOnGrowth: true,
+    context: JSON.stringify([cursor?.source, cursor?.path]),
+  });
   usePointerSort(body, (_, from, to) =>
     move(itemKeys.indexOf(from), itemKeys.indexOf(to)),
   );

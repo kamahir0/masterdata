@@ -5,7 +5,7 @@ Status: Implemented
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -44,12 +44,14 @@ Explorerはsource / folderの作成・rename・移動・削除、検索、種類
 
 nestedの全祖先と一つ上へ戻る操作を表示し、配列要素から配列一覧へ戻れる。対象pathの遷移では入力の初期表示を行い、別対象の値差を操作アニメーションにしない。問題箇所へのjumpは一度で完結し、その後の検索・選択・scrollを上書きしない。横scroll後の値変更でscrollや列の見た目をリセットしない。
 
-Explorerは重複するproject名表示を除き、約28pxの行で三角・icon・名前を隣接させる。幅不足の名前はellipsisとfull pathのtooltipで補い、未保存markを保持する。Escapeはrename中なら取消、それ以外はExplorer選択だけを解除してdocumentを保持する。
+Explorerは重複するproject名表示を除き、約28pxの行で三角・icon・名前を隣接させ、子folderの三角と親folder iconの中心を同じ縦軸に揃える。幅不足の名前はellipsisとfull pathのtooltipで補い、未保存markを保持する。Escapeはrename中なら取消、それ以外はExplorer選択だけを解除してdocumentを保持する。
 
 Explorerのfile context menuはそのfileの操作、folder context menuは作成とそのfolderの操作を表示する。folder本体のsingle clickでも開閉する。rename入力や右クリックでは開閉しない。headerの新規作成入口は維持する。
 
 
 Explorer fileのsingle clickは最大一つのitalicなpreview tabを開き、次の未open fileでcleanなpreviewだけを置換する。定着済みtabは保持する。Explorer file / tabのdouble clickで定着し、編集されたpreview・元からdirtyなfile・新規fileは自動定着する。遷移前に入力途中の値をcommitする。Explorerは常時到達可能なtoggleと表示menu（Cmd/Ctrl+Shift+E）から開閉し、検索・展開・選択・編集中fileを保持する。非表示のExplorerはkeyboard操作対象にしない。
+
+source iconは表（grid）、分離data（record行）、Enum（単一候補）、Flags（複数選択）、Custom（複数field構造）、Value Object（一つの値の包み）を一式の線画で区別する。Git branch / tag / 組織図を流用せず、file・tab・新規menuで統一し、種類名をtooltip / accessible nameでも示す。
 
 ## DATA-001 — 表・型・関係
 
@@ -61,17 +63,17 @@ YAML sourceはlegacy2のschema / data / typeの形を採用し、schema内record
 
 ## DATA-002 — Project・出力選択
 
-Projectは`masterdata.yaml`に名前・profiles・publish先を保存し、`sources/`以下のYAMLを編集する。既存legacy2の`masterdata.toml`も読込み時に解釈できるが、そのCLI lifecycleを採用しない。tagsのinclude / excludeによるprofilesをGUIで編集・選択し、今回含まれるrecordを確認できる。
+Projectは`masterdata.yaml`に名前・profiles・publish先を保存し、`sources/`以下のYAMLを編集する。既存legacy2の`masterdata.toml`も読込み時に解釈できるが、そのCLI lifecycleを採用しない。tagsのinclude / excludeによるprofilesをGUIで編集・選択し、今回含まれるrecordを確認できる。Build profile初期値は未選択とし、「プロファイルを選択」を表示する。clearや選択profileの削除で未選択へ戻る。未選択でもBuildでき、タグで絞り込まない既存規則を保持し、結果panelでも未選択 / 絞り込みなしとして示す。
 
 ## BUILD-001 — BuildとPublish
 
 明示Buildは選択profileのcurrent draft snapshotを検証する。未保存draftを対象にしたことを表示し、暗黙Saveをしない。不整合があれば該当箇所へ戻れる診断を返し、前回の成功成果物を保持する。Build中も編集可能で、完了時は対象revisionを識別する。
 
-C#定義とMasterMemory binaryは.NET / MasterMemoryで生成し、生成binaryを実際にreloadしてから成功とする。Rust / JSでbinary formatを実装しない。Publishは最新成功成果物を、画面で設定した外部targetへ明示操作で配置する。管理下成果物だけを更新・退役し、隣接するユーザーfile / Unity `.meta`を変更しない。成功・失敗・古い成果物の区別を表示する。「生成結果」と表示menuから直近のBuild / Publish結果panelを再表示でき、表示だけでは処理しない。成功・失敗・Publish結果をproject内で保持する。公開releaseやUnity起動はこの操作に含めない。
+C#定義とMasterMemory binaryは.NET / MasterMemoryで生成し、生成binaryを実際にreloadしてから成功とする。Rust / JSでbinary formatを実装しない。Publishは最新成功成果物を、画面で設定した外部targetへ明示操作で配置する。管理下成果物だけを更新・退役し、隣接するユーザーfile / Unity `.meta`を変更しない。成功・失敗・古い成果物の区別を表示する。toolbarはprofileとBuild split buttonにまとめ、主buttonでBuild、隣のmenuからPublishと実行結果panelの再表示へ進める。表示menuにも実行結果の入口を残し、表示だけでは処理しない。Publishはpanelで対象・配置先を確認してから明示実行する。busy中の重複Build / Publishを防ぐ。成功・失敗・Publish結果をproject内で保持する。公開releaseやUnity起動はこの操作に含めない。
 
 ## UI-001 — 共通UI・motion
 
-React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、Drawer、Modal、Notification等を広く使う。通常操作に共通tokenとmotionを伴わせ、入力をアニメーション完了待ちにしない。追加・削除・並替え・panel切替にも動きを付ける。表の行・列、Enum member、Custom fieldの追加は短い出現motion、ボタン並替えは位置入替motionを持つ。配列を含む並替えdragはpointer追従と隣接要素のpreviewを示し、drop時に一つのUndo単位で確定する。Esc / pointer取消ではdraftを変えない。reduced motionでは補間を抑える。全体明滅、診断増減による表位置の移動、更新でのfocus消失を避ける。テーマ、reduced motion、文字とariaによる状態、キーボード操作を備える。
+React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、Drawer、Modal、Notification等を広く使う。通常操作に共通tokenとmotionを伴わせ、入力をアニメーション完了待ちにしない。追加・削除・並替え・panel切替にも動きを付ける。タブ、表の行・列、Enum / Flags member、Custom field、配列、Explorer新規項目には約280msの出現、並替え・削除後の詰め替えには約260msの緩やかなease-outを使う。Build / Publish結果にも対象を絞った出現feedbackを付ける。dropdown・folder・panel開閉やdrag previewは約100〜160msの即応を維持する。配列を含む並替えdragはpointer追従と隣接要素のpreviewを示し、drop時に一つのUndo単位で確定する。Esc / pointer取消ではdraftを変えない。補間の完了前も入力・追加・Undo・close・dragができ、連続操作では前のmotionを安全に打ち切り / 接続する。virtual mountを実追加と区別し、新規行 / 列を表示してfeedbackを届ける。record追加は新規行へ移ってすぐ入力でき、検索中の明示追加は検索を解除する。遅延focusで既に移動したユーザーを引き戻さない。単なる入力・保存ack・scroll・folder開閉で既存項目の出現を再生しない。reduced motionでは補間を抑える。全体明滅、診断増減による表位置の移動、更新でのfocus消失を避ける。テーマ、reduced motion、文字とariaによる状態、キーボード操作を備える。
 
 保存状態はiconとtooltip / accessible nameで示し、通常画面で「未保存の変更」の文やfile数・メモリ編集中の説明を重ねない。設定表示は「モーション: ON / OFF」、FlagsのNone表示は「None」に統一する。folderとProblemsの開閉は約100〜120msのOutExpo相当ease-outを使う。
 

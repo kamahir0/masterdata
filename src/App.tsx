@@ -31,7 +31,6 @@ import {
 } from "antd";
 import jaJP from "antd/locale/ja_JP";
 import {
-  ApartmentOutlined,
   ArrowRightOutlined,
   CheckCircleOutlined,
   CloseOutlined,
@@ -40,6 +39,7 @@ import {
   ExclamationCircleOutlined,
   ExperimentOutlined,
   FolderOpenOutlined,
+  FileDoneOutlined,
   DownOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -55,6 +55,7 @@ import {
 } from "@ant-design/icons";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { session } from "./core/session";
+import { identity } from "./core/identity";
 import {
   type BuildResult,
   type LoadedProject,
@@ -81,7 +82,7 @@ import { CloseFileDialog } from "./ui/close-file";
 import { Settings } from "./ui/settings";
 import { Entry } from "./ui/inputs";
 import { EditorBoundary } from "./ui/editor-boundary";
-import { quickTransition, easeOutExpoCss } from "./ui/motion";
+import { quickTransition, easeOutExpoCss, resultTransition } from "./ui/motion";
 function SourceText({ source }: { source: Source }) {
   const readText = () => {
     const saved = session.getState().saved.get(source.id);
@@ -165,9 +166,15 @@ function Workspace({
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("新しいプロジェクト");
   const [profile, setProfile] = useState("");
+  useEffect(() => {
+    if (profile && !Object.hasOwn(snapshot.config.profiles, profile))
+      setProfile("");
+  }, [profile, snapshot.config.profiles]);
   const [buildOpen, setBuildOpen] = useState(false);
   const [building, setBuilding] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // Native commands may arrive together before React commits the busy state.
+  const outputBusy = useRef(false);
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
   const [buildError, setBuildError] = useState("");
   const [publishResult, setPublishResult] = useState<{
@@ -476,9 +483,11 @@ function Workspace({
     });
   }
   async function build() {
+    if (outputBusy.current) return;
     commitActive();
     const current = session.getState();
     if (!current.project) return;
+    outputBusy.current = true;
     setBuilding(true);
     setBuildOpen(true);
     setBuildError("");
@@ -487,7 +496,9 @@ function Workspace({
         await window.desktop.build(
           current.project.token,
           current.snapshot,
-          profile,
+          Object.hasOwn(current.snapshot.config.profiles, profile)
+            ? profile
+            : "",
           current.revision,
         ),
       );
@@ -495,11 +506,13 @@ function Workspace({
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : String(error));
     } finally {
+      outputBusy.current = false;
       setBuilding(false);
     }
   }
   async function publish() {
-    if (!project || !buildResult) return;
+    if (!project || !buildResult || outputBusy.current) return;
+    outputBusy.current = true;
     const publishedBuild = buildResult;
     setPublishing(true);
     setBuildOpen(true);
@@ -519,6 +532,7 @@ function Workspace({
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : String(error));
     } finally {
+      outputBusy.current = false;
       setPublishing(false);
     }
   }
@@ -713,38 +727,57 @@ function Workspace({
               </Tooltip>
             </Space>
             <Space>
-              <Select
-                aria-label="出力プロファイル"
-                className="profile-select"
-                value={profile}
-                options={[
-                  { value: "", label: "すべてのデータ" },
-                  ...Object.keys(snapshot.config.profiles).map((value) => ({
-                    value,
-                    label: value,
-                  })),
-                ]}
-                onChange={setProfile}
-              />
-              <Button
-                icon={<PlayCircleOutlined />}
-                loading={building}
-                onClick={build}
-              >
-                Build
-              </Button>
-              <Button
-                icon={<RocketOutlined />}
-                onClick={() => setBuildOpen(true)}
-              >
-                Publish
-              </Button>
-              <Button
-                onClick={() => setBuildOpen(true)}
-                aria-label="生成結果を表示"
-              >
-                生成結果
-              </Button>
+              <Tooltip title="未選択時はタグで絞り込まずにビルドします">
+                <Select
+                  aria-label="出力プロファイル"
+                  className="profile-select"
+                  placeholder="プロファイルを選択"
+                  value={profile || undefined}
+                  allowClear
+                  options={Object.keys(snapshot.config.profiles).map(
+                    (value) => ({ value, label: value }),
+                  )}
+                  onChange={(value) => setProfile(value ?? "")}
+                />
+              </Tooltip>
+              <Space.Compact className="build-controls">
+                <Button
+                  icon={<PlayCircleOutlined />}
+                  loading={building}
+                  disabled={publishing}
+                  onClick={build}
+                >
+                  Build
+                </Button>
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      {
+                        key: "publish",
+                        icon: <RocketOutlined aria-hidden="true" />,
+                        label: "Publish…",
+                      },
+                      { type: "divider" },
+                      {
+                        key: "results",
+                        icon: <FileDoneOutlined aria-hidden="true" />,
+                        label: "実行結果を表示",
+                      },
+                    ],
+                    onClick: () => setBuildOpen(true),
+                  }}
+                >
+                  <Button
+                    icon={
+                      <Badge dot={!!buildError} color="red">
+                        <DownOutlined />
+                      </Badge>
+                    }
+                    aria-label="ビルドの操作"
+                  />
+                </Dropdown>
+              </Space.Compact>
             </Space>
           </div>
           <div className="workspace">
@@ -754,6 +787,7 @@ function Workspace({
               aria-hidden={!preferences.explorer}
             >
               <Explorer
+                key={project.token}
                 snapshot={snapshot}
                 saved={state.saved}
                 active={active}
@@ -1105,10 +1139,15 @@ function Workspace({
       >
         <div className="build-panel">
           <Typography.Paragraph type="secondary">
-            現在の編集内容から成果物を作成します。保存は別の操作です。
+            現在の編集内容をBuildし、成果物を確認してからPublishで配置します。保存は別の操作です。
           </Typography.Paragraph>
           <Space>
-            <Tag color="blue">{profile || "すべてのデータ"}</Tag>
+            <Tag color="blue">{profile || "プロファイル未選択"}</Tag>
+            {!profile && (
+              <Typography.Text type="secondary">
+                タグの絞り込みなし
+              </Typography.Text>
+            )}
             <Tag>編集 rev.{revision}</Tag>
             {dirty && <Tag color="gold">未保存の変更を含む</Tag>}
           </Space>
@@ -1117,6 +1156,7 @@ function Workspace({
             size="large"
             icon={<PlayCircleOutlined />}
             loading={building}
+            disabled={publishing}
             onClick={build}
             block
           >
@@ -1131,28 +1171,48 @@ function Workspace({
             </div>
           )}
           {publishResult && (
-            <Alert
-              type="success"
-              title={`Publish完了 · rev.${publishResult.revision} · ${publishResult.profile || "すべてのデータ"}`}
-              description={publishResult.message}
-              showIcon
-            />
+            <motion.div
+              key={identity(publishResult)}
+              initial={reduced ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={reduced ? { duration: 0 } : resultTransition}
+            >
+              <Alert
+                type="success"
+                title={`Publish完了 · rev.${publishResult.revision} · ${publishResult.profile || "プロファイル未選択"}`}
+                description={publishResult.message}
+                showIcon
+              />
+            </motion.div>
           )}
           {buildError && (
-            <Alert
-              type="error"
-              showIcon
-              title="処理を完了できませんでした"
-              description={<pre className="build-error">{buildError}</pre>}
-            />
+            <motion.div
+              initial={reduced ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={reduced ? { duration: 0 } : resultTransition}
+            >
+              <Alert
+                type="error"
+                showIcon
+                title="処理を完了できませんでした"
+                description={<pre className="build-error">{buildError}</pre>}
+              />
+            </motion.div>
           )}
           {buildResult && (
             <>
-              <Result
-                status="success"
-                title="成果物を生成しました"
-                subTitle={`${buildResult.tables} テーブル · ${buildResult.records} レコード · ${buildResult.profile || "すべてのデータ"} · rev.${buildResult.revision}`}
-              />
+              <motion.div
+                key={identity(buildResult)}
+                initial={reduced ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0 } : resultTransition}
+              >
+                <Result
+                  status="success"
+                  title="成果物を生成しました"
+                  subTitle={`${buildResult.tables} テーブル · ${buildResult.records} レコード · ${buildResult.profile || "プロファイル未選択"} · rev.${buildResult.revision}`}
+                />
+              </motion.div>
               {(buildResult.revision !== revision ||
                 buildResult.profile !== profile) && (
                 <Alert
@@ -1187,8 +1247,9 @@ function Workspace({
                   icon={<RocketOutlined />}
                   loading={publishing}
                   disabled={
-                    !snapshot.config.publish.csharp &&
-                    !snapshot.config.publish.binary
+                    building ||
+                    (!snapshot.config.publish.csharp &&
+                      !snapshot.config.publish.binary)
                   }
                 >
                   Publishする

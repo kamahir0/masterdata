@@ -62,7 +62,7 @@ export function TypeEditor({
     setMembers(next, "候補を並べ替え");
   };
   const root = useRef<HTMLDivElement>(null);
-  useLayoutMotion(root, members.map(identity).join("|"));
+  useLayoutMotion(root, members.map(identity));
   usePointerSort(root, (_, from, to) =>
     move(
       members.findIndex((m: any) => identity(m) === from),

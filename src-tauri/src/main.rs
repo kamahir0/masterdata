@@ -232,7 +232,7 @@ fn menu(app: &tauri::App) -> tauri::Result<()> {
             )?,
             &item("find", "検索", Some("CmdOrCtrl+F"))?,
             &item("problems", "問題", Some("CmdOrCtrl+Shift+M"))?,
-            &item("build-results", "生成結果", None)?,
+            &item("build-results", "実行結果", None)?,
             &PredefinedMenuItem::separator(app)?,
             &item("zoom-reset", "実際のサイズ", Some("CmdOrCtrl+0"))?,
             &item("zoom-in", "拡大", Some("CmdOrCtrl+Plus"))?,

@@ -188,6 +188,7 @@ button:focus-visible,
   border-color: var(--line);
 }
 .tree-scroll {
+  --tree-step: 16px;
   flex: 1;
   min-height: 0;
   padding: 0 7px;
@@ -204,7 +205,7 @@ button:focus-visible,
   width: 100%;
 }
 .tree-scroll .ant-tree-node-content-wrapper {
-  padding-inline: 4px !important;
+  padding-inline: 0 4px !important;
   min-height: 28px;
   height: 28px;
   flex: 1;
@@ -236,7 +237,7 @@ button:focus-visible,
   color: #d16b58;
 }
 .tree-scroll .ant-tree-indent-unit {
-  width: 16px !important;
+  width: var(--tree-step) !important;
 }
 .main-area {
   flex: 1;
@@ -1242,15 +1243,22 @@ button:focus-visible,
 
 .tree-scroll .ant-tree-switcher {
   margin-inline-end: 0;
-  flex: 0 0 16px;
-  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--tree-step);
+  width: var(--tree-step);
   line-height: 28px;
 }
 .tree-scroll .ant-tree-draggable-icon {
   display: none;
 }
 .tree-scroll .ant-tree-iconEle {
-  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-step);
+  flex: 0 0 var(--tree-step);
   line-height: 28px;
 }
 .tree-scroll .ant-tree-title {
@@ -1360,4 +1368,12 @@ button:focus-visible,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.source-icon {
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+.source-icon svg {
+  display: block;
 }

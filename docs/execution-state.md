@@ -1,12 +1,13 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 09a6c16319c3bc2db251ed98da5c2145fe40ba97
-Work base: 6f7b0eac2ef885210eb89aa45d47bb8e4932f786
+Stage: implementation-ready
+Candidate: none
+Work base: 7aea6800814466613e701fafcd0327599246208b
 
 ## Active work
 
-None.
+Completed: 0006の承認・実装、local unit 30 / native 3 / UI 64、両theme・最小幅の画面確認、native package / startup、self-review。
+Remaining: exact CandidateのGit delivery、fresh reviewと3 OS CI。
 
 ## Blocking findings
 

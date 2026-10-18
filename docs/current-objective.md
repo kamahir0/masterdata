@@ -2,14 +2,12 @@
 
 ## Objective
 
-2026-10-18のGUI実機レビューを解消する。保存表示と現在ファイル / 全保存、Explorerの密度・階層・省略・選択解除、サンプル書式、Flags None、追加・並替えの視覚feedback、Build / Publish結果の再表示を整える。
-
-選択根拠: Humanの12項目の具体的なレビューと添付画像。
+2026-10-18 HumanのVS Code比較レビューに基づき、ファイルのプレビュー・定着・安全なタブclose、Explorer開閉、独立したエディター設定、緑のアクセントと無彩色のsurface、作業領域を広く取るcompact layoutを実装する。
 
 ## Completion boundary
 
-関連仕様の整理・レビュー、実装、保存と回復・操作シナリオのfocused検証、実画面の確認、self-review、通常commit / pushと各OS CI。
+仕様の別pass reviewと承認、実装、途中入力・部分保存・close取消と失敗のfocused検証、代表作業と実画面の確認、self-review、通常commit / pushと各OS CI。
 
 ## Non-scope
 
-既存ユーザーの編集中データの変更、CLI、公開release、アプリ全体の再構築。
+VS Codeの拡張機能・コード編集機能の再現、ユーザーの既存作業の保存・破棄、CLI、公開release。

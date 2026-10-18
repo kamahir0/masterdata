@@ -46,7 +46,7 @@ export function Explorer({
 }: {
   snapshot: Snapshot;
   active: string;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, pin?: boolean) => void;
   fail: (error: unknown) => void;
   saved: Map<string, SavedFile>;
 }) {
@@ -144,7 +144,7 @@ export function Explorer({
         rename(path);
       } else {
         const id = session.add(kind, folder);
-        onSelect(id);
+        onSelect(id, true);
         setKeys([id]);
         const source = session
           .getState()
@@ -368,6 +368,10 @@ export function Explorer({
                 : expanded
             }
             onExpand={setExpanded}
+            onDoubleClick={(_, node) => {
+              const id = String(node.key);
+              if (!id.startsWith("folder:")) onSelect(id, true);
+            }}
             multiple
             draggable={{ icon: false }}
             onSelect={(selected, info) => {

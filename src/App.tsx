@@ -33,7 +33,6 @@ import jaJP from "antd/locale/ja_JP";
 import {
   ApartmentOutlined,
   ArrowRightOutlined,
-  BulbOutlined,
   CheckCircleOutlined,
   CloseOutlined,
   CodeOutlined,
@@ -42,13 +41,15 @@ import {
   ExperimentOutlined,
   FolderOpenOutlined,
   DownOutlined,
-  MoonOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   RedoOutlined,
   RocketOutlined,
   SaveOutlined,
   SettingOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  ControlOutlined,
   UndoOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
@@ -70,6 +71,13 @@ import { TypeEditor } from "./ui/type-editor";
 import { Relationships } from "./ui/relationships";
 import { FieldEditor } from "./ui/fields";
 import { NestedEditor, type Cursor } from "./ui/nested";
+import {
+  EditorSettings,
+  useEditorPreferences,
+  type EditorPreferences,
+} from "./ui/editor-settings";
+import { FileTabs } from "./ui/file-tabs";
+import { CloseFileDialog } from "./ui/close-file";
 import { Settings } from "./ui/settings";
 import { Entry } from "./ui/inputs";
 import { EditorBoundary } from "./ui/editor-boundary";
@@ -124,21 +132,25 @@ function SourceText({ source }: { source: Source }) {
   );
 }
 function Workspace({
-  dark,
-  setDark,
-  reduced,
-  setReduced,
+  preferences,
+  setPreferences,
 }: {
-  dark: boolean;
-  setDark: (value: boolean) => void;
-  reduced: boolean;
-  setReduced: (value: boolean) => void;
+  preferences: EditorPreferences;
+  setPreferences: React.Dispatch<React.SetStateAction<EditorPreferences>>;
 }) {
+  const reduced = preferences.reduced;
+  const setReduced = (reduced: boolean) =>
+    setPreferences((old) => ({ ...old, reduced }));
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const { snapshot, project, revision } = state;
   const { message, modal } = AntApp.useApp();
   const [active, setActive] = useState("");
   const [opened, setOpened] = useState<string[]>([]);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [closing, setClosing] = useState<string | null>(null);
+  const [editorSettings, setEditorSettings] = useState(false);
+  const navigation = useRef({ active, opened, preview });
+  navigation.current = { active, opened, preview };
   const [tab, setTab] = useState("data");
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const [settings, setSettings] = useState(false);
@@ -172,6 +184,17 @@ function Workspace({
   newestRevision.current = revision;
   const source = snapshot.sources.find((s) => s.id === active);
   const dirty = session.dirty;
+  useEffect(() => {
+    if (
+      !preferences.explorer &&
+      document.activeElement?.closest(".explorer-container")
+    )
+      (
+        document.querySelector(
+          '.file-tab[aria-selected="true"]',
+        ) as HTMLElement | null
+      )?.focus();
+  }, [preferences.explorer]);
   const fail = (error: unknown) => {
     message.error({
       content: error instanceof Error ? error.message : String(error),
@@ -229,17 +252,46 @@ function Workspace({
       worker.terminate();
     };
   }, []);
-  const select = (id: string) => {
+  // Commit local input before deciding whether a preview is replaceable.
+  const select = (id: string, pin = false) => {
+    // Tree / tab activation already blurs the value editor. Keep their new
+    // focus so Escape and arrow navigation stay owned by the navigation pane.
+    if (!document.activeElement?.closest(".explorer-container, .file-tabs"))
+      commitActive();
+    const current = session.getState().snapshot;
+    const target = current.sources.find((source) => source.id === id);
+    if (!target) return;
+    const previous = current.sources.find((source) => source.id === preview);
+    const keepPrevious = previous && session.dirtySource(previous);
+    const permanent = pin || session.dirtySource(target);
+    if (!opened.includes(id)) {
+      setOpened((old) => {
+        const next =
+          preview && !keepPrevious ? old.filter((key) => key !== preview) : old;
+        const at = preview && !keepPrevious ? old.indexOf(preview) : -1;
+        const result = [...next];
+        if (at >= 0) result.splice(at, 0, id);
+        else result.push(id);
+        return result;
+      });
+      setPreview(permanent ? null : id);
+    } else if ((preview === id && permanent) || keepPrevious) setPreview(null);
     setJump(undefined);
-    setActive(id);
-    setOpened((old) => (old.includes(id) ? old : [...old, id]));
-    setCursor(null);
-    setTab("data");
+    if (id !== active) {
+      setActive(id);
+      setCursor(null);
+      setTab("data");
+    }
   };
+  useEffect(() => {
+    const current = snapshot.sources.find((source) => source.id === preview);
+    if (preview && (!current || session.dirtySource(current))) setPreview(null);
+  }, [snapshot, preview]);
   const load = (value: LoadedProject | null) => {
     if (!value) return;
     session.load(value);
     setOpened([]);
+    setPreview(null);
     setCursor(null);
     setProfile("");
     setBuildResult(null);
@@ -252,12 +304,13 @@ function Workspace({
     if (first) {
       setActive(first.id);
       setOpened([first.id]);
+      setPreview(first.id);
     } else setActive("");
   };
   useEffect(() => {
     window.desktop?.initial().then(load).catch(fail);
   }, []);
-  async function save(all = false) {
+  async function save(scope: boolean | string = false, report = true) {
     // A queued Save All (including close confirmation) must observe the first
     // acknowledgement and then capture newer drafts, never silently skip them.
     while (savingRequest.current) await savingRequest.current;
@@ -267,7 +320,14 @@ function Workspace({
     const currentSource = current.snapshot.sources.find(
       (source) => source.id === active,
     );
-    const ids = all ? undefined : currentSource ? [currentSource.id] : [];
+    const ids =
+      typeof scope === "string"
+        ? [scope]
+        : scope
+          ? undefined
+          : currentSource
+            ? [currentSource.id]
+            : [];
     if (ids && !ids.length) return;
     const request = (async () => {
       setSaving(true);
@@ -282,7 +342,7 @@ function Workspace({
         session.acceptSave(result, captured, ids);
         message.success("保存しました");
       } catch (error) {
-        fail(error);
+        if (report) fail(error);
         throw error;
       } finally {
         setSaving(false);
@@ -295,13 +355,62 @@ function Workspace({
       if (savingRequest.current === request) savingRequest.current = null;
     }
   }
+  function removeTab(id: string) {
+    // A queued close can finish after the user has opened another file.
+    const current = navigation.current;
+    const remaining = current.opened.filter(
+      (key) =>
+        key !== id &&
+        session.getState().snapshot.sources.some((source) => source.id === key),
+    );
+    setOpened(remaining);
+    if (current.preview === id) setPreview(null);
+    if (current.active === id) {
+      requestAnimationFrame(() => {
+        const next =
+          document.querySelector<HTMLElement>(
+            '.file-tab[aria-selected="true"]',
+          ) ?? document.querySelector<HTMLElement>(".main-area");
+        next?.focus();
+      });
+
+      const index = current.opened.indexOf(id);
+      setActive(remaining[Math.min(index, remaining.length - 1)] ?? "");
+      setCursor(null);
+      setTab("data");
+      setJump(undefined);
+    }
+  }
+  async function closeTab(id: string) {
+    if (!id || guard.current) return;
+    const projectToken = session.getState().project?.token;
+    try {
+      while (savingRequest.current) await savingRequest.current;
+    } catch {
+      return;
+    }
+    if (guard.current || projectToken !== session.getState().project?.token)
+      return;
+    commitActive();
+    const current = session
+      .getState()
+      .snapshot.sources.find((source) => source.id === id);
+    if (current && session.dirtySource(current)) {
+      guard.current = true;
+      setClosing(id);
+    } else removeTab(id);
+  }
+  const finishClose = () => {
+    setClosing(null);
+    guard.current = false;
+  };
   async function guarded(action: () => Promise<void> | void) {
+    if (guard.current) return;
     commitActive();
     if (!session.dirty) {
       await action();
       return;
     }
-    if (guard.current) return;
     guard.current = true;
     const instance = modal.confirm({
       title: "変更を保存しますか？",
@@ -411,8 +520,8 @@ function Workspace({
       setPublishing(false);
     }
   }
-  const actions = useRef({ open, save, build, guarded });
-  actions.current = { open, save, build, guarded };
+  const actions = useRef({ open, save, build, guarded, closeTab, active });
+  actions.current = { open, save, build, guarded, closeTab, active };
   useEffect(
     () =>
       window.desktop?.onCommand((command) => {
@@ -422,6 +531,11 @@ function Workspace({
         if (command === "save") void actions.current.save().catch(() => {});
         if (command === "save-all")
           void actions.current.save(true).catch(() => {});
+        if (command === "close-file")
+          void actions.current.closeTab(actions.current.active);
+        if (command === "explorer")
+          setPreferences((old) => ({ ...old, explorer: !old.explorer }));
+        if (command === "editor-settings") setEditorSettings(true);
         if (command === "build-results") setBuildOpen(true);
         if (command === "build") void actions.current.build();
         if (command === "undo") {
@@ -473,12 +587,12 @@ function Workspace({
           </span>
         </div>
         <Space className="titlebar-controls">
-          <Tooltip title={dark ? "ライトテーマ" : "ダークテーマ"}>
+          <Tooltip title="エディター設定">
             <Button
               type="text"
-              icon={dark ? <BulbOutlined /> : <MoonOutlined />}
-              aria-label="テーマを切り替え"
-              onClick={() => setDark(!dark)}
+              aria-label="エディター設定"
+              icon={<SettingOutlined />}
+              onClick={() => setEditorSettings(true)}
             />
           </Tooltip>
           {project && (
@@ -486,7 +600,7 @@ function Workspace({
               <Button
                 type="text"
                 aria-label="プロジェクト設定"
-                icon={<SettingOutlined />}
+                icon={<ControlOutlined />}
                 onClick={() => setSettings(true)}
               />
             </Tooltip>
@@ -496,7 +610,33 @@ function Workspace({
       {project ? (
         <>
           <div className="app-toolbar">
-            <Space>
+            <Space size={4}>
+              <Tooltip
+                title={
+                  preferences.explorer
+                    ? "エクスプローラーを折りたたむ"
+                    : "エクスプローラーを表示"
+                }
+              >
+                <Button
+                  type="text"
+                  aria-label="エクスプローラーの表示切替"
+                  aria-expanded={preferences.explorer}
+                  icon={
+                    preferences.explorer ? (
+                      <MenuFoldOutlined />
+                    ) : (
+                      <MenuUnfoldOutlined />
+                    )
+                  }
+                  onClick={() =>
+                    setPreferences((old) => ({
+                      ...old,
+                      explorer: !old.explorer,
+                    }))
+                  }
+                />
+              </Tooltip>
               <Button icon={<FolderOpenOutlined />} onClick={open}>
                 開く
               </Button>
@@ -606,49 +746,32 @@ function Workspace({
             </Space>
           </div>
           <div className="workspace">
-            <Explorer
-              snapshot={snapshot}
-              saved={state.saved}
-              active={active}
-              onSelect={select}
-              fail={fail}
-            />
-            <main className="main-area">
-              <div className="file-tabs">
-                <Tabs
-                  type="editable-card"
-                  hideAdd
-                  size="small"
-                  activeKey={active}
-                  items={opened
-                    .filter((id) => snapshot.sources.some((s) => s.id === id))
-                    .map((id) => {
-                      const s = snapshot.sources.find((s) => s.id === id)!;
-                      return {
-                        key: id,
-                        label: (
-                          <span className="file-tab-label">
-                            <SourceIcon source={s} />
-                            {s.path
-                              .split("/")
-                              .at(-1)
-                              ?.replace(/\.ya?ml$/, "")}
-                            {session.dirtySource(s) && (
-                              <span className="dirty-dot" />
-                            )}
-                          </span>
-                        ),
-                      };
-                    })}
-                  onChange={select}
-                  onEdit={(key, action) => {
-                    if (action !== "remove") return;
-                    const remaining = opened.filter((id) => id !== key);
-                    setOpened(remaining);
-                    if (active === key) setActive(remaining.at(-1) ?? "");
-                  }}
-                />
-              </div>
+            <div
+              className={`explorer-container ${preferences.explorer ? "" : "explorer-collapsed"}`}
+              inert={!preferences.explorer}
+              aria-hidden={!preferences.explorer}
+            >
+              <Explorer
+                snapshot={snapshot}
+                saved={state.saved}
+                active={active}
+                onSelect={select}
+                fail={fail}
+              />
+            </div>
+            <main className="main-area" tabIndex={-1}>
+              <FileTabs
+                sources={opened
+                  .map((id) => snapshot.sources.find((s) => s.id === id))
+                  .filter((s): s is Source => !!s)}
+                active={active}
+                preview={preview}
+                wrap={preferences.tabLayout === "wrap"}
+                dirty={(source) => session.dirtySource(source)}
+                select={select}
+                pin={(id) => select(id, true)}
+                close={closeTab}
+              />
               {source ? (
                 <>
                   <div className="editor-heading">
@@ -669,23 +792,17 @@ function Workspace({
                           : "TABLE"}
                       </Tag>
                     </div>
-                    <Typography.Text
-                      type="secondary"
-                      className="source-location"
-                    >
-                      {source.path}
-                    </Typography.Text>
+                    <Tabs
+                      className="editor-tabs"
+                      activeKey={tab}
+                      onChange={(value) => {
+                        commitActive();
+                        setTab(value);
+                        setCursor(null);
+                      }}
+                      items={tabs}
+                    />
                   </div>
-                  <Tabs
-                    className="editor-tabs"
-                    activeKey={tab}
-                    onChange={(value) => {
-                      commitActive();
-                      setTab(value);
-                      setCursor(null);
-                    }}
-                    items={tabs}
-                  />
                   <section className="editor-content">
                     <EditorBoundary
                       key={`${active}:${tab}`}
@@ -943,6 +1060,40 @@ function Workspace({
         close={() => setSettings(false)}
         snapshot={snapshot}
       />
+      <EditorSettings
+        open={editorSettings}
+        close={() => setEditorSettings(false)}
+        value={preferences}
+        update={setPreferences}
+      />
+      {closing && (
+        <CloseFileDialog
+          key={closing}
+          name={
+            snapshot.sources.find((source) => source.id === closing)?.path ??
+            closing
+          }
+          cancel={finishClose}
+          fail={fail}
+          save={async () => {
+            await save(closing, false);
+            const current = session
+              .getState()
+              .snapshot.sources.find((source) => source.id === closing);
+            if (current && session.dirtySource(current))
+              throw new Error(
+                "保存中に変更が追加されました。変更を確認して再度保存してください。",
+              );
+            removeTab(closing);
+            finishClose();
+          }}
+          discard={() => {
+            session.discardSource(closing);
+            removeTab(closing);
+            finishClose();
+          }}
+        />
+      )}
       <Drawer
         title={
           <Space>
@@ -1074,22 +1225,14 @@ function Workspace({
   );
 }
 export default function Root() {
-  const [dark, setDarkState] = useState(
-    localStorage.getItem("theme") === "dark",
-  );
-  const [reduced, setReducedState] = useState(
-    localStorage.getItem("reduced-motion") === "true" ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-  const setDark = (value: boolean) => {
-    setDarkState(value);
-    localStorage.setItem("theme", value ? "dark" : "light");
-  };
-  const setReduced = (value: boolean) => {
-    setReducedState(value);
-    localStorage.setItem("reduced-motion", String(value));
-  };
+  const { preferences, setPreferences, dark } = useEditorPreferences();
+  const reduced = preferences.reduced;
   useEffect(() => {
+    document.documentElement.dataset.platform = navigator.platform
+      .toLowerCase()
+      .includes("mac")
+      ? "mac"
+      : "other";
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     document.documentElement.dataset.reducedMotion = String(reduced);
   }, [dark, reduced]);
@@ -1099,8 +1242,12 @@ export default function Root() {
       theme={{
         algorithm: dark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
-          colorPrimary: "#5a67d8",
-          borderRadius: 7,
+          colorPrimary: dark ? "#389264" : "#237b50",
+          colorBgContainer: dark ? "#1f1f1f" : "#ffffff",
+          colorBgElevated: dark ? "#252525" : "#ffffff",
+          colorBgLayout: dark ? "#181818" : "#f6f6f6",
+          colorBorder: dark ? "#404040" : "#d5d5d5",
+          borderRadius: 4,
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif',
           fontSize: 13,
@@ -1118,12 +1265,12 @@ export default function Root() {
           Table: { cellPaddingBlockSM: 5, cellPaddingInlineSM: 8 },
           Button: {
             defaultShadow: "none",
-            primaryShadow: "0 3px 10px #5a67d824",
+            primaryShadow: "none",
           },
           Tree: {
             titleHeight: 28,
             indentSize: 16,
-            nodeSelectedBg: dark ? "#262d50" : "#e9edff",
+            nodeSelectedBg: dark ? "#284235" : "#dceee3",
             motionDurationSlow: ".1s",
           },
         },
@@ -1132,10 +1279,8 @@ export default function Root() {
       <MotionConfig reducedMotion={reduced ? "always" : "user"}>
         <AntApp>
           <Workspace
-            dark={dark}
-            setDark={setDark}
-            reduced={reduced}
-            setReduced={setReduced}
+            preferences={preferences}
+            setPreferences={setPreferences}
           />
         </AntApp>
       </MotionConfig>

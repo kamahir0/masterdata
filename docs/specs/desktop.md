@@ -5,7 +5,7 @@ Status: Implemented
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -19,11 +19,14 @@ Humanの製品像、豊かな標準UI・motion、Enum / Customの非modal編集�
 
 操作単位のProject Undo / Redoを用意し、関連sourceを変更するrename等も一括で戻せる。Saveは履歴を消さず、保存済み状態は履歴と独立して追跡する。新規・削除・rename・移動もdraft操作とし、Save前にdiskへ反映しない。入力途中のローカル値はcommit前のEscで取消し、commit後はUndoする。日本語IMEの確定Enterを操作ショートカットへ流用しない。
 
-「保存」とCmd/Ctrl+Sは現在file、「すべて保存」とCmd/Ctrl+Shift+Sは全変更を対象にする。現在fileの保存で他file・設定・無関係なfolder変更を暗黙保存しない。対象fileの移動・作成に必要な親folderは作る。波及した他fileの編集は未保存で保持し、全保存で確定する。対象fileなしの通常保存は無効。close前の「保存して続ける」は全保存する。保存状態は保存I/O中の追加入力を保持し、Explorer・tab・全体で直ちに一致する。
+「保存」とCmd/Ctrl+Sは現在file、「すべて保存」とCmd/Ctrl+Shift+Sは全変更を対象にする。現在fileの保存で他file・設定・無関係なfolder変更を暗黙保存しない。対象fileの移動・作成に必要な親folderは作る。波及した他fileの編集は未保存で保持し、全保存で確定する。対象fileなしの通常保存は無効。window close / Project切替前の「保存して続ける」は全保存する。保存状態は保存I/O中の追加入力を保持し、Explorer・tab・全体で直ちに一致する。
 
-Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。
+Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。
 
 有効sourceをGUIで編集して保存するときは、空でないmap / sequenceを2スペースのblock形式へ統一する。コメント・引用符・整数精度・改行形式・値を保持する。未変更fileやsyntax不正なraw入力を整形のためだけに書き換えない。
+
+
+file tabのclose iconとCmd/Ctrl+Wは指定 / 現在tabだけを閉じ、最後のtab後もwindowとprojectを保持する。dirtyならfile名と「保存」「保存しない」「キャンセル」を示す。保存・破棄はそのfileだけを対象とし、他file・設定・folder draftへ波及させない。破棄は保存済みsourceへ復元し、新規sourceは取り除き、Undoで回復できる。復元先pathのdraft衝突、保存失敗、保存I/O中の追加入力では入力とtabを保持する。OSのwindow close / 終了は全体の未保存保護を維持する。
 
 ## EDIT-003 — 直接編集
 
@@ -44,6 +47,9 @@ nestedの全祖先と一つ上へ戻る操作を表示し、配列要素から�
 Explorerは重複するproject名表示を除き、約28pxの行で三角・icon・名前を隣接させる。幅不足の名前はellipsisとfull pathのtooltipで補い、未保存markを保持する。Escapeはrename中なら取消、それ以外はExplorer選択だけを解除してdocumentを保持する。
 
 Explorerのfile context menuはそのfileの操作、folder context menuは作成とそのfolderの操作を表示する。folder本体のsingle clickでも開閉する。rename入力や右クリックでは開閉しない。headerの新規作成入口は維持する。
+
+
+Explorer fileのsingle clickは最大一つのitalicなpreview tabを開き、次の未open fileでcleanなpreviewだけを置換する。定着済みtabは保持する。Explorer file / tabのdouble clickで定着し、編集されたpreview・元からdirtyなfile・新規fileは自動定着する。遷移前に入力途中の値をcommitする。Explorerは常時到達可能なtoggleと表示menu（Cmd/Ctrl+Shift+E）から開閉し、検索・展開・選択・編集中fileを保持する。非表示のExplorerはkeyboard操作対象にしない。
 
 ## DATA-001 — 表・型・関係
 
@@ -68,6 +74,9 @@ C#定義とMasterMemory binaryは.NET / MasterMemoryで生成し、生成binary�
 React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、Drawer、Modal、Notification等を広く使う。通常操作に共通tokenとmotionを伴わせ、入力をアニメーション完了待ちにしない。追加・削除・並替え・panel切替にも動きを付ける。表の行・列、Enum member、Custom fieldの追加は短い出現motion、ボタン並替えは位置入替motionを持つ。配列を含む並替えdragはpointer追従と隣接要素のpreviewを示し、drop時に一つのUndo単位で確定する。Esc / pointer取消ではdraftを変えない。reduced motionでは補間を抑える。全体明滅、診断増減による表位置の移動、更新でのfocus消失を避ける。テーマ、reduced motion、文字とariaによる状態、キーボード操作を備える。
 
 保存状態はiconとtooltip / accessible nameで示し、通常画面で「未保存の変更」の文やfile数・メモリ編集中の説明を重ねない。設定表示は「モーション: ON / OFF」、FlagsのNone表示は「None」に統一する。folderとProblemsの開閉は約100〜120msのOutExpo相当ease-outを使う。
+
+
+editor設定とproject設定を別の入口・画面にする。editor設定はPC内で保存し、project dirty / Undoから独立させる。themeはLight / Dark / System（初期System）、SystemではOSの変更に追従する。file tabsは一行scroll（初期）または自動折返しを選べる。折返しが多数になればtab帯内を縦scrollして編集領域を保つ。Explorer visibilityとmotionもeditor preferenceで、変更時にsessionをreloadしない。darkの基調は黒に近い無彩色、lightは白・灰色とし、緑accentでactive / focusを示す。error / warningの意味色を保持する。titlebar・操作帯・tabs・modeをcompactにし、大きい見出しとpathの重複を圧縮する。定義名の直接編集、型表示、日常操作と設定への入口を保ち、最小window幅で重ねない。
 
 ## DESKTOP-001 — Desktop基盤と開発版
 

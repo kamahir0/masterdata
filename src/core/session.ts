@@ -86,6 +86,24 @@ export class Session {
       base.raw !== source.raw
     );
   }
+  discardSource(id: string) {
+    const base = this.savedSources.get(id);
+    if (
+      base &&
+      this.state.snapshot.sources.some(
+        (s) => s.id !== id && s.path === base.path,
+      )
+    )
+      throw new Error(
+        `「${base.path}」は別のファイルが使用しています。名前や移動先を変更してから破棄してください。`,
+      );
+    this.change("ファイルの変更を破棄", (snapshot) => ({
+      ...snapshot,
+      sources: base
+        ? snapshot.sources.map((source) => (source.id === id ? base : source))
+        : snapshot.sources.filter((source) => source.id !== id),
+    }));
+  }
   get dirty() {
     if (!this.state.project) return false;
     return (

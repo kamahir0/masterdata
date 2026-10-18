@@ -514,3 +514,54 @@ test("partial save acknowledges a moved source without swallowing edits during I
     await fs.rm(root, { recursive: true });
   }
 });
+
+test("discard restores only the chosen source, removes new drafts and remains undoable", async () => {
+  const { project, root } = await sample();
+  try {
+    const s = new Session();
+    s.load(project);
+    const a = project.snapshot.sources[0],
+      b = project.snapshot.sources[1];
+    s.update(a.id, ["table"], "draft-a");
+    s.update(b.id, ["table"], "draft-b");
+    s.change("設定", (snapshot) => ({
+      ...snapshot,
+      config: { ...snapshot.config, name: "draft-project" },
+    }));
+    const draft = s.state.snapshot;
+    s.discardSource(a.id);
+    assert.equal(
+      s.state.snapshot.sources.find((source) => source.id === a.id),
+      a,
+    );
+    assert.equal(s.dirtySource(a), false);
+    assert.equal(
+      s.state.snapshot.sources.find((source) => source.id === b.id),
+      draft.sources[1],
+    );
+    assert.equal(s.state.snapshot.config, draft.config);
+    s.undo();
+    assert.equal(s.state.snapshot, draft);
+    const id = s.add("enum");
+    s.discardSource(id);
+    assert(!s.state.snapshot.sources.some((source) => source.id === id));
+    s.undo();
+    assert(s.state.snapshot.sources.some((source) => source.id === id));
+    // Another draft can occupy the original path after a move: don't produce duplicate paths.
+    s.change("衝突", (snapshot) => ({
+      ...snapshot,
+      sources: snapshot.sources.map((source) =>
+        source.id === a.id
+          ? { ...source, path: "moved.yaml" }
+          : source.id === b.id
+            ? { ...source, path: a.path }
+            : source,
+      ),
+    }));
+    const collision = s.state.snapshot;
+    assert.throws(() => s.discardSource(a.id), /別のファイル/);
+    assert.equal(s.state.snapshot, collision);
+  } finally {
+    await fs.rm(root, { recursive: true });
+  }
+});

@@ -1141,3 +1141,280 @@ test("current-file shortcut does nothing after the displayed file is deleted; Sa
     fs.stat(path.join(root, "sources/announcements/announcement.yaml")),
   ).rejects.toThrow();
 });
+
+async function closeFile() {
+  await page.evaluate(() => (window as any).__command("close-file"));
+}
+async function closePrompt() {
+  const dialog = page.getByRole("dialog", {
+    name: "ファイルの変更を保存しますか？",
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toHaveClass(/ant-zoom-(?:appear|enter)(?:-|\s|$)/);
+  return dialog;
+}
+test("preview tabs replace clean previews, double click pins and editing before navigation auto-pins", async () => {
+  const tabs = page.getByRole("tablist", { name: "開いているファイル" });
+  await expect(tabs.getByRole("tab")).toHaveCount(1);
+  await expect(page.locator(".preview-tab .file-tab-name")).toHaveCSS(
+    "font-style",
+    "italic",
+  );
+  await selectSource("rarity");
+  await expect(tabs.getByRole("tab")).toHaveCount(1);
+  await tabs.getByRole("tab").dblclick();
+  await expect(page.locator(".preview-tab")).toHaveCount(0);
+  await selectSource("combat-stats");
+  await selectSource("announcement");
+  await expect(tabs.getByRole("tab")).toHaveCount(2);
+  await page.getByLabel("message 行1", { exact: true }).fill("入力途中も保持");
+  await selectSource("combat-stats");
+  await expect(tabs.getByRole("tab")).toHaveCount(3);
+  await tabs.getByRole("tab", { name: /^announcement/ }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "入力途中も保持",
+  );
+  const search = page.getByLabel("表・型を検索");
+  await search.fill("rarity");
+  await page
+    .locator(".tree-name")
+    .filter({ hasText: /^rarity$/ })
+    .dblclick();
+  await search.fill("");
+  await expect(tabs.getByRole("tab", { name: /^rarity/ })).not.toHaveClass(
+    /preview-tab/,
+  );
+});
+
+test("file close cancels, saves only that file, discards with Undo and keeps the last window open", async () => {
+  await page.getByLabel("message 行1", { exact: true }).fill("保存対象");
+  await selectSource("rarity");
+  await page.getByRole("button", { name: "候補を追加" }).click();
+  await closeFile();
+  let dialog = await closePrompt();
+  await dialog.getByRole("button", { name: "キャンセル", exact: true }).click();
+  await expect(page.getByLabel("候補4の名前")).toBeVisible();
+  await closeFile();
+  dialog = await closePrompt();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("tab", { name: /^rarity/ })).toHaveCount(0);
+  expect(
+    await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8"),
+  ).toContain("Member1");
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).not.toContain("保存対象");
+  await closeFile();
+  dialog = await closePrompt();
+  await dialog.getByRole("button", { name: "保存しない", exact: true }).click();
+  await expect(page.locator(".file-tab")).toHaveCount(0);
+  await expect(page.locator(".workspace")).toBeVisible();
+  await page.evaluate(() => (window as any).__command("undo"));
+  await selectSource("announcement");
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "保存対象",
+  );
+});
+
+test("file close save conflict retains the tab and drafts", async () => {
+  await page.getByLabel("message 行1", { exact: true }).fill("失わない入力");
+  const file = path.join(root, "sources/announcements/announcement.yaml");
+  await fs.appendFile(file, "\n# external edit\n");
+  await closeFile();
+  const dialog = await closePrompt();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText(/外部/).first()).toBeVisible();
+  await expect(page.locator(".file-tab")).toHaveCount(1);
+  await dialog.getByRole("button", { name: "キャンセル", exact: true }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "失わない入力",
+  );
+  expect(await fs.readFile(file, "utf8")).toContain("# external edit");
+});
+
+test("editor preferences preserve drafts, follow system theme and restore Explorer state", async () => {
+  await page.getByLabel("message 行1", { exact: true }).fill("設定中のdraft");
+  await page
+    .getByRole("button", { name: "エクスプローラーの表示切替" })
+    .click();
+  await expect(page.locator(".explorer-container")).toHaveClass(
+    /explorer-collapsed/,
+  );
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "設定中のdraft",
+  );
+  await page.evaluate(() => (window as any).__command("explorer"));
+  await expect(page.getByLabel("表・型を検索")).toBeVisible();
+  await page
+    .getByRole("button", { name: "エディター設定", exact: true })
+    .click();
+  const drawer = page.getByRole("dialog", {
+    name: "エディター設定",
+    exact: true,
+  });
+  await expect(page.locator(".ant-drawer-content-wrapper")).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await drawer.getByText("ダーク", { exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await drawer.getByText("複数行に折り返す", { exact: true }).click();
+  await drawer.getByText("システム", { exact: true }).click();
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await drawer.locator(".ant-drawer-close").click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "設定中のdraft",
+  );
+  expect(calls.filter((c) => c === "initial")).toHaveLength(1);
+  expect(calls.filter((c) => c === "save")).toHaveLength(0);
+  await page.reload();
+  await expect(page.locator(".file-tabs")).toHaveClass(/wrap-tabs/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});
+
+test("compact layout keeps commands and wrapped tabs reachable at minimum width in both themes", async () => {
+  await page.setViewportSize({ width: 1000, height: 680 });
+  const firstRow = await page
+    .locator(".data-grid .ant-table-row")
+    .first()
+    .boundingBox();
+  expect(firstRow!.y).toBeLessThan(300);
+  for (const name of [
+    "announcement",
+    "schema",
+    "common",
+    "quest",
+    "rarity",
+    "combat-stats",
+    "effect",
+    "item-code",
+    "item-flags",
+  ]) {
+    await selectSource(name);
+    await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  }
+  await expect(page.locator(".file-tab")).toHaveCount(9);
+  const rowHeight = (await page.locator(".file-tabs").boundingBox())!.height;
+  await page.evaluate(() => (window as any).__command("editor-settings"));
+  const drawer = page.getByRole("dialog", {
+    name: "エディター設定",
+    exact: true,
+  });
+  await expect(page.locator(".ant-drawer-content-wrapper")).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await drawer.getByText("複数行に折り返す", { exact: true }).click();
+  await drawer.getByText("ダーク", { exact: true }).click();
+  await drawer.locator(".ant-drawer-close").click();
+  await expect(page.locator(".ant-drawer-content-wrapper:visible")).toHaveCount(0);
+  const wrapped = (await page.locator(".file-tabs").boundingBox())!.height;
+  expect(wrapped).toBeGreaterThan(rowHeight + 20);
+  const tabBoxes = await page.locator(".file-tab").evaluateAll((tabs) =>
+    tabs.map((tab) => {
+      const box = tab.getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top };
+    }),
+  );
+  expect(tabBoxes.every((box) => box.right <= 1001)).toBe(true);
+  await page.locator('.file-tab[aria-selected="true"]').focus();
+  await page.keyboard.press("Home");
+  await expect(
+    page.getByRole("tab", { name: "announcement", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  const commands = await page
+    .locator(".app-toolbar button, .app-toolbar .ant-select")
+    .evaluateAll((items) =>
+      items.map((item) => {
+        const box = item.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      }),
+    );
+  expect(commands.every((box) => box.left >= 0 && box.right <= 1000)).toBe(
+    true,
+  );
+  await expect(page.locator(".ant-drawer-open")).toHaveCount(0);
+  await expect(page.locator(".ant-drawer-content-wrapper:visible")).toHaveCount(
+    0,
+  );
+  await page.screenshot({ path: test.info().outputPath("compact-dark.png") });
+  await page.evaluate(() => (window as any).__command("editor-settings"));
+  await expect(page.locator(".ant-drawer-content-wrapper")).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await drawer.getByText("ライト", { exact: true }).click();
+  await drawer.locator(".ant-drawer-close").click();
+  await expect(page.locator(".ant-drawer-content-wrapper:visible")).toHaveCount(
+    0,
+  );
+  await page.screenshot({ path: test.info().outputPath("compact-light.png") });
+});
+
+test("new file close discards only the new draft and Undo can recover it", async () => {
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
+  await page.getByLabel("項目の名前", { exact: true }).press("Enter");
+  const name = await page
+    .locator('.file-tab[aria-selected="true"] .file-tab-name')
+    .innerText();
+  await closeFile();
+  const dialog = await closePrompt();
+  await dialog.getByRole("button", { name: "保存しない", exact: true }).click();
+  await expect(page.getByRole("tab", { name, exact: true })).toHaveCount(0);
+  await page.evaluate(() => (window as any).__command("undo"));
+  await selectSource(name);
+  await expect(page.getByRole("tab", { name, exact: true })).toBeVisible();
+  expect(calls.filter((c) => c === "save")).toHaveLength(0);
+});
+
+test("file save-and-close keeps newer edits made during save and waits for earlier saves", async () => {
+  let release!: () => void;
+  saveGate = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.getByLabel("message 行1", { exact: true }).fill("保存開始時点");
+  await closeFile();
+  const dialog = await closePrompt();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => calls.filter((c) => c === "save").length).toBe(1);
+  // Native Undo is still available while the save request is pending.
+  await page.evaluate(() => (window as any).__command("undo"));
+  release();
+  await expect(
+    page.getByText(
+      "保存中に変更が追加されました。変更を確認して再度保存してください。",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".file-tab")).toHaveCount(1);
+  await dialog.getByRole("button", { name: "キャンセル", exact: true }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "冒険へようこそ",
+  );
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).toContain("保存開始時点");
+  saveGate = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => calls.filter((c) => c === "save").length).toBe(2);
+  await closeFile();
+  await expect(page.locator(".file-tab")).toHaveCount(1);
+  await selectSource("rarity");
+  release();
+  await expect(
+    page.getByRole("tab", { name: "announcement", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("tab", { name: "rarity", exact: true }),
+  ).toBeVisible();
+});

@@ -76,7 +76,7 @@ fn set_dirty(
                         if let Some(container) = close.superview().and_then(|view| view.superview())
                         {
                             let mut frame = container.frame();
-                            frame.size.height = close.frame().size.height + 30.0;
+                            frame.size.height = close.frame().size.height + 12.0;
                             frame.origin.y = window.frame().size.height - frame.size.height;
                             container.setFrame(frame);
                         }
@@ -193,7 +193,7 @@ fn menu(app: &tauri::App) -> tauri::Result<()> {
             &item("save-all", "すべて保存", Some("CmdOrCtrl+Shift+S"))?,
             &PredefinedMenuItem::separator(app)?,
             &item("build", "Build", Some("CmdOrCtrl+B"))?,
-            &item("close", "閉じる", Some("CmdOrCtrl+W"))?,
+            &item("close-file", "ファイルを閉じる", Some("CmdOrCtrl+W"))?,
         ],
     )?;
     let edit = Submenu::with_items(
@@ -215,6 +215,16 @@ fn menu(app: &tauri::App) -> tauri::Result<()> {
         "表示",
         true,
         &[
+            &item(
+                "editor-settings",
+                "エディター設定…",
+                Some("CmdOrCtrl+Comma"),
+            )?,
+            &item(
+                "explorer",
+                "エクスプローラーの表示切替",
+                Some("CmdOrCtrl+Shift+E"),
+            )?,
             &item("find", "検索", Some("CmdOrCtrl+F"))?,
             &item("problems", "問題", Some("CmdOrCtrl+Shift+M"))?,
             &item("build-results", "生成結果", None)?,

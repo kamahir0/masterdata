@@ -167,7 +167,10 @@ export async function smoke(executable) {
       once(child, "exit"),
       new Promise((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error("起動確認が時間内に終わりませんでした。")),
+          () =>
+            reject(
+              new Error(`起動確認が時間内に終わりませんでした。\n${stderr}`),
+            ),
           25000,
         );
       }),

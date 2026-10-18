@@ -8,7 +8,10 @@ export default defineConfig({
   reporter: "list",
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },
-    { name: "webkit", use: { browserName: "webkit" } },
+    // Tauri uses WebView2 on Windows; the Windows WebKit port is not a shipped engine.
+    ...(process.platform === "win32"
+      ? []
+      : [{ name: "webkit", use: { browserName: "webkit" as const } }]),
   ],
   webServer: {
     command:

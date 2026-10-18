@@ -50,8 +50,13 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run test:native
-      - run: npx playwright install --with-deps chromium webkit
-      - name: UI regression (Chromium and WebKit)
+      - name: Browser dependencies (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: npx playwright install --with-deps chromium webkit
+      - name: Browser dependencies (Windows WebView2 engine)
+        if: runner.os == 'Windows'
+        run: npx playwright install chromium
+      - name: UI regression (platform engines)
         run: npm run test:ui
       - name: Tauri package (macOS)
         if: runner.os == 'macOS'
@@ -61,7 +66,13 @@ jobs:
         run: npm run pack -- --no-bundle -- --locked
       - name: Native startup (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/smoke.mjs
+        # Xvfb has no GPU or desktop session. These flags are CI-only (https://github.com/tauri-apps/tauri/issues/15936).
+        env:
+          WEBKIT_DISABLE_COMPOSITING_MODE: 1
+          WEBKIT_DISABLE_DMABUF_RENDERER: 1
+          LIBGL_ALWAYS_SOFTWARE: 1
+          GDK_BACKEND: x11
+        run: dbus-run-session -- xvfb-run -a node scripts/smoke.mjs
       - name: Native startup (macOS / Windows)
         if: runner.os != 'Linux'
         run: node scripts/smoke.mjs

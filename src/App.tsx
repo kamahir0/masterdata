@@ -264,7 +264,10 @@ function Workspace({
     commitActive();
     const current = session.getState();
     if (!current.project) return;
-    const ids = all ? undefined : active ? [active] : [];
+    const currentSource = current.snapshot.sources.find(
+      (source) => source.id === active,
+    );
+    const ids = all ? undefined : currentSource ? [currentSource.id] : [];
     if (ids && !ids.length) return;
     const request = (async () => {
       setSaving(true);

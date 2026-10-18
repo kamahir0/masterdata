@@ -1092,3 +1092,37 @@ test("save-and-continue waits for an in-flight file save, then saves newer draft
   ).toContain("最初の保存");
   expect(calls.filter((c) => c === "save")).toHaveLength(2);
 });
+
+test("current-file shortcut does nothing after the displayed file is deleted; Save All persists deletion", async () => {
+  const file = page.locator(".tree-name").filter({ hasText: /^announcement$/ });
+  await expect(file).toBeVisible();
+  await expect(
+    page.locator(".tree-scroll .ant-tree-treenode-motion"),
+  ).toHaveCount(0);
+  await file.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(
+    page.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+  const count = await page.evaluate(() => {
+    (window as any).__saveCalls = 0;
+    const save = window.desktop.save;
+    window.desktop.save = (request) => {
+      (window as any).__saveCalls++;
+      return save(request);
+    };
+    (window as any).__command("save");
+    return (window as any).__saveCalls;
+  });
+  expect(count).toBe(0);
+  expect(
+    await fs.stat(path.join(root, "sources/announcements/announcement.yaml")),
+  ).toBeTruthy();
+  await page.evaluate(() => (window as any).__command("save-all"));
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  await expect(
+    fs.stat(path.join(root, "sources/announcements/announcement.yaml")),
+  ).rejects.toThrow();
+});

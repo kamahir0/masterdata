@@ -1,11 +1,11 @@
 # Desktop Authoring
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -26,6 +26,8 @@ Saveは意味エラーで拒否しない。保存前に変更対象の外部変�
 ## EDIT-003 — 直接編集
 
 表の値、列名・型・modifier、Enum / Flags member、Custom field、Value Objectの定義を同じsessionで編集する。追加はその場に初期値を持つ行・項目を作り、そのまま入力できる。member / field追加ごとのmodalは作らない。配列・nullableの状態を識別でき、入力部品はtop-level / nestedで共有する。
+
+値入力の共通枠が、残り幅を使う値領域とnullable時の固定幅のnull操作領域を管理する。null / 未入力の作成ボタンと各型の入力・詳細入口は値領域を満たし、同じ幅の枠ではnull切替で左右端を変えない。null状態も操作領域を空けて保持し、空の領域にはfocus可能な操作を置かない。boolのswitch自体は適切な大きさを保つ。型別部品や表・ネスト側で個別の幅補正をせず、新しい型も同じ枠を使う。非nullableな枠はnull操作領域を必要としない。
 
 数値の整数は64bitの端まで精度を失わない。boolは共通switch、nullableは型共通の「値なし」と復元操作。Enum、型、タグ、参照候補は入力で検索する。FlagsのNoneとbit選択は相互制御する。新規recordはdefaultを再帰生成し、unique key候補を全draftから割り当てる。構成できなくても既存入力は破棄しない。
 

@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 6ba2f84aae4daab5dbf31e817f96bf6d19add6ca
-Work base: 04dd586d77bbbccf6909ecf917223840e3b25462
+Stage: implementation-ready
+Candidate: none
+Work base: 9b2a65ed7fa3359319608020cbd69fa107aafdb7
 
 ## Active work
 
-None.
+In progress: 型別入力を共通の入力領域・null操作領域に配置する設計と実装。
 
 ## Blocking findings
 

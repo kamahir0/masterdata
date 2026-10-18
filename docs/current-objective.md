@@ -2,14 +2,14 @@
 
 ## Objective
 
-このPCのMasterData旧インストール・検証用bundleを整理し、開発版の一括build / installを繰り返してもアプリ一覧の起動入口が増えないようにする。
+値入力の共通枠が横幅とnull操作領域を管理し、null・非null・型別部品の変更でも表とネスト内の入力幅が自動で揃う設計へ修正する。
 
-選択根拠: 2026-10-18 Human request「既存インストール済みの整理と、開発アプリビルドワークフロー修正、併せて全部対応」。
+選択根拠: 2026-10-18 Human request「設計修正」と直前の共通レイアウトに関する合意。
 
 ## Completion boundary
 
-識別済み旧bundleの復元可能な退役、未保存入力・project・設定の保持、固定先への再installと中間bundleの後片付け、macOSのアプリ一覧で最新版1つを確認、focused validation、self-review、通常commit / pushとCI。
+共通枠の仕様・実装、型とnull状態を切り替える実際のUIでの幅・操作確認、focused validation、self-review、通常commit / pushとCI。
 
 ## Non-scope
 
-実データの意図的破棄、他製品の整理、macOS全体の登録DB初期化、公開release。
+値の意味・保存形式の変更、アプリ全体の再設計、既存の未保存内容の変更。

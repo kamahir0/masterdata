@@ -482,14 +482,29 @@ button:focus-visible,
   background: #f7b6a30b;
 }
 .value-control {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 4px;
   width: 100%;
   min-height: 30px;
   min-width: 0;
 }
-.value-control > .entry {
+.value-control.nullable {
+  grid-template-columns: minmax(0, 1fr) 20px;
+  column-gap: 4px;
+}
+/* The frame owns sizing for every value renderer, including null creation.
+   A renderer's intrinsic size must not move the shared null-action column. */
+.value-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.value-input > * {
+  width: 100%;
+  min-width: 0;
+}
+.value-input > .entry {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
@@ -497,19 +512,14 @@ button:focus-visible,
   padding-inline: 3px;
   height: 29px;
 }
-.value-control > .entry:hover,
-.value-control > .entry:focus {
+.value-input > .entry:hover,
+.value-input > .entry:focus {
   border-color: var(--line);
   background: var(--surface);
 }
 .nullable-slot {
   display: flex;
-  width: 20px;
-  flex-shrink: 0;
   justify-content: center;
-}
-.value-control:not(.nullable) > .nullable-slot {
-  width: 0;
 }
 .nullable-slot .ant-btn {
   color: #aab2c3;
@@ -517,10 +527,6 @@ button:focus-visible,
   width: 19px;
   min-width: 19px;
   padding: 0;
-}
-.value-control > *:first-child {
-  flex: 1;
-  min-width: 0;
 }
 .boolean-value {
   display: flex;
@@ -552,11 +558,6 @@ button:focus-visible,
   color: var(--muted);
   text-align: left;
   padding: 0 5px;
-  max-width: 170px;
-}
-.enum-value,
-.reference-value {
-  width: 100%;
 }
 .enum-value.ant-select,
 .reference-value .ant-select,

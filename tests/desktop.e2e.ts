@@ -198,6 +198,96 @@ test("top-level and nested bool share controls; nested nullable can be cleared",
     page.getByRole("button", { name: "criticalに値を作成", exact: true }),
   ).toBeVisible();
 });
+test("nullable input bounds stay aligned across renderers, Undo and nested editing", async () => {
+  await selectSource("common");
+  async function bounds(frame: ReturnType<Page["locator"]>) {
+    return frame.evaluate((element) => {
+      const outer = element.getBoundingClientRect();
+      const input = element.querySelector(".value-input > *")!.getBoundingClientRect();
+      const action = element.querySelector(".nullable-slot")!.getBoundingClientRect();
+      return {
+        left: input.left - outer.left,
+        width: input.width,
+        action: action.left - outer.left,
+      };
+    });
+  }
+  function aligned(
+    before: Awaited<ReturnType<typeof bounds>>,
+    after: Awaited<ReturnType<typeof bounds>>,
+  ) {
+    for (const key of ["left", "width", "action"] as const)
+      expect(Math.abs(before[key] - after[key]), key).toBeLessThan(1);
+  }
+  // All existing renderers go through the same frame. Compare the visible
+  // renderer with its null button, rather than checking a particular CSS rule.
+  for (const [name, column, row] of [
+    ["code", 1, 1],
+    ["rarity", 3, 1],
+    ["price", 5, 1],
+    ["stats", 6, 1],
+    ["materials", 8, 1],
+    ["note", 9, 2],
+    ["tradable", 10, 1],
+    ["tags", 11, 1],
+    ["maxPower", 12, 2],
+  ] as const) {
+    const header = page.locator(".column-heading").filter({
+      has: page.getByLabel(`列${column + 1}の名前`, { exact: true }),
+    });
+    const modifier = header.getByRole("button", {
+      name: "nullを許可", exact: true,
+    });
+    if (await modifier.getAttribute("aria-pressed") !== "true")
+      await modifier.click();
+    const frame = page.locator(`[data-column-index="${column}"] .value-control`).nth(row - 1);
+    await frame.locator(".value-input > *").scrollIntoViewIfNeeded();
+    const before = await bounds(frame);
+    await page.getByRole("button", {
+      name: `${name} 行${row}をnullにする`, exact: true,
+    }).click();
+    await expect(page.getByRole("button", {
+      name: `${name} 行${row}に値を作成`, exact: true,
+    })).toBeVisible();
+    aligned(before, await bounds(frame));
+    if (name === "maxPower")
+      await page.screenshot({ path: test.info().outputPath("table-null-width.png") });
+    await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+    await expect(page.getByRole("button", {
+      name: `${name} 行${row}をnullにする`, exact: true,
+    })).toBeVisible();
+    aligned(before, await bounds(frame));
+  }
+  const switchWidth = (await page.getByRole("switch", {
+    name: "tradable 行1", exact: true,
+  }).boundingBox())!.width;
+  await page.locator(".ant-table-tbody-virtual-holder").evaluate((element) => {
+    element.dispatchEvent(new WheelEvent("wheel", {
+      deltaX: 900 - document.querySelector(".ant-table-header")!.scrollLeft,
+      bubbles: true,
+      cancelable: true,
+    }));
+  });
+  await expect.poll(() => page.locator(".ant-table-header").evaluate(
+    (element) => element.scrollLeft,
+  )).toBe(900);
+  await openNested("stats 行1を開く");
+  const nested = page.locator(".nested-field").filter({
+    has: page.locator(".nested-label strong").filter({ hasText: /^critical$/ }),
+  }).locator(".value-control");
+  const before = await bounds(nested);
+  expect(before.width).toBeGreaterThan(300);
+  await page.screenshot({ path: test.info().outputPath("nested-null-width.png") });
+  await page.getByRole("button", { name: "criticalに値を作成", exact: true }).click();
+  aligned(before, await bounds(nested));
+  expect((await page.getByRole("switch", {
+    name: "critical", exact: true,
+  }).boundingBox())!.width).toBe(switchWidth);
+  await page.screenshot({ path: test.info().outputPath("nested-bool-width.png") });
+  await page.getByRole("button", { name: "criticalをnullにする", exact: true }).click();
+  aligned(before, await bounds(nested));
+});
+
 test("type mismatch retains original value, does not block edits or Save, and can Undo", async () => {
   await selectSource("common");
   const select = page.locator(".column-type").nth(4).getByRole("combobox");

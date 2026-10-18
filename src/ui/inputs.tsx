@@ -159,6 +159,27 @@ export interface ReferenceOption {
   source: string;
   index: number;
 }
+function ValueInputFrame({
+  type,
+  nullable,
+  children,
+  action,
+}: {
+  type: string;
+  nullable: boolean;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`value-control ${nullable ? "nullable" : ""}`}
+      data-type={type}
+    >
+      <div className="value-input">{children}</div>
+      {nullable && <span className="nullable-slot">{action}</span>}
+    </div>
+  );
+}
 export function ValueControl({
   snapshot,
   field,
@@ -289,13 +310,11 @@ export function ValueControl({
       />
     );
   return (
-    <div
-      className={`value-control ${field.nullable ? "nullable" : ""}`}
-      data-type={field.type}
-    >
-      {content}
-      <span className="nullable-slot">
-        {field.nullable && value !== null && value !== undefined && (
+    <ValueInputFrame
+      type={field.type}
+      nullable={!!field.nullable}
+      action={
+        value !== null && value !== undefined && (
           <Tooltip title="null（値なし）にする">
             <Button
               type="text"
@@ -305,8 +324,10 @@ export function ValueControl({
               onClick={() => onChange(null)}
             />
           </Tooltip>
-        )}
-      </span>
-    </div>
+        )
+      }
+    >
+      {content}
+    </ValueInputFrame>
   );
 }

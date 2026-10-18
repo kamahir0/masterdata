@@ -7,7 +7,6 @@ import {
   readFile,
   chmod,
   rm,
-  readdir,
 } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { resolve, join } from "node:path";
@@ -48,13 +47,13 @@ const seaNode = join(
   "node_modules/node/bin",
   process.platform === "win32" ? "node.exe" : "node",
 );
-const runtimePackages = join(root, "node_modules/node/node_modules");
-const runtimePackage = (await readdir(runtimePackages)).find(
-  (name) => name.startsWith("node-") && name !== "node-bin-setup",
-);
-if (!runtimePackage) throw new Error("Bundled Node license package not found");
+// The Windows npm runtime omits LICENSE; ship the pinned Node release's complete
+// notice from the repository so all OS packages contain the same attribution.
+const nodeVersion = JSON.parse(
+  await readFile(join(root, "node_modules/node/package.json"), "utf8"),
+).version;
 await copyFile(
-  join(runtimePackages, runtimePackage, "LICENSE"),
+  join(root, "assets", `node-${nodeVersion}-LICENSE.txt`),
   join(root, ".build/node-license.txt"),
 );
 const config = join(root, ".build/sea.json");

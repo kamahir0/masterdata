@@ -25,6 +25,7 @@ export function Entry({
   className = "",
   placeholder = "",
   autoFocus = false,
+  disabled = false,
 }: {
   value: Data;
   onCommit: (value: string) => void;
@@ -33,6 +34,7 @@ export function Entry({
   className?: string;
   placeholder?: string;
   autoFocus?: boolean;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(text(value));
   const focused = useRef(false);
@@ -43,6 +45,7 @@ export function Entry({
   return (
     <Input
       aria-label={label}
+      disabled={disabled}
       autoFocus={autoFocus}
       className={`entry ${className}`}
       value={draft}
@@ -314,7 +317,8 @@ export function ValueControl({
       type={field.type}
       nullable={!!field.nullable}
       action={
-        value !== null && value !== undefined && (
+        value !== null &&
+        value !== undefined && (
           <Tooltip title="null（値なし）にする">
             <Button
               type="text"

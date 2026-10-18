@@ -414,3 +414,103 @@ test("edited YAML normalizes old and appended collections to block layout withou
   assert.deepEqual(reopened.data, data);
   assert.equal(serialize(reopened), output);
 });
+
+test("current-source save leaves other drafts, deletions, folders and configuration untouched", async () => {
+  const { project, workspace, root } = await sample();
+  try {
+    const s = new Session();
+    s.load(project);
+    const a = project.snapshot.sources.find(
+      (f) => f.path === "types/rarity.yaml",
+    )!;
+    const b = project.snapshot.sources.find(
+      (f) => f.path === "items/common.yaml",
+    )!;
+    const originalB = project.saved.find((f) => f.id === b.id)!.text;
+    s.update(a.id, ["enum", "members", 2, "value"], 4n);
+    s.update(b.id, ["records", 0, "name"], "別の編集中データ");
+    s.remove(["types/item-code.yaml"]);
+    const pendingFolder = s.addFolder();
+    s.change("設定", (snapshot) => ({
+      ...snapshot,
+      config: { ...snapshot.config, name: "編集中の名前" },
+    }));
+    const captured = s.state.snapshot;
+    const ids = [a.id];
+    s.acceptSave(
+      await saveWorkspace(workspace, {
+        token: project.token,
+        files: s.files(ids),
+        folders: s.saveFolders(captured, ids),
+        config: s.saveConfig(captured, ids),
+      }),
+      captured,
+      ids,
+    );
+    assert.equal(
+      s.dirtySource(s.state.snapshot.sources.find((f) => f.id === a.id)!),
+      false,
+    );
+    assert(s.dirtySource(s.state.snapshot.sources.find((f) => f.id === b.id)!));
+    assert(s.dirty);
+    assert.equal(
+      await fs.readFile(path.join(root, "sources", b.path), "utf8"),
+      originalB,
+    );
+    assert(!s.saveFolders(captured, ids).includes(pendingFolder));
+    assert.equal(
+      s.saveConfig(captured, ids).name,
+      project.snapshot.config.name,
+    );
+    const all = s.state.snapshot;
+    s.acceptSave(
+      await saveWorkspace(workspace, {
+        token: project.token,
+        files: s.files(),
+        folders: s.saveFolders(all),
+        config: s.saveConfig(all),
+      }),
+      all,
+    );
+    assert.equal(s.dirty, false);
+    s.undo();
+    assert(s.dirty);
+  } finally {
+    await fs.rm(root, { recursive: true });
+  }
+});
+
+test("partial save acknowledges a moved source without swallowing edits during I/O", async () => {
+  const { project, workspace, root } = await sample();
+  try {
+    const s = new Session();
+    s.load(project);
+    const a = project.snapshot.sources.find(
+      (f) => f.path === "types/rarity.yaml",
+    )!;
+    s.move(a.path, "new/deep/rarity.yaml");
+    const captured = s.state.snapshot,
+      ids = [a.id];
+    const pending = saveWorkspace(workspace, {
+      token: project.token,
+      files: s.files(ids),
+      folders: s.saveFolders(captured, ids),
+      config: s.saveConfig(captured, ids),
+    });
+    s.update(a.id, ["enum", "members", 0, "value"], 7n);
+    s.acceptSave(await pending, captured, ids);
+    assert(s.dirtySource(s.state.snapshot.sources.find((f) => f.id === a.id)!));
+    assert(await fs.stat(path.join(root, "sources/new/deep/rarity.yaml")));
+    await assert.rejects(fs.stat(path.join(root, "sources/types/rarity.yaml")));
+    s.undo();
+    assert.equal(
+      s.dirtySource(s.state.snapshot.sources.find((f) => f.id === a.id)!),
+      false,
+    );
+    assert.equal(s.dirty, false);
+    s.undo();
+    assert(s.dirtySource(s.state.snapshot.sources.find((f) => f.id === a.id)!));
+  } finally {
+    await fs.rm(root, { recursive: true });
+  }
+});

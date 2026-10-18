@@ -3,7 +3,11 @@ name: ItemFlags
 flags:
   underlying: uint
   members:
-    - {name: None, value: 0}
-    - {name: Weapon, value: 1}
-    - {name: Armor, value: 2}
-    - {name: Crafting, value: 4}
+    - name: None
+      value: 0
+    - name: Weapon
+      value: 1
+    - name: Armor
+      value: 2
+    - name: Crafting
+      value: 4

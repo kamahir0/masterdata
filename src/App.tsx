@@ -13,6 +13,7 @@ import {
   Collapse,
   ConfigProvider,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   Modal,
@@ -40,6 +41,7 @@ import {
   ExclamationCircleOutlined,
   ExperimentOutlined,
   FolderOpenOutlined,
+  DownOutlined,
   MoonOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -144,6 +146,7 @@ function Workspace({
   const [problems, setProblems] = useState<Problem[]>([]);
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const savingRequest = useRef<Promise<void> | null>(null);
   const [loading, setLoading] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("新しいプロジェクト");
@@ -153,6 +156,11 @@ function Workspace({
   const [publishing, setPublishing] = useState(false);
   const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
   const [buildError, setBuildError] = useState("");
+  const [publishResult, setPublishResult] = useState<{
+    message: string;
+    revision: number;
+    profile: string;
+  } | null>(null);
   const [jump, setJump] = useState<{
     source: string;
     path: (string | number)[];
@@ -235,6 +243,7 @@ function Workspace({
     setCursor(null);
     setProfile("");
     setBuildResult(null);
+    setPublishResult(null);
     setBuildError("");
     setJump(undefined);
     const first =
@@ -248,26 +257,39 @@ function Workspace({
   useEffect(() => {
     window.desktop?.initial().then(load).catch(fail);
   }, []);
-  async function save() {
+  async function save(all = false) {
+    // A queued Save All (including close confirmation) must observe the first
+    // acknowledgement and then capture newer drafts, never silently skip them.
+    while (savingRequest.current) await savingRequest.current;
     commitActive();
     const current = session.getState();
     if (!current.project) return;
-    setSaving(true);
+    const ids = all ? undefined : active ? [active] : [];
+    if (ids && !ids.length) return;
+    const request = (async () => {
+      setSaving(true);
+      try {
+        const captured = current.snapshot;
+        const result = await window.desktop.save({
+          token: current.project!.token,
+          files: session.files(ids),
+          folders: session.saveFolders(captured, ids),
+          config: session.saveConfig(captured, ids),
+        });
+        session.acceptSave(result, captured, ids);
+        message.success("保存しました");
+      } catch (error) {
+        fail(error);
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    })();
+    savingRequest.current = request;
     try {
-      const captured = current.snapshot;
-      const result = await window.desktop.save({
-        token: current.project.token,
-        files: session.files(),
-        folders: captured.folders,
-        config: captured.config,
-      });
-      session.acceptSave(result, captured);
-      message.success("保存しました");
-    } catch (error) {
-      fail(error);
-      throw error;
+      await request;
     } finally {
-      setSaving(false);
+      if (savingRequest.current === request) savingRequest.current = null;
     }
   }
   async function guarded(action: () => Promise<void> | void) {
@@ -286,7 +308,7 @@ function Workspace({
       cancelText: "キャンセル",
       onOk: async () => {
         try {
-          await save();
+          await save(true);
           guard.current = false;
           await action();
         } catch {
@@ -363,16 +385,23 @@ function Workspace({
     }
   }
   async function publish() {
-    if (!project) return;
+    if (!project || !buildResult) return;
+    const publishedBuild = buildResult;
     setPublishing(true);
+    setBuildOpen(true);
+    setPublishResult(null);
+    setBuildError("");
     try {
-      message.success({
-        content: await window.desktop.publish(
-          project.token,
-          session.getState().snapshot.config.publish,
-        ),
-        duration: 7,
+      const result = await window.desktop.publish(
+        project.token,
+        session.getState().snapshot.config.publish,
+      );
+      setPublishResult({
+        message: result,
+        revision: publishedBuild.revision,
+        profile: publishedBuild.profile,
       });
+      message.success({ content: result, duration: 7 });
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -388,6 +417,9 @@ function Workspace({
         if (command === "new")
           void actions.current.guarded(() => setNewOpen(true));
         if (command === "save") void actions.current.save().catch(() => {});
+        if (command === "save-all")
+          void actions.current.save(true).catch(() => {});
+        if (command === "build-results") setBuildOpen(true);
         if (command === "build") void actions.current.build();
         if (command === "undo") {
           commitActive();
@@ -465,16 +497,34 @@ function Workspace({
               <Button icon={<FolderOpenOutlined />} onClick={open}>
                 開く
               </Button>
-              <Button
-                aria-label="保存"
-                type="primary"
-                icon={<SaveOutlined />}
-                loading={saving}
-                disabled={saving}
-                onClick={() => void save().catch(() => {})}
-              >
-                保存
-              </Button>
+              <Space.Compact>
+                <Button
+                  aria-label="保存"
+                  title="現在のファイルを保存"
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={saving}
+                  disabled={saving || !source}
+                  onClick={() => void save().catch(() => {})}
+                >
+                  保存
+                </Button>
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      { key: "all", label: "すべて保存", disabled: saving },
+                    ],
+                    onClick: () => void save(true).catch(() => {}),
+                  }}
+                >
+                  <Button
+                    type="primary"
+                    aria-label="保存方法"
+                    icon={<DownOutlined />}
+                  />
+                </Dropdown>
+              </Space.Compact>
               <span className="toolbar-divider" />
               <Tooltip
                 title={
@@ -544,11 +594,18 @@ function Workspace({
               >
                 Publish
               </Button>
+              <Button
+                onClick={() => setBuildOpen(true)}
+                aria-label="生成結果を表示"
+              >
+                生成結果
+              </Button>
             </Space>
           </div>
           <div className="workspace">
             <Explorer
               snapshot={snapshot}
+              saved={state.saved}
               active={active}
               onSelect={select}
               fail={fail}
@@ -920,6 +977,14 @@ function Workspace({
               </Typography.Text>
             </div>
           )}
+          {publishResult && (
+            <Alert
+              type="success"
+              title={`Publish完了 · rev.${publishResult.revision} · ${publishResult.profile || "すべてのデータ"}`}
+              description={publishResult.message}
+              showIcon
+            />
+          )}
           {buildError && (
             <Alert
               type="error"
@@ -1036,7 +1101,10 @@ export default function Root() {
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif',
           fontSize: 13,
-          motion: !reduced,
+          // Changing AntD's motion token inserts a provider on its first toggle,
+          // remounting Workspace and reloading the project. Keep this tree stable;
+          // MotionConfig and data-reduced-motion control interpolation instead.
+          motion: true,
           motionDurationFast: ".08s",
           motionDurationMid: ".12s",
           motionDurationSlow: ".16s",
@@ -1050,6 +1118,8 @@ export default function Root() {
             primaryShadow: "0 3px 10px #5a67d824",
           },
           Tree: {
+            titleHeight: 28,
+            indentSize: 16,
             nodeSelectedBg: dark ? "#262d50" : "#e9edff",
             motionDurationSlow: ".1s",
           },

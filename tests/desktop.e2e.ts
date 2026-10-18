@@ -10,6 +10,7 @@ let calls: string[];
 let dialogPath: string;
 let page: Page;
 let root: string;
+let saveGate: Promise<void> | undefined;
 test.beforeEach(async ({ browser }, info) => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "masterdata-e2e-"));
   await fs.cp(path.resolve("samples/Adventure"), root, { recursive: true });
@@ -39,6 +40,7 @@ test.beforeEach(async ({ browser }, info) => {
     data.records[0].id = "broken";
     await fs.writeFile(file, stringify(data));
   }
+  saveGate = undefined;
   service = new ProjectService();
   calls = [];
   dialogPath = root;
@@ -47,6 +49,7 @@ test.beforeEach(async ({ browser }, info) => {
     "__native",
     async (method: string, payload: string) => {
       calls.push(method);
+      if (method === "save") await saveGate;
       let args = decode<any[]>(payload);
       if (method === "initial")
         args = info.title.startsWith("welcome") ? [] : [root];
@@ -69,7 +72,7 @@ test.beforeEach(async ({ browser }, info) => {
       create: name => request("create", [name]), sample: () => request("sample"),
       save: value => request("save", [value]), build: (...args) => request("build", args),
       publish: (...args) => request("publish", args), reveal: async () => {},
-      dirty: () => {}, close: async () => {}, onCommand: () => () => {},
+      dirty: () => {}, close: async () => {}, onCommand: callback => { window.__command = callback; return () => {}; },
     };
   })()`);
   await page.goto("http://127.0.0.1:5173");
@@ -92,6 +95,10 @@ test.afterEach(async () => {
   await page?.context().close();
   await fs.rm(root, { recursive: true, force: true });
 });
+async function saveAll() {
+  await page.getByRole("button", { name: "保存方法", exact: true }).click();
+  await page.getByRole("menuitem", { name: "すべて保存", exact: true }).click();
+}
 async function openNested(name: string) {
   await page.getByRole("button", { name, exact: true }).click();
   const panel = page.locator(".ant-drawer-content-wrapper");
@@ -151,7 +158,7 @@ test("Custom Type adds fields inline and uses the same modifiers", async () => {
   await expect(
     page.getByRole("button", { name: "配列", exact: true }),
   ).toHaveCount(5);
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await saveAll();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
@@ -164,7 +171,7 @@ test("Custom Type adds fields inline and uses the same modifiers", async () => {
   await expect(page.getByLabel("項目2の名前", { exact: true })).toHaveValue(
     "attackCopy1",
   );
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await saveAll();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
@@ -203,8 +210,12 @@ test("nullable input bounds stay aligned across renderers, Undo and nested editi
   async function bounds(frame: ReturnType<Page["locator"]>) {
     return frame.evaluate((element) => {
       const outer = element.getBoundingClientRect();
-      const input = element.querySelector(".value-input > *")!.getBoundingClientRect();
-      const action = element.querySelector(".nullable-slot")!.getBoundingClientRect();
+      const input = element
+        .querySelector(".value-input > *")!
+        .getBoundingClientRect();
+      const action = element
+        .querySelector(".nullable-slot")!
+        .getBoundingClientRect();
       return {
         left: input.left - outer.left,
         width: input.width,
@@ -236,55 +247,96 @@ test("nullable input bounds stay aligned across renderers, Undo and nested editi
       has: page.getByLabel(`列${column + 1}の名前`, { exact: true }),
     });
     const modifier = header.getByRole("button", {
-      name: "nullを許可", exact: true,
+      name: "nullを許可",
+      exact: true,
     });
-    if (await modifier.getAttribute("aria-pressed") !== "true")
+    if ((await modifier.getAttribute("aria-pressed")) !== "true")
       await modifier.click();
-    const frame = page.locator(`[data-column-index="${column}"] .value-control`).nth(row - 1);
+    const frame = page
+      .locator(`[data-column-index="${column}"] .value-control`)
+      .nth(row - 1);
     await frame.locator(".value-input > *").scrollIntoViewIfNeeded();
     const before = await bounds(frame);
-    await page.getByRole("button", {
-      name: `${name} 行${row}をnullにする`, exact: true,
-    }).click();
-    await expect(page.getByRole("button", {
-      name: `${name} 行${row}に値を作成`, exact: true,
-    })).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: `${name} 行${row}をnullにする`,
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: `${name} 行${row}に値を作成`,
+        exact: true,
+      }),
+    ).toBeVisible();
     aligned(before, await bounds(frame));
     if (name === "maxPower")
-      await page.screenshot({ path: test.info().outputPath("table-null-width.png") });
+      await page.screenshot({
+        path: test.info().outputPath("table-null-width.png"),
+      });
     await page.getByRole("button", { name: "元に戻す", exact: true }).click();
-    await expect(page.getByRole("button", {
-      name: `${name} 行${row}をnullにする`, exact: true,
-    })).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: `${name} 行${row}をnullにする`,
+        exact: true,
+      }),
+    ).toBeVisible();
     aligned(before, await bounds(frame));
   }
-  const switchWidth = (await page.getByRole("switch", {
-    name: "tradable 行1", exact: true,
-  }).boundingBox())!.width;
+  const switchWidth = (await page
+    .getByRole("switch", {
+      name: "tradable 行1",
+      exact: true,
+    })
+    .boundingBox())!.width;
   await page.locator(".ant-table-tbody-virtual-holder").evaluate((element) => {
-    element.dispatchEvent(new WheelEvent("wheel", {
-      deltaX: 900 - document.querySelector(".ant-table-header")!.scrollLeft,
-      bubbles: true,
-      cancelable: true,
-    }));
+    element.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaX: 900 - document.querySelector(".ant-table-header")!.scrollLeft,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
   });
-  await expect.poll(() => page.locator(".ant-table-header").evaluate(
-    (element) => element.scrollLeft,
-  )).toBe(900);
+  await expect
+    .poll(() =>
+      page
+        .locator(".ant-table-header")
+        .evaluate((element) => element.scrollLeft),
+    )
+    .toBe(900);
   await openNested("stats 行1を開く");
-  const nested = page.locator(".nested-field").filter({
-    has: page.locator(".nested-label strong").filter({ hasText: /^critical$/ }),
-  }).locator(".value-control");
+  const nested = page
+    .locator(".nested-field")
+    .filter({
+      has: page
+        .locator(".nested-label strong")
+        .filter({ hasText: /^critical$/ }),
+    })
+    .locator(".value-control");
   const before = await bounds(nested);
   expect(before.width).toBeGreaterThan(300);
-  await page.screenshot({ path: test.info().outputPath("nested-null-width.png") });
-  await page.getByRole("button", { name: "criticalに値を作成", exact: true }).click();
+  await page.screenshot({
+    path: test.info().outputPath("nested-null-width.png"),
+  });
+  await page
+    .getByRole("button", { name: "criticalに値を作成", exact: true })
+    .click();
   aligned(before, await bounds(nested));
-  expect((await page.getByRole("switch", {
-    name: "critical", exact: true,
-  }).boundingBox())!.width).toBe(switchWidth);
-  await page.screenshot({ path: test.info().outputPath("nested-bool-width.png") });
-  await page.getByRole("button", { name: "criticalをnullにする", exact: true }).click();
+  expect(
+    (await page
+      .getByRole("switch", {
+        name: "critical",
+        exact: true,
+      })
+      .boundingBox())!.width,
+  ).toBe(switchWidth);
+  await page.screenshot({
+    path: test.info().outputPath("nested-bool-width.png"),
+  });
+  await page
+    .getByRole("button", { name: "criticalをnullにする", exact: true })
+    .click();
   aligned(before, await bounds(nested));
 });
 
@@ -298,7 +350,7 @@ test("type mismatch retains original value, does not block edits or Save, and ca
   );
   await page.getByLabel("name 行1", { exact: true }).fill("不整合中も編集可能");
   await page.getByLabel("name 行1", { exact: true }).press("Enter");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await saveAll();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
@@ -336,7 +388,7 @@ test("folder creation, rename and deletion are inline, reversible, and saved", a
   await expect(folder).toHaveCount(0);
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(folder).toBeVisible();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await saveAll();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
@@ -394,6 +446,42 @@ test("large folder toggles perform no discovery I/O; large table remains virtual
   const vp = await viewport.boundingBox();
   const pp = await panel.boundingBox();
   expect(vp!.y + vp!.height).toBeLessThanOrEqual(pp!.y + 1);
+  const scroller = page.locator(".ant-table-tbody-virtual-holder");
+  const start = (await page
+    .getByLabel("レコードを移動", { exact: true })
+    .first()
+    .boundingBox())!;
+  const bounds = (await scroller.boundingBox())!;
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    start.x + start.width / 2,
+    bounds.y + bounds.height - 5,
+    { steps: 10 },
+  );
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(700);
+  await expect(page.locator(".sort-ghost")).toBeVisible();
+  await page.mouse.up();
+  await expect(page.locator(".sort-ghost")).toHaveCount(0);
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  const reordered = parse(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  );
+  expect(
+    reordered.records.findIndex((record: any) => record.id === 1),
+  ).toBeGreaterThan(5);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
   await page.getByLabel("id 行1", { exact: true }).click();
   await page.getByLabel("id 行1", { exact: true }).press("Escape");
   await page.locator(".grid-editor").focus();
@@ -610,7 +698,7 @@ test("explorer menus match objects and folder titles toggle without disturbing t
   await page.getByRole("button", { name: "新しい項目", exact: true }).click();
   await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
   await page.getByLabel("項目の名前", { exact: true }).press("Escape");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await saveAll();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
@@ -746,4 +834,261 @@ test("native pointer drag reorders nested array elements without losing their ed
   await expect(page.getByLabel("name", { exact: true })).toHaveValue(
     "FirstEffect",
   );
+});
+
+test("save scopes clear Explorer badges immediately and Escape deselects without closing the editor", async () => {
+  await page.getByLabel("message 行1", { exact: true }).fill("保存する案内");
+  await page.getByLabel("message 行1", { exact: true }).press("Enter");
+  const announcement = page
+    .locator(".tree-name")
+    .filter({ hasText: /^announcement$/ });
+  await expect(announcement.locator(".dirty-dot")).toHaveCount(1);
+  await selectSource("rarity");
+  await page.getByRole("button", { name: "候補を追加" }).click();
+  const rarity = page.locator(".tree-name").filter({ hasText: /^rarity$/ });
+  await expect(rarity.locator(".dirty-dot")).toHaveCount(1);
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(rarity.locator(".dirty-dot")).toHaveCount(0);
+  await expect(announcement.locator(".dirty-dot")).toHaveCount(1);
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).not.toContain("保存する案内");
+  await rarity.click();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.locator(".tree-scroll .ant-tree-node-selected"),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("候補4の名前", { exact: true })).toBeVisible();
+  await page.evaluate(() => (window as any).__command("save-all"));
+  await expect(page.locator(".tree-scroll .dirty-dot")).toHaveCount(0);
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).toContain("保存する案内");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(rarity.locator(".dirty-dot")).toHaveCount(1);
+});
+
+test("Explorer truncates labels while preserving hierarchy and Flags None is fixed", async () => {
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいフォルダ/ }).click();
+  const name = page.getByLabel("項目の名前", { exact: true });
+  const long = "非常に長いフォルダ名を表示して階層と省略を確認する";
+  await name.fill(long);
+  await name.press("Enter");
+  const node = page.locator(".tree-name").filter({ hasText: long });
+  expect(await node.getAttribute("title")).toContain(long);
+  expect(
+    await node.locator(".tree-label").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return (
+        style.textOverflow === "ellipsis" &&
+        element.scrollWidth > element.clientWidth
+      );
+    }),
+  ).toBe(true);
+  const row = node.locator(
+    "xpath=ancestor::*[contains(@class,'ant-tree-treenode')][1]",
+  );
+  const arrow = (await row.locator(".ant-tree-switcher").boundingBox())!;
+  const icon = (await row.locator(".ant-tree-iconEle").boundingBox())!;
+  expect(icon.x - arrow.x - arrow.width).toBeLessThan(8);
+  expect((await row.boundingBox())!.height).toBeLessThanOrEqual(29);
+  await expect(page.getByRole("menu")).toBeHidden();
+  await page.screenshot({
+    path: test.info().outputPath("explorer-density.png"),
+  });
+  await selectSource("item-flags");
+  await expect(page.getByLabel("候補1の名前", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("候補1の値", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("候補1の値", { exact: true })).toHaveValue("0");
+  await page.getByRole("button", { name: "候補1の操作", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /削除/ })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+});
+
+async function pointerPreview(
+  from: ReturnType<Page["locator"]>,
+  to: ReturnType<Page["locator"]>,
+) {
+  const a = (await from.boundingBox())!,
+    b = (await to.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+  await expect(
+    page.locator(".sort-dragging, .sort-ghost").first(),
+  ).toBeVisible();
+}
+
+test("structural motion previews pointer reorder, cancels safely and commits one Undo", async () => {
+  await page.evaluate(() => {
+    (window as any).__motions = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (frames, options) {
+      if (
+        (this as HTMLElement).dataset.rowKey ||
+        (this as HTMLElement).dataset.motionKey
+      )
+        (window as any).__motions.push({
+          key:
+            (this as HTMLElement).dataset.rowKey ||
+            (this as HTMLElement).dataset.motionKey,
+          frames,
+        });
+      return animate.call(this, frames, options);
+    };
+  });
+  await page.getByRole("button", { name: /レコードを追加/ }).click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__motions.some((m: any) => m.frames[0].opacity === 0),
+    ),
+  ).toBe(true);
+  await pointerPreview(
+    page.getByLabel("レコードを移動", { exact: true }).first(),
+    page.getByLabel("レコードを移動", { exact: true }).nth(2),
+  );
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
+  const translated = await page
+    .locator('[data-sort-group="rows"]')
+    .nth(1)
+    .evaluate((e) => parseFloat(getComputedStyle(e).translate.split(" ")[1]));
+  expect(translated).toBeLessThan(0);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
+  await pointerPreview(
+    page.getByLabel("レコードを移動", { exact: true }).first(),
+    page.getByLabel("レコードを移動", { exact: true }).nth(2),
+  );
+  await page.screenshot({ path: test.info().outputPath("drag-preview.png") });
+  await page.mouse.up();
+  await expect(page.getByLabel("id 行3", { exact: true })).toHaveValue("1");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
+  await pointerPreview(
+    page.getByLabel("列を移動", { exact: true }).first(),
+    page.getByLabel("列を移動", { exact: true }).nth(1),
+  );
+  await expect(page.getByLabel("列1の名前", { exact: true })).toHaveValue("id");
+  await page.mouse.up();
+  await expect(page.getByLabel("列1の名前", { exact: true })).toHaveValue(
+    "message",
+  );
+  await selectSource("rarity");
+  await page.getByRole("button", { name: "候補を追加" }).click();
+  await pointerPreview(
+    page.getByLabel("候補を移動", { exact: true }).first(),
+    page.getByLabel("候補を移動", { exact: true }).nth(2),
+  );
+  await page.mouse.up();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveValue(
+    "Common",
+  );
+  await page.getByRole("button", { name: "候補3の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /上へ/ }).click();
+  await expect(page.getByLabel("候補2の名前", { exact: true })).toHaveValue(
+    "Common",
+  );
+  await selectSource("combat-stats");
+  await page.getByRole("button", { name: "フィールドを追加" }).click();
+  await page.getByLabel("項目1の名前", { exact: true }).fill("AttackEdited");
+  await pointerPreview(
+    page.getByLabel("項目を移動", { exact: true }).first(),
+    page.getByLabel("項目を移動", { exact: true }).nth(2),
+  );
+  await page.mouse.up();
+  await expect(page.getByLabel("項目3の名前", { exact: true })).toHaveValue(
+    "AttackEdited",
+  );
+  const motions = await page.evaluate(() => (window as any).__motions.length);
+  await page
+    .getByRole("button", { name: "モーション: ON", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "モーション: OFF", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "フィールドを追加" }).click();
+  expect(await page.evaluate(() => (window as any).__motions.length)).toBe(
+    motions,
+  );
+});
+
+test("generation results reopen without repeating Build or Publish", async () => {
+  await page.getByRole("button", { name: "Build" }).click();
+  await expect(
+    page.getByText("成果物を生成しました", { exact: true }),
+  ).toBeVisible({ timeout: 30000 });
+  await page.getByRole("button", { name: "Publishする" }).click();
+  await page.getByRole("button", { name: "配置する", exact: true }).click();
+  await expect(
+    page.getByText("Publish完了 · rev.0 · すべてのデータ", { exact: true }),
+  ).toBeVisible();
+  const count = calls.filter((c) => c === "build" || c === "publish").length;
+  const drawer = page
+    .locator(".ant-drawer")
+    .filter({ hasText: "Build / Publish" });
+  await drawer.locator(".ant-drawer-close").click();
+  await page
+    .getByRole("button", { name: "生成結果を表示", exact: true })
+    .click();
+  await expect(
+    page.getByText("成果物を生成しました", { exact: true }),
+  ).toBeVisible();
+  await drawer.locator(".ant-drawer-close").click();
+  await page.evaluate(() => (window as any).__command("build-results"));
+  await expect(
+    page.getByText("成果物を生成しました", { exact: true }),
+  ).toBeVisible();
+  expect(calls.filter((c) => c === "build" || c === "publish").length).toBe(
+    count,
+  );
+});
+
+test("save-and-continue waits for an in-flight file save, then saves newer drafts too", async () => {
+  let release!: () => void;
+  saveGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.getByLabel("message 行1", { exact: true }).fill("最初の保存");
+  await page.getByLabel("message 行1", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await selectSource("rarity");
+  await page.getByRole("button", { name: "候補を追加" }).click();
+  await page.evaluate(() => {
+    (window as any).__closed = false;
+    window.desktop.close = async () => {
+      (window as any).__closed = true;
+    };
+    (window as any).__command("close");
+  });
+  await page
+    .getByRole("button", { name: "保存して続ける", exact: true })
+    .click();
+  expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
+  release();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__closed))
+    .toBe(true);
+  expect(
+    await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8"),
+  ).toContain("Member1");
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).toContain("最初の保存");
+  expect(calls.filter((c) => c === "save")).toHaveLength(2);
 });

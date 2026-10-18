@@ -31,7 +31,8 @@ import { defaultValue } from "../core/schema";
 import { identity } from "../core/identity";
 import { session } from "../core/session";
 import { ValueControl } from "./inputs";
-import { quickTransition } from "./motion";
+import { usePointerSort } from "./sortable";
+import { quickTransition, useLayoutMotion } from "./motion";
 export interface Cursor {
   source: string;
   path: (string | number)[];
@@ -56,12 +57,32 @@ export function NestedEditor({
     cursor &&
     session.update(cursor.source, cursor.path, next, "ネストした値を編集");
   const move = (from: number, to: number) => {
-    if (!Array.isArray(value) || to < 0 || to >= value.length || from === to)
+    if (
+      !Array.isArray(value) ||
+      from < 0 ||
+      from >= value.length ||
+      to < 0 ||
+      to >= value.length ||
+      from === to
+    )
       return;
     const next = [...value];
     next.splice(to, 0, next.splice(from, 1)[0]);
     update(next);
   };
+  const occurrences = new Map<string, number>();
+  const itemKeys = Array.isArray(value)
+    ? value.map((item: any) => {
+        const key = identity(item),
+          occurrence = occurrences.get(key) ?? 0;
+        occurrences.set(key, occurrence + 1);
+        return `${key}:${occurrence}`;
+      })
+    : [];
+  useLayoutMotion(body, itemKeys.join("|"));
+  usePointerSort(body, (_, from, to) =>
+    move(itemKeys.indexOf(from), itemKeys.indexOf(to)),
+  );
   const navigate = (depth: number) => {
     if (!cursor || depth < 2) return;
     let schema = snapshot.sources.find(
@@ -153,56 +174,25 @@ export function NestedEditor({
             </div>
           ) : (
             <>
-              <div
-                className="nested-body"
-                ref={body}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const edge = 55;
-                  if (e.clientY < rect.top + edge)
-                    e.currentTarget.scrollTop -= 20;
-                  if (e.clientY > rect.bottom - edge)
-                    e.currentTarget.scrollTop += 20;
-                }}
-              >
+              <div className="nested-body" ref={body}>
                 {array ? (
                   <AnimatePresence initial={false}>
                     {(value as any[]).map((item, index) => (
                       <motion.div
-                        layout="position"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        initial={false}
                         exit={{ opacity: 0, height: 0 }}
                         transition={quickTransition}
                         className="array-item"
-                        key={
-                          item && typeof item === "object"
-                            ? identity(item)
-                            : `${String(item)}:${index}`
-                        }
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (e.dataTransfer.types.includes("array-index"))
-                            move(
-                              Number(e.dataTransfer.getData("array-index")),
-                              index,
-                            );
-                        }}
+                        key={itemKeys[index]}
+                        data-motion-key={itemKeys[index]}
+                        data-sort-group="array"
+                        data-sort-key={itemKeys[index]}
+                        data-sort-anchor=""
                       >
                         <span
                           className="drag-handle"
-                          draggable
+                          data-sort-handle="array"
                           aria-label={`要素${index + 1}を移動`}
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData(
-                              "array-index",
-                              String(index),
-                            );
-                            e.dataTransfer.effectAllowed = "move";
-                          }}
                         >
                           <HolderOutlined />
                         </span>

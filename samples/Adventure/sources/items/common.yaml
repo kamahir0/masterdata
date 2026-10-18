@@ -7,43 +7,74 @@ records:
     rarity: Common
     enabled: true
     price: 120
-    stats: {attack: 12, defense: 0, enabled: true, critical: null}
+    stats:
+      attack: 12
+      defense: 0
+      enabled: true
+      critical: null
     effects:
       - name: 追加攻撃
         enabled: true
-        values: [1, 2, 3]
-        stats: {attack: 3, defense: 1, enabled: false, critical: true}
-    materials: [銅鉱石, 樫の木材]
+        values:
+          - 1
+          - 2
+          - 3
+        stats:
+          attack: 3
+          defense: 1
+          enabled: false
+          critical: true
+    materials:
+      - 銅鉱石
+      - 樫の木材
     note: null
     tradable: true
-    tags: [Weapon, Crafting]
+    tags:
+      - Weapon
+      - Crafting
     maxPower: 18446744073709551615
-    $tags: [common]
+    $tags:
+      - common
   - id: 2001
     code: frost-blade
     name: 氷晶の剣
     rarity: Rare
     enabled: true
     price: 640
-    stats: {attack: 34, defense: 2, enabled: true, critical: false}
+    stats:
+      attack: 34
+      defense: 2
+      enabled: true
+      critical: false
     effects: []
-    materials: [氷の結晶, 鋼のインゴット]
+    materials:
+      - 氷の結晶
+      - 鋼のインゴット
     note: 凍てつく峠の報酬
     tradable: null
-    tags: [Weapon]
+    tags:
+      - Weapon
     maxPower: 2000
-    $tags: [common]
+    $tags:
+      - common
   - id: 3001
     code: dawnbringer
     name: 夜明けの剣
     rarity: Epic
     enabled: false
     price: 2400
-    stats: {attack: 80, defense: 12, enabled: false, critical: null}
+    stats:
+      attack: 80
+      defense: 12
+      enabled: false
+      critical: null
     effects: []
     materials: []
     note: null
     tradable: false
-    tags: [None]
+    tags:
+      - None
     maxPower: 9000
-    $tags: [common, debug]
+    $tags:
+      - common
+      - debug

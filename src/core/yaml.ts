@@ -67,7 +67,7 @@ export function serialize(source: Source, saved?: SavedFile): string {
   }
   doc.contents = sync(doc.contents, source.data) as any;
   visit(doc, (_, node) => {
-    if (isMap(node) || isSeq(node)) node.flow = false;
+    if (isMap(node) || isSeq(node)) node.flow = node.items.length === 0;
   });
   const output = doc.toString({ lineWidth: 0 });
   return original.includes("\r\n") ? output.replace(/\r?\n/g, "\r\n") : output;

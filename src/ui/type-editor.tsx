@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Button,
   Card,
@@ -20,6 +20,9 @@ import {
 import { type Source, type Snapshot, typeKind } from "../core/types";
 import { session } from "../core/session";
 import { Entry, parseInput } from "./inputs";
+import { identity } from "../core/identity";
+import { useLayoutMotion } from "./motion";
+import { usePointerSort } from "./sortable";
 import { FieldEditor } from "./fields";
 export function TypeEditor({
   source,
@@ -30,11 +33,12 @@ export function TypeEditor({
 }) {
   const [focusIndex, setFocusIndex] = useState(-1);
   const kind = typeKind(source);
-  if (!kind) return null;
-  const definition = source.data[kind];
+  const definition = kind ? source.data[kind] : {};
   const members = Array.isArray(definition.members) ? definition.members : [];
+  const locked = (member: any) => kind === "flags" && member.name === "None";
+  const minimum = members.some(locked) ? 1 : 0;
   const setMembers = (next: any[], label = "候補を編集") =>
-    session.update(source.id, [kind, "members"], next, label);
+    session.update(source.id, [kind!, "members"], next, label);
   const add = () => {
     setFocusIndex(members.length);
     let index = 1;
@@ -45,13 +49,29 @@ export function TypeEditor({
     setMembers([...members, { name: `Member${index}`, value }], "候補を追加");
   };
   const move = (from: number, to: number) => {
-    if (to < 0 || to >= members.length || from === to) return;
+    if (
+      from < 0 ||
+      to < minimum ||
+      to >= members.length ||
+      from === to ||
+      locked(members[from])
+    )
+      return;
     const next = [...members];
     next.splice(to, 0, next.splice(from, 1)[0]);
     setMembers(next, "候補を並べ替え");
   };
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutMotion(root, members.map(identity).join("|"));
+  usePointerSort(root, (_, from, to) =>
+    move(
+      members.findIndex((m: any) => identity(m) === from),
+      members.findIndex((m: any) => identity(m) === to),
+    ),
+  );
+  if (!kind) return null;
   return (
-    <div className="type-editor editor-scroll" key={source.id}>
+    <div className="type-editor editor-scroll" key={source.id} ref={root}>
       <div className="section-intro">
         <div>
           <Tag color="purple">
@@ -98,34 +118,30 @@ export function TypeEditor({
             </Card>
           ) : (
             <div className="definition-table">
-              <Table
+              <Table<any>
                 size="small"
                 pagination={false}
                 dataSource={members}
-                rowKey={(_, i) => String(i)}
-                onRow={(_, index) => ({
-                  onDragOver: (e) => e.preventDefault(),
-                  onDrop: (e) => {
-                    e.preventDefault();
-                    if (e.dataTransfer.types.includes("member-index"))
-                      move(
-                        Number(e.dataTransfer.getData("member-index")),
-                        index!,
-                      );
-                  },
-                })}
+                rowKey={identity}
+                onRow={(member) =>
+                  locked(member)
+                    ? {}
+                    : ({
+                        "data-sort-group": "members",
+                        "data-sort-key": identity(member),
+                        "data-sort-anchor": "",
+                      } as any)
+                }
                 columns={[
                   {
                     title: "",
                     width: 40,
-                    render: (_, _r, i) => (
+                    render: (_, member) => (
                       <span
                         className="drag-handle"
-                        draggable
+                        data-sort-handle="members"
+                        aria-disabled={locked(member)}
                         aria-label="候補を移動"
-                        onDragStart={(e) =>
-                          e.dataTransfer.setData("member-index", String(i))
-                        }
                       >
                         <HolderOutlined />
                       </span>
@@ -136,6 +152,7 @@ export function TypeEditor({
                     render: (_, member, i) => (
                       <Entry
                         autoFocus={i === focusIndex}
+                        disabled={locked(member)}
                         value={member.name}
                         label={`候補${i + 1}の名前`}
                         onCommit={(v) => session.renameMember(source.id, i, v)}
@@ -147,6 +164,7 @@ export function TypeEditor({
                     width: 220,
                     render: (_, member, i) => (
                       <Entry
+                        disabled={locked(member)}
                         value={member.value}
                         label={`候補${i + 1}の値`}
                         numeric
@@ -163,7 +181,7 @@ export function TypeEditor({
                   {
                     title: "",
                     width: 50,
-                    render: (_, _m, i) => (
+                    render: (_, member, i) => (
                       <Dropdown
                         menu={{
                           items: [
@@ -171,19 +189,21 @@ export function TypeEditor({
                               key: "up",
                               label: "上へ",
                               icon: <UpOutlined />,
-                              disabled: i === 0,
+                              disabled: locked(member) || i <= minimum,
                             },
                             {
                               key: "down",
                               label: "下へ",
                               icon: <DownOutlined />,
-                              disabled: i === members.length - 1,
+                              disabled:
+                                locked(member) || i === members.length - 1,
                             },
                             {
                               key: "delete",
                               label: "削除",
                               icon: <DeleteOutlined />,
                               danger: true,
+                              disabled: locked(member),
                             },
                           ],
                           onClick: ({ key }) =>

@@ -2,12 +2,17 @@ name: 冒険の道具箱
 profiles:
   production:
     include: []
-    exclude: [debug, event]
+    exclude:
+      - debug
+      - event
   development:
     include: []
-    exclude: [event]
+    exclude:
+      - event
   event:
-    include: [common, event]
+    include:
+      - common
+      - event
     exclude: []
 publish:
   csharp: output/Generated

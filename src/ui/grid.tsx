@@ -46,6 +46,7 @@ import {
   searchText,
 } from "../core/types";
 import { identity } from "../core/identity";
+import { usePointerSort } from "./sortable";
 import { useLayoutMotion } from "./motion";
 import { useTableViewport } from "./table-viewport";
 import { session } from "../core/session";
@@ -192,6 +193,17 @@ export function GridEditor({
       pendingColumn.current = null;
     }
   }, [table?.fields.length]);
+  usePointerSort(viewport, (group, from, to) => {
+    if (group === "rows") {
+      const row = rows.find((r) => r.key === from),
+        target = rows.find((r) => r.key === to);
+      if (row && target) move(row, target);
+    } else if (table)
+      columnMove(
+        table.fields.findIndex((f) => identity(f) === from),
+        table.fields.findIndex((f) => identity(f) === to),
+      );
+  });
   if (!table)
     return (
       <Empty description="対応する表の定義がありません。ソースから表名を修正できます。" />
@@ -305,12 +317,8 @@ export function GridEditor({
       render: (_, row) => (
         <span
           className="drag-handle"
-          draggable
+          data-sort-handle="rows"
           aria-label="レコードを移動"
-          onDragStart={(e) => {
-            e.dataTransfer.setData("row-key", row.key);
-            e.dataTransfer.effectAllowed = "move";
-          }}
         >
           <HolderOutlined />
         </span>
@@ -352,23 +360,12 @@ export function GridEditor({
             ? 230
             : 185,
         title: (
-          <div
-            className="column-heading"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (e.dataTransfer.types.includes("column-index"))
-                columnMove(Number(e.dataTransfer.getData("column-index")), col);
-            }}
-          >
+          <div className="column-heading">
             <div className="column-title">
               <span
-                draggable
+                data-sort-handle="columns"
                 className="column-grip"
                 aria-label="列を移動"
-                onDragStart={(e) =>
-                  e.dataTransfer.setData("column-index", String(col))
-                }
               >
                 <HolderOutlined />
               </span>
@@ -469,7 +466,12 @@ export function GridEditor({
           </div>
         ),
         onHeaderCell: () =>
-          ({ "data-motion-key": `column-${identity(field)}` }) as any,
+          ({
+            "data-motion-key": `column-${identity(field)}`,
+            "data-sort-group": "columns",
+            "data-sort-key": identity(field),
+            "data-sort-anchor": "",
+          }) as any,
         onCell: (row: Row, rowIndex?: number) => {
           const i = rowIndex ?? rows.findIndex((r) => r.key === row.key);
           const selectedCell =
@@ -487,6 +489,9 @@ export function GridEditor({
           );
           return {
             "data-column-index": col,
+            "data-motion-key": `cell-${row.key}-${identity(field)}`,
+            "data-sort-group": "columns",
+            "data-sort-key": identity(field),
             className: `data-cell ${pk ? "primary-cell" : ""} ${selectedCell ? "selected-cell" : ""} ${issues.length ? "error-cell" : ""}`,
             title: issues.map((p) => p.message).join("\n"),
             onClickCapture: (e: React.MouseEvent) => {
@@ -818,9 +823,9 @@ export function GridEditor({
           );
           const target = row
             ?.querySelectorAll(".data-cell")
-            [cell.col]?.querySelector<HTMLElement>(
-              "input, button, [role=combobox]",
-            );
+            [
+              cell.col
+            ]?.querySelector<HTMLElement>("input, button, [role=combobox]");
           target?.focus();
           return;
         }
@@ -937,23 +942,7 @@ export function GridEditor({
           </Button>
         </Space>
       </div>
-      <div
-        className="grid-viewport"
-        ref={viewport}
-        onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes("row-key")) return;
-          e.preventDefault();
-          const scroller = viewport.current?.querySelector(
-            ".ant-table-tbody-virtual-holder, .ant-table-body",
-          ) as HTMLElement | null;
-          if (!scroller) return;
-          const r = scroller.getBoundingClientRect();
-          if (e.clientY > r.bottom - 60) scroller.scrollTop += 22;
-          if (e.clientY < r.top + 60) scroller.scrollTop -= 22;
-          if (e.clientX > r.right - 50) scroller.scrollLeft += 20;
-          if (e.clientX < r.left + 50) scroller.scrollLeft -= 20;
-        }}
-      >
+      <div className="grid-viewport" ref={viewport}>
         <Table<Row>
           ref={tableRef}
           className="data-grid"
@@ -976,21 +965,19 @@ export function GridEditor({
             columnWidth: 36,
             fixed: true,
           }}
-          onRow={(row) => ({
-            className:
-              profile &&
-              !selected(row.record, snapshot.config.profiles[profile])
-                ? "excluded-record"
-                : "",
-            onDragOver: (e) => e.preventDefault(),
-            onDrop: (e) => {
-              e.preventDefault();
-              const from = rows.find(
-                (r) => r.key === e.dataTransfer.getData("row-key"),
-              );
-              if (from) move(from, row);
-            },
-          })}
+          onRow={(row, index) =>
+            ({
+              className:
+                profile &&
+                !selected(row.record, snapshot.config.profiles[profile])
+                  ? "excluded-record"
+                  : "",
+              "data-sort-group": "rows",
+              "data-sort-order": index,
+              "data-sort-key": row.key,
+              "data-sort-anchor": "",
+            }) as any
+          }
           locale={{
             emptyText: (
               <Empty

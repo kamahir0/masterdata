@@ -2,7 +2,16 @@ kind: type
 name: CombatStats
 custom:
   fields:
-    - {key: 0, name: attack, type: int}
-    - {key: 1, name: defense, type: int}
-    - {key: 2, name: enabled, type: bool}
-    - {key: 3, name: critical, type: bool, nullable: true}
+    - key: 0
+      name: attack
+      type: int
+    - key: 1
+      name: defense
+      type: int
+    - key: 2
+      name: enabled
+      type: bool
+    - key: 3
+      name: critical
+      type: bool
+      nullable: true

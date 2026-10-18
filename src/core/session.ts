@@ -64,6 +64,19 @@ export class Session {
   }
   private savedSources = new Map<string, Source>();
   private savedFolders = "[]";
+  private serialized = new WeakMap<
+    Source,
+    { base?: SavedFile; text: string }
+  >();
+  private fileText(source: Source) {
+    const base = this.state.saved.get(source.id);
+    let cached = this.serialized.get(source);
+    if (!cached || cached.base !== base) {
+      cached = { base, text: serialize(source, base) };
+      this.serialized.set(source, cached);
+    }
+    return cached.text;
+  }
   dirtySource(source: Source) {
     const base = this.savedSources.get(source.id);
     return (
@@ -620,23 +633,54 @@ export class Session {
       "レコードを追加",
     );
   }
-  files() {
-    return this.state.snapshot.sources.map((s) => ({
-      id: s.id,
-      path: s.path,
-      text: this.dirtySource(s)
-        ? serialize(s, this.state.saved.get(s.id))
-        : this.state.saved.get(s.id)!.text,
-    }));
+  files(ids?: string[]) {
+    const changed = this.state.snapshot.sources
+      .filter((s) => !ids || ids.includes(s.id))
+      .map((s) => ({
+        id: s.id,
+        path: s.path,
+        text: this.dirtySource(s)
+          ? this.fileText(s)
+          : this.state.saved.get(s.id)!.text,
+      }));
+    if (!ids) return changed;
+    const result = new Map(this.state.saved);
+    ids.forEach((id) => result.delete(id));
+    changed.forEach((file) => result.set(file.id, file));
+    return [...result.values()];
   }
-  acceptSave(result: SaveResult, captured: Snapshot) {
+  saveFolders(captured: Snapshot, ids?: string[]) {
+    if (!ids) return captured.folders;
+    const folders = new Set<string>(JSON.parse(this.savedFolders));
+    for (const source of captured.sources.filter((s) => ids.includes(s.id))) {
+      const parts = source.path.split("/").slice(0, -1);
+      parts.forEach((_, i) => {
+        const parent = parts.slice(0, i + 1).join("/");
+        // File parents are created by the writer. Only acknowledge explicit
+        // folder drafts here, so an implicit parent cannot leave a phantom edit.
+        if (captured.folders.includes(parent)) folders.add(parent);
+      });
+    }
+    return [...folders];
+  }
+  saveConfig(captured: Snapshot, ids?: string[]) {
+    return ids ? JSON.parse(this.state.savedConfig) : captured.config;
+  }
+  acceptSave(result: SaveResult, captured: Snapshot, ids?: string[]) {
     // Saved bases are independent from history; a save must not invalidate Undo or overwrite edits made during I/O.
-    this.savedSources = new Map(captured.sources.map((s) => [s.id, s]));
-    this.savedFolders = JSON.stringify(captured.folders);
+    const sources = ids
+      ? new Map(this.savedSources)
+      : new Map<string, Source>();
+    ids?.forEach((id) => sources.delete(id));
+    captured.sources
+      .filter((s) => !ids || ids.includes(s.id))
+      .forEach((s) => sources.set(s.id, s));
+    this.savedSources = sources;
+    this.savedFolders = JSON.stringify(this.saveFolders(captured, ids));
     this.state = {
       ...this.state,
       saved: new Map(result.files.map((f) => [f.id, f])),
-      savedConfig: JSON.stringify(captured.config),
+      savedConfig: JSON.stringify(this.saveConfig(captured, ids)),
     };
     this.emit();
   }

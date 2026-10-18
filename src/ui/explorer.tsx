@@ -15,7 +15,12 @@ import {
   BranchesOutlined,
   DatabaseOutlined,
 } from "@ant-design/icons";
-import { type Snapshot, type Source, typeKind } from "../core/types";
+import {
+  type Snapshot,
+  type Source,
+  type SavedFile,
+  typeKind,
+} from "../core/types";
 import { session } from "../core/session";
 export function SourceIcon({ source }: { source?: Source }) {
   return source?.data?.kind === "schema" ? (
@@ -37,11 +42,13 @@ export function Explorer({
   active,
   onSelect,
   fail,
+  saved,
 }: {
   snapshot: Snapshot;
   active: string;
   onSelect: (id: string) => void;
   fail: (error: unknown) => void;
+  saved: Map<string, SavedFile>;
 }) {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<React.Key[]>([]);
@@ -236,10 +243,13 @@ export function Explorer({
               >
                 <span
                   className={`tree-name ${item.source?.syntaxError ? "tree-error" : ""}`}
+                  title={item.path}
                 >
-                  {item.source?.data?.kind
-                    ? label.replace(/\.ya?ml$/i, "")
-                    : label}
+                  <span className="tree-label">
+                    {item.source?.data?.kind
+                      ? label.replace(/\.ya?ml$/i, "")
+                      : label}
+                  </span>
                   {item.source && session.dirtySource(item.source) && (
                     <span className="dirty-dot" />
                   )}
@@ -263,7 +273,7 @@ export function Explorer({
         });
     };
     return build("");
-  }, [allPaths, search, renaming, snapshot]);
+  }, [allPaths, search, renaming, snapshot, saved]);
   useEffect(() => {
     if (!active) return;
     const source = snapshot.sources.find((s) => s.id === active);
@@ -305,14 +315,23 @@ export function Explorer({
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-      <div className="project-label">
-        <span className="project-marker" />
-        {snapshot.config.name}
-      </div>
       <div
         className="tree-scroll"
         ref={container}
         onKeyDown={(e) => {
+          if (e.key === "Escape" && !renaming) {
+            // An open context menu owns the first Escape.
+            if (
+              [...document.querySelectorAll<HTMLElement>(".ant-dropdown")].some(
+                (menu) => menu.offsetHeight > 0,
+              )
+            )
+              return;
+            e.preventDefault();
+            e.stopPropagation();
+            setKeys([]);
+            return;
+          }
           if ((e.target as HTMLElement).tagName === "INPUT") return;
           if (e.key === "F2" && selectedPath) {
             e.preventDefault();

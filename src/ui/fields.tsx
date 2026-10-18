@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Button, Dropdown, Space, Table, Tooltip } from "antd";
 import {
   DeleteOutlined,
@@ -17,6 +17,8 @@ import {
 } from "../core/types";
 import { session } from "../core/session";
 import { identity } from "../core/identity";
+import { useLayoutMotion } from "./motion";
+import { usePointerSort } from "./sortable";
 import { Entry, TypeSelect } from "./inputs";
 export function ModifierButtons({
   field,
@@ -65,30 +67,41 @@ export function FieldEditor({
   const set = (i: number, f: Field) =>
     session.update(source.id, [...base, i], f, "項目の定義を編集");
   const move = (from: number, to: number) => {
-    if (to < 0 || to >= fields.length || from === to) return;
+    if (
+      from < 0 ||
+      from >= fields.length ||
+      to < 0 ||
+      to >= fields.length ||
+      from === to
+    )
+      return;
     const next = [...fields];
     next.splice(to, 0, next.splice(from, 1)[0]);
     session.update(source.id, base, next, "項目を並べ替え");
   };
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutMotion(root, fields.map(identity).join("|"));
+  usePointerSort(root, (_, from, to) =>
+    move(
+      fields.findIndex((f) => identity(f) === from),
+      fields.findIndex((f) => identity(f) === to),
+    ),
+  );
   return (
-    <div className="definition-table">
+    <div className="definition-table" ref={root}>
       <Table
         size="small"
         pagination={false}
         rowKey={(field) => identity(field)}
         dataSource={fields}
         scroll={{ x: 620 }}
-        onRow={(_, index) => ({
-          onDragOver: (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-          },
-          onDrop: (e) => {
-            e.preventDefault();
-            const from = Number(e.dataTransfer.getData("field-index"));
-            if (Number.isInteger(from)) move(from, index!);
-          },
-        })}
+        onRow={(field) =>
+          ({
+            "data-sort-group": "fields",
+            "data-sort-key": identity(field),
+            "data-sort-anchor": "",
+          }) as any
+        }
         columns={[
           {
             title: "",
@@ -96,11 +109,8 @@ export function FieldEditor({
             render: (_, _f, i) => (
               <span
                 className="drag-handle"
-                draggable
+                data-sort-handle="fields"
                 aria-label="項目を移動"
-                onDragStart={(e) =>
-                  e.dataTransfer.setData("field-index", String(i))
-                }
               >
                 <HolderOutlined />
               </span>

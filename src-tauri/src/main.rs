@@ -190,6 +190,7 @@ fn menu(app: &tauri::App) -> tauri::Result<()> {
             &item("new", "新しいプロジェクト", Some("CmdOrCtrl+Shift+N"))?,
             &item("open", "開く…", Some("CmdOrCtrl+O"))?,
             &item("save", "保存", Some("CmdOrCtrl+S"))?,
+            &item("save-all", "すべて保存", Some("CmdOrCtrl+Shift+S"))?,
             &PredefinedMenuItem::separator(app)?,
             &item("build", "Build", Some("CmdOrCtrl+B"))?,
             &item("close", "閉じる", Some("CmdOrCtrl+W"))?,
@@ -216,6 +217,7 @@ fn menu(app: &tauri::App) -> tauri::Result<()> {
         &[
             &item("find", "検索", Some("CmdOrCtrl+F"))?,
             &item("problems", "問題", Some("CmdOrCtrl+Shift+M"))?,
+            &item("build-results", "生成結果", None)?,
             &PredefinedMenuItem::separator(app)?,
             &item("zoom-reset", "実際のサイズ", Some("CmdOrCtrl+0"))?,
             &item("zoom-in", "拡大", Some("CmdOrCtrl+Plus"))?,

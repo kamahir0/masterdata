@@ -92,18 +92,15 @@ test.afterEach(async () => {
   await page?.context().close();
   await fs.rm(root, { recursive: true, force: true });
 });
-async function settleDrawer() {
+async function openNested(name: string) {
+  await page.getByRole("button", { name, exact: true }).click();
   const panel = page.locator(".ant-drawer-content-wrapper");
   await expect(panel).toBeVisible();
-  // Clicks in a newly opened Drawer intermittently missed on Linux WebKit.
-  // Synchronize with its real motion, rather than sleeping or disabling it.
-  await panel.evaluate(async (element) => {
-    await Promise.all(
-      element
-        .getAnimations({ subtree: true })
-        .map((animation) => animation.finished.catch(() => {})),
-    );
-  });
+  // rc-motion prepares the opening before a Web Animation exists. A finished-
+  // animation promise alone returned early on Linux WebKit (CI trace 39083065919).
+  await expect(panel).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
 }
 async function selectSource(name: string) {
   const search = page.getByLabel("表・型を検索");
@@ -182,10 +179,7 @@ test("top-level and nested bool share controls; nested nullable can be cleared",
   await selectSource("common");
   const top = page.getByRole("switch", { name: "enabled 行1", exact: true });
   await expect(top).toBeChecked();
-  await page
-    .getByRole("button", { name: "stats 行1を開く", exact: true })
-    .click();
-  await settleDrawer();
+  await openNested("stats 行1を開く");
   const nested = page.getByRole("switch", { name: "enabled", exact: true });
   await expect(nested).toBeChecked();
   expect(await top.getAttribute("class")).toBe(
@@ -229,10 +223,7 @@ test("type mismatch retains original value, does not block edits or Save, and ca
 });
 test("deep array navigation retains the whole breadcrumb and allows value repair", async () => {
   await selectSource("common");
-  await page
-    .getByRole("button", { name: "effects 行1を開く", exact: true })
-    .click();
-  await settleDrawer();
+  await openNested("effects 行1を開く");
   await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
   await page.getByRole("button", { name: "statsを開く", exact: true }).click();
   await expect(page.locator(".breadcrumb-scroll")).toContainText("effects");
@@ -432,9 +423,7 @@ test("column selection and duplication preserve values; search matches values ra
 
 test("nested navigation mounts each target independently and returns to its array", async () => {
   await selectSource("common");
-  await page
-    .getByRole("button", { name: "effects 行1を開く", exact: true })
-    .click();
+  await openNested("effects 行1を開く");
   await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
   const parent = await page
     .getByRole("switch", { name: "enabled", exact: true })
@@ -643,9 +632,7 @@ test("offscreen nested buttons and header focus keep body cells aligned with the
       )
       .toBeLessThan(2);
   };
-  await page
-    .getByRole("button", { name: "effects 行1を開く", exact: true })
-    .click();
+  await openNested("effects 行1を開く");
   await aligned(7);
   await page.locator(".ant-drawer-close").click();
   await page.getByLabel("列13の名前", { exact: true }).focus();
@@ -656,9 +643,7 @@ test("offscreen nested buttons and header focus keep body cells aligned with the
 
 test("native pointer drag reorders nested array elements without losing their editors", async () => {
   await selectSource("common");
-  await page
-    .getByRole("button", { name: "effects 行1を開く", exact: true })
-    .click();
+  await openNested("effects 行1を開く");
   await page.getByRole("button", { name: "要素を複製", exact: true }).click();
   await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
   await page.getByLabel("name", { exact: true }).fill("FirstEffect");

@@ -452,6 +452,11 @@ test("large folder toggles perform no discovery I/O; large table remains virtual
     .first()
     .boundingBox())!;
   const bounds = (await scroller.boundingBox())!;
+  const originalRow = await page
+    .getByLabel("レコードを移動", { exact: true })
+    .first()
+    .locator("xpath=ancestor::*[@data-row-key]")
+    .getAttribute("data-row-key");
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
   await page.mouse.down();
   await page.mouse.move(
@@ -459,9 +464,14 @@ test("large folder toggles perform no discovery I/O; large table remains virtual
     bounds.y + bounds.height - 5,
     { steps: 10 },
   );
+  // Prove continued scrolling beyond the original viewport, not a fixed
+  // pixels/second benchmark on a traced, software-rendered CI browser.
   await expect
-    .poll(() => scroller.evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(700);
+    .poll(() => scroller.evaluate((element) => element.scrollTop), {
+      timeout: 15000,
+    })
+    .toBeGreaterThan(bounds.height + 100);
+  await expect(page.locator(`[data-row-key="${originalRow}"]`)).toHaveCount(0);
   await expect(page.locator(".sort-ghost")).toBeVisible();
   await page.mouse.up();
   await expect(page.locator(".sort-ghost")).toHaveCount(0);
@@ -1073,6 +1083,11 @@ test("save-and-continue waits for an in-flight file save, then saves newer draft
     };
     (window as any).__command("close");
   });
+  // Like Drawer preparation, Modal's paused scale(.2) can look stable for two
+  // frames before its entry starts. A click there can miss the moving button.
+  await expect(
+    page.getByRole("dialog", { name: "変更を保存しますか？", exact: true }),
+  ).not.toHaveClass(/ant-zoom-(?:appear|enter)(?:-|\s|$)/);
   await page
     .getByRole("button", { name: "保存して続ける", exact: true })
     .click();

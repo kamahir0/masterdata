@@ -1,6 +1,6 @@
 @echo off
 setlocal
-node "%~dp0scripts\local-app.mjs" %*
+node "%~dp0..\local-app.mjs" %*
 set "STATUS=%ERRORLEVEL%"
 if not "%STATUS%"=="0" (
   echo.

@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 02c889d01a99e1ca64286ea30892b28d2a6b600a
-Work base: f3c2752683cf9ac8f0db683e55ab541a7f6c97bf
+Stage: implementation-ready
+Candidate: none
+Work base: 4dd5baa2f54b21378b3c74e7fac0c5a0153b9f05
 
 ## Active work
 
-None.
+In progress: launcherをscripts/local-app/へ移動し、参照と検証を更新する。
 
 ## Blocking findings
 

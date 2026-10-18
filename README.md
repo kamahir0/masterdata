@@ -6,13 +6,13 @@
 
 開発・ローカルbuildにはNode.js 22.12以降、npm、Rust toolchain、OSの[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)、.NET 8 SDK以降を用意します。完成したアプリの利用にはNode.js / Rustは不要です。Build機能には.NET SDKが必要です。
 
-macOSはルートの`app.command`、Windowsは`app.bat`を実行すると、現在のcheckoutの依存install・検証・build・開発版install・起動まで行います。Gitのpullはしません。
+macOSは[scripts/local-app/app.command](scripts/local-app/app.command)、Windowsは[scripts/local-app/app.bat](scripts/local-app/app.bat)を実行すると、現在のcheckoutの依存install・検証・build・開発版install・起動まで行います。Gitのpullはしません。
 
 - アプリ名: **MasterData [Dev]**。通常版とidentifier・設定を分離します。
 - macOS: `~/Applications/MasterData [Dev].app`
 - Windows: `%LOCALAPPDATA%\Programs\MasterData-Dev`。スタートメニューの`MasterData [Dev]`から起動できます。
 - 再実行は固定先を更新します。起動中なら更新を止めるので、変更を保存して終了してから再実行してください。
-- `./app.command --no-launch` / `app.bat --no-launch`でinstall後の起動を省略できます。初回buildはRust依存のcompileに時間がかかります。
+- `./scripts/local-app/app.command --no-launch` / `scripts\local-app\app.bat --no-launch`でinstall後の起動を省略できます。初回buildはRust依存のcompileに時間がかかります。
 
 rendererのhot reloadを使う開発起動は次の通りです。
 

@@ -2,14 +2,14 @@
 
 ## Objective
 
-現状のUI・操作・motionを維持してElectronからTauriへ移行し、ローカルcheckoutのbuildから識別可能な開発版の固定先install・起動までを.command / .batで一括実行できるようにする。
+リポジトリルートの一括build / install用.command / .batをscripts/local-app/へ移し、起動パスと案内を更新する。
 
-選択根拠: 2026-10-18 Human request。通常の技術判断は既存の自律実装委任内で行う。
+選択根拠: 2026-10-18 Human request「リポジトリルートが汚れるから置き場所だけ変えて」。
 
 ## Completion boundary
 
-[Desktop Authoring](specs/desktop.md)と[Tauri移行提案](spec-changes/0002-tauri-development-install.md)の関連要件、focused回帰、macOS実アプリとinstallの確認、通常commit / push、各OS CI。
+launcherの移動、相対参照・README・仕様のpath表記・CI呼出しの更新、focused validation、self-review、通常commit / pushとCI。
 
 ## Non-scope
 
-公開release、UI再設計、CLI、実データ破棄、識別できない既存アプリの削除。
+build / install / 起動のbehavior変更、アプリの再設計・再install。

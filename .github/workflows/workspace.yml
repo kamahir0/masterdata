@@ -79,7 +79,7 @@ jobs:
       - name: Windows development install workflow
         if: runner.os == 'Windows'
         shell: cmd
-        run: app.bat --no-launch
+        run: scripts\local-app\app.bat --no-launch
       - name: Failed GUI evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

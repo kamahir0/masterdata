@@ -47,7 +47,7 @@ import {
 } from "../core/types";
 import { identity } from "../core/identity";
 import { usePointerSort } from "./sortable";
-import { useLayoutMotion } from "./motion";
+import { useEditing } from "./editing";
 import { useTableViewport } from "./table-viewport";
 import { session } from "../core/session";
 import { defaultValue, recordAllocator } from "../core/schema";
@@ -108,12 +108,6 @@ export function GridEditor({
     anchorCol: number;
   } | null>(null);
   const [height, setHeight] = useState(400);
-  const pendingColumn = useRef<number | null>(null);
-  const pendingRow = useRef<{
-    source: string;
-    index: number;
-    trigger: Element | null;
-  } | null>(null);
   const handledJump = useRef<number | undefined>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
   const tableRef = useRef<any>(null);
@@ -162,74 +156,14 @@ export function GridEditor({
       (source) => source.id === destinationId,
     );
     if (!table || !target) return;
-    pendingRow.current = {
-      source: destinationId,
-      index: Array.isArray(target.data?.records)
-        ? target.data.records.length
-        : 0,
-      trigger: document.activeElement,
-    };
     setQuery("");
     if (chosen !== "all" && chosen !== destinationId) setChosen(destinationId);
-    session.addRow(table.source.id, destinationId, template);
+    editing.run(() => ({
+      focus: `${destinationId}:${identity(session.addRow(table.source.id, destinationId, template))}`,
+    }));
   };
-  useEffect(() => {
-    const pending = pendingRow.current;
-    if (!pending) return;
-    const index = rows.findIndex(
-      (row) => row.source.id === pending.source && row.index === pending.index,
-    );
-    if (index < 0) return;
-    // AntD's virtual list treats positional and record-based scroll as exclusive
-    // modes. Reset X separately, then reveal the record. Imperative virtual scroll
-    // also needs the separate native header synchronized (large-addition test).
-    const header =
-      viewport.current?.querySelector<HTMLElement>(".ant-table-header");
-    if (header) header.scrollLeft = 0;
-    tableRef.current?.scrollTo({ left: 0 });
-    tableRef.current?.scrollTo({ index });
-    let frame = 0,
-      attempts = 0;
-    const cancel = () => {
-      pendingRow.current = null;
-      cancelAnimationFrame(frame);
-    };
-    const focus = () => {
-      if (pendingRow.current !== pending) return;
-      if (
-        document.activeElement !== pending.trigger &&
-        document.activeElement !== document.body
-      ) {
-        cancel();
-        return;
-      }
-      const row = viewport.current?.querySelector<HTMLElement>(
-        `[data-row-key="${CSS.escape(rows[index].key)}"]`,
-      );
-      const input = row?.querySelector<HTMLElement>(
-        ".value-control .entry, .value-control input, .value-control button",
-      );
-      if (input) {
-        setCell({ row: index, col: 0, anchorRow: index, anchorCol: 0 });
-        pendingRow.current = null;
-        input.focus({ preventScroll: true });
-        if (input instanceof HTMLInputElement) input.select();
-      } else if (++attempts < 30) frame = requestAnimationFrame(focus);
-      else cancel();
-    };
-    document.addEventListener("pointerdown", cancel, true);
-    document.addEventListener("keydown", cancel, true);
-    document.addEventListener("wheel", cancel, true);
-    frame = requestAnimationFrame(focus);
-    return () => {
-      cancelAnimationFrame(frame);
-      document.removeEventListener("pointerdown", cancel, true);
-      document.removeEventListener("keydown", cancel, true);
-      document.removeEventListener("wheel", cancel, true);
-    };
-  }, [rows]);
   // Value edits preserve row/field identity and must not replay structural motion.
-  useLayoutMotion(
+  const editing = useEditing(
     viewport,
     [
       ...(table?.sources.flatMap((source) =>
@@ -241,7 +175,39 @@ export function GridEditor({
       ) ?? []),
       ...(table?.fields.map((field) => `column-${identity(field)}`) ?? []),
     ],
-    { context: `${chosen}:${deferred}` },
+    {
+      context: source.id,
+      input:
+        ".value-control .entry, .value-control input, .value-control button, input:not([type=checkbox])",
+      reveal: (key, node) => {
+        const header =
+          viewport.current?.querySelector<HTMLElement>(".ant-table-header");
+        if (key.startsWith("column-")) {
+          if (!header || !node) return;
+          const box = node.getBoundingClientRect(),
+            visible = header.getBoundingClientRect();
+          const left =
+            header
+              .querySelector(".ant-table-cell-fix-left-last")
+              ?.getBoundingClientRect().right ?? visible.left;
+          if (box.left < left) header.scrollLeft += box.left - left;
+          else if (box.right > visible.right)
+            header.scrollLeft += box.right - visible.right;
+          tableRef.current?.scrollTo({ left: header.scrollLeft });
+        } else {
+          const index = rows.findIndex((row) => row.key === key);
+          if (index < 0) return;
+          if (header) header.scrollLeft = 0;
+          tableRef.current?.scrollTo({ left: 0 });
+          tableRef.current?.scrollTo({ index });
+        }
+      },
+      focused: (key) => {
+        const index = rows.findIndex((row) => row.key === key);
+        if (index >= 0)
+          setCell({ row: index, col: 0, anchorRow: index, anchorCol: 0 });
+      },
+    },
   );
   useEffect(() => {
     // A diagnostic jump is a command, not a constraint on every later search.
@@ -266,33 +232,6 @@ export function GridEditor({
     tableRef.current?.scrollTo({ index: i });
     handledJump.current = jump.nonce;
   }, [jump?.nonce, rows.length, chosen, deferred]);
-  useEffect(() => {
-    if (pendingColumn.current === null) return;
-    const input = viewport.current?.querySelector<HTMLInputElement>(
-      `[aria-label="列${pendingColumn.current + 1}の名前"]`,
-    );
-    if (input) {
-      // WebKit can focus an offscreen header without revealing it. Move both
-      // the native header and virtual body explicitly before focusing the name.
-      const header =
-        viewport.current?.querySelector<HTMLElement>(".ant-table-header");
-      const box = input.closest("th")?.getBoundingClientRect();
-      if (header && box) {
-        const visible = header.getBoundingClientRect();
-        const left =
-          header
-            .querySelector(".ant-table-cell-fix-left-last")
-            ?.getBoundingClientRect().right ?? visible.left;
-        if (box.left < left) header.scrollLeft += box.left - left;
-        else if (box.right > visible.right)
-          header.scrollLeft += box.right - visible.right;
-        tableRef.current?.scrollTo({ left: header.scrollLeft });
-      }
-      input.focus({ preventScroll: true });
-      input.select();
-      pendingColumn.current = null;
-    }
-  }, [table?.fields.length]);
   usePointerSort(viewport, (group, from, to) => {
     if (group === "rows") {
       const row = rows.find((r) => r.key === from),
@@ -323,24 +262,30 @@ export function GridEditor({
     session.update(row.source.id, ["records", row.index, field.name], value);
   const removeRows = () => {
     const targets = new Set(rowKeys);
-    session.change("レコードを削除", (s) => ({
-      ...s,
-      sources: s.sources.map((f) =>
-        Array.isArray(f.data?.records) &&
-        f.data.records.some((r: any) => targets.has(`${f.id}:${identity(r)}`))
-          ? {
-              ...f,
-              data: {
-                ...f.data,
-                records: f.data.records.filter(
-                  (_: any, i: number) =>
-                    !targets.has(`${f.id}:${identity(f.data.records[i])}`),
-                ),
-              },
-            }
-          : f,
-      ),
-    }));
+    editing.run(
+      () =>
+        session.change("レコードを削除", (s) => ({
+          ...s,
+          sources: s.sources.map((f) =>
+            Array.isArray(f.data?.records) &&
+            f.data.records.some((r: any) =>
+              targets.has(`${f.id}:${identity(r)}`),
+            )
+              ? {
+                  ...f,
+                  data: {
+                    ...f.data,
+                    records: f.data.records.filter(
+                      (_: any, i: number) =>
+                        !targets.has(`${f.id}:${identity(f.data.records[i])}`),
+                    ),
+                  },
+                }
+              : f,
+          ),
+        })),
+      [...targets].map(String),
+    );
     setRowKeys([]);
   };
   const move = (row: Row, target: Row) => {
@@ -447,7 +392,8 @@ export function GridEditor({
         target.sources.flatMap((s: Source) =>
           (s.data.records ?? []).map((r: any, i: number) => ({
             value: `${s.id}:${i}`,
-            label: `${r.name ?? r.title ?? text(r[reference.target.fields[0]])} · ${text(r[reference.target.fields[0]])}`,
+            label: `${text(r[reference.target.fields[0]])} ${r.name ?? r.title ?? ""}`,
+            displayName: text(r.name ?? r.title ?? ""),
             actual: r[reference.target.fields[0]],
             source: s.id,
             index: i,
@@ -469,11 +415,6 @@ export function GridEditor({
               >
                 <HolderOutlined />
               </span>
-              {pk && (
-                <Tooltip title="主キー">
-                  <span className="key-dot">◆</span>
-                </Tooltip>
-              )}
               <Entry
                 value={field.name}
                 label={`列${col + 1}の名前`}
@@ -522,10 +463,14 @@ export function GridEditor({
                           ?.closest<HTMLElement>(".grid-editor")
                           ?.focus();
                       } else if (key === "copy") {
-                        pendingColumn.current = col + 1;
-                        session.addField(table.source.id, col);
+                        editing.run(() => ({
+                          focus: `column-${identity(session.addField(table.source.id, col))}`,
+                        }));
                       } else if (key === "delete")
-                        session.removeField(table.source.id, col);
+                        editing.run(
+                          () => session.removeField(table.source.id, col),
+                          [`column-${identity(field)}`],
+                        );
                       else columnMove(col, key === "left" ? col - 1 : col + 1);
                     }),
                 }}
@@ -562,6 +507,31 @@ export function GridEditor({
                   )
                 }
               />
+            </div>
+            <div className="column-keys">
+              {pk && (
+                <Tooltip
+                  title={`主キー · ${table.source.data.primaryKey.fields.indexOf(field.name) + 1}/${table.source.data.primaryKey.fields.length}`}
+                >
+                  <span>PK</span>
+                </Tooltip>
+              )}
+              {list(table.source.data.secondaryKeys).flatMap(
+                (key: any, index: number) =>
+                  key.fields?.includes(field.name)
+                    ? [
+                        <Tooltip
+                          key={index}
+                          title={`${key.nonUnique ? "重複可" : "一意"} · ${key.fields.indexOf(field.name) + 1}/${key.fields.length}`}
+                        >
+                          <span>SK {index}</span>
+                        </Tooltip>,
+                      ]
+                    : [],
+              )}
+              <Tooltip title="MessagePackのフィールド番号">
+                <span>Key {field.key ?? col}</span>
+              </Tooltip>
             </div>
           </div>
         ),
@@ -695,13 +665,17 @@ export function GridEditor({
               safe(() => {
                 if (key === "copy") addRecord(row.source.id, row.record);
                 if (key === "delete")
-                  session.update(
-                    row.source.id,
-                    ["records"],
-                    row.source.data.records.filter(
-                      (_: any, i: number) => i !== row.index,
-                    ),
-                    "レコードを削除",
+                  editing.run(
+                    () =>
+                      session.update(
+                        row.source.id,
+                        ["records"],
+                        row.source.data.records.filter(
+                          (_: any, i: number) => i !== row.index,
+                        ),
+                        "レコードを削除",
+                      ),
+                    [row.key],
                   );
                 if (key === "up" || key === "down")
                   move(row, {
@@ -923,9 +897,9 @@ export function GridEditor({
           );
           const target = row
             ?.querySelectorAll(".data-cell")
-            [cell.col]?.querySelector<HTMLElement>(
-              "input, button, [role=combobox]",
-            );
+            [
+              cell.col
+            ]?.querySelector<HTMLElement>("input, button, [role=combobox]");
           target?.focus();
           return;
         }
@@ -1016,7 +990,7 @@ export function GridEditor({
                     ? `${s.path
                         .split("/")
                         .at(-1)
-                        ?.replace(/\.ya?ml$/, "")}（定義内）`
+                        ?.replace(/\.ya?ml$/, "")}（テーブル定義ファイル内）`
                     : s.path
                         .split("/")
                         .at(-1)
@@ -1034,8 +1008,9 @@ export function GridEditor({
           <Button
             icon={<PlusOutlined />}
             onClick={() => {
-              pendingColumn.current = table.fields.length;
-              session.addField(table.source.id);
+              editing.run(() => ({
+                focus: `column-${identity(session.addField(table.source.id))}`,
+              }));
             }}
           >
             列を追加
@@ -1117,16 +1092,16 @@ export function GridEditor({
               value: s.id,
               label:
                 s.id === table.source.id
-                  ? "定義ファイル内"
+                  ? "テーブル定義ファイル内"
                   : s.path
                       .split("/")
                       .at(-1)
                       ?.replace(/\.ya?ml$/, ""),
             }))}
             onChange={setDestination}
-            style={{ width: 155 }}
+            style={{ width: 195 }}
           />
-          <Tooltip title="同じ表のデータを別のファイルに分けます">
+          <Tooltip title="同じテーブルのレコードを追加できる空のテーブルデータファイルを作成します">
             <Button
               size="small"
               type="text"
@@ -1139,7 +1114,7 @@ export function GridEditor({
                 setDestination(id);
               }}
             >
-              データを分割
+              テーブルデータファイルを作成
             </Button>
           </Tooltip>
         </Space>

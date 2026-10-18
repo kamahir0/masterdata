@@ -1499,6 +1499,7 @@ test("hierarchy aligns each child arrow with its parent icon and source kinds ha
   await page.screenshot({
     path: test.info().outputPath("hierarchy-centers.png"),
   });
+  const kindColors = new Set<string>();
   for (const [name, kind, label] of [
     ["announcement", "table", "テーブル"],
     ["common", "data", "データ"],
@@ -1510,6 +1511,7 @@ test("hierarchy aligns each child arrow with its parent icon and source kinds ha
     await selectSource(name);
     const icon = page.locator('.file-tab[aria-selected="true"] .source-icon');
     await expect(icon).toHaveAttribute("data-source-kind", kind);
+    kindColors.add(await icon.evaluate((el) => getComputedStyle(el).color));
     await expect(icon).toHaveAccessibleName(label);
     await expect(
       page
@@ -1519,6 +1521,7 @@ test("hierarchy aligns each child arrow with its parent icon and source kinds ha
     ).toHaveAttribute("data-source-kind", kind);
   }
   await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  expect(kindColors.size).toBe(6);
   for (const kind of ["table", "enum", "flags", "custom", "valueObject"])
     await expect(
       page.getByRole("menu").locator(`[data-source-kind="${kind}"]`),
@@ -1552,7 +1555,7 @@ test("hierarchy aligns each child arrow with its parent icon and source kinds ha
   });
 });
 
-test("closing a pinned tab animates its neighbours while edits and folder reveals do not replay additions", async () => {
+test("closing a pinned tab exits only that tab while edits and folder reveals do not replay additions", async () => {
   await page.evaluate(() => {
     (window as any).__motions = [];
     const animate = Element.prototype.animate;
@@ -1577,16 +1580,15 @@ test("closing a pinned tab animates its neighbours while edits and folder reveal
     .nth(1)
     .getByRole("button", { name: /閉じる/ })
     .click();
+  await expect(page.locator(".file-tab-slot:not([inert])")).toHaveCount(2);
+  await expect(page.locator(".file-tab-slot[inert]")).toHaveCount(0);
   expect(
     await page.evaluate(() =>
-      (window as any).__motions.some(
-        (m: any) =>
-          m.key.startsWith("tab-") &&
-          m.frames[0].translate &&
-          m.options.duration === 260,
+      (window as any).__motions.filter(
+        (m: any) => m.key.startsWith("tab-") && m.frames[0].translate,
       ),
     ),
-  ).toBe(true);
+  ).toHaveLength(0);
   await page.getByRole("button", { name: /フィールドを追加/ }).click();
   await expect(page.getByLabel("項目5の名前", { exact: true })).toBeFocused();
   await page.getByLabel("項目5の名前", { exact: true }).fill("newFieldEdited");
@@ -1886,4 +1888,257 @@ test("Build commands coalesce while busy, preserve editing, and release the guar
   expect(await page.evaluate(() => (window as any).__outputCalls.length)).toBe(
     3,
   );
+});
+
+test("Explorer resize persists, supports keyboard, and creation reveals inside a closed filtered folder", async () => {
+  const resize = page.getByRole("separator", { name: "エクスプローラーの幅" });
+  const box = (await resize.boundingBox())!;
+  await page.mouse.move(box.x, box.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 100, box.y + 80, { steps: 8 });
+  await page.mouse.up();
+  await expect(resize).toHaveAttribute("aria-valuenow", "336");
+  await resize.focus();
+  await page.keyboard.press("Home");
+  await expect(resize).toHaveAttribute("aria-valuenow", "180");
+  await page.keyboard.press("ArrowRight");
+  await expect(resize).toHaveAttribute("aria-valuenow", "196");
+  await page.reload();
+  await expect(resize).toHaveAttribute("aria-valuenow", "196");
+  const search = page.getByLabel("表・型を検索");
+  await search.fill("types");
+  const folder = page.locator('.tree-name[data-path="types"]');
+  await folder.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /新しいフォルダ/ }).click();
+  const name = page.getByLabel("項目の名前");
+  await expect(search).toHaveValue("");
+  await expect(name).toBeFocused();
+  await expect(name).toBeInViewport();
+  await name.fill("created-here");
+  await name.press("Enter");
+  await page.locator('.tree-name[data-path="types"]').click(); // collapse the parent
+  await folder.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /新しいテーブル/ }).click();
+  await expect(name).toBeFocused();
+  await expect(name).toBeInViewport();
+  await name.fill("new-inside");
+  await name.press("Enter");
+  await expect(
+    page.locator('.tree-name[data-path="types/new-inside.yaml"]'),
+  ).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath("explorer-created-and-resized.png"),
+  });
+});
+
+test("folder body drop highlights and moves into the folder; Undo restores the original path", async () => {
+  await selectSource("rarity");
+  const from = page.locator('.tree-name[data-path="types/rarity.yaml"]');
+  const target = page.locator('.tree-name[data-path="announcements"]');
+  const data = await page.evaluateHandle(() => new DataTransfer());
+  await from.dispatchEvent("dragstart", { dataTransfer: data });
+  const box = (await target.boundingBox())!;
+  await target.dispatchEvent("dragenter", {
+    dataTransfer: data,
+    clientX: box.x + 12,
+    clientY: box.y + box.height / 2,
+  });
+  await target.dispatchEvent("dragover", {
+    dataTransfer: data,
+    clientX: box.x + 12,
+    clientY: box.y + box.height / 2,
+  });
+  await expect(
+    target.locator(
+      'xpath=ancestor::*[contains(@class,"ant-tree-treenode")][1]',
+    ),
+  ).toHaveClass(/folder-drop-target/);
+  await target.dispatchEvent("drop", {
+    dataTransfer: data,
+    clientX: box.x + 12,
+    clientY: box.y + box.height / 2,
+  });
+  await expect(
+    page.locator('.tree-name[data-path="announcements/rarity.yaml"]'),
+  ).toBeVisible();
+  await expect(page.locator(".folder-drop-target")).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(from).toBeVisible();
+});
+
+test("deleting collections removes editors immediately, shows inert exits, and Undo restores values", async () => {
+  await page.evaluate(() => {
+    (window as any).__exits = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (frames, options) {
+      if ((this as HTMLElement).classList.contains("edit-exit")) {
+        (window as any).__exits.push({
+          inert: (this as HTMLElement).inert,
+          hidden: this.getAttribute("aria-hidden"),
+          frames,
+          options,
+        });
+      }
+      return animate.call(this, frames, options);
+    };
+  });
+  await selectSource("rarity");
+  await page.getByRole("button", { name: "候補3の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__exits)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        inert: true,
+        hidden: "true",
+        options: expect.objectContaining({ duration: 200 }),
+      }),
+    ]),
+  );
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveValue(
+    "Epic",
+  );
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+  await selectSource("combat-stats");
+  await page.getByRole("button", { name: "項目4の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByLabel("項目4の名前", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("項目4の名前", { exact: true })).toHaveValue(
+    "critical",
+  );
+  await selectSource("announcement");
+  await page.getByRole("button", { name: "行3の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByLabel("id 行3", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("id 行3", { exact: true })).toHaveValue("3");
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+});
+
+test("source heading distinguishes table data, key labels and references communicate actual values first", async () => {
+  await selectSource("schema");
+  await expect(page.locator(".editor-title > :first-child")).toHaveText(
+    "TABLE",
+  );
+  await expect(page.locator(".column-keys").first()).toHaveText("PKKey 0");
+  await expect(page.locator(".column-keys").nth(1)).toHaveText("SK 0Key 1");
+  await expect(page.locator(".column-keys").nth(3)).toHaveText("SK 1Key 3");
+  await expect(
+    page
+      .getByLabel("追加先")
+      .locator("xpath=ancestor::*[contains(@class, 'ant-select')][1]"),
+  ).toContainText("テーブル定義ファイル内");
+  await expect(
+    page.getByRole("button", {
+      name: "テーブルデータファイルを作成",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await selectSource("common");
+  await expect(page.locator(".editor-title > :first-child")).toHaveText(
+    "TABLE DATA",
+  );
+  await selectSource("quest");
+  const reference = page.locator(".reference-label").first();
+  await expect(reference.locator("span").first()).toHaveText("2001");
+  await expect(reference.locator(".reference-name")).toHaveText("氷晶の剣");
+  const styles = await reference.evaluate((el) => {
+    const a = getComputedStyle(el.children[0]),
+      b = getComputedStyle(el.children[1]);
+    return {
+      main: a.color,
+      name: b.color,
+      smaller: parseFloat(b.fontSize) < parseFloat(a.fontSize),
+    };
+  });
+  expect(styles.main).not.toBe(styles.name);
+  expect(styles.smaller).toBe(true);
+  await page.screenshot({
+    path: test.info().outputPath("source-keys-reference.png"),
+  });
+  await page
+    .getByRole("combobox", { name: "rewardItemId 行1", exact: true })
+    .fill("銅");
+  await page
+    .locator(".ant-select-item-option-content")
+    .filter({ hasText: /1001.*銅の剣/ })
+    .click();
+  await expect(reference.locator("span").first()).toHaveText("1001");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  expect(
+    parse(
+      await fs.readFile(path.join(root, "sources/quests/quest.yaml"), "utf8"),
+    ).records[0].rewardItemId,
+  ).toBe(1001);
+});
+
+test("primitive array edits and duplicate reorder retain item identity and a single-step Undo", async () => {
+  await selectSource("common");
+  await openNested("materials 行1を開く");
+  const items = page.locator(".array-item");
+  const keys = () =>
+    items.evaluateAll((nodes) =>
+      nodes.map((n) => (n as HTMLElement).dataset.motionKey),
+    );
+  const initial = await keys();
+  await page.getByLabel("要素1", { exact: true }).fill("樫の木材");
+  await page.getByLabel("要素1", { exact: true }).press("Enter");
+  expect(await keys()).toEqual(initial);
+  await items
+    .first()
+    .getByRole("button", { name: "要素を複製", exact: true })
+    .click();
+  await expect(page.getByLabel("要素2", { exact: true })).toBeFocused();
+  const duplicated = await keys();
+  expect(new Set(duplicated).size).toBe(3);
+  expect(duplicated[0]).toBe(initial[0]);
+  expect(duplicated[2]).toBe(initial[1]);
+  await items
+    .nth(1)
+    .getByRole("button", { name: "要素を下へ", exact: true })
+    .click();
+  expect(await keys()).toEqual([initial[0], initial[1], duplicated[1]]);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  expect(await keys()).toEqual(duplicated);
+  await items
+    .nth(1)
+    .getByRole("button", { name: "要素を削除", exact: true })
+    .click();
+  await expect(items).toHaveCount(2);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  expect(await keys()).toEqual(duplicated);
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+});
+
+test("opening and closing a tab keeps the vertical position of every surviving tab fixed", async () => {
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  await page.evaluate(() => {
+    const tab = document.querySelector(".file-tab")!;
+    (window as any).__tabY = [];
+    const until = performance.now() + 2000;
+    const sample = () => {
+      if (!tab.isConnected) return;
+      (window as any).__tabY.push(tab.getBoundingClientRect().y);
+      if (performance.now() < until) requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  await selectSource("rarity");
+  await expect(
+    page.getByRole("tab", { name: "rarity", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "rarityを閉じる", exact: true })
+    .click();
+  await expect(page.locator(".file-tab-slot[inert]")).toHaveCount(0);
+  const positions = await page.evaluate(
+    () => (window as any).__tabY as number[],
+  );
+  expect(positions.length).toBeGreaterThan(3);
+  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThan(1);
 });

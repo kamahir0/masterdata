@@ -77,6 +77,9 @@ import {
   useEditorPreferences,
   type EditorPreferences,
 } from "./ui/editor-settings";
+import { ExplorerResize } from "./ui/explorer-resize";
+import { sourceKind, kindBadges } from "./ui/source-icon";
+import appIcon from "../assets/icon.svg";
 import { FileTabs } from "./ui/file-tabs";
 import { CloseFileDialog } from "./ui/close-file";
 import { Settings } from "./ui/settings";
@@ -594,7 +597,7 @@ function Workspace({
       <header className="titlebar">
         <div className="brand">
           <span className="brand-mark">
-            <DatabaseOutlined />
+            <img src={appIcon} alt="" />
           </span>
           <strong>MasterData</strong>
           <span className="brand-divider" />{" "}
@@ -783,6 +786,11 @@ function Workspace({
           <div className="workspace">
             <div
               className={`explorer-container ${preferences.explorer ? "" : "explorer-collapsed"}`}
+              style={{
+                width: preferences.explorer
+                  ? `min(${preferences.explorerWidth}px, max(180px, calc(100vw - 520px)))`
+                  : 0,
+              }}
               inert={!preferences.explorer}
               aria-hidden={!preferences.explorer}
             >
@@ -795,6 +803,14 @@ function Workspace({
                 fail={fail}
               />
             </div>
+            {preferences.explorer && (
+              <ExplorerResize
+                value={preferences.explorerWidth}
+                update={(width) =>
+                  setPreferences((p) => ({ ...p, explorerWidth: width }))
+                }
+              />
+            )}
             <main className="main-area" tabIndex={-1}>
               <FileTabs
                 sources={opened
@@ -803,6 +819,7 @@ function Workspace({
                 active={active}
                 preview={preview}
                 wrap={preferences.tabLayout === "wrap"}
+                reduced={preferences.reduced}
                 dirty={(source) => session.dirtySource(source)}
                 select={select}
                 pin={(id) => select(id, true)}
@@ -811,7 +828,13 @@ function Workspace({
               {source ? (
                 <>
                   <div className="editor-heading">
-                    <div className="editor-title">
+                    <div
+                      className="editor-title"
+                      data-source-kind={sourceKind(source)}
+                    >
+                      <Tag className="source-kind-label">
+                        {kindBadges[sourceKind(source)]}
+                      </Tag>
                       <span className="source-badge">
                         <SourceIcon source={source} />
                       </span>
@@ -822,11 +845,6 @@ function Workspace({
                           session.renameDeclaration(source.id, name)
                         }
                       />
-                      <Tag>
-                        {source.data?.kind === "type"
-                          ? typeKind(source)
-                          : "TABLE"}
-                      </Tag>
                     </div>
                     <Tabs
                       className="editor-tabs"

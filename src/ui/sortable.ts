@@ -1,6 +1,11 @@
+import { visualCopy } from "./visual-snapshot";
 import { useEffect, useRef, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import { captureDropPositions, easeOutExpoCss, finishLayoutMotion } from "./motion";
+import {
+  captureDropPositions,
+  easeOutExpoCss,
+  finishLayoutMotion,
+} from "./motion";
 
 // Preview is DOM-only: persistence, diagnostics and Undo see one edit at drop.
 // Individual translate composes with the virtual table's own row positioning.
@@ -66,65 +71,7 @@ export function usePointerSort(
         if (group !== "rows") return;
         // A virtual row can unmount while auto-scrolling. A visual snapshot stays
         // under the pointer; the real editors and draft never move until drop.
-        const row = item.cloneNode(true) as HTMLElement;
-        const originals = [item, ...item.querySelectorAll<HTMLElement>("*")];
-        const copies = [row, ...row.querySelectorAll<HTMLElement>("*")];
-        const properties = [
-          "display",
-          "box-sizing",
-          "font",
-          "color",
-          "background",
-          "border",
-          "border-radius",
-          "padding",
-          "margin",
-          "gap",
-          "align-items",
-          "justify-content",
-          "flex-direction",
-          "flex-grow",
-          "flex-shrink",
-          "flex-basis",
-          "overflow",
-          "white-space",
-          "text-align",
-          "line-height",
-          "box-shadow",
-          "opacity",
-        ];
-        originals.forEach((element, index) => {
-          const copy = copies[index],
-            style = getComputedStyle(element),
-            box = element.getBoundingClientRect();
-          properties.forEach((property) =>
-            copy.style.setProperty(property, style.getPropertyValue(property)),
-          );
-          copy.style.width = `${box.width}px`;
-          copy.style.height = `${box.height}px`;
-          copy.removeAttribute("aria-label");
-          for (const attribute of [...copy.attributes])
-            if (
-              attribute.name.startsWith("data-sort-") ||
-              attribute.name === "data-row-key" ||
-              attribute.name === "data-motion-key" ||
-              attribute.name === "id"
-            )
-              copy.removeAttribute(attribute.name);
-          if (
-            element instanceof HTMLInputElement &&
-            copy instanceof HTMLInputElement
-          )
-            copy.value = element.value;
-        });
-        [...row.children].forEach((child, index) => {
-          const box = item.children[index].getBoundingClientRect();
-          Object.assign((child as HTMLElement).style, {
-            position: "absolute",
-            left: `${box.left - origin.left}px`,
-            top: `${box.top - origin.top}px`,
-          });
-        });
+        const row = visualCopy(item);
         const container = document.createElement("div");
         container.className = "sort-ghost";
         container.setAttribute("aria-hidden", "true");

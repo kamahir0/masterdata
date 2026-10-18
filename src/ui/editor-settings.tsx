@@ -5,6 +5,7 @@ export interface EditorPreferences {
   theme: "light" | "dark" | "system";
   tabLayout: "scroll" | "wrap";
   explorer: boolean;
+  explorerWidth: number;
   reduced: boolean;
 }
 export function useEditorPreferences() {
@@ -20,6 +21,11 @@ export function useEditorPreferences() {
         : "system",
       tabLayout: stored.tabLayout === "wrap" ? "wrap" : "scroll",
       explorer: stored.explorer !== false,
+      explorerWidth:
+        typeof stored.explorerWidth === "number" &&
+        Number.isFinite(stored.explorerWidth)
+          ? Math.max(180, Math.min(480, stored.explorerWidth))
+          : 236,
       reduced:
         typeof stored.reduced === "boolean"
           ? stored.reduced

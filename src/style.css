@@ -162,7 +162,7 @@ button:focus-visible,
 }
 .explorer {
   width: 100%;
-  min-width: 236px;
+  min-width: 0;
   flex-shrink: 0;
   background: var(--subtle);
   border-right: 1px solid var(--line);
@@ -1227,12 +1227,6 @@ button:focus-visible,
     min-width: auto;
     font-size: 10px;
   }
-  .explorer-container {
-    width: 220px;
-  }
-  .explorer {
-    min-width: 220px;
-  }
   .editor-heading {
     padding-inline: 16px;
   }
@@ -1376,4 +1370,131 @@ button:focus-visible,
 }
 .source-icon svg {
   display: block;
+}
+
+[data-source-kind="table"] {
+  --kind-color: #387ac3;
+}
+[data-source-kind="data"] {
+  --kind-color: #20849a;
+}
+[data-source-kind="enum"] {
+  --kind-color: #966b12;
+}
+[data-source-kind="flags"] {
+  --kind-color: #b45d1b;
+}
+[data-source-kind="custom"] {
+  --kind-color: #8a63b8;
+}
+[data-source-kind="valueObject"] {
+  --kind-color: #b65d85;
+}
+[data-theme="dark"] [data-source-kind="table"] {
+  --kind-color: #88b5ef;
+}
+[data-theme="dark"] [data-source-kind="data"] {
+  --kind-color: #79c4db;
+}
+[data-theme="dark"] [data-source-kind="enum"] {
+  --kind-color: #d6b96e;
+}
+[data-theme="dark"] [data-source-kind="flags"] {
+  --kind-color: #e5a16b;
+}
+[data-theme="dark"] [data-source-kind="custom"] {
+  --kind-color: #c1a2e7;
+}
+[data-theme="dark"] [data-source-kind="valueObject"] {
+  --kind-color: #e3a1be;
+}
+.source-icon {
+  color: var(--kind-color, var(--muted));
+}
+.source-badge {
+  color: var(--kind-color);
+  background: color-mix(in srgb, var(--kind-color) 12%, transparent);
+}
+.source-kind-label.ant-tag {
+  color: var(--kind-color);
+  background: color-mix(in srgb, var(--kind-color) 10%, transparent);
+  border: 0;
+}
+.column-keys {
+  display: flex;
+  gap: 5px;
+  font-size: 9px;
+  line-height: 14px;
+  color: var(--muted);
+  padding-left: 8px;
+}
+.column-keys > span {
+  padding-inline: 3px;
+  background: var(--subtle);
+  border-radius: 2px;
+}
+.reference-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+}
+.reference-name {
+  font-size: 0.9em;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.explorer-resizer {
+  position: relative;
+  width: 0;
+  flex: 0 0 0;
+  z-index: 5;
+  cursor: col-resize;
+  outline: none;
+}
+.explorer-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+}
+.explorer-resizer:hover::after,
+.explorer-resizer:focus-visible::after,
+.explorer-resizer.resizing::after {
+  background: var(--accent);
+  opacity: 0.7;
+}
+.explorer-container:has(+ .resizing) {
+  transition: none;
+}
+.file-tab-slot {
+  flex: 0 0 auto;
+  overflow: hidden;
+  height: 33px;
+}
+.file-tab-slot .file-tab {
+  width: max-content;
+  box-sizing: border-box;
+}
+.tree-scroll .folder-drop-target {
+  background: var(--accent-soft) !important;
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-radius: 4px;
+}
+
+.folder-drop-target .ant-tree-drop-indicator {
+  display: none;
+}
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+}
+.brand-mark img {
+  width: 26px;
+  height: 26px;
 }

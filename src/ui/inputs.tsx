@@ -156,6 +156,7 @@ export function TypeSelect({
   );
 }
 export interface ReferenceOption {
+  displayName?: string;
   value: string;
   label: string;
   actual: Data;
@@ -247,6 +248,13 @@ export function ValueControl({
           optionFilterProp="label"
           value={selected?.value ?? text(value)}
           options={reference}
+          optionRender={({ data }) => (
+            <ReferenceLabel option={data as ReferenceOption} />
+          )}
+          labelRender={({ value: key, label }) => {
+            const option = reference.find((r) => r.value === key);
+            return option ? <ReferenceLabel option={option} /> : label;
+          }}
           onChange={(key) => {
             const r = reference.find((r) => r.value === key);
             if (r) onChange(r.actual);
@@ -333,5 +341,16 @@ export function ValueControl({
     >
       {content}
     </ValueInputFrame>
+  );
+}
+
+function ReferenceLabel({ option }: { option: ReferenceOption }) {
+  return (
+    <span className="reference-label">
+      <span>{text(option.actual)}</span>
+      {option.displayName && option.displayName !== text(option.actual) && (
+        <span className="reference-name">{option.displayName}</span>
+      )}
+    </span>
   );
 }

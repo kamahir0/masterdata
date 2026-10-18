@@ -6,6 +6,7 @@ import {
   fieldsOf,
   isObject,
 } from "./types";
+import { withIdentity } from "./identity";
 export function mapTypedValue(
   snapshot: Snapshot,
   field: Field,
@@ -27,9 +28,11 @@ export function mapTypedValue(
         seen,
       ),
     );
-    return next.some((v, i) => v !== value[i]) ? next : value;
+    return next.some((v, i) => v !== value[i])
+      ? withIdentity(value, next)
+      : value;
   }
-  if (field.type === target) return modify(value);
+  if (field.type === target) return withIdentity(value, modify(value));
   const type = typeSource(snapshot, field.type);
   if (!type?.data?.custom || !isObject(value) || seen.has(field.type))
     return value;
@@ -47,7 +50,7 @@ export function mapTypedValue(
     if (changed !== value[child.name])
       next = { ...next, [child.name]: changed };
   }
-  return next;
+  return withIdentity(value, next);
 }
 export function mapRecords(
   snapshot: Snapshot,

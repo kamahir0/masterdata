@@ -5,7 +5,7 @@ Status: Implemented
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -53,6 +53,14 @@ Explorer fileのsingle clickは最大一つのitalicなpreview tabを開き、�
 
 source iconは表（grid）、分離data（record行）、Enum（単一候補）、Flags（複数選択）、Custom（複数field構造）、Value Object（一つの値の包み）を一式の線画で区別する。Git branch / tag / 組織図を流用せず、file・tab・新規menuで統一し、種類名をtooltip / accessible nameでも示す。
 
+## EDIT-005 — 編集対象と操作結果
+
+行・列・Custom field・Enum / Flags member・配列要素は、値・PK・現在indexから独立したsession内IDで識別する。同じ値の配列要素も区別し、値変更・並替え・Undo / Redoで入力対象を保つ。IDをYAMLへ追加しない。編集操作の結果から、作成対象の表示・選択・入力開始とfeedbackを共通して扱う。後続の操作・navigationは古いfocus要求を取り消し、固定frame数や表示indexの推測に依存しない。
+
+Explorerで新規作成するときは検索を解除し、全祖先と作成先folderを展開して新規nodeを表示・選択しrenameへfocusする。menu / rename操作でfolderを開閉しない。folder本体へのdropはそのfolder内へ移動し、folder全体をhighlightする。node間のgapは親folderへのdropとして線で示し、表示と移動先を一致させる。自己・子孫・path衝突への移動を実行前に防ぐ。
+
+表headerにはPK、SK n（0始まりsecondary group）、Key n（MessagePack field key）を表示する。複合keyの順序、複数所属、secondaryの一意 / 重複可を確認できる。参照選択は実値を先、その後に弱い色 / 小さい文字の補助名を表示し、両方で検索できる。値の保存と参照先への移動は従来通りとする。
+
 ## DATA-001 — 表・型・関係
 
 primitiveはbool / int / uint / long / ulong / float / double / string。Enum / Flags、Value Object、Custom、配列とnullableを扱う。Flagsの予約Noneは名前と値0・存在を固定し、他memberはその後ろで並替える。raw sourceの自由編集と診断は維持する。型循環や未知型、値shape、名前重複、key、参照を診断する。表のprimary / secondary（unique / nonunique、複合）、referenceをGUIで設定できる。
@@ -60,6 +68,8 @@ primitiveはbool / int / uint / long / ulong / float / double / string。Enum / 
 同梱sampleの非空collectionも保存時と同じ2スペースのblock YAMLにする。
 
 YAML sourceはlegacy2のschema / data / typeの形を採用し、schema内recordsと分離dataを同じ編集操作で扱う。名前を変えるときは関連draftも更新できる。壊れた値はGUIで修復・初期化でき、syntaxが壊れたsourceにはtext編集から修正できる道を残す。
+
+分離data fileのUI名称はTable Data（テーブルデータファイル）。schema内への追加先は「テーブル定義ファイル内」、空の分離file作成は「テーブルデータファイルを作成」とし、既存recordを移動する説明を付けない。
 
 ## DATA-002 — Project・出力選択
 
@@ -73,7 +83,7 @@ C#定義とMasterMemory binaryは.NET / MasterMemoryで生成し、生成binary�
 
 ## UI-001 — 共通UI・motion
 
-React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、Drawer、Modal、Notification等を広く使う。通常操作に共通tokenとmotionを伴わせ、入力をアニメーション完了待ちにしない。追加・削除・並替え・panel切替にも動きを付ける。タブ、表の行・列、Enum / Flags member、Custom field、配列、Explorer新規項目には約280msの出現、並替え・削除後の詰め替えには約260msの緩やかなease-outを使う。Build / Publish結果にも対象を絞った出現feedbackを付ける。dropdown・folder・panel開閉やdrag previewは約100〜160msの即応を維持する。配列を含む並替えdragはpointer追従と隣接要素のpreviewを示し、drop時に一つのUndo単位で確定する。Esc / pointer取消ではdraftを変えない。補間の完了前も入力・追加・Undo・close・dragができ、連続操作では前のmotionを安全に打ち切り / 接続する。virtual mountを実追加と区別し、新規行 / 列を表示してfeedbackを届ける。record追加は新規行へ移ってすぐ入力でき、検索中の明示追加は検索を解除する。遅延focusで既に移動したユーザーを引き戻さない。単なる入力・保存ack・scroll・folder開閉で既存項目の出現を再生しない。reduced motionでは補間を抑える。全体明滅、診断増減による表位置の移動、更新でのfocus消失を避ける。テーマ、reduced motion、文字とariaによる状態、キーボード操作を備える。
+React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、Drawer、Modal、Notification等を広く使う。通常操作に共通tokenとmotionを伴わせ、入力をアニメーション完了待ちにしない。追加・削除・並替え・panel切替にも動きを付ける。表の行・列、Enum / Flags member、Custom field、配列、Explorer新規項目には約280msの出現、並替え・削除後の詰め替えには約260msの緩やかなease-outを使う。Build / Publish結果にも対象を絞った出現feedbackを付ける。dropdown・folder・panel開閉やdrag previewは約100〜160msの即応を維持する。配列を含む並替えdragはpointer追従と隣接要素のpreviewを示し、drop時に一つのUndo単位で確定する。Esc / pointer取消ではdraftを変えない。補間の完了前も入力・追加・Undo・close・dragができ、連続操作では前のmotionを安全に打ち切り / 接続する。virtual mountを実追加と区別し、新規行 / 列を表示してfeedbackを届ける。record追加は新規行へ移ってすぐ入力でき、検索中の明示追加は検索を解除する。遅延focusで既に移動したユーザーを引き戻さない。単なる入力・保存ack・scroll・folder開閉で既存項目の出現を再生しない。reduced motionでは補間を抑える。全体明滅、診断増減による表位置の移動、更新でのfocus消失を避ける。テーマ、reduced motion、文字とariaによる状態、キーボード操作を備える。
 
 保存状態はiconとtooltip / accessible nameで示し、通常画面で「未保存の変更」の文やfile数・メモリ編集中の説明を重ねない。設定表示は「モーション: ON / OFF」、FlagsのNone表示は「None」に統一する。folderとProblemsの開閉は約100〜120msのOutExpo相当ease-outを使う。
 
@@ -98,3 +108,13 @@ macOSの一括処理は自分の中間.appとsmoke用stagingのLaunch Services�
 - 多数sourceのfolderを繰り返し開閉して追加I/Oなし。表末尾、Problems開時、nested arrayでdrag / scroll操作が成立。
 - profileを切替え、referenceを含むsampleをBuild。実.NETでcompile・binary reloadを確認し、Publishでunmanaged fileと`.meta`を保持。
 - focused unit / integration、Chromium / WebKitのUI回帰、Tauri実アプリの操作、macOSのローカルbundle、CI。対象外環境の未取得evidenceを成功と扱わない。
+
+## UI-003 — 作業領域と種類の表現
+
+Explorer境界をdragで幅変更でき、矢印 / Home / End、double clickでdefault復帰もできる。PC内設定に保存し、折畳みとproject dirtyから独立する。default範囲は180〜480pxで、狭いwindowの編集領域も確保する。
+
+種類iconは形を維持し、Table=blue、Table Data=cyan、Enum=amber、Flags=orange、Custom=violet、Value Object=roseの種類色を両themeで用いる。green accentは操作状態に使う。headerは種類badge、icon、名前の順とし、TABLE / TABLE DATA / ENUM / FLAGS / CUSTOM TYPE / VALUE OBJECTを明示する。種類名と形も保持し、色だけに頼らない。
+
+削除は即時にdraft / Undoへ反映し、可視対象に約200msの非対話な退出snapshotと、残った項目に約260msの位置移動を示す。画面外のsnapshotを作らず、ghostは入力・selection・accessibility対象にせず完了 / 取消時に回収する。tabの追加 / closeは当該tabの幅とopacityで約200msの出入りを示し、既存tab全体を上下移動させない。active tabへのscrollはtab帯内に限定する。reduced motionでは補間を抑える。
+
+app iconはgreen accent系のvector原稿から生成し、macOSは16〜1024pxのretina slot、Windowsは16〜256pxを含める。小サイズの線も読みやすくし、画面内brandとnative bundleで意匠を揃える。

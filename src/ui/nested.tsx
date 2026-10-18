@@ -18,7 +18,6 @@ import {
   DownOutlined,
   ArrowLeftOutlined,
 } from "@ant-design/icons";
-import { motion, AnimatePresence } from "motion/react";
 import {
   type Field,
   type Snapshot,
@@ -28,11 +27,11 @@ import {
   isObject,
 } from "../core/types";
 import { defaultValue } from "../core/schema";
-import { identity } from "../core/identity";
+import { itemIdentities, moveItem, spliceItems } from "../core/identity";
 import { session } from "../core/session";
 import { ValueControl } from "./inputs";
 import { usePointerSort } from "./sortable";
-import { quickTransition, useLayoutMotion } from "./motion";
+import { useEditing } from "./editing";
 export interface Cursor {
   source: string;
   path: (string | number)[];
@@ -66,23 +65,20 @@ export function NestedEditor({
       from === to
     )
       return;
-    const next = [...value];
-    next.splice(to, 0, next.splice(from, 1)[0]);
-    update(next);
+    update(moveItem(value, from, to));
   };
-  const occurrences = new Map<string, number>();
-  const itemKeys = Array.isArray(value)
-    ? value.map((item: any) => {
-        const key = identity(item),
-          occurrence = occurrences.get(key) ?? 0;
-        occurrences.set(key, occurrence + 1);
-        return `${key}:${occurrence}`;
-      })
-    : [];
-  useLayoutMotion(body, itemKeys, {
-    enterOnGrowth: true,
+  const itemKeys = Array.isArray(value) ? itemIdentities(value) : [];
+  const editing = useEditing(body, itemKeys, {
     context: JSON.stringify([cursor?.source, cursor?.path]),
+    input:
+      ".value-control input:not([disabled]), .value-control button:not([disabled]), .value-control .entry",
   });
+  const insert = (at: number, item: any) =>
+    editing.run(() => {
+      const next = spliceItems(value, at, 0, item);
+      update(next);
+      return { focus: itemIdentities(next)[at] };
+    });
   usePointerSort(body, (_, from, to) =>
     move(itemKeys.indexOf(from), itemKeys.indexOf(to)),
   );
@@ -179,12 +175,9 @@ export function NestedEditor({
             <>
               <div className="nested-body" ref={body}>
                 {array ? (
-                  <AnimatePresence initial={false}>
+                  <>
                     {(value as any[]).map((item, index) => (
-                      <motion.div
-                        initial={false}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={quickTransition}
+                      <div
                         className="array-item"
                         key={itemKeys[index]}
                         data-motion-key={itemKeys[index]}
@@ -247,11 +240,7 @@ export function NestedEditor({
                             icon={<CopyOutlined />}
                             aria-label="要素を複製"
                             onClick={() =>
-                              update([
-                                ...value.slice(0, index + 1),
-                                structuredClone(item),
-                                ...value.slice(index + 1),
-                              ])
+                              insert(index + 1, structuredClone(item))
                             }
                           />
                           <Button
@@ -261,17 +250,15 @@ export function NestedEditor({
                             icon={<DeleteOutlined />}
                             aria-label="要素を削除"
                             onClick={() =>
-                              update(
-                                value.filter(
-                                  (_: any, i: number) => i !== index,
-                                ),
-                              )
+                              editing.run(() => {
+                                update(spliceItems(value, index, 1));
+                              }, [itemKeys[index]])
                             }
                           />
                         </div>
-                      </motion.div>
+                      </div>
                     ))}
-                  </AnimatePresence>
+                  </>
                 ) : (
                   fieldsOf(typeSource(snapshot, field.type)!).map((child) => (
                     <div className="nested-field" key={child.name}>
@@ -320,14 +307,14 @@ export function NestedEditor({
                     block
                     icon={<PlusOutlined />}
                     onClick={() =>
-                      update([
-                        ...value,
+                      insert(
+                        value.length,
                         defaultValue(snapshot, {
                           ...field,
                           array: false,
                           nullable: false,
                         }),
-                      ])
+                      )
                     }
                   >
                     要素を追加

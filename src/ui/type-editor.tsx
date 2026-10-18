@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useRef } from "react";
 import {
   Button,
   Card,
@@ -21,8 +21,9 @@ import { type Source, type Snapshot, typeKind } from "../core/types";
 import { session } from "../core/session";
 import { Entry, parseInput } from "./inputs";
 import { identity } from "../core/identity";
-import { useLayoutMotion } from "./motion";
+import { useEditing } from "./editing";
 import { usePointerSort } from "./sortable";
+import { sourceKind } from "./source-icon";
 import { FieldEditor } from "./fields";
 export function TypeEditor({
   source,
@@ -31,7 +32,6 @@ export function TypeEditor({
   source: Source;
   snapshot: Snapshot;
 }) {
-  const [focusIndex, setFocusIndex] = useState(-1);
   const kind = typeKind(source);
   const definition = kind ? source.data[kind] : {};
   const members = Array.isArray(definition.members) ? definition.members : [];
@@ -40,13 +40,16 @@ export function TypeEditor({
   const setMembers = (next: any[], label = "候補を編集") =>
     session.update(source.id, [kind!, "members"], next, label);
   const add = () => {
-    setFocusIndex(members.length);
     let index = 1;
     while (members.some((m: any) => m.name === `Member${index}`)) index++;
     let value = kind === "flags" ? 1n : 0n;
     while (members.some((m: any) => String(m.value) === String(value)))
       value = kind === "flags" ? value * 2n : value + 1n;
-    setMembers([...members, { name: `Member${index}`, value }], "候補を追加");
+    const member = { name: `Member${index}`, value };
+    editing.run(() => {
+      setMembers([...members, member], "候補を追加");
+      return { focus: identity(member) };
+    });
   };
   const move = (from: number, to: number) => {
     if (
@@ -62,7 +65,9 @@ export function TypeEditor({
     setMembers(next, "候補を並べ替え");
   };
   const root = useRef<HTMLDivElement>(null);
-  useLayoutMotion(root, members.map(identity));
+  const editing = useEditing(root, members.map(identity), {
+    context: source.id,
+  });
   usePointerSort(root, (_, from, to) =>
     move(
       members.findIndex((m: any) => identity(m) === from),
@@ -74,7 +79,10 @@ export function TypeEditor({
     <div className="type-editor editor-scroll" key={source.id} ref={root}>
       <div className="section-intro">
         <div>
-          <Tag color="purple">
+          <Tag
+            className="source-kind-label"
+            data-source-kind={sourceKind(source)}
+          >
             {kind === "custom"
               ? "Custom Type"
               : kind === "valueObject"
@@ -151,7 +159,6 @@ export function TypeEditor({
                     title: "名前",
                     render: (_, member, i) => (
                       <Entry
-                        autoFocus={i === focusIndex}
                         disabled={locked(member)}
                         value={member.name}
                         label={`候補${i + 1}の名前`}
@@ -208,11 +215,15 @@ export function TypeEditor({
                           ],
                           onClick: ({ key }) =>
                             key === "delete"
-                              ? setMembers(
-                                  members.filter(
-                                    (_: any, j: number) => i !== j,
-                                  ),
-                                  "候補を削除",
+                              ? editing.run(
+                                  () =>
+                                    setMembers(
+                                      members.filter(
+                                        (_: any, j: number) => i !== j,
+                                      ),
+                                      "候補を削除",
+                                    ),
+                                  [identity(member)],
                                 )
                               : move(i, key === "up" ? i - 1 : i + 1),
                         }}

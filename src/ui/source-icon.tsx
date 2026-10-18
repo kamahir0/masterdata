@@ -3,7 +3,13 @@ import type { Source } from "../core/types";
 import { typeKind } from "../core/types";
 
 export type SourceKind =
-  "table" | "data" | "enum" | "flags" | "custom" | "valueObject" | "file";
+  | "table"
+  | "data"
+  | "enum"
+  | "flags"
+  | "custom"
+  | "valueObject"
+  | "file";
 const labels: Record<SourceKind, string> = {
   table: "テーブル",
   data: "データ",
@@ -93,11 +99,23 @@ export function SourceIcon({
   source,
   ...props
 }: { source?: Source } & HTMLAttributes<HTMLSpanElement>) {
-  const kind =
-    source?.data?.kind === "schema"
-      ? "table"
-      : source?.data?.kind === "data"
-        ? "data"
-        : (typeKind(source) ?? "file");
+  const kind = sourceKind(source);
   return <SourceKindIcon kind={kind} {...props} />;
 }
+
+export function sourceKind(source?: Source): SourceKind {
+  return source?.data?.kind === "schema"
+    ? "table"
+    : source?.data?.kind === "data"
+      ? "data"
+      : (typeKind(source) ?? "file");
+}
+export const kindBadges: Record<SourceKind, string> = {
+  table: "TABLE",
+  data: "TABLE DATA",
+  enum: "ENUM",
+  flags: "FLAGS",
+  custom: "CUSTOM TYPE",
+  valueObject: "VALUE OBJECT",
+  file: "FILE",
+};

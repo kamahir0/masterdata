@@ -13,7 +13,7 @@ import { type Snapshot, type Source, type SavedFile } from "../core/types";
 import { session } from "../core/session";
 export { SourceIcon } from "./source-icon";
 import { SourceKindIcon, SourceIcon } from "./source-icon";
-import { useLayoutMotion } from "./motion";
+import { useEditing } from "./editing";
 export function Explorer({
   snapshot,
   active,
@@ -37,6 +37,19 @@ export function Explorer({
   } | null>(null);
   const [height, setHeight] = useState(500);
   const container = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<any>(null);
+  const dropTarget = useRef<{
+    folder: string;
+    row: HTMLElement;
+    inside: boolean;
+    valid: boolean;
+  } | null>(null);
+  const dragSource = useRef("");
+  const clearDrop = () => {
+    dropTarget.current?.row.classList.remove("folder-drop-target");
+    dropTarget.current = null;
+  };
+  useEffect(() => clearDrop, []);
   useEffect(() => {
     const observer = new ResizeObserver((entries) =>
       setHeight(entries[0].contentRect.height),
@@ -69,6 +82,36 @@ export function Explorer({
     sources.forEach((source, path) => add({ path, folder: false, source }));
     return { folders, sources, children };
   }, [snapshot.sources, snapshot.folders]);
+  const proposeDrop = (event: React.DragEvent) => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>(
+      ".ant-tree-treenode",
+    );
+    const pathNode = row?.querySelector<HTMLElement>("[data-path]");
+    if (!row || !pathNode) {
+      clearDrop();
+      return;
+    }
+    const path = pathNode.dataset.path!,
+      box = row.getBoundingClientRect();
+    const inside =
+      allPaths.folders.has(path) &&
+      event.clientY > box.top + 3 &&
+      event.clientY < box.bottom - 3;
+    const folder = inside ? path : path.split("/").slice(0, -1).join("/");
+    clearDrop();
+    const destination = [folder, dragSource.current.split("/").at(-1)]
+      .filter(Boolean)
+      .join("/");
+    const valid =
+      !!dragSource.current &&
+      folder !== dragSource.current &&
+      !folder.startsWith(`${dragSource.current}/`) &&
+      (destination === dragSource.current ||
+        (!allPaths.sources.has(destination) &&
+          !allPaths.folders.has(destination)));
+    dropTarget.current = { folder, row, inside, valid };
+    if (inside && valid) row.classList.add("folder-drop-target");
+  };
   const selectedPath = keys[0]?.toString().startsWith("folder:")
     ? String(keys[0]).slice(7)
     : snapshot.sources.find((s) => s.id === keys[0])?.path;
@@ -84,8 +127,20 @@ export function Explorer({
       fail(error);
     }
   };
+  const movePath = (from: string, to: string) => {
+    session.move(from, to);
+    const remap = (key: React.Key) => {
+      const path = String(key);
+      return path === `folder:${from}` || path.startsWith(`folder:${from}/`)
+        ? `folder:${to}${path.slice(`folder:${from}`.length)}`
+        : key;
+    };
+    setKeys((old) => old.map(remap));
+    setExpanded((old) => old.map(remap));
+  };
   const rename = (p: string) => {
-    const ext = allPaths.sources.get(p)?.data?.kind
+    const ext = session.getState().snapshot.sources.find((s) => s.path === p)
+      ?.data?.kind
       ? (p.match(/\.ya?ml$/i)?.[0] ?? "")
       : "";
     setRenaming({
@@ -100,7 +155,7 @@ export function Explorer({
   const commitRename = () => {
     if (!renaming) return;
     run(() =>
-      session.move(
+      movePath(
         renaming.path,
         [
           ...renaming.path.split("/").slice(0, -1),
@@ -114,28 +169,36 @@ export function Explorer({
     kind: "table" | "enum" | "flags" | "custom" | "valueObject" | "folder",
     folder = parent,
   ) {
-    run(() => {
-      if (kind === "folder") {
-        const path = session.addFolder(folder);
-        setExpanded((old) => [...old, `folder:${folder}`]);
+    run(() =>
+      editing.run(() => {
+        setSearch("");
+        let path: string, key: string;
+        if (kind === "folder") {
+          path = session.addFolder(folder);
+          key = `folder:${path}`;
+        } else {
+          key = session.add(kind, folder);
+          path = session
+            .getState()
+            .snapshot.sources.find((s) => s.id === key)!.path;
+          onSelect(key, true);
+        }
+        setKeys([key]);
+        setExpanded((old) => [
+          ...new Set([
+            ...old,
+            ...folder
+              .split("/")
+              .filter(Boolean)
+              .map((_, i, p) => `folder:${p.slice(0, i + 1).join("/")}`),
+          ]),
+        ]);
         rename(path);
-      } else {
-        const id = session.add(kind, folder);
-        onSelect(id, true);
-        setKeys([id]);
-        const source = session
-          .getState()
-          .snapshot.sources.find((s) => s.id === id)!;
-        rename(source.path);
-      }
-      setExpanded((old) => [
-        ...old,
-        ...folder
-          .split("/")
-          .map((_, i, p) => `folder:${p.slice(0, i + 1).join("/")}`),
-      ]);
-    });
+        return { focus: `node-${key.startsWith("folder:") ? path : key}` };
+      }),
+    );
   }
+
   const createItems = [
     {
       key: "table",
@@ -161,14 +224,41 @@ export function Explorer({
     { type: "divider" as const },
     { key: "folder", icon: <FolderAddOutlined />, label: "新しいフォルダ" },
   ];
-  useLayoutMotion(
+  const editing = useEditing(
     container,
     [
       ...snapshot.sources.map((source) => `node-${source.id}`),
       ...[...allPaths.folders].map((path) => `node-${path}`),
     ],
-    { layout: false, enterOnGrowth: true },
+    {
+      layout: false,
+      enterOnGrowth: true,
+      visualTarget: (node) =>
+        node.closest<HTMLElement>(".ant-tree-treenode") ?? node,
+      reveal: (key) => {
+        const id = key.slice(5);
+        treeRef.current?.scrollTo({
+          key: allPaths.folders.has(id) ? `folder:${id}` : id,
+        });
+      },
+    },
   );
+  const remove = (paths: string[]) => {
+    const removed = [
+      ...snapshot.sources
+        .filter((s) =>
+          paths.some((p) => s.path === p || s.path.startsWith(`${p}/`)),
+        )
+        .map((s) => `node-${s.id}`),
+      ...[...allPaths.folders]
+        .filter((p) =>
+          paths.some((parent) => p === parent || p.startsWith(`${parent}/`)),
+        )
+        .map((p) => `node-${p}`),
+    ];
+    editing.run(() => session.remove(paths), removed);
+    setKeys([]);
+  };
   const tree = useMemo(() => {
     const build = (folder: string): DataNode[] => {
       const children = [...(allPaths.children.get(folder) ?? [])];
@@ -188,8 +278,8 @@ export function Explorer({
           const title =
             renaming?.path === item.path ? (
               <Input
-                autoFocus
                 aria-label="項目の名前"
+                data-path={item.path}
                 data-motion-key={`node-${item.source?.id ?? item.path}`}
                 size="small"
                 value={renaming.value}
@@ -225,10 +315,17 @@ export function Explorer({
                       danger: true,
                     },
                   ],
-                  onClick: ({ key }) =>
+                  onClick: ({ key, domEvent }) => {
+                    domEvent.stopPropagation();
                     run(() => {
-                      if (key === "rename") rename(item.path);
-                      else if (key === "delete") session.remove([item.path]);
+                      if (key === "rename")
+                        editing.run(() => {
+                          rename(item.path);
+                          return {
+                            focus: `node-${item.source?.id ?? item.path}`,
+                          };
+                        });
+                      else if (key === "delete") remove([item.path]);
                       else
                         add(
                           key as any,
@@ -236,11 +333,14 @@ export function Explorer({
                             ? item.path
                             : item.path.split("/").slice(0, -1).join("/"),
                         );
-                    }),
+                    });
+                  },
                 }}
               >
                 <span
                   data-motion-key={`node-${item.source?.id ?? item.path}`}
+                  data-path={item.path}
+                  onContextMenu={(event) => event.stopPropagation()}
                   className={`tree-name ${item.source?.syntaxError ? "tree-error" : ""}`}
                   title={item.path}
                 >
@@ -317,6 +417,11 @@ export function Explorer({
       <div
         className="tree-scroll"
         ref={container}
+        onDragOverCapture={proposeDrop}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node))
+            clearDrop();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !renaming) {
             // An open context menu owns the first Escape.
@@ -334,12 +439,17 @@ export function Explorer({
           if ((e.target as HTMLElement).tagName === "INPUT") return;
           if (e.key === "F2" && selectedPath) {
             e.preventDefault();
-            rename(selectedPath);
+            editing.run(() => {
+              rename(selectedPath);
+              return {
+                focus: `node-${allPaths.sources.get(selectedPath)?.id ?? selectedPath}`,
+              };
+            });
           }
           if (e.key === "Delete" || e.key === "Backspace") {
             if (keys.length && !(e.metaKey || e.ctrlKey)) {
               e.preventDefault();
-              session.remove(
+              remove(
                 keys
                   .map((k) =>
                     String(k).startsWith("folder:")
@@ -354,6 +464,7 @@ export function Explorer({
       >
         {tree.length ? (
           <Tree
+            ref={treeRef}
             aria-label="プロジェクトの項目"
             blockNode
             showIcon
@@ -375,6 +486,11 @@ export function Explorer({
             draggable={{ icon: false }}
             onSelect={(selected, info) => {
               const event = info.nativeEvent;
+              if (
+                event.button === 2 ||
+                (event.target as HTMLElement).closest("input, .ant-dropdown")
+              )
+                return;
               setKeys(
                 event.ctrlKey || event.metaKey || event.shiftKey
                   ? selected
@@ -389,21 +505,58 @@ export function Explorer({
                 );
               } else onSelect(key);
             }}
-            onDrop={(info) =>
+            onDragStart={(info) => {
+              dragSource.current = (info.node as any).path;
+            }}
+            onDragEnd={() => {
+              clearDrop();
+              dragSource.current = "";
+            }}
+            allowDrop={({ dragNode, dropNode }) => {
+              const from = (dragNode as any).path,
+                target = (dropNode as any).path;
+              return (
+                (dropTarget.current?.valid ?? true) &&
+                target !== from &&
+                !target.startsWith(`${from}/`)
+              );
+            }}
+            dropIndicatorRender={(props) =>
+              dropTarget.current?.inside ? null : (
+                <div
+                  className="ant-tree-drop-indicator"
+                  style={{
+                    left: props.dropLevelOffset * props.indent + 16,
+                    right: 0,
+                    [props.dropPosition === -1 ? "top" : "bottom"]: -3,
+                  }}
+                />
+              )
+            }
+            onDrop={(info) => {
+              proposeDrop(info.event);
+              if (dropTarget.current?.valid === false) {
+                clearDrop();
+                return;
+              }
+              const from = (info.dragNode as any).path as string;
+              const target = (info.node as any).path as string;
+              const folder =
+                dropTarget.current?.folder ??
+                (String(info.node.key).startsWith("folder:") && !info.dropToGap
+                  ? target
+                  : target.split("/").slice(0, -1).join("/"));
+              clearDrop();
               run(() => {
-                const from = (info.dragNode as any).path as string;
-                const target = (info.node as any).path as string;
-                const isFolder = String(info.node.key).startsWith("folder:");
-                const folder =
-                  isFolder && !info.dropToGap
-                    ? target
-                    : target.split("/").slice(0, -1).join("/");
-                session.move(
+                movePath(
                   from,
                   [folder, from.split("/").at(-1)].filter(Boolean).join("/"),
                 );
-              })
-            }
+                setExpanded((old) => [
+                  ...new Set([...old, `folder:${folder}`]),
+                ]);
+              });
+            }}
           />
         ) : (
           <Empty

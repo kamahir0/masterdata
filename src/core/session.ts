@@ -15,7 +15,7 @@ import {
 } from "./types";
 import { serialize, parseSource } from "./yaml";
 import { defaultValue, newRecord } from "./schema";
-import { inheritIdentity } from "./identity";
+import { inheritIdentity, withIdentity } from "./identity";
 import { mapRecords, mapTypedValue } from "./structure";
 export interface SessionState {
   project: LoadedProject | null;
@@ -323,7 +323,7 @@ export class Session {
       ),
     }));
   }
-  addField(id: string, copyIndex?: number): string {
+  addField(id: string, copyIndex?: number): Field {
     const source = this.state.snapshot.sources.find((f) => f.id === id)!;
     const fields = fieldsOf(source);
     const template = copyIndex === undefined ? undefined : fields[copyIndex];
@@ -375,7 +375,7 @@ export class Session {
         ),
       };
     });
-    return name;
+    return field;
   }
   removeField(id: string, index: number) {
     const source = this.state.snapshot.sources.find((s) => s.id === id)!;
@@ -486,8 +486,9 @@ export class Session {
     ): any {
       if (value === null || value === undefined) return value;
       if (field.array && Array.isArray(value))
-        return value.map((v) =>
-          rewrite(v, type, { ...field, array: false }, seen),
+        return withIdentity(
+          value,
+          value.map((v) => rewrite(v, type, { ...field, array: false }, seen)),
         );
       if (!value || typeof value !== "object" || Array.isArray(value))
         return value;
@@ -505,7 +506,7 @@ export class Session {
         const key = type === source.data.name && f.name === old ? name : f.name;
         next[key] = rewrite(next[key], f.type, f, seenNext);
       }
-      return next;
+      return withIdentity(value, next);
     }
     const thisSnapshot = this.state.snapshot;
     this.change("項目名を変更", (s) => ({
@@ -649,15 +650,17 @@ export class Session {
     const target = this.state.snapshot.sources.find(
       (s) => s.id === destinationId,
     )!;
+    const record = newRecord(this.state.snapshot, table, template);
     this.update(
       destinationId,
       ["records"],
       [
         ...(Array.isArray(target.data.records) ? target.data.records : []),
-        newRecord(this.state.snapshot, table, template),
+        record,
       ],
       "レコードを追加",
     );
+    return record;
   }
   files(ids?: string[]) {
     const changed = this.state.snapshot.sources

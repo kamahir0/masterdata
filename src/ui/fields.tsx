@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useRef } from "react";
 import { Button, Dropdown, Space, Table, Tooltip } from "antd";
 import {
   DeleteOutlined,
@@ -17,7 +17,7 @@ import {
 } from "../core/types";
 import { session } from "../core/session";
 import { identity } from "../core/identity";
-import { useLayoutMotion } from "./motion";
+import { useEditing } from "./editing";
 import { usePointerSort } from "./sortable";
 import { Entry, TypeSelect } from "./inputs";
 export function ModifierButtons({
@@ -61,7 +61,6 @@ export function FieldEditor({
   source: Source;
   snapshot: Snapshot;
 }) {
-  const [focusIndex, setFocusIndex] = useState(-1);
   const fields = fieldsOf(source);
   const base = source.data.custom ? ["custom", "fields"] : ["fields"];
   const set = (i: number, f: Field) =>
@@ -80,7 +79,18 @@ export function FieldEditor({
     session.update(source.id, base, next, "項目を並べ替え");
   };
   const root = useRef<HTMLDivElement>(null);
-  useLayoutMotion(root, fields.map(identity));
+  const editing = useEditing(root, fields.map(identity), {
+    context: source.id,
+  });
+  const add = (index?: number) =>
+    editing.run(() => ({
+      focus: identity(session.addField(source.id, index)),
+    }));
+  const remove = (index: number) =>
+    editing.run(
+      () => session.removeField(source.id, index),
+      [identity(fields[index])],
+    );
   usePointerSort(root, (_, from, to) =>
     move(
       fields.findIndex((f) => identity(f) === from),
@@ -122,7 +132,6 @@ export function FieldEditor({
             width: 210,
             render: (name, _, i) => (
               <Entry
-                autoFocus={i === focusIndex}
                 value={name}
                 label={`項目${i + 1}の名前`}
                 onCommit={(v) => session.renameField(source.id, i, v)}
@@ -188,9 +197,9 @@ export function FieldEditor({
                   ],
                   onClick: ({ key }) =>
                     key === "copy"
-                      ? (setFocusIndex(i + 1), session.addField(source.id, i))
+                      ? add(i)
                       : key === "delete"
-                        ? session.removeField(source.id, i)
+                        ? remove(i)
                         : move(i, key === "up" ? i - 1 : i + 1),
                 }}
               >
@@ -205,14 +214,7 @@ export function FieldEditor({
         ]}
       />
       <div className="definition-add">
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setFocusIndex(fields.length);
-            session.addField(source.id);
-          }}
-        >
+        <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()}>
           フィールドを追加
         </Button>
       </div>

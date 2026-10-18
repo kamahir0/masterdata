@@ -62,7 +62,7 @@ export function captureDropPositions(
   if (extra) captured.set(...extra);
   dropPositions.set(root, captured);
 }
-function viewport(root: HTMLElement) {
+export function viewport(root: HTMLElement) {
   let box = root.getBoundingClientRect();
   let left = Math.max(0, box.left),
     right = Math.min(innerWidth, box.right);
@@ -320,4 +320,5 @@ export function useLayoutMotion(
     },
     [],
   );
+  return reveal;
 }

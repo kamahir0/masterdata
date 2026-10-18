@@ -574,3 +574,48 @@ test("discard restores only the chosen source, removes new drafts and remains un
     await fs.rm(root, { recursive: true });
   }
 });
+
+test("primitive array identities survive value edits, duplicate insertion, reorder and Undo without entering YAML", async () => {
+  const { itemIdentities, moveItem, spliceItems } = await import(
+    "../src/core/identity"
+  );
+  const { setIn } = await import("../src/core/types");
+  const { project, root } = await sample();
+  try {
+    const session = new Session();
+    session.load(project);
+    const source = project.snapshot.sources.find(
+      (s) => s.data.kind === "schema",
+    )!;
+    session.update(
+      source.id,
+      ["records", 0, "values"],
+      ["same", "same", "other"],
+    );
+    const read = () =>
+      session.getState().snapshot.sources.find((s) => s.id === source.id)!.data
+        .records[0].values;
+    const initial = read(),
+      ids = [...itemIdentities(initial)];
+    assert.equal(new Set(ids).size, 3);
+    session.update(source.id, ["records", 0, "values", 0], "edited");
+    assert.deepEqual(itemIdentities(read()), ids);
+    const duplicated = spliceItems(read(), 1, 0, "same");
+    session.update(source.id, ["records", 0, "values"], duplicated);
+    const added = itemIdentities(read())[1];
+    assert.ok(!ids.includes(added));
+    session.update(source.id, ["records", 0, "values"], moveItem(read(), 2, 0));
+    assert.deepEqual(itemIdentities(read()), [ids[1], ids[0], added, ids[2]]);
+    session.undo();
+    assert.equal(read(), duplicated);
+    session.undo();
+    assert.deepEqual(itemIdentities(read()), ids);
+    session.undo();
+    assert.equal(read(), initial);
+    assert.deepEqual(itemIdentities(setIn(initial, [1], "changed")), ids);
+    const yaml = session.files().find((f) => f.id === source.id)!.text;
+    assert.ok(ids.every((id) => !yaml.includes(id)));
+  } finally {
+    await fs.rm(root, { recursive: true });
+  }
+});

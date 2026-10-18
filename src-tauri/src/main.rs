@@ -58,6 +58,10 @@ fn set_dirty(
     host.dirty.store(value, Ordering::SeqCst);
     #[cfg(target_os = "macos")]
     {
+        let inset = window.app_handle().config().app.windows[0]
+            .traffic_light_position
+            .as_ref()
+            .map(|position| (position.x, position.y));
         let native = window.clone();
         let _ = window.run_on_main_thread(move || {
             if let Ok(pointer) = native.ns_window() {
@@ -67,7 +71,8 @@ fn set_dirty(
                     // AppKit resets traffic lights on setDocumentEdited. Reapply the
                     // public NSView geometry, matching the Tauri inset after dirty updates.
                     use objc2_app_kit::NSWindowButton;
-                    if let (Some(close), Some(minimize), Some(zoom)) = (
+                    if let (Some((x, y)), Some(close), Some(minimize), Some(zoom)) = (
+                        inset,
                         window.standardWindowButton(NSWindowButton::CloseButton),
                         window.standardWindowButton(NSWindowButton::MiniaturizeButton),
                         window.standardWindowButton(NSWindowButton::ZoomButton),
@@ -76,13 +81,13 @@ fn set_dirty(
                         if let Some(container) = close.superview().and_then(|view| view.superview())
                         {
                             let mut frame = container.frame();
-                            frame.size.height = close.frame().size.height + 12.0;
+                            frame.size.height = close.frame().size.height + y;
                             frame.origin.y = window.frame().size.height - frame.size.height;
                             container.setFrame(frame);
                         }
                         for (index, button) in [close, minimize, zoom].into_iter().enumerate() {
                             let mut origin = button.frame().origin;
-                            origin.x = 18.0 + index as f64 * spacing;
+                            origin.x = x + index as f64 * spacing;
                             button.setFrameOrigin(origin);
                         }
                     }
@@ -321,7 +326,11 @@ fn main() {
             // Set the webview attribute explicitly: the config-only window inset is
             // overwritten by the webview's default inset in the pinned Tauri runtime.
             #[cfg(target_os = "macos")]
-            let window = window.traffic_light_position(tauri::LogicalPosition::new(18.0, 30.0));
+            let window = match &config.traffic_light_position {
+                Some(position) => window
+                    .traffic_light_position(tauri::LogicalPosition::new(position.x, position.y)),
+                None => window,
+            };
             window.build()?;
             menu(app)?;
             if smoke {

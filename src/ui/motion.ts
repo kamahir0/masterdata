@@ -131,10 +131,6 @@ export function useLayoutMotion(
   const reveal = () => {
     const current = state.current,
       host = root.current;
-    const now = performance.now();
-    current.pending.forEach((born, key) => {
-      if (now - born > 1500) current.pending.delete(key);
-    });
     if (
       !host ||
       !current.pending.size ||
@@ -286,6 +282,20 @@ export function useLayoutMotion(
         latestReveal.current();
       });
     };
+    // Rendering may take longer than any fixed TTL (Linux WebKit's large-row
+    // trace did). Retain creation until it can paint; a later user gesture ends
+    // this feedback window, so ordinary scrolling never reveals stale births.
+    const retire = () => {
+      state.current.pending.clear();
+      state.current.entered.clear();
+    };
+    const gestures = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    gestures.forEach((event) =>
+      document.addEventListener(event, retire, {
+        capture: true,
+        passive: true,
+      }),
+    );
     const observer = new MutationObserver(schedule);
     observer.observe(host, { childList: true, subtree: true });
     host.addEventListener("scroll", schedule, true);
@@ -293,6 +303,9 @@ export function useLayoutMotion(
       host,
       dispose: () => {
         observer.disconnect();
+        gestures.forEach((event) =>
+          document.removeEventListener(event, retire, true),
+        );
         host.removeEventListener("scroll", schedule, true);
         cancelAnimationFrame(frame);
         finishLayoutMotion(host);

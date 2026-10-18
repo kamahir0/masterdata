@@ -988,11 +988,16 @@ test("structural motion previews pointer reorder, cancels safely and commits one
     page.getByLabel("レコードを移動", { exact: true }).nth(2),
   );
   await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
-  const translated = await page
-    .locator('[data-sort-group="rows"]')
-    .nth(1)
-    .evaluate((e) => parseFloat(getComputedStyle(e).translate.split(" ")[1]));
-  expect(translated).toBeLessThan(0);
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-sort-group="rows"]')
+        .nth(1)
+        .evaluate((e) =>
+          parseFloat(getComputedStyle(e).translate.split(" ")[1]),
+        ),
+    )
+    .toBeLessThan(0);
   await page.keyboard.press("Escape");
   await page.mouse.up();
   await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("1");
@@ -1629,6 +1634,58 @@ test("large additions reveal a virtual new record and a new column without delay
           options,
         });
       return animate.call(this, frames, options);
+    };
+  });
+  // Hold animation-frame delivery after Add, as if a busy main thread delayed
+  // the virtual row's first paint. Feedback must survive; later user input ends it.
+  await page.evaluate(() => {
+    const request = window.requestAnimationFrame.bind(window);
+    const cancel = window.cancelAnimationFrame.bind(window);
+    const queued = new Map<
+      number,
+      { frame: number; timer?: ReturnType<typeof setTimeout> }
+    >();
+    let resumeAt = 0;
+    const arm = (event: Event) => {
+      if (
+        !(event.target as HTMLElement)
+          .closest("button")
+          ?.textContent?.includes("レコードを追加")
+      )
+        return;
+      resumeAt = performance.now() + 1800;
+      document.removeEventListener("click", arm, true);
+    };
+    document.addEventListener("click", arm, true);
+    window.requestAnimationFrame = (callback) => {
+      let id = 0;
+      id = request((time) => {
+        const remaining = resumeAt - performance.now();
+        if (remaining > 0) {
+          const entry = {
+            frame: id,
+            timer: setTimeout(() => {
+              entry.frame = request((next) => {
+                queued.delete(id);
+                callback(next);
+              });
+            }, remaining),
+          };
+          queued.set(id, entry);
+        } else {
+          queued.delete(id);
+          callback(time);
+        }
+      });
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+      const entry = queued.get(id);
+      if (entry) {
+        clearTimeout(entry.timer);
+        cancel(entry.frame);
+        queued.delete(id);
+      } else cancel(id);
     };
   });
   await page

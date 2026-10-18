@@ -1,6 +1,6 @@
 # 値入力枠が幅と操作領域を管理する
 
-Status: Approved
+Status: Applied
 
 Approval mode: Agent-autonomous
 

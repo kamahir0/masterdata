@@ -1,11 +1,11 @@
 # Desktop Authoring
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -66,6 +66,8 @@ React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、
 Tauriで既存React / Ant Design UIと編集sessionを提供する。専用の同梱hostを含め、利用者側にNode.jsを要求しない。window・menu・folder dialog、限定されたnative操作、未保存・処理中のclose保護を維持する。二重起動は既存windowを前面にする。
 
 ローカルcheckoutから`scripts/local-app/app.command` / `scripts/local-app/app.bat`で依存install、検証、package、開発版のinstall、起動まで行える。開発版は`MasterData [Dev]`、identifier `dev.kamahir0.masterdata.dev`、macOS `~/Applications/MasterData [Dev].app` / Windows LocalAppDataの固定先を使い、更新で別コピーを増やさない。通常版と設定・identityを分離する。`--no-launch`で起動を省略できる。checkoutのfetch / pullや実データ変更はしない。
+
+macOSの一括処理は自分の中間.appとsmoke用stagingのLaunch Services登録を解除して片付け、固定install先だけを登録する。正常終了と通常の失敗で中間.appを残さず、強制中断の残存分は次回package前に回収する。後片付け失敗はpathとともに報告する。通常のinstallerは他のcheckoutや旧製品を走査・削除しない。
 
 対象installが起動中なら強制終了・置換せず再実行を案内する。package / staging / install失敗時は既存版を保護・復旧する。名前だけで他の同名アプリを削除しない。
 

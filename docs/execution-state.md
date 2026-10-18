@@ -1,12 +1,12 @@
 # Development State
 
-Stage: objective-complete
-Candidate: e6d4cd61a9fec5a399b88ae1448c89efe0b54dbf
-Work base: 4dd5baa2f54b21378b3c74e7fac0c5a0153b9f05
+Stage: implementation-ready
+Candidate: none
+Work base: 04dd586d77bbbccf6909ecf917223840e3b25462
 
 ## Active work
 
-None.
+In progress: 旧アプリの整理と開発版の中間bundle・登録の後片付け。
 
 ## Blocking findings
 

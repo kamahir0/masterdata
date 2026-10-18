@@ -116,6 +116,7 @@ export async function install(
   inspect,
   copy = (a, b) => cp(a, b, { recursive: true, dereference: false }),
   beforeReplace = () => {},
+  unregister = async () => {},
 ) {
   await mkdir(dirname(destination), { recursive: true });
   const staging = await mkdtemp(join(dirname(destination), ".masterdata-dev-"));
@@ -148,7 +149,50 @@ export async function install(
       throw error;
     }
   } finally {
-    if (!retain) await rm(staging, { recursive: true, force: true });
+    try {
+      // Starting a staged macOS bundle registers its temporary path, even when
+      // that path is hidden. Removing files alone leaves stale launch entries.
+      await unregister(next);
+      if (!retain) await unregister(previous);
+    } finally {
+      if (!retain) await rm(staging, { recursive: true, force: true });
+    }
+  }
+}
+const lsregister =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+export function macAppRegistration(bundle, unregister = false) {
+  try {
+    execute(lsregister, [unregister ? "-u" : "-f", bundle], {
+      timeout: 15000,
+    });
+  } catch (cause) {
+    throw new Error(
+      `アプリの${unregister ? "登録解除" : "登録"}に失敗: ${bundle}`,
+      { cause },
+    );
+  }
+}
+export async function withMacBundle(
+  bundle,
+  action,
+  unregister = (path) => macAppRegistration(path, true),
+) {
+  async function retire() {
+    // Only the known output of this checkout is consumed. Do not discover or
+    // delete other installations, or remove a bundle someone is running.
+    if (process.platform === "darwin") assertNotRunning(bundle);
+    try {
+      await unregister(bundle);
+    } finally {
+      await rm(bundle, { recursive: true, force: true });
+    }
+  }
+  await retire();
+  try {
+    return await action();
+  } finally {
+    await retire();
   }
 }
 export async function smoke(executable) {
@@ -282,29 +326,38 @@ export async function main(args) {
     npm(["test"]);
     npm(["run", "build"]);
     npm(["run", "test:native"]);
-    console.log("[package] MasterData [Dev]");
-    execute(process.execPath, [
-      join(root, "node_modules/@tauri-apps/cli/tauri.js"),
-      "build",
-      "--ci",
-      "--config",
-      "src-tauri/tauri.dev.conf.json",
-      ...(process.platform === "darwin"
-        ? ["--bundles", "app"]
-        : ["--no-bundle"]),
-      "--",
-      "--locked",
-    ]);
-    console.log(`[install] ${paths.destination}`);
-    await install(
-      paths.source,
-      paths.destination,
-      (next) => smoke(join(next, paths.executable)),
-      process.platform === "win32"
-        ? (source, next) => copyWindows(source, next, paths.destination)
-        : undefined,
-      () => assertNotRunning(paths.destination),
-    );
+    const packageAndInstall = async () => {
+      console.log("[package] MasterData [Dev]");
+      execute(process.execPath, [
+        join(root, "node_modules/@tauri-apps/cli/tauri.js"),
+        "build",
+        "--ci",
+        "--config",
+        "src-tauri/tauri.dev.conf.json",
+        ...(process.platform === "darwin"
+          ? ["--bundles", "app"]
+          : ["--no-bundle"]),
+        "--",
+        "--locked",
+      ]);
+      console.log(`[install] ${paths.destination}`);
+      await install(
+        paths.source,
+        paths.destination,
+        (next) => smoke(join(next, paths.executable)),
+        process.platform === "win32"
+          ? (source, next) => copyWindows(source, next, paths.destination)
+          : undefined,
+        () => assertNotRunning(paths.destination),
+        process.platform === "darwin"
+          ? (bundle) => macAppRegistration(bundle, true)
+          : undefined,
+      );
+    };
+    if (process.platform === "darwin") {
+      await withMacBundle(paths.source, packageAndInstall);
+      macAppRegistration(paths.destination);
+    } else await packageAndInstall();
     if (process.platform === "win32") await shortcut(paths.destination);
     if (!args.includes("--no-launch")) {
       console.log("[起動] MasterData [Dev]");

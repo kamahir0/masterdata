@@ -15,6 +15,7 @@ import {
   locations,
   matchingProcesses,
   copyWindows,
+  withMacBundle,
 } from "../scripts/local-app.mjs";
 test("development identity and install target stay stable across builds on macOS and Windows", () => {
   assert.equal(
@@ -44,6 +45,55 @@ test("development identity and install target stay stable across builds on macOS
     ).length,
     1,
   );
+});
+
+test("macOS consumes intermediate bundles after success, package failure and staging failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "masterdata-bundle-"));
+  const bundle = join(root, "MasterData [Dev].app");
+  const installed = join(root, "installed.app");
+  const unregister = async () => {};
+  try {
+    await mkdir(installed);
+    await writeFile(join(installed, "binary"), "previous");
+    for (const outcome of ["package-failure", "smoke-failure", "success"]) {
+      // A previous interrupted build is reclaimed before packaging starts.
+      await mkdir(bundle);
+      await writeFile(join(bundle, "stale"), "interrupted");
+      const registrations = new Set();
+      const action = withMacBundle(
+        bundle,
+        async () => {
+          await assert.rejects(readFile(join(bundle, "stale")), { code: "ENOENT" });
+          await mkdir(bundle);
+          await writeFile(join(bundle, "binary"), "next");
+          if (outcome === "package-failure") throw new Error("package failed");
+          await install(
+            bundle,
+            installed,
+            async (staged) => {
+              registrations.add(staged);
+              if (outcome === "smoke-failure") throw new Error("smoke failed");
+            },
+            undefined,
+            undefined,
+            async (staged) => registrations.delete(staged),
+          );
+        },
+        unregister,
+      );
+      if (outcome === "success") await action;
+      else await assert.rejects(action, /failed/);
+      assert.equal(registrations.size, 0);
+      await assert.rejects(readFile(join(bundle, "binary")), { code: "ENOENT" });
+      assert.deepEqual(await readdir(root), ["installed.app"]);
+      assert.equal(
+        await readFile(join(installed, "binary"), "utf8"),
+        outcome === "success" ? "next" : "previous",
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true });
+  }
 });
 test("install uses one destination, and failed staging or active-app checks preserve previous app", async () => {
   const root = await mkdtemp(join(tmpdir(), "masterdata-install-"));

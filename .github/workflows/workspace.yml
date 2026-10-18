@@ -80,6 +80,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd
         run: scripts\local-app\app.bat --no-launch
+      - name: macOS development install workflow
+        if: runner.os == 'macOS'
+        run: |
+          ./scripts/local-app/app.command --no-launch
+          test ! -e 'src-tauri/target/release/bundle/macos/MasterData [Dev].app'
+          test -x "$HOME/Applications/MasterData [Dev].app/Contents/MacOS/masterdata-desktop"
       - name: Failed GUI evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

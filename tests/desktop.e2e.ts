@@ -92,6 +92,19 @@ test.afterEach(async () => {
   await page?.context().close();
   await fs.rm(root, { recursive: true, force: true });
 });
+async function settleDrawer() {
+  const panel = page.locator(".ant-drawer-content-wrapper");
+  await expect(panel).toBeVisible();
+  // Clicks in a newly opened Drawer intermittently missed on Linux WebKit.
+  // Synchronize with its real motion, rather than sleeping or disabling it.
+  await panel.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations({ subtree: true })
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  });
+}
 async function selectSource(name: string) {
   const search = page.getByLabel("表・型を検索");
   await search.fill(name);
@@ -172,6 +185,7 @@ test("top-level and nested bool share controls; nested nullable can be cleared",
   await page
     .getByRole("button", { name: "stats 行1を開く", exact: true })
     .click();
+  await settleDrawer();
   const nested = page.getByRole("switch", { name: "enabled", exact: true });
   await expect(nested).toBeChecked();
   expect(await top.getAttribute("class")).toBe(
@@ -218,6 +232,7 @@ test("deep array navigation retains the whole breadcrumb and allows value repair
   await page
     .getByRole("button", { name: "effects 行1を開く", exact: true })
     .click();
+  await settleDrawer();
   await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
   await page.getByRole("button", { name: "statsを開く", exact: true }).click();
   await expect(page.locator(".breadcrumb-scroll")).toContainText("effects");

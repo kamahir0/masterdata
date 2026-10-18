@@ -19,7 +19,7 @@ import {
 test("development identity and install target stay stable across builds on macOS and Windows", () => {
   assert.equal(
     locations("darwin", "/Users/a", "").destination,
-    "/Users/a/Applications/MasterData [Dev].app",
+    join("/Users/a", "Applications", "MasterData [Dev].app"),
   );
   assert.equal(
     locations("win32", "/home", "/local").destination,
@@ -28,7 +28,7 @@ test("development identity and install target stay stable across builds on macOS
   assert.equal(
     matchingProcesses(
       "123 /Users/a/Applications/MasterData [Dev].app/Contents/MacOS/masterdata-desktop\n124 /Users/a/Applications/MasterData.app/Contents/MacOS/masterdata-desktop",
-      "/Users/a/Applications/MasterData [Dev].app",
+      join("/Users/a", "Applications", "MasterData [Dev].app"),
       "darwin",
     ).length,
     1,

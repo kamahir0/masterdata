@@ -1312,7 +1312,9 @@ test("compact layout keeps commands and wrapped tabs reachable at minimum width 
   await drawer.getByText("複数行に折り返す", { exact: true }).click();
   await drawer.getByText("ダーク", { exact: true }).click();
   await drawer.locator(".ant-drawer-close").click();
-  await expect(page.locator(".ant-drawer-content-wrapper:visible")).toHaveCount(0);
+  await expect(page.locator(".ant-drawer-content-wrapper:visible")).toHaveCount(
+    0,
+  );
   const wrapped = (await page.locator(".file-tabs").boundingBox())!.height;
   expect(wrapped).toBeGreaterThan(rowHeight + 20);
   const tabBoxes = await page.locator(".file-tab").evaluateAll((tabs) =>
@@ -1416,5 +1418,32 @@ test("file save-and-close keeps newer edits made during save and waits for earli
   ).toHaveCount(0);
   await expect(
     page.getByRole("tab", { name: "rarity", exact: true }),
+  ).toBeVisible();
+});
+
+test("discard restores a saved file even if Undo removed it while close confirmation was open", async () => {
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
+  await page.getByLabel("項目の名前", { exact: true }).press("Enter");
+  const name = await page
+    .locator('.file-tab[aria-selected="true"] .file-tab-name')
+    .innerText();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "候補を追加" }).click();
+  await closeFile();
+  const dialog = await closePrompt();
+  await page.evaluate(() => {
+    (window as any).__command("undo");
+    (window as any).__command("undo");
+  });
+  await expect(page.locator(".file-tab")).toHaveCount(0);
+  await expect(dialog.getByText(new RegExp(name))).toBeVisible();
+  await dialog.getByRole("button", { name: "保存しない", exact: true }).click();
+  await selectSource(name);
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
   ).toBeVisible();
 });

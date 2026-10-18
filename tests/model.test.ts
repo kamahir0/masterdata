@@ -547,6 +547,15 @@ test("discard restores only the chosen source, removes new drafts and remains un
     assert(!s.state.snapshot.sources.some((source) => source.id === id));
     s.undo();
     assert(s.state.snapshot.sources.some((source) => source.id === id));
+    s.change("ファイル削除", (snapshot) => ({
+      ...snapshot,
+      sources: snapshot.sources.filter((source) => source.id !== a.id),
+    }));
+    s.discardSource(a.id);
+    assert.equal(
+      s.state.snapshot.sources.find((source) => source.id === a.id),
+      a,
+    );
     // Another draft can occupy the original path after a move: don't produce duplicate paths.
     s.change("衝突", (snapshot) => ({
       ...snapshot,

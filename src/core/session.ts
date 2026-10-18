@@ -88,6 +88,10 @@ export class Session {
   }
   discardSource(id: string) {
     const base = this.savedSources.get(id);
+    const current = this.state.snapshot.sources.find(
+      (source) => source.id === id,
+    );
+    if (current === base) return;
     if (
       base &&
       this.state.snapshot.sources.some(
@@ -97,10 +101,14 @@ export class Session {
       throw new Error(
         `「${base.path}」は別のファイルが使用しています。名前や移動先を変更してから破棄してください。`,
       );
+    // Undo of creation can remove a saved source while close confirmation is open.
+    // Discard restores that baseline too; it must not leave a pending deletion.
     this.change("ファイルの変更を破棄", (snapshot) => ({
       ...snapshot,
       sources: base
-        ? snapshot.sources.map((source) => (source.id === id ? base : source))
+        ? current
+          ? snapshot.sources.map((source) => (source.id === id ? base : source))
+          : [...snapshot.sources, base]
         : snapshot.sources.filter((source) => source.id !== id),
     }));
   }

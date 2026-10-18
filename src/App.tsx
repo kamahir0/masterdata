@@ -147,7 +147,9 @@ function Workspace({
   const [active, setActive] = useState("");
   const [opened, setOpened] = useState<string[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
-  const [closing, setClosing] = useState<string | null>(null);
+  const [closing, setClosing] = useState<{ id: string; path: string } | null>(
+    null,
+  );
   const [editorSettings, setEditorSettings] = useState(false);
   const navigation = useRef({ active, opened, preview });
   navigation.current = { active, opened, preview };
@@ -397,7 +399,7 @@ function Workspace({
       .snapshot.sources.find((source) => source.id === id);
     if (current && session.dirtySource(current)) {
       guard.current = true;
-      setClosing(id);
+      setClosing({ id, path: current.path });
     } else removeTab(id);
   }
   const finishClose = () => {
@@ -1068,28 +1070,25 @@ function Workspace({
       />
       {closing && (
         <CloseFileDialog
-          key={closing}
-          name={
-            snapshot.sources.find((source) => source.id === closing)?.path ??
-            closing
-          }
+          key={closing.id}
+          name={closing.path}
           cancel={finishClose}
           fail={fail}
           save={async () => {
-            await save(closing, false);
+            await save(closing.id, false);
             const current = session
               .getState()
-              .snapshot.sources.find((source) => source.id === closing);
+              .snapshot.sources.find((source) => source.id === closing.id);
             if (current && session.dirtySource(current))
               throw new Error(
                 "保存中に変更が追加されました。変更を確認して再度保存してください。",
               );
-            removeTab(closing);
+            removeTab(closing.id);
             finishClose();
           }}
           discard={() => {
-            session.discardSource(closing);
-            removeTab(closing);
+            session.discardSource(closing.id);
+            removeTab(closing.id);
             finishClose();
           }}
         />

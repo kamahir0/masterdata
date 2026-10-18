@@ -1,6 +1,6 @@
 # 開発版の起動入口を一つに保つ
 
-Status: Approved
+Status: Applied
 
 Approval mode: Agent-autonomous
 

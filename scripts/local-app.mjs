@@ -161,15 +161,22 @@ export async function install(
 }
 const lsregister =
   "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
-export function macAppRegistration(bundle, unregister = false) {
-  try {
-    execute(lsregister, [unregister ? "-u" : "-f", bundle], {
-      timeout: 15000,
-    });
-  } catch (cause) {
+export function macAppRegistration(bundle, unregister = false, run = spawnSync) {
+  const result = run(lsregister, [unregister ? "-u" : "-f", bundle], {
+    encoding: "utf8",
+    timeout: 15000,
+  });
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
+  // Launch Services returns kLSApplicationNotFoundErr when a newly packaged
+  // bundle has not been indexed yet. No registration is already the desired
+  // result for -u; the same error must still fail an installation's registration.
+  const alreadyAbsent = result.status === 1 && unregister &&
+    output.startsWith(`failed to scan ${bundle}: -10814\n`) &&
+    output.endsWith("from spotlight");
+  if (result.error || (result.status !== 0 && !alreadyAbsent)) {
     throw new Error(
-      `アプリの${unregister ? "登録解除" : "登録"}に失敗: ${bundle}`,
-      { cause },
+      `アプリの${unregister ? "登録解除" : "登録"}に失敗: ${bundle}\n${output}`,
+      { cause: result.error },
     );
   }
 }

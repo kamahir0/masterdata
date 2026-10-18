@@ -16,6 +16,7 @@ import {
   matchingProcesses,
   copyWindows,
   withMacBundle,
+  macAppRegistration,
 } from "../scripts/local-app.mjs";
 test("development identity and install target stay stable across builds on macOS and Windows", () => {
   assert.equal(
@@ -45,6 +46,15 @@ test("development identity and install target stay stable across builds on macOS
     ).length,
     1,
   );
+});
+
+test("macOS unregister accepts an unindexed app, but registration and other failures are reported", () => {
+  const bundle = "/tmp/MasterData [Dev].app";
+  const absent = () => ({ status: 1, stdout: `failed to scan ${bundle}: -10814\n from spotlight` });
+  assert.doesNotThrow(() => macAppRegistration(bundle, true, absent));
+  assert.throws(() => macAppRegistration(bundle, false, absent), /登録に失敗/);
+  assert.throws(() => macAppRegistration(bundle, true, () => ({ status: 1, stderr: "permission denied" })), /permission denied/);
+  assert.throws(() => macAppRegistration(bundle, true, () => ({ status: null, error: new Error("timeout") })), /登録解除に失敗/);
 });
 
 test("macOS consumes intermediate bundles after success, package failure and staging failure", async () => {

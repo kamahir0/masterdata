@@ -1991,7 +1991,7 @@ test("deleting collections removes editors immediately, shows inert exits, and U
       expect.objectContaining({
         inert: true,
         hidden: "true",
-        options: expect.objectContaining({ duration: 200 }),
+        options: expect.objectContaining({ duration: 300 }),
       }),
     ]),
   );
@@ -2015,6 +2015,249 @@ test("deleting collections removes editors immediately, shows inert exits, and U
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(page.getByLabel("id 行3", { exact: true })).toHaveValue("3");
   await expect(page.locator(".edit-exit")).toHaveCount(0);
+});
+
+test("deletion visibly collapses its space while the last-item Add control follows, without delaying Undo", async () => {
+  await selectSource("rarity");
+  const add = page.locator(".definition-add button");
+  const before = (await add.boundingBox())!;
+  const frame = page.locator('[data-motion-layout="definition-frame"]');
+  await page.evaluate(() => {
+    (window as any).__deletionAnimations = [];
+    const animate = Element.prototype.animate;
+    (window as any).__originalAnimate = animate;
+    Element.prototype.animate = function (frames, options) {
+      const animation = animate.call(this, frames, options);
+      if (
+        typeof options === "object" &&
+        options.duration === 300 &&
+        this.matches(
+          ".edit-exit, [data-row-key], [data-motion-key], [data-motion-layout], .ant-tree-treenode",
+        )
+      ) {
+        animation.pause();
+        animation.currentTime = 0;
+        (window as any).__deletionAnimations.push(animation);
+      }
+      return animation;
+    };
+  });
+  await page.getByRole("button", { name: "候補3の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  const ghost = page.locator(".edit-exit");
+  await expect(ghost).toHaveCount(1);
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveCount(0);
+  expect(Math.abs((await add.boundingBox())!.y - before.y)).toBeLessThan(2);
+  expect(
+    (await frame.boundingBox())!.y + (await frame.boundingBox())!.height,
+  ).toBeGreaterThanOrEqual(before.y + before.height);
+  const at = async (time: number) => {
+    await page.evaluate((time) => {
+      (window as any).__deletionAnimations.forEach((a: Animation) => {
+        a.currentTime = time;
+      });
+    }, time);
+    return {
+      y: (await add.boundingBox())!.y,
+      ...(await ghost.evaluate((el) => ({
+        opacity: Number(getComputedStyle(el).opacity),
+        clip: getComputedStyle(el).clipPath,
+      }))),
+    };
+  };
+  const early = await at(80);
+  expect(early.opacity).toBeGreaterThan(0.65);
+  expect(early.opacity).toBeLessThan(1);
+  expect(early.clip).not.toBe("none");
+  await page.screenshot({ path: test.info().outputPath("deletion-early.png") });
+  const middle = await at(150);
+  const late = await at(299);
+  expect(before.y - middle.y).toBeGreaterThan(5);
+  expect(middle.y - late.y).toBeGreaterThan(5);
+  expect(early.y).toBeGreaterThan(middle.y);
+  await at(150);
+  await page.screenshot({
+    path: test.info().outputPath("deletion-midpoint.png"),
+  });
+  // The visual exit is still held halfway; Undo never waits for it.
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveValue(
+    "Epic",
+  );
+  await expect(ghost).toHaveCount(0);
+});
+
+test("deletion moves following fields, rows, columns, arrays and Explorer nodes; reduced motion is immediate", async () => {
+  await page.evaluate(() => {
+    (window as any).__deletionAnimations = [];
+    const animate = Element.prototype.animate;
+    (window as any).__originalAnimate = animate;
+    Element.prototype.animate = function (frames, options) {
+      const animation = animate.call(this, frames, options);
+      if (
+        typeof options === "object" &&
+        options.duration === 300 &&
+        this.matches(
+          ".edit-exit, [data-row-key], [data-motion-key], [data-motion-layout], .ant-tree-treenode",
+        )
+      ) {
+        animation.pause();
+        animation.currentTime = 0;
+        (window as any).__deletionAnimations.push(animation);
+      }
+      return animation;
+    };
+  });
+  const seek = (time: number) =>
+    page.evaluate((time) => {
+      (window as any).__deletionAnimations.forEach((a: Animation) => {
+        if (a.playState !== "idle") a.currentTime = time;
+      });
+    }, time);
+  const check = async (
+    selector: string,
+    remove: () => Promise<void>,
+    axis: "x" | "y" = "y",
+  ) => {
+    const following = page.locator(selector);
+    const before = (await following.boundingBox())![axis];
+    await page.evaluate(() => {
+      (window as any).__deletionAnimations = [];
+    });
+    await remove();
+    await expect(page.locator(".edit-exit").first()).toBeAttached();
+    const start = (await following.boundingBox())![axis];
+    expect(Math.abs(start - before)).toBeLessThan(2);
+    await seek(80);
+    expect(
+      await page
+        .locator(".edit-exit")
+        .first()
+        .evaluate((el) => Number(getComputedStyle(el).opacity)),
+    ).toBeGreaterThan(0.65);
+    await seek(150);
+    const middle = (await following.boundingBox())![axis];
+    await seek(299);
+    const end = (await following.boundingBox())![axis];
+    expect(before - middle).toBeGreaterThan(2);
+    expect(middle - end).toBeGreaterThan(2);
+    await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+    await expect(page.locator(".edit-exit")).toHaveCount(0);
+    // Each next geometry assertion starts after Undo's real (unpaused) entry
+    // and move feedback; menu/checkbox preparation must not change its baseline.
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter(
+            (a) =>
+              a.playState === "running" &&
+              (a.effect as KeyframeEffect).target?.matches(
+                "[data-row-key], [data-motion-key], [data-motion-layout], .ant-tree-treenode",
+              ),
+          )
+          .map((a) => a.finished.catch(() => {})),
+      ),
+    );
+  };
+  await selectSource("combat-stats");
+  const fieldKey = await page
+    .getByLabel("項目3の名前", { exact: true })
+    .locator("xpath=ancestor::*[@data-row-key][1]")
+    .getAttribute("data-row-key");
+  await check(`[data-row-key="${fieldKey}"]`, async () => {
+    await page
+      .getByRole("button", { name: "項目2の操作", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: /削除/ }).click();
+  });
+  await selectSource("announcement");
+  const rowKey = await page
+    .getByLabel("id 行2", { exact: true })
+    .locator("xpath=ancestor::*[@data-row-key][1]")
+    .getAttribute("data-row-key");
+  await check(`[data-row-key="${rowKey}"]`, async () => {
+    await page.getByRole("button", { name: "行1の操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: /削除/ }).click();
+  });
+  const lastRowKey = await page
+    .getByLabel("id 行3", { exact: true })
+    .locator("xpath=ancestor::*[@data-row-key][1]")
+    .getAttribute("data-row-key");
+  await check(`[data-row-key="${lastRowKey}"]`, async () => {
+    const selection = page.locator(
+      '.grid-editor [data-row-key] input[type="checkbox"]',
+    );
+    await selection.nth(0).check();
+    await selection.nth(1).check();
+    await page.locator(".grid-editor").press("Delete");
+  });
+  const columnKey = await page
+    .getByLabel("列2の名前", { exact: true })
+    .locator("xpath=ancestor::*[@data-motion-key][1]")
+    .getAttribute("data-motion-key");
+  await check(
+    `[data-motion-key="${columnKey}"]`,
+    async () => {
+      await page.getByRole("button", { name: "idの操作", exact: true }).click();
+      await page.getByRole("menuitem", { name: /列を削除/ }).click();
+    },
+    "x",
+  );
+  await selectSource("common");
+  await openNested("materials 行1を開く");
+  const arrayKey = await page
+    .locator(".array-item")
+    .nth(1)
+    .getAttribute("data-motion-key");
+  await check(`[data-motion-key="${arrayKey}"]`, async () => {
+    await page
+      .locator(".array-item")
+      .first()
+      .getByRole("button", { name: "要素を削除", exact: true })
+      .click();
+  });
+  await page.getByRole("button", { name: "閉じる", exact: true }).click();
+  await selectSource("combat-stats");
+  await check('.tree-name[data-path="types/effect.yaml"]', async () => {
+    await page
+      .locator('.tree-name[data-path="types/combat-stats.yaml"]')
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: /削除/ }).click();
+  });
+  await page.evaluate(() => {
+    Element.prototype.animate = (window as any).__originalAnimate;
+    (window as any).__deletionAnimations.forEach((a: Animation) => {
+      if (a.playState !== "idle") {
+        a.finish();
+        a.cancel();
+      }
+    });
+  });
+  await selectSource("rarity");
+  await page
+    .getByRole("button", { name: "モーション: ON", exact: true })
+    .click();
+  await page.getByRole("button", { name: "候補3の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+});
+
+test("reduced-motion deletion keeps its commands usable and immediately removes the editor", async () => {
+  await selectSource("rarity");
+  await page
+    .getByRole("button", { name: "モーション: ON", exact: true })
+    .click();
+  await page.getByRole("button", { name: "候補3の操作", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /削除/ })).toBeAttached();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("候補3の名前", { exact: true })).toHaveValue(
+    "Epic",
+  );
 });
 
 test("source heading distinguishes table data, key labels and references communicate actual values first", async () => {

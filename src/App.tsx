@@ -30,6 +30,7 @@ import {
   theme as antTheme,
 } from "antd";
 import jaJP from "antd/locale/ja_JP";
+import { Provider as ComponentMotionProvider } from "@rc-component/motion";
 import {
   ArrowRightOutlined,
   CheckCircleOutlined,
@@ -1329,9 +1330,9 @@ export default function Root() {
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif',
           fontSize: 13,
-          // Changing AntD's motion token inserts a provider on its first toggle,
-          // remounting Workspace and reloading the project. Keep this tree stable;
-          // MotionConfig and data-reduced-motion control interpolation instead.
+          // Keep AntD's wrapper topology stable. A permanent component-motion
+          // provider below disables lifecycle motion without remounting drafts.
+          // CSS duration overrides alone race popup placement in WebKit.
           motion: true,
           motionDurationFast: ".08s",
           motionDurationMid: ".12s",
@@ -1354,14 +1355,16 @@ export default function Root() {
         },
       }}
     >
-      <MotionConfig reducedMotion={reduced ? "always" : "user"}>
-        <AntApp>
-          <Workspace
-            preferences={preferences}
-            setPreferences={setPreferences}
-          />
-        </AntApp>
-      </MotionConfig>
+      <ComponentMotionProvider motion={!reduced}>
+        <MotionConfig reducedMotion={reduced ? "always" : "user"}>
+          <AntApp>
+            <Workspace
+              preferences={preferences}
+              setPreferences={setPreferences}
+            />
+          </AntApp>
+        </MotionConfig>
+      </ComponentMotionProvider>
     </ConfigProvider>
   );
 }

@@ -7,37 +7,54 @@ export const resultMotion = {
   move: 260,
   easing: "cubic-bezier(.22,.61,.36,1)",
 };
+export const deletionMotion = {
+  duration: 300,
+  easing: "cubic-bezier(.4,0,.2,1)",
+};
 export const resultTransition = {
   duration: resultMotion.enter / 1000,
   ease: [0.22, 0.61, 0.36, 1] as const,
 };
 const selector = "[data-row-key], [data-motion-key]";
+const layoutSelector = `${selector}, [data-motion-layout]`;
 const owned = new WeakMap<HTMLElement, Animation>();
 const dropPositions = new WeakMap<HTMLElement, Map<string, DOMRect>>();
 const keyOf = (element: HTMLElement) =>
-  element.dataset.rowKey ?? element.dataset.motionKey!;
+  element.dataset.rowKey ??
+  element.dataset.motionKey ??
+  element.dataset.motionLayout!;
 function offset(element: HTMLElement) {
   if (!owned.has(element)) return [0, 0];
   const value = getComputedStyle(element).translate.split(" ");
   return [parseFloat(value[0]) || 0, parseFloat(value[1]) || 0];
 }
-function positions(root: HTMLElement, layout = false) {
+function positions(
+  root: HTMLElement,
+  layout = false,
+  visualTarget = (node: HTMLElement) => node,
+) {
   return new Map(
-    [...root.querySelectorAll<HTMLElement>(selector)].map((element) => {
+    [...root.querySelectorAll<HTMLElement>(layoutSelector)].map((node) => {
+      const element = visualTarget(node);
       const box = element.getBoundingClientRect();
       const [x, y] = layout ? offset(element) : [0, 0];
       return [
-        keyOf(element),
+        keyOf(node),
         new DOMRect(box.x - x, box.y - y, box.width, box.height),
       ] as const;
     }),
   );
 }
-function animate(element: HTMLElement, frames: Keyframe[], duration: number) {
+function animate(
+  element: HTMLElement,
+  frames: Keyframe[],
+  duration: number,
+  easing = resultMotion.easing,
+) {
   owned.get(element)?.cancel();
   const animation = element.animate(frames, {
     duration,
-    easing: resultMotion.easing,
+    easing,
   });
   owned.set(element, animation);
   const clear = () => {
@@ -46,8 +63,12 @@ function animate(element: HTMLElement, frames: Keyframe[], duration: number) {
   animation.onfinish = clear;
   animation.oncancel = clear;
 }
-export function finishLayoutMotion(root: HTMLElement) {
-  root.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+export function finishLayoutMotion(
+  root: HTMLElement,
+  visualTarget = (node: HTMLElement) => node,
+) {
+  root.querySelectorAll<HTMLElement>(layoutSelector).forEach((node) => {
+    const element = visualTarget(node);
     const animation = owned.get(element);
     animation?.finish();
     animation?.cancel();
@@ -112,6 +133,7 @@ export function useLayoutMotion(
     context?: unknown;
     layout?: boolean;
     enterOnGrowth?: boolean;
+    visualTarget?: (node: HTMLElement) => HTMLElement;
   } = {},
 ) {
   const state = useRef({
@@ -123,6 +145,7 @@ export function useLayoutMotion(
     entered: new Map<string, number>(),
     scroll: "",
     context: options.context,
+    transition: null as { duration: number; easing: string } | null,
   });
   const attached = useRef<{ host: HTMLElement; dispose: () => void } | null>(
     null,
@@ -146,8 +169,9 @@ export function useLayoutMotion(
         current.entered.delete(key);
     });
     const clip = viewport(host);
-    host.querySelectorAll<HTMLElement>(selector).forEach((element) => {
-      const key = keyOf(element),
+    host.querySelectorAll<HTMLElement>(selector).forEach((node) => {
+      const element = options.visualTarget?.(node) ?? node;
+      const key = keyOf(node),
         owner = element.dataset.motionOwner ?? key;
       if (current.nodes.get(key) !== element) {
         const rect = element.getBoundingClientRect(),
@@ -186,6 +210,63 @@ export function useLayoutMotion(
       );
     });
   };
+  const reconcile = () => {
+    const host = root.current,
+      current = state.current;
+    if (!host || !current.transition) return;
+    if (
+      scrollPosition(host) !== current.scroll ||
+      document.documentElement.dataset.reducedMotion === "true"
+    ) {
+      current.transition = null;
+      return;
+    }
+    const next = positions(host, true, options.visualTarget);
+    host.querySelectorAll<HTMLElement>(layoutSelector).forEach((node) => {
+      const element = options.visualTarget?.(node) ?? node;
+      const key = keyOf(node),
+        old = current.before.get(key),
+        box = next.get(key)!;
+      current.nodes.set(key, element);
+      if (!old) return;
+      const moved = Math.abs(old.x - box.x) > 1 || Math.abs(old.y - box.y) > 1;
+      const resize =
+        node.dataset.motionSize === "height" &&
+        Math.abs(old.height - box.height) > 1;
+      if (!moved && owned.has(element)) {
+        next.set(key, old);
+        return;
+      }
+      if (!moved && !resize) return;
+      const [dx, dy] = offset(element);
+      const row = element.parentElement?.closest<HTMLElement>("[data-row-key]");
+      const x = old.x + dx - box.x,
+        y = row ? 0 : old.y + dy - box.y;
+      if (
+        Math.abs(y) >= 800 ||
+        (Math.abs(x) <= 1 && Math.abs(y) <= 1 && !resize)
+      )
+        return;
+      animate(
+        element,
+        [
+          {
+            translate: `${x}px ${y}px`,
+            ...(resize ? { height: `${old.height}px` } : {}),
+          },
+          {
+            translate: "0px 0px",
+            ...(resize ? { height: `${box.height}px` } : {}),
+          },
+        ],
+        current.transition!.duration,
+        current.transition!.easing,
+      );
+    });
+    current.before = next;
+  };
+  const latestReconcile = useRef(reconcile);
+  latestReconcile.current = reconcile;
   const latestReveal = useRef(reveal);
   latestReveal.current = reveal;
   useLayoutEffect(() => {
@@ -231,35 +312,24 @@ export function useLayoutMotion(
     const scroll = scrollPosition(host);
     const movedViewport =
       scroll !== current.scroll || options.context !== current.context;
-    const next = positions(host, true);
-    const nodes = new Map<string, HTMLElement>();
-    host.querySelectorAll<HTMLElement>(selector).forEach((element) => {
-      const key = keyOf(element),
-        old = before.get(key),
-        box = next.get(key)!;
-      nodes.set(key, element);
-      if (
-        !initialized ||
-        !old ||
-        movedViewport ||
-        options.layout === false ||
-        document.documentElement.dataset.reducedMotion === "true"
-      )
-        return;
-      const row = element.parentElement?.closest<HTMLElement>("[data-row-key]");
-      const x = old.left - box.left,
-        y = row ? 0 : old.top - box.top;
-      if ((Math.abs(x) > 1 || Math.abs(y) > 1) && Math.abs(y) < 800)
-        animate(
-          element,
-          [{ translate: `${x}px ${y}px` }, { translate: "0px 0px" }],
-          resultMotion.move,
-        );
-    });
+    const deleting = [...current.known].some((key) => !nextKeys.has(key));
+    const timing = deleting
+      ? deletionMotion
+      : { duration: resultMotion.move, easing: resultMotion.easing };
+    current.transition =
+      initialized && !movedViewport && options.layout !== false ? timing : null;
+    current.before = before;
+    current.scroll = scroll;
+    current.nodes = new Map(
+      [...host.querySelectorAll<HTMLElement>(layoutSelector)].map((node) => [
+        keyOf(node),
+        options.visualTarget?.(node) ?? node,
+      ]),
+    );
+    if (current.transition) reconcile();
+    else current.before = positions(host, true, options.visualTarget);
     current.host = host;
     current.known = nextKeys;
-    current.before = next;
-    current.nodes = nodes;
     current.scroll = scroll;
     current.context = options.context;
     reveal();
@@ -268,7 +338,7 @@ export function useLayoutMotion(
     const host = root.current;
     if (!host) return;
     if (document.documentElement.dataset.reducedMotion === "true") {
-      finishLayoutMotion(host);
+      finishLayoutMotion(host, options.visualTarget);
       state.current.pending.clear();
       state.current.entered.clear();
     }
@@ -276,6 +346,10 @@ export function useLayoutMotion(
     attached.current?.dispose();
     let frame = 0;
     const schedule = () => {
+      // Virtual collections can reposition their children after the owner's
+      // layout effect. Reconcile that DOM change before paint, using the same
+      // operation baseline instead of silently losing the movement feedback.
+      latestReconcile.current();
       if (!state.current.pending.size || frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
@@ -288,6 +362,7 @@ export function useLayoutMotion(
     const retire = () => {
       state.current.pending.clear();
       state.current.entered.clear();
+      state.current.transition = null;
     };
     const gestures = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
     gestures.forEach((event) =>
@@ -308,9 +383,10 @@ export function useLayoutMotion(
         );
         host.removeEventListener("scroll", schedule, true);
         cancelAnimationFrame(frame);
-        finishLayoutMotion(host);
+        finishLayoutMotion(host, options.visualTarget);
       },
     };
+    latestReconcile.current();
     latestReveal.current();
   });
   useEffect(
@@ -320,5 +396,24 @@ export function useLayoutMotion(
     },
     [],
   );
-  return reveal;
+  return {
+    reveal,
+    capture() {
+      const host = root.current;
+      if (!host) return;
+      // Drawer opening, tree expansion and scrolling can change geometry without
+      // changing model keys. An edit starts from what is actually visible now.
+      state.current.host = host;
+      state.current.known = new Set(keys);
+      state.current.context = options.context;
+      state.current.before = positions(host, true, options.visualTarget);
+      state.current.nodes = new Map(
+        [...host.querySelectorAll<HTMLElement>(layoutSelector)].map((node) => [
+          keyOf(node),
+          options.visualTarget?.(node) ?? node,
+        ]),
+      );
+      state.current.scroll = scrollPosition(host);
+    },
+  };
 }

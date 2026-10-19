@@ -1206,11 +1206,13 @@ button:focus-visible,
 .ant-drawer-content {
   background: var(--surface) !important;
 }
+/* A tiny duration also enables default `all` transitions on popup positions.
+   WebKit alignment then measures moving left/top values and drifts offscreen. */
 :root[data-reduced-motion="true"] *,
 :root[data-reduced-motion="true"] *::before,
 :root[data-reduced-motion="true"] *::after {
-  animation-duration: 0.001ms !important;
-  transition-duration: 0.001ms !important;
+  animation: none !important;
+  transition: none !important;
   scroll-behavior: auto !important;
 }
 @media (max-width: 1150px) {

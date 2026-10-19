@@ -98,125 +98,132 @@ export function FieldEditor({
     ),
   );
   return (
-    <div className="definition-table" ref={root}>
-      <Table
-        size="small"
-        pagination={false}
-        rowKey={(field) => identity(field)}
-        dataSource={fields}
-        scroll={{ x: 620 }}
-        onRow={(field) =>
-          ({
-            "data-sort-group": "fields",
-            "data-sort-key": identity(field),
-            "data-sort-anchor": "",
-          }) as any
-        }
-        columns={[
-          {
-            title: "",
-            width: 38,
-            render: (_, _f, i) => (
-              <span
-                className="drag-handle"
-                data-sort-handle="fields"
-                aria-label="項目を移動"
-              >
-                <HolderOutlined />
-              </span>
-            ),
-          },
-          {
-            title: "名前",
-            dataIndex: "name",
-            width: 210,
-            render: (name, _, i) => (
-              <Entry
-                value={name}
-                label={`項目${i + 1}の名前`}
-                onCommit={(v) => session.renameField(source.id, i, v)}
-              />
-            ),
-          },
-          {
-            title: "型",
-            width: 210,
-            render: (_, f, i) => (
-              <TypeSelect
-                snapshot={snapshot}
-                value={f.type}
-                onChange={(v) => set(i, { ...f, type: v })}
-              />
-            ),
-          },
-          {
-            title: "形",
-            width: 100,
-            render: (_, f, i) => (
-              <ModifierButtons field={f} onChange={(v) => set(i, v)} />
-            ),
-          },
-          {
-            title: "番号",
-            width: 80,
-            render: (_, f, i) => (
-              <Entry
-                value={f.key ?? i}
-                label={`項目${i + 1}の番号`}
-                numeric
-                onCommit={(v) => set(i, { ...f, key: Number(v) })}
-              />
-            ),
-          },
-          {
-            title: "",
-            width: 48,
-            render: (_, _f, i) => (
-              <Dropdown
-                menu={{
-                  items: [
-                    { key: "copy", label: "複製", icon: <CopyOutlined /> },
-                    {
-                      key: "up",
-                      label: "上へ",
-                      icon: <UpOutlined />,
-                      disabled: i === 0,
-                    },
-                    {
-                      key: "down",
-                      label: "下へ",
-                      icon: <DownOutlined />,
-                      disabled: i === fields.length - 1,
-                    },
-                    {
-                      key: "delete",
-                      label: "削除",
-                      icon: <DeleteOutlined />,
-                      danger: true,
-                    },
-                  ],
-                  onClick: ({ key }) =>
-                    key === "copy"
-                      ? add(i)
-                      : key === "delete"
-                        ? remove(i)
-                        : move(i, key === "up" ? i - 1 : i + 1),
-                }}
-              >
-                <Button
-                  type="text"
-                  aria-label={`項目${i + 1}の操作`}
-                  icon={<MoreOutlined />}
+    <div ref={root}>
+      <div
+        className="definition-table"
+        data-motion-layout="definition-frame"
+        data-motion-size="height"
+      >
+        <Table
+          size="small"
+          pagination={false}
+          rowKey={(field) => identity(field)}
+          dataSource={fields}
+          scroll={{ x: 620 }}
+          onRow={(field) =>
+            ({
+              "data-sort-group": "fields",
+              "data-sort-key": identity(field),
+              "data-sort-anchor": "",
+            }) as any
+          }
+          columns={[
+            {
+              title: "",
+              width: 38,
+              render: (_, _f, i) => (
+                <span
+                  className="drag-handle"
+                  data-sort-handle="fields"
+                  aria-label="項目を移動"
+                >
+                  <HolderOutlined />
+                </span>
+              ),
+            },
+            {
+              title: "名前",
+              dataIndex: "name",
+              width: 210,
+              render: (name, _, i) => (
+                <Entry
+                  value={name}
+                  label={`項目${i + 1}の名前`}
+                  onCommit={(v) => session.renameField(source.id, i, v)}
                 />
-              </Dropdown>
-            ),
-          },
-        ]}
-      />
-      <div className="definition-add">
-        <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()}>
-          フィールドを追加
-        </Button>
+              ),
+            },
+            {
+              title: "型",
+              width: 210,
+              render: (_, f, i) => (
+                <TypeSelect
+                  snapshot={snapshot}
+                  value={f.type}
+                  onChange={(v) => set(i, { ...f, type: v })}
+                />
+              ),
+            },
+            {
+              title: "形",
+              width: 100,
+              render: (_, f, i) => (
+                <ModifierButtons field={f} onChange={(v) => set(i, v)} />
+              ),
+            },
+            {
+              title: "番号",
+              width: 80,
+              render: (_, f, i) => (
+                <Entry
+                  value={f.key ?? i}
+                  label={`項目${i + 1}の番号`}
+                  numeric
+                  onCommit={(v) => set(i, { ...f, key: Number(v) })}
+                />
+              ),
+            },
+            {
+              title: "",
+              width: 48,
+              render: (_, _f, i) => (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      { key: "copy", label: "複製", icon: <CopyOutlined /> },
+                      {
+                        key: "up",
+                        label: "上へ",
+                        icon: <UpOutlined />,
+                        disabled: i === 0,
+                      },
+                      {
+                        key: "down",
+                        label: "下へ",
+                        icon: <DownOutlined />,
+                        disabled: i === fields.length - 1,
+                      },
+                      {
+                        key: "delete",
+                        label: "削除",
+                        icon: <DeleteOutlined />,
+                        danger: true,
+                      },
+                    ],
+                    onClick: ({ key }) =>
+                      key === "copy"
+                        ? add(i)
+                        : key === "delete"
+                          ? remove(i)
+                          : move(i, key === "up" ? i - 1 : i + 1),
+                  }}
+                >
+                  <Button
+                    type="text"
+                    aria-label={`項目${i + 1}の操作`}
+                    icon={<MoreOutlined />}
+                  />
+                </Dropdown>
+              ),
+            },
+          ]}
+        />
+        <div className="definition-add" data-motion-layout="definition-add">
+          <Button type="dashed" icon={<PlusOutlined />} onClick={() => add()}>
+            フィールドを追加
+          </Button>
+        </div>
       </div>
     </div>
   );

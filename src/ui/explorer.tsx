@@ -231,7 +231,6 @@ export function Explorer({
       ...[...allPaths.folders].map((path) => `node-${path}`),
     ],
     {
-      layout: false,
       enterOnGrowth: true,
       visualTarget: (node) =>
         node.closest<HTMLElement>(".ant-tree-treenode") ?? node,

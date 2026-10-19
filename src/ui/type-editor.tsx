@@ -125,7 +125,11 @@ export function TypeEditor({
               </Typography.Text>
             </Card>
           ) : (
-            <div className="definition-table">
+            <div
+              className="definition-table"
+              data-motion-layout="definition-frame"
+              data-motion-size="height"
+            >
               <Table<any>
                 size="small"
                 pagination={false}
@@ -190,6 +194,7 @@ export function TypeEditor({
                     width: 50,
                     render: (_, member, i) => (
                       <Dropdown
+                        trigger={["click"]}
                         menu={{
                           items: [
                             {
@@ -238,7 +243,10 @@ export function TypeEditor({
                   },
                 ]}
               />
-              <div className="definition-add">
+              <div
+                className="definition-add"
+                data-motion-layout="definition-add"
+              >
                 <Button type="dashed" icon={<PlusOutlined />} onClick={add}>
                   候補を追加
                 </Button>

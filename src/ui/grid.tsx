@@ -421,6 +421,7 @@ export function GridEditor({
                 onCommit={(v) => session.renameField(table.source.id, col, v)}
               />
               <Dropdown
+                trigger={["click"]}
                 menu={{
                   items: [
                     {
@@ -538,6 +539,7 @@ export function GridEditor({
         onHeaderCell: () =>
           ({
             "data-motion-key": `column-${identity(field)}`,
+            "data-motion-axis": "x",
             "data-sort-group": "columns",
             "data-sort-key": identity(field),
             "data-sort-anchor": "",
@@ -561,6 +563,7 @@ export function GridEditor({
             "data-column-index": col,
             "data-motion-key": `cell-${row.key}-${identity(field)}`,
             "data-motion-owner": `column-${identity(field)}`,
+            "data-motion-axis": "x",
             "data-sort-group": "columns",
             "data-sort-key": identity(field),
             className: `data-cell ${pk ? "primary-cell" : ""} ${selectedCell ? "selected-cell" : ""} ${issues.length ? "error-cell" : ""}`,
@@ -638,6 +641,7 @@ export function GridEditor({
       width: 48,
       render: (_, row) => (
         <Dropdown
+          trigger={["click"]}
           menu={{
             items: [
               { key: "copy", label: "複製", icon: <CopyOutlined /> },
@@ -897,9 +901,9 @@ export function GridEditor({
           );
           const target = row
             ?.querySelectorAll(".data-cell")
-            [
-              cell.col
-            ]?.querySelector<HTMLElement>("input, button, [role=combobox]");
+            [cell.col]?.querySelector<HTMLElement>(
+              "input, button, [role=combobox]",
+            );
           target?.focus();
           return;
         }

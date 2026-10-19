@@ -1,5 +1,6 @@
+import { SearchSelect } from "./search-select";
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Input, Select, Space, Switch, Tag, Tooltip } from "antd";
+import { Button, Input, Space, Switch, Tag, Tooltip } from "antd";
 import {
   ArrowRightOutlined,
   CloseOutlined,
@@ -129,7 +130,7 @@ export function TypeSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <Select
+    <SearchSelect
       aria-label="型"
       className="type-select"
       showSearch
@@ -242,7 +243,7 @@ export function ValueControl({
     const selected = reference.find((r) => text(r.actual) === text(value));
     content = (
       <Space.Compact className="reference-value">
-        <Select
+        <SearchSelect
           aria-label={label}
           showSearch
           optionFilterProp="label"
@@ -288,7 +289,7 @@ export function ValueControl({
   else if (kind === "enum" || kind === "flags") {
     const members = type!.data[kind].members ?? [];
     content = (
-      <Select
+      <SearchSelect
         aria-label={label}
         className="enum-value"
         showSearch

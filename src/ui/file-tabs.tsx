@@ -9,6 +9,7 @@ import { CloseOutlined } from "@ant-design/icons";
 import type { Source } from "../core/types";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { resultTransition } from "./motion";
+import { FileContextMenu, type FileOperations } from "./file-context-menu";
 import { SourceIcon } from "./explorer";
 
 // AntD Tabs hides overflow items before layout. Keep every file tab mounted
@@ -23,6 +24,8 @@ export function FileTabs({
   select,
   pin,
   close,
+  operations,
+  fail,
 }: {
   sources: Source[];
   active: string;
@@ -33,6 +36,8 @@ export function FileTabs({
   select: (id: string) => void;
   pin: (id: string) => void;
   close: (id: string) => void;
+  operations: FileOperations;
+  fail: (error: unknown) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const reveal = () => {
@@ -87,49 +92,55 @@ export function FileTabs({
           const temporary = preview === source.id;
           return (
             <TabSlot key={source.id} reveal={reveal} reduced={reduced}>
-              <div
-                data-motion-key={`tab-${source.id}`}
-                role="tab"
-                aria-label={name}
-                aria-description={`${temporary ? "プレビュー。ダブルクリックで保持。" : ""}${dirty(source) ? "未保存の変更" : ""}`}
-                aria-selected={source.id === active}
-                tabIndex={source.id === active ? 0 : -1}
-                className={`file-tab ${temporary ? "preview-tab" : ""}`}
-                title={`${source.path}${temporary ? " — ダブルクリックでタブを保持" : ""}`}
-                onClick={() => select(source.id)}
-                onDoubleClick={() => pin(source.id)}
-                onKeyDown={(event) => {
-                  if (
-                    event.target === event.currentTarget &&
-                    (event.key === "Enter" || event.key === " ")
-                  ) {
-                    event.preventDefault();
-                    select(source.id);
-                  }
-                }}
+              <FileContextMenu
+                path={source.path}
+                operations={operations}
+                fail={fail}
               >
-                <span className="file-tab-label">
-                  <SourceIcon source={source} />
-                  <span className="file-tab-name">{name}</span>
-                  {dirty(source) && (
-                    <span className="dirty-dot" aria-label="未保存の変更" />
-                  )}
-                </span>
-                <Tooltip title="ファイルを閉じる">
-                  <Button
-                    type="text"
-                    tabIndex={source.id === active ? 0 : -1}
-                    size="small"
-                    icon={<CloseOutlined />}
-                    aria-label={`${name}を閉じる`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      close(source.id);
-                    }}
-                    onDoubleClick={(event) => event.stopPropagation()}
-                  />
-                </Tooltip>
-              </div>
+                <div
+                  data-motion-key={`tab-${source.id}`}
+                  role="tab"
+                  aria-label={name}
+                  aria-description={`${temporary ? "プレビュー。ダブルクリックで保持。" : ""}${dirty(source) ? "未保存の変更" : ""}`}
+                  aria-selected={source.id === active}
+                  tabIndex={source.id === active ? 0 : -1}
+                  className={`file-tab ${temporary ? "preview-tab" : ""}`}
+                  title={`${source.path}${temporary ? " — ダブルクリックでタブを保持" : ""}`}
+                  onClick={() => select(source.id)}
+                  onDoubleClick={() => pin(source.id)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.target === event.currentTarget &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      select(source.id);
+                    }
+                  }}
+                >
+                  <span className="file-tab-label">
+                    <SourceIcon source={source} />
+                    <span className="file-tab-name">{name}</span>
+                    {dirty(source) && (
+                      <span className="dirty-dot" aria-label="未保存の変更" />
+                    )}
+                  </span>
+                  <Tooltip title="ファイルを閉じる">
+                    <Button
+                      type="text"
+                      tabIndex={source.id === active ? 0 : -1}
+                      size="small"
+                      icon={<CloseOutlined />}
+                      aria-label={`${name}を閉じる`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        close(source.id);
+                      }}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                    />
+                  </Tooltip>
+                </div>
+              </FileContextMenu>
             </TabSlot>
           );
         })}

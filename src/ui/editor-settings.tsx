@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SunOutlined, MoonOutlined, DesktopOutlined } from "@ant-design/icons";
 import { Drawer, Radio, Switch, Typography } from "antd";
 
 export interface EditorPreferences {
@@ -77,9 +78,30 @@ export function EditorSettings({
             value={value.theme}
             onChange={(e) => update({ ...value, theme: e.target.value })}
             options={[
-              { value: "light", label: "ライト" },
-              { value: "dark", label: "ダーク" },
-              { value: "system", label: "システム" },
+              {
+                value: "light",
+                label: (
+                  <>
+                    <SunOutlined aria-hidden /> ライト
+                  </>
+                ),
+              },
+              {
+                value: "dark",
+                label: (
+                  <>
+                    <MoonOutlined aria-hidden /> ダーク
+                  </>
+                ),
+              },
+              {
+                value: "system",
+                label: (
+                  <>
+                    <DesktopOutlined aria-hidden /> システム
+                  </>
+                ),
+              },
             ]}
             optionType="button"
           />

@@ -1,6 +1,9 @@
-import React from "react";
-import { Button, Card, Drawer, Input, Select, Space, Typography } from "antd";
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import React, { useRef } from "react";
+import { identity, withIdentity } from "../core/identity";
+import { useEditing } from "./editing";
+import { DefinitionItem } from "./definition-item";
+import { Button, Card, Drawer, Select, Typography } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { type Snapshot } from "../core/types";
 import { session } from "../core/session";
 import { Entry } from "./inputs";
@@ -16,6 +19,22 @@ export function Settings({
   const config = snapshot.config;
   const update = (next: typeof config) =>
     session.change("プロジェクト設定を編集", (s) => ({ ...s, config: next }));
+  const root = useRef<HTMLDivElement>(null);
+  const editing = useEditing(
+    root,
+    Object.values(config.profiles).map(identity),
+  );
+  const updateProfile = (
+    name: string,
+    profile: (typeof config.profiles)[string],
+  ) =>
+    update({
+      ...config,
+      profiles: {
+        ...config.profiles,
+        [name]: withIdentity(config.profiles[name], profile),
+      },
+    });
   const tags = [
     ...new Set(
       snapshot.sources.flatMap((s) =>
@@ -70,12 +89,13 @@ export function Settings({
               onClick={() => {
                 let i = 1;
                 while (config.profiles[`profile${i}`]) i++;
-                update({
-                  ...config,
-                  profiles: {
-                    ...config.profiles,
-                    [`profile${i}`]: { include: [], exclude: [] },
-                  },
+                const profile = { include: [], exclude: [] };
+                editing.run(() => {
+                  update({
+                    ...config,
+                    profiles: { ...config.profiles, [`profile${i}`]: profile },
+                  });
+                  return { focus: identity(profile) };
                 });
               }}
             >
@@ -83,77 +103,69 @@ export function Settings({
             </Button>
           }
         >
-          {Object.entries(config.profiles).map(([name, profile]) => (
-            <div className="profile-definition" key={name}>
-              <Space.Compact>
-                <Entry
-                  label="プロファイル名"
-                  value={name}
-                  onCommit={(next) => {
-                    if (!next || (next !== name && config.profiles[next]))
-                      throw new Error("プロファイル名が空か重複しています。");
-                    update({
-                      ...config,
-                      profiles: Object.fromEntries(
-                        Object.entries(config.profiles).map(([n, p]) => [
-                          n === name ? next : n,
-                          p,
-                        ]),
-                      ),
-                    });
-                  }}
-                />
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  aria-label={`${name}を削除`}
-                  onClick={() =>
-                    update({
-                      ...config,
-                      profiles: Object.fromEntries(
-                        Object.entries(config.profiles).filter(
-                          ([n]) => n !== name,
+          <div className="definition-list" ref={root}>
+            {Object.entries(config.profiles).map(([name, profile]) => (
+              <DefinitionItem
+                key={identity(profile)}
+                identity={identity(profile)}
+                removeLabel={`${name}を削除`}
+                onRemove={() =>
+                  editing.run(
+                    () =>
+                      update({
+                        ...config,
+                        profiles: Object.fromEntries(
+                          Object.entries(config.profiles).filter(
+                            ([n]) => n !== name,
+                          ),
                         ),
-                      ),
-                    })
+                      }),
+                    [identity(profile)],
+                  )
+                }
+                name={
+                  <Entry
+                    label="プロファイル名"
+                    value={name}
+                    onCommit={(next) => {
+                      if (!next || (next !== name && config.profiles[next]))
+                        throw new Error("プロファイル名が空か重複しています。");
+                      update({
+                        ...config,
+                        profiles: Object.fromEntries(
+                          Object.entries(config.profiles).map(([n, p]) => [
+                            n === name ? next : n,
+                            p,
+                          ]),
+                        ),
+                      });
+                    }}
+                  />
+                }
+              >
+                <label>含めるタグ（空ならすべて）</label>
+                <Select
+                  mode="tags"
+                  aria-label={`${name}に含めるタグ`}
+                  options={tags}
+                  value={profile.include}
+                  onChange={(include) =>
+                    updateProfile(name, { ...profile, include })
                   }
                 />
-              </Space.Compact>
-              <label>含めるタグ（空ならすべて）</label>
-              <Select
-                mode="tags"
-                aria-label={`${name}に含めるタグ`}
-                options={tags}
-                value={profile.include}
-                onChange={(include) =>
-                  update({
-                    ...config,
-                    profiles: {
-                      ...config.profiles,
-                      [name]: { ...profile, include },
-                    },
-                  })
-                }
-              />
-              <label>除外するタグ</label>
-              <Select
-                mode="tags"
-                aria-label={`${name}から除外するタグ`}
-                options={tags}
-                value={profile.exclude}
-                onChange={(exclude) =>
-                  update({
-                    ...config,
-                    profiles: {
-                      ...config.profiles,
-                      [name]: { ...profile, exclude },
-                    },
-                  })
-                }
-              />
-            </div>
-          ))}
+                <label>除外するタグ</label>
+                <Select
+                  mode="tags"
+                  aria-label={`${name}から除外するタグ`}
+                  options={tags}
+                  value={profile.exclude}
+                  onChange={(exclude) =>
+                    updateProfile(name, { ...profile, exclude })
+                  }
+                />
+              </DefinitionItem>
+            ))}
+          </div>
         </Card>
       </div>
     </Drawer>

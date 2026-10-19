@@ -105,6 +105,10 @@ export function viewport(root: HTMLElement) {
   }
   return { left, right, top, bottom };
 }
+function framePosition(root: HTMLElement) {
+  const box = root.getBoundingClientRect();
+  return `${box.left},${box.top},${box.width}`;
+}
 function scrollPosition(root: HTMLElement) {
   const box = root.getBoundingClientRect();
   return (
@@ -144,8 +148,13 @@ export function useLayoutMotion(
     pending: new Map<string, number>(),
     entered: new Map<string, number>(),
     scroll: "",
+    frame: "",
     context: options.context,
-    transition: null as { duration: number; easing: string } | null,
+    transition: null as {
+      duration: number;
+      easing: string;
+      scrollCorrection: boolean;
+    } | null,
   });
   const attached = useRef<{ host: HTMLElement; dispose: () => void } | null>(
     null,
@@ -215,12 +224,15 @@ export function useLayoutMotion(
       current = state.current;
     if (!host || !current.transition) return;
     if (
-      scrollPosition(host) !== current.scroll ||
+      framePosition(host) !== current.frame ||
+      (scrollPosition(host) !== current.scroll &&
+        !current.transition.scrollCorrection) ||
       document.documentElement.dataset.reducedMotion === "true"
     ) {
       current.transition = null;
       return;
     }
+    current.scroll = scrollPosition(host);
     const next = positions(host, true, options.visualTarget);
     host.querySelectorAll<HTMLElement>(layoutSelector).forEach((node) => {
       const element = options.visualTarget?.(node) ?? node;
@@ -310,15 +322,21 @@ export function useLayoutMotion(
     });
     dropPositions.delete(host);
     const scroll = scrollPosition(host);
-    const movedViewport =
-      scroll !== current.scroll || options.context !== current.context;
     const deleting = [...current.known].some((key) => !nextKeys.has(key));
+    const frame = framePosition(host);
+    const movedViewport =
+      frame !== current.frame ||
+      (scroll !== current.scroll && !deleting) ||
+      options.context !== current.context;
     const timing = deleting
       ? deletionMotion
       : { duration: resultMotion.move, easing: resultMotion.easing };
     current.transition =
-      initialized && !movedViewport && options.layout !== false ? timing : null;
+      initialized && !movedViewport && options.layout !== false
+        ? { ...timing, scrollCorrection: deleting }
+        : null;
     current.before = before;
+    current.frame = frame;
     current.scroll = scroll;
     current.nodes = new Map(
       [...host.querySelectorAll<HTMLElement>(layoutSelector)].map((node) => [
@@ -414,6 +432,7 @@ export function useLayoutMotion(
         ]),
       );
       state.current.scroll = scrollPosition(host);
+      state.current.frame = framePosition(host);
     },
   };
 }

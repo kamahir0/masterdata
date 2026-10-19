@@ -22,6 +22,10 @@ export function useEditing(
     focused?: (key: string) => void;
     input?: string;
     visualTarget?: (node: HTMLElement) => HTMLElement;
+    clip?: (
+      node: HTMLElement,
+      clip: ReturnType<typeof viewport>,
+    ) => ReturnType<typeof viewport>;
   } = {},
 ) {
   const motion = useLayoutMotion(root, keys, options);
@@ -140,7 +144,8 @@ export function useEditing(
             return { node, visual, box: visual.getBoundingClientRect() };
           });
         snapshots.forEach(({ node, visual, box }) => {
-          const clip = viewport(host);
+          const clip =
+            latest.current.clip?.(node, viewport(host)) ?? viewport(host);
           if (
             box.bottom <= clip.top ||
             box.top >= clip.bottom ||

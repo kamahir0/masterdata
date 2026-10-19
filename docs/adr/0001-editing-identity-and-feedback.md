@@ -18,6 +18,12 @@ objectにはsession内のidentity、配列には各slotのidentityをWeakMapで�
 
 ## 削除とタブ
 
-退出アニメーションのために古いeditorをmodelやReact treeへ残すと、保存、Undo、編集対象が二重になる。削除は即時確定し、可視DOMの非対話snapshotだけを退出させる。snapshotはinert / aria-hiddenで、対象復元、連続操作、画面破棄時に除去する。virtual model全体や画面外columnをsnapshotしない。
+退出アニメーションのために古いeditorをmodelやReact treeへ残すと、保存、Undo、編集対象が二重になる。削除は即時確定し、可視DOMの非対話snapshotだけを退出させる。snapshotはinert / aria-hiddenで、対象復元、連続操作、画面破棄時に除去する。virtual model全体や画面外columnをsnapshotしない。表はheader / bodyをそれぞれのviewportでclipし、データ列のsnapshotは固定操作列の境界より右側へ限定する。末尾削除でブラウザがscroll位置を補正することはユーザーのscrollと区別し、後続項目の移動を継続する。表示枠の高さは削除自体でも変わるので、位置・幅の変化と同じ取消条件にしない。
 
 ファイルタブには独立したpresenceを用いる。タブ全体へ二次元の位置補間を適用すると、幅変更・折返し・active tabの表示が干渉して、他のタブまで上下に動く。該当タブだけの幅とopacityを変え、残りは通常のflex配置へ任せる。active tabのscrollもタブ帯の中で完結させる。
+
+## 入れ子画面と定義項目
+
+配列 / Customの画面遷移は、現在paneと退出paneが一時的に併存する。その間に一つのDOM refや編集controllerを共有すると、旧paneの破棄が新paneの入力・focus制御を消してしまう。paneごとに所有し、退出paneをinert / aria-hiddenにする。
+
+MasterRef / profile / 副キーは共通の項目枠で、名前入力と項目全体の操作、内部設定の境界を分ける。profile名をReact keyにするとrenameで入力を作り直すため、値の更新時も継承するsession identityを使う。

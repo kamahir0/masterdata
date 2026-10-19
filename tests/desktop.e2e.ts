@@ -377,9 +377,9 @@ test("deep array navigation retains the whole breadcrumb and allows value repair
   await openNested("effects 行1を開く");
   await page.getByRole("button", { name: "要素1を開く", exact: true }).click();
   await page.getByRole("button", { name: "statsを開く", exact: true }).click();
-  await expect(page.locator(".breadcrumb-scroll")).toContainText("effects");
-  await expect(page.locator(".breadcrumb-scroll")).toContainText("[0]");
-  await expect(page.locator(".breadcrumb-scroll")).toContainText("stats");
+  await expect(page.locator(".nested-page:not([inert]) .breadcrumb-scroll")).toContainText("effects");
+  await expect(page.locator(".nested-page:not([inert]) .breadcrumb-scroll")).toContainText("[0]");
+  await expect(page.locator(".nested-page:not([inert]) .breadcrumb-scroll")).toContainText("stats");
   await expect(
     page.getByRole("switch", { name: "enabled", exact: true }),
   ).toBeVisible();
@@ -632,7 +632,8 @@ test("nested navigation mounts each target independently and returns to its arra
   await expect(
     page.getByRole("switch", { name: "enabled", exact: true }),
   ).not.toBeChecked();
-  expect(await parent!.evaluate((element) => element.isConnected)).toBe(false);
+  expect(await parent!.evaluate((element) => !element.isConnected || !!element.closest<HTMLElement>(".nested-page")?.inert)).toBe(true);
+  await expect.poll(() => parent!.evaluate((element) => element.isConnected)).toBe(false);
   expect(
     await page
       .getByRole("switch", { name: "enabled", exact: true })
@@ -649,7 +650,7 @@ test("nested navigation mounts each target independently and returns to its arra
     page.getByRole("switch", { name: "enabled", exact: true }),
   ).toBeChecked();
   await page
-    .locator(".breadcrumb-scroll")
+    .locator(".nested-page:not([inert]) .breadcrumb-scroll")
     .getByRole("button", { name: "effects", exact: true })
     .click();
   await expect(
@@ -2207,12 +2208,12 @@ test("deletion moves following fields, rows, columns, arrays and Explorer nodes;
   await selectSource("common");
   await openNested("materials 行1を開く");
   const arrayKey = await page
-    .locator(".array-item")
+    .locator(".nested-page:not([inert]) .array-item")
     .nth(1)
     .getAttribute("data-motion-key");
   await check(`[data-motion-key="${arrayKey}"]`, async () => {
     await page
-      .locator(".array-item")
+      .locator(".nested-page:not([inert]) .array-item")
       .first()
       .getByRole("button", { name: "要素を削除", exact: true })
       .click();
@@ -2270,9 +2271,9 @@ test("source heading distinguishes table data, key labels and references communi
   await expect(page.locator(".column-keys").nth(3)).toHaveText("SK 1Key 3");
   await expect(
     page
-      .getByLabel("追加先")
+      .getByLabel("追加先ファイル")
       .locator("xpath=ancestor::*[contains(@class, 'ant-select')][1]"),
-  ).toContainText("テーブル定義ファイル内");
+  ).toContainText("テーブル定義ファイル");
   await expect(
     page.getByRole("button", {
       name: "テーブルデータファイルを作成",
@@ -2323,7 +2324,7 @@ test("source heading distinguishes table data, key labels and references communi
 test("primitive array edits and duplicate reorder retain item identity and a single-step Undo", async () => {
   await selectSource("common");
   await openNested("materials 行1を開く");
-  const items = page.locator(".array-item");
+  const items = page.locator(".nested-page:not([inert]) .array-item");
   const keys = () =>
     items.evaluateAll((nodes) =>
       nodes.map((n) => (n as HTMLElement).dataset.motionKey),
@@ -2384,4 +2385,231 @@ test("opening and closing a tab keeps the vertical position of every surviving t
   );
   expect(positions.length).toBeGreaterThan(3);
   expect(Math.max(...positions) - Math.min(...positions)).toBeLessThan(1);
+});
+
+test("object definitions share bounded headers and whole-item deletion with stable Undo", async () => {
+  await page.getByRole("button", { name: "プロジェクト設定", exact: true }).click();
+  const first = page.locator(".definition-item").first();
+  await expect(page.locator(".ant-drawer-content-wrapper")).not.toHaveClass(/ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/);
+  const boundary = (await first.boundingBox())!;
+  const remove = first.getByRole("button", { name: "productionを削除", exact: true });
+  const button = (await remove.boundingBox())!;
+  expect(boundary.x + boundary.width - button.x - button.width).toBeLessThan(20);
+  expect(await first.evaluate(el => getComputedStyle(el).borderTopStyle)).toBe("solid");
+  await first.getByLabel("プロファイル名").fill("release");
+  await first.getByLabel("プロファイル名").press("Enter");
+  await expect(first.getByLabel("releaseに含めるタグ")).toBeVisible();
+  await first.getByRole("button", { name: "releaseを削除", exact: true }).click();
+  await expect(page.getByLabel("releaseに含めるタグ")).toHaveCount(0);
+  await expect(page.getByLabel("developmentに含めるタグ")).toBeVisible();
+  await page.getByRole("button", { name: "閉じる", exact: true }).click();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await page.getByRole("button", { name: "プロジェクト設定", exact: true }).click();
+  await expect(page.getByLabel("releaseに含めるタグ")).toBeVisible();
+  await expect(page.locator(".ant-drawer-content-wrapper")).toBeInViewport({ ratio: .99 });
+  await page.screenshot({ path: test.info().outputPath("profile-object-boundaries.png") });
+  await page.getByRole("button", { name: "閉じる", exact: true }).click();
+  await selectSource("quest");
+  await page.getByRole("tab", { name: "キーと参照", exact: true }).click();
+  const ref = page.locator(".definition-item").filter({ has: page.getByLabel("参照1の名前", { exact: true }) });
+  await expect(ref.locator(".definition-item-header").getByRole("button", { name: "参照1を削除" })).toBeVisible();
+  await ref.getByRole("button", { name: "参照1を削除" }).click();
+  await expect(page.getByLabel("参照1の名前", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("参照1の名前", { exact: true })).toHaveValue("rewardItem");
+});
+
+test("searchable single choices toggle closed on a second empty click and still filter", async () => {
+  await selectSource("common");
+  const choice = page.getByRole("combobox", { name: "rarity 行1", exact: true });
+  await choice.click();
+  await expect(choice).toHaveAttribute("aria-expanded", "true");
+  await choice.click();
+  await expect(choice).toHaveAttribute("aria-expanded", "false");
+  await choice.click();
+  await choice.fill("Epic");
+  await expect(page.locator(".ant-select-item-option-content").filter({ hasText: /^Epic$/ })).toBeVisible();
+  await choice.click();
+  await expect(choice).toHaveAttribute("aria-expanded", "true");
+  await choice.press("Escape");
+  await expect(choice).toHaveAttribute("aria-expanded", "false");
+  const type = page.getByRole("combobox", { name: "型", exact: true }).first();
+  await type.click();
+  await type.click();
+  await expect(type).toHaveAttribute("aria-expanded", "false");
+  const profile = page.getByRole("combobox", { name: "出力プロファイル", exact: true });
+  await profile.click();
+  await profile.click();
+  await expect(profile).toHaveAttribute("aria-expanded", "false");
+  await selectSource("quest");
+  const reference = page.getByRole("combobox", { name: "rewardItemId 行1", exact: true });
+  await reference.click();
+  await reference.click();
+  await expect(reference).toHaveAttribute("aria-expanded", "false");
+});
+
+test("tab and Explorer file menus share draft path operations without changing the active file", async () => {
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (value: string) => { (window as any).__copied = value; } } }));
+  await selectSource("rarity");
+  await page.locator('.tree-name[data-path="types/rarity.yaml"]').dblclick();
+  await selectSource("quest");
+  const tab = page.locator('.file-tab').filter({ hasText: /^rarity/ });
+  await tab.click({ button: "right" });
+  const names = await page.getByRole("menuitem").allTextContents();
+  expect(names).toEqual(["名前を変更", "パスをコピー", "削除"]);
+  await page.getByRole("menuitem", { name: "パスをコピー", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__copied)).toBe(path.join(await fs.realpath(root), "sources/types/rarity.yaml"));
+  await expect(page.locator('.file-tab[aria-selected="true"]')).toContainText("quest");
+  await page.getByRole("button", { name: "エクスプローラーの表示切替", exact: true }).click();
+  await tab.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "名前を変更", exact: true }).click();
+  const rename = page.getByRole("textbox", { name: "項目の名前", exact: true });
+  await expect(rename).toBeFocused();
+  await rename.fill("rarity-renamed");
+  await rename.press("Enter");
+  const node = page.locator('.tree-name[data-path="types/rarity-renamed.yaml"]');
+  await node.click({ button: "right" });
+  await expect(page.getByRole("menuitem")).toHaveText(names);
+  await page.getByRole("menuitem", { name: "パスをコピー", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__copied)).toBe(path.join(await fs.realpath(root), "sources/types/rarity-renamed.yaml"));
+  await tab.click({ button: "right" });
+  await expect(page.getByRole("menuitem")).toHaveText(names);
+  await page.getByRole("menuitem", { name: "削除", exact: true }).click();
+  await expect(node).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(node).toBeVisible();
+});
+
+test("hierarchy drag accepts ancestors and root, shows file insertion lines and rejects descendants", async () => {
+  await selectSource("rarity");
+  const node = (value: string) => page.locator(`.tree-name[data-path="${value}"]`);
+  const target = node("types/outer");
+  const move = async (from: string, to: ReturnType<typeof node>, kind: "folder" | "file" | "root") => {
+    const data = await page.evaluateHandle(() => new DataTransfer());
+    await node(from).dispatchEvent("dragstart", { dataTransfer: data });
+    const box = (await to.boundingBox())!;
+    const args = { dataTransfer: data, clientX: box.x + 10, clientY: box.y + box.height / 2 };
+    await to.dispatchEvent("dragover", args);
+    if (kind === "folder") await expect(page.locator(".folder-drop-target")).toHaveCount(1);
+    if (kind === "file") await expect(page.locator(".explorer-drop-line")).toBeVisible();
+    if (kind === "root") await expect(page.locator(".explorer")).toHaveClass(/root-drop-target/);
+    await to.dispatchEvent("drop", args);
+    await expect(page.locator(".folder-drop-target")).toHaveCount(0);
+    await expect(page.locator(".explorer-drop-line")).toBeHidden();
+  };
+  await target.click();
+  await node("types/outer/inner").click();
+  await move("types/outer/inner/deep-folder-with-a-very-long-name", target, "folder");
+  await expect(node("types/outer/deep-folder-with-a-very-long-name")).toBeVisible();
+  await move("types/outer/deep-folder-with-a-very-long-name", page.locator(".explorer-heading"), "root");
+  await expect(node("deep-folder-with-a-very-long-name")).toBeVisible();
+  await move("deep-folder-with-a-very-long-name", node("types/rarity.yaml"), "file");
+  await expect(node("types/deep-folder-with-a-very-long-name")).toBeVisible();
+  const data = await page.evaluateHandle(() => new DataTransfer());
+  await node("types").dispatchEvent("dragstart", { dataTransfer: data });
+  const box = (await target.boundingBox())!;
+  const args = { dataTransfer: data, clientX: box.x + 10, clientY: box.y + box.height / 2 };
+  await target.dispatchEvent("dragover", args);
+  await expect(page.locator(".folder-drop-target")).toHaveCount(0);
+  await target.dispatchEvent("drop", args);
+  await expect(node("types/outer")).toBeVisible();
+  const guide = await target.locator('xpath=ancestor::*[contains(@class,"ant-tree-treenode")][1]').evaluate(el => getComputedStyle(el, "::before").backgroundImage);
+  expect(guide).toContain("linear-gradient");
+  expect(await target.locator('xpath=ancestor::*[contains(@class,"ant-tree-treenode")][1]').evaluate(el => parseFloat(getComputedStyle(el, "::before").height))).toBe(28);
+  await page.screenshot({ path: test.info().outputPath("explorer-hierarchy-guides.png") });
+});
+
+test("large frozen row utilities select records and stay accessible at the horizontal end", async () => {
+  await selectSource("announcement");
+  await expect(page.getByRole("combobox", { name: "追加先ファイル", exact: true })).toHaveCount(0);
+  const action = page.getByRole("button", { name: "行1の操作", exact: true });
+  const tags = page.getByRole("combobox", { name: "行1のタグ", exact: true });
+  const before = (await action.boundingBox())!.x;
+  await page.locator(".grid-editor").hover();
+  await page.mouse.wheel(16000, 0);
+  await expect.poll(async () => (await action.boundingBox())!.x).toBeCloseTo(before, 0);
+  await expect(tags).toBeVisible();
+  await page.locator(".row-number").nth(0).click();
+  const selections = page.locator('.ant-table-tbody-virtual-holder input[type="checkbox"]');
+  await expect(selections.nth(0)).toBeChecked();
+  await page.locator(".row-number").nth(2).click({ modifiers: ["Shift"] });
+  await expect(selections.nth(1)).toBeChecked();
+  await expect(selections.nth(2)).toBeChecked();
+  await action.click();
+  await expect(page.getByRole("menuitem", { name: /削除/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  // Escape clears grid selection as well as dismissing the row menu.
+  await page.locator(".row-number").nth(0).click();
+  await page.locator(".row-number").nth(2).click({ modifiers: ["Shift"] });
+  await page.locator(".row-number").nth(1).click({ modifiers: ["ControlOrMeta"] });
+  await expect(selections.nth(1)).not.toBeChecked();
+  await page.getByRole("button", { name: "行2の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await page.locator(".row-number").nth(4).click({ modifiers: ["Shift"] });
+  await expect(page.locator('.ant-table-tbody-virtual-holder input[type="checkbox"]:checked')).toHaveCount(1);
+  const resizer = page.getByRole("separator", { name: "エクスプローラーの幅", exact: true });
+  const rect = (await resizer.boundingBox())!;
+  expect(await page.evaluate(({x, y}) => document.elementFromPoint(x, y)?.closest('[role="separator"]') !== null, { x: rect.x + rect.width / 2, y: rect.y + 150 })).toBe(true);
+});
+
+test("large deletion at virtual scroll ends clips exits below headers and beyond frozen columns", async () => {
+  await selectSource("announcement");
+  await page.evaluate(() => {
+    const animate = Element.prototype.animate;
+    (window as any).__heldExits = [];
+    (window as any).__deleteMoves = [];
+    Element.prototype.animate = function(frames, options) {
+      const a = animate.call(this, frames, options);
+      if (typeof options === "object" && options.duration === 300 && this.matches("[data-row-key],[data-motion-key]")) (window as any).__deleteMoves.push(frames);
+      if (this.classList.contains("edit-exit")) { a.pause(); a.currentTime = 0; (window as any).__heldExits.push(a); }
+      return a;
+    };
+    const holder = document.querySelector<HTMLElement>(".ant-table-tbody-virtual-holder")!;
+    holder.scrollTop = holder.scrollHeight;
+  });
+  await expect(page.getByRole("button", { name: "行400の操作", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "行400の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByRole("button", { name: "行400の操作", exact: true })).toHaveCount(0);
+  const ghost = page.locator(".edit-exit").first();
+  await expect(ghost).toBeAttached();
+  const viewport = (await page.locator(".ant-table-tbody-virtual-holder").boundingBox())!;
+  const exit = (await ghost.boundingBox())!;
+  expect(exit.y).toBeGreaterThanOrEqual(viewport.y - 1);
+  expect(exit.y + exit.height).toBeLessThanOrEqual(viewport.y + viewport.height + 1);
+  await page.evaluate(() => (window as any).__heldExits.forEach((a: Animation) => a.currentTime = 150));
+  expect(await ghost.evaluate(el => Number(getComputedStyle(el).opacity))).toBeGreaterThan(.2);
+  await expect.poll(() => page.evaluate(() => (window as any).__deleteMoves.length)).toBeGreaterThan(0);
+  await page.screenshot({ path: test.info().outputPath("virtual-row-exit.png") });
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+  await page.locator(".grid-editor").hover();
+  await page.mouse.wheel(20000, 0);
+  await expect(page.getByRole("button", { name: "field59の操作", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "field59の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /列を削除/ }).click();
+  await expect(ghost).toBeAttached();
+  const frozen = (await page.locator(".ant-table-header .ant-table-cell-fix-start-shadow").boundingBox())!;
+  for (const layer of await page.locator(".edit-exit").all()) {
+    const box = (await layer.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(frozen.x + frozen.width - 1);
+  }
+  await page.evaluate(() => (window as any).__heldExits.forEach((a: Animation) => { if(a.playState !== "idle") a.currentTime = 150; }));
+  await page.screenshot({ path: test.info().outputPath("virtual-column-exit.png") });
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.locator(".edit-exit")).toHaveCount(0);
+});
+
+test("hierarchy native pointer drag moves a folder to an ancestor and then the root", async () => {
+  await selectSource("rarity");
+  const node = (value: string) => page.locator(`.tree-name[data-path="${value}"]`);
+  await node("types/outer").click();
+  await node("types/outer/inner").click();
+  await node("types/outer/inner/deep-folder-with-a-very-long-name").dragTo(node("types/outer"));
+  const moved = node("types/outer/deep-folder-with-a-very-long-name");
+  await expect(moved).toBeVisible();
+  await moved.dragTo(page.locator(".explorer-heading"));
+  await expect(node("deep-folder-with-a-very-long-name")).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(moved).toBeVisible();
 });

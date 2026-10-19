@@ -20,7 +20,6 @@ import {
   Popconfirm,
   Progress,
   Result,
-  Select,
   Space,
   Spin,
   Tabs,
@@ -81,6 +80,8 @@ import {
 import { ExplorerResize } from "./ui/explorer-resize";
 import { sourceKind, kindBadges } from "./ui/source-icon";
 import appIcon from "../assets/icon.svg";
+import { SearchSelect } from "./ui/search-select";
+import type { FileOperations } from "./ui/file-context-menu";
 import { FileTabs } from "./ui/file-tabs";
 import { CloseFileDialog } from "./ui/close-file";
 import { Settings } from "./ui/settings";
@@ -159,6 +160,7 @@ function Workspace({
   const navigation = useRef({ active, opened, preview });
   navigation.current = { active, opened, preview };
   const [tab, setTab] = useState("data");
+  const explorerOperations = useRef<FileOperations>(null);
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const [settings, setSettings] = useState(false);
   const [problemsOpen, setProblemsOpen] = useState(false);
@@ -732,7 +734,7 @@ function Workspace({
             </Space>
             <Space>
               <Tooltip title="未選択時はタグで絞り込まずにビルドします">
-                <Select
+                <SearchSelect
                   aria-label="出力プロファイル"
                   className="profile-select"
                   placeholder="プロファイルを選択"
@@ -796,6 +798,7 @@ function Workspace({
               aria-hidden={!preferences.explorer}
             >
               <Explorer
+                ref={explorerOperations}
                 key={project.token}
                 snapshot={snapshot}
                 saved={state.saved}
@@ -825,6 +828,14 @@ function Workspace({
                 select={select}
                 pin={(id) => select(id, true)}
                 close={closeTab}
+                fail={fail}
+                operations={{
+                  rename: (path) => {
+                    setPreferences((p) => ({ ...p, explorer: true }));
+                    explorerOperations.current?.rename(path);
+                  },
+                  remove: (paths) => explorerOperations.current?.remove(paths),
+                }}
               />
               {source ? (
                 <>
@@ -905,6 +916,7 @@ function Workspace({
                       )}
                     </EditorBoundary>
                     <NestedEditor
+                      reduced={preferences.reduced}
                       cursor={cursor}
                       snapshot={snapshot}
                       setCursor={setCursor}

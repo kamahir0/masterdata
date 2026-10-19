@@ -5,7 +5,7 @@ Status: Implemented
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -118,3 +118,19 @@ Explorer境界をdragで幅変更でき、矢印 / Home / End、double clickでd
 削除は即時にdraft / Undoへ反映し、可視対象に約300msの非対話な退出snapshotを示す。退出領域の縮小と、残った項目・移動する末尾操作が空間を詰める動きを同じ補間で結び、対象の退出を視認できるようにする。列削除は横方向へ同様に詰める。画面外のsnapshotを作らず、ghostは入力・selection・accessibility対象にせず完了 / 取消時に回収する。tabの追加 / closeは当該tabの幅とopacityで約200msの出入りを示し、既存tab全体を上下移動させない。active tabへのscrollはtab帯内に限定する。reduced motionでは補間を抑える。
 
 app iconはgreen accent系のvector原稿から生成し、macOSは16〜1024pxのretina slot、Windowsは16〜256pxを含める。小サイズの線も読みやすくし、画面内brandとnative bundleで意匠を揃える。
+
+## UI-004 — 対象の境界と直接操作
+
+MasterRef・出力profile・副キーは共通の項目枠で編集する。headerに名前と右端の項目全体の削除操作、bodyに内部設定を置き、境界・余白・背景で一項目の範囲を示す。安定identityと追加 / 削除feedback、Undoを用い、他項目の入力を取り違えない。
+
+検索できる単一選択（Enum / MasterRef / 型 / profile）は、開いた空の入力部分の再click、Esc、選択で閉じ、入力で絞り込める。検索文字の編集や複数選択のtag操作を妨げない。
+
+file tabとExplorerのfileは共通の名前変更・削除・パスをコピーを持つ。folderだけ作成を加える。renameはExplorerを表示し祖先を開いてinline入力へ移る。copyは現在のdraft pathに対応する絶対path（project root / sources以下）とする。保存・破棄を暗黙に行わず、変更は既存の可逆draft操作にする。
+
+Explorerのdrag先判定と表示を一致させる。folder中央はそのfolderをhighlightし、file / node間は親folderへの明瞭な挿入線、空白・見出しはsources rootへのExplorer全体のhighlightを示す。祖先への移動を許可し、自己・子孫・衝突は拒否する。同じ場所は変更なし。hover展開・取消・Undoを保持する。展開folderの下端から子孫へ細い階層線を描き、末端はnode側へ直角に折れてicon手前で止まる。triangle hover背景はtriangle付近に収め、resize境界はsticky headerより前に出す。
+
+仮想表では削除によるscroll終端の自動補正でも可視行 / 列の退出と後続配置を連動させ、sticky列 / headerをsnapshotで覆わず、画面外の全件をmountしない。行操作・配布タグは左の固定領域に置く。固定領域のcontrol以外のclickで行全体を選択し、Ctrl / Cmdで追加解除、Shiftで範囲選択できる。indexは選択可能textにしない。入力・タグ・menu・drag・コピー・Deleteを保持する。
+
+レコード追加先は複数source時だけ「追加先ファイル」としてfile名 / pathと用途を示す。新規recordの所属先を選ぶ機能で、既存recordを移動しない。一つだけなら選択UIを置かない。
+
+nestedの前進 / 後退は方向の分かる短いslideとfadeで表す。退出paneは非対話・非accessible、現在paneは完了を待たずに操作できる。途中入力の確定 / Esc、全breadcrumb、reduced motionを保持する。theme選択は文字に太陽・月・PC iconを添える。

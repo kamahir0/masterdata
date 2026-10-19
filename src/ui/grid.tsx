@@ -48,6 +48,7 @@ import {
 import { identity } from "../core/identity";
 import { usePointerSort } from "./sortable";
 import { useEditing } from "./editing";
+import { SearchSelect } from "./search-select";
 import { useTableViewport } from "./table-viewport";
 import { session } from "../core/session";
 import { defaultValue, recordAllocator } from "../core/schema";
@@ -107,6 +108,7 @@ export function GridEditor({
     anchorRow: number;
     anchorCol: number;
   } | null>(null);
+  const rowAnchor = useRef<string | null>(null);
   const [height, setHeight] = useState(400);
   const handledJump = useRef<number | undefined>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
@@ -123,6 +125,7 @@ export function GridEditor({
     setChosen(source.data?.kind === "data" ? source.id : "all");
     setDestination(source.id);
     setRowKeys([]);
+    rowAnchor.current = null;
     setCell(null);
     setQuery("");
   }, [source.id]);
@@ -178,7 +181,7 @@ export function GridEditor({
     {
       context: source.id,
       input:
-        ".value-control .entry, .value-control input, .value-control button, input:not([type=checkbox])",
+        ".column-heading input, .data-cell .entry, .data-cell input, .data-cell button",
       reveal: (key, node) => {
         const header =
           viewport.current?.querySelector<HTMLElement>(".ant-table-header");
@@ -188,7 +191,7 @@ export function GridEditor({
             visible = header.getBoundingClientRect();
           const left =
             header
-              .querySelector(".ant-table-cell-fix-left-last")
+              .querySelector(".ant-table-cell-fix-start-shadow")
               ?.getBoundingClientRect().right ?? visible.left;
           if (box.left < left) header.scrollLeft += box.left - left;
           else if (box.right > visible.right)
@@ -201,6 +204,30 @@ export function GridEditor({
           tableRef.current?.scrollTo({ left: 0 });
           tableRef.current?.scrollTo({ index });
         }
+      },
+      clip: (node, clip) => {
+        const header = node.closest<HTMLElement>(".ant-table-header");
+        const region =
+          header ??
+          viewport.current?.querySelector<HTMLElement>(
+            ".ant-table-tbody-virtual-holder",
+          );
+        if (region) {
+          const box = region.getBoundingClientRect();
+          clip = {
+            left: Math.max(clip.left, box.left),
+            right: Math.min(clip.right, box.right),
+            top: Math.max(clip.top, box.top),
+            bottom: Math.min(clip.bottom, box.bottom),
+          };
+        }
+        if (node.dataset.motionAxis === "x") {
+          const fixed = viewport.current
+            ?.querySelector(".ant-table-cell-fix-start-shadow")
+            ?.getBoundingClientRect();
+          if (fixed) clip.left = Math.max(clip.left, fixed.right);
+        }
+        return clip;
       },
       focused: (key) => {
         const index = rows.findIndex((row) => row.key === key);
@@ -353,9 +380,45 @@ export function GridEditor({
       ),
     ),
   ].map((value) => ({ value: String(value), label: String(value) }));
+  const metaCell = (row: Row) => ({
+    className: "row-meta",
+    onClick: (event: React.MouseEvent) => {
+      if (
+        !event.currentTarget.contains(event.target as Node) ||
+        (event.target as HTMLElement).closest(
+          "button,input,.ant-select,.ant-checkbox,.ant-checkbox-wrapper,[data-sort-handle]",
+        )
+      )
+        return;
+      event.preventDefault();
+      const modified = event.metaKey || event.ctrlKey;
+      const a = rows.findIndex((item) => item.key === rowAnchor.current);
+      if (event.shiftKey && a >= 0) {
+        const b = rows.indexOf(row);
+        const range = rows
+          .slice(Math.max(0, Math.min(a, b)), Math.max(a, b) + 1)
+          .map((item) => item.key);
+        setRowKeys(modified ? [...new Set([...rowKeys, ...range])] : range);
+      } else {
+        rowAnchor.current = row.key;
+        setRowKeys(
+          modified
+            ? rowKeys.includes(row.key)
+              ? rowKeys.filter((key) => key !== row.key)
+              : [...rowKeys, row.key]
+            : [row.key],
+        );
+      }
+      setCell(null);
+      viewport.current
+        ?.closest<HTMLElement>(".grid-editor")
+        ?.focus({ preventScroll: true });
+    },
+  });
   const columns: ColumnsType<Row> = [
     {
       key: "grip",
+      onCell: metaCell,
       title: "",
       width: 38,
       fixed: "left",
@@ -371,10 +434,103 @@ export function GridEditor({
     },
     {
       key: "number",
+      onCell: metaCell,
       title: "#",
       width: 48,
       fixed: "left",
       render: (_, _row, i) => <span className="row-number">{i + 1}</span>,
+    },
+    {
+      key: "tags",
+      fixed: "left",
+      onCell: metaCell,
+      title: <span className="tag-heading">配布タグ</span>,
+      width: 210,
+      render: (_, row) => (
+        <Select
+          aria-label={`行${row.index + 1}のタグ`}
+          className="record-tags"
+          mode="tags"
+          maxTagCount="responsive"
+          placeholder="タグを追加"
+          value={row.record?.$tags ?? []}
+          options={knownTags}
+          onChange={(v) =>
+            session.update(
+              row.source.id,
+              ["records", row.index, "$tags"],
+              v,
+              "タグを編集",
+            )
+          }
+        />
+      ),
+    },
+    {
+      key: "actions",
+      fixed: "left",
+      onCell: metaCell,
+      title: "",
+      width: 48,
+      render: (_, row) => (
+        <Dropdown
+          trigger={["click"]}
+          menu={{
+            items: [
+              { key: "copy", label: "複製", icon: <CopyOutlined /> },
+              {
+                key: "up",
+                label: "上へ",
+                icon: <UpOutlined />,
+                disabled: row.index === 0,
+              },
+              {
+                key: "down",
+                label: "下へ",
+                icon: <DownOutlined />,
+                disabled:
+                  row.index === (row.source.data.records?.length ?? 0) - 1,
+              },
+              {
+                key: "delete",
+                label: "削除",
+                icon: <DeleteOutlined />,
+                danger: true,
+              },
+            ],
+            onClick: ({ key }) =>
+              safe(() => {
+                if (key === "copy") addRecord(row.source.id, row.record);
+                if (key === "delete")
+                  editing.run(
+                    () =>
+                      session.update(
+                        row.source.id,
+                        ["records"],
+                        row.source.data.records.filter(
+                          (_: any, i: number) => i !== row.index,
+                        ),
+                        "レコードを削除",
+                      ),
+                    [row.key],
+                  );
+                if (key === "up" || key === "down")
+                  move(row, {
+                    ...row,
+                    index: row.index + (key === "up" ? -1 : 1),
+                    key: "destination",
+                  });
+              }),
+          }}
+        >
+          <Button
+            size="small"
+            type="text"
+            aria-label={`行${row.index + 1}の操作`}
+            icon={<MoreOutlined />}
+          />
+        </Dropdown>
+      ),
     },
     ...table.fields.map((field, col) => {
       const pk = table.source.data.primaryKey?.fields?.includes(field.name);
@@ -611,94 +767,6 @@ export function GridEditor({
         ),
       };
     }),
-    {
-      key: "tags",
-      title: <span className="tag-heading">配布タグ</span>,
-      width: 210,
-      render: (_, row) => (
-        <Select
-          aria-label={`行${row.index + 1}のタグ`}
-          className="record-tags"
-          mode="tags"
-          maxTagCount="responsive"
-          placeholder="タグを追加"
-          value={row.record?.$tags ?? []}
-          options={knownTags}
-          onChange={(v) =>
-            session.update(
-              row.source.id,
-              ["records", row.index, "$tags"],
-              v,
-              "タグを編集",
-            )
-          }
-        />
-      ),
-    },
-    {
-      key: "actions",
-      title: "",
-      width: 48,
-      render: (_, row) => (
-        <Dropdown
-          trigger={["click"]}
-          menu={{
-            items: [
-              { key: "copy", label: "複製", icon: <CopyOutlined /> },
-              {
-                key: "up",
-                label: "上へ",
-                icon: <UpOutlined />,
-                disabled: row.index === 0,
-              },
-              {
-                key: "down",
-                label: "下へ",
-                icon: <DownOutlined />,
-                disabled:
-                  row.index === (row.source.data.records?.length ?? 0) - 1,
-              },
-              {
-                key: "delete",
-                label: "削除",
-                icon: <DeleteOutlined />,
-                danger: true,
-              },
-            ],
-            onClick: ({ key }) =>
-              safe(() => {
-                if (key === "copy") addRecord(row.source.id, row.record);
-                if (key === "delete")
-                  editing.run(
-                    () =>
-                      session.update(
-                        row.source.id,
-                        ["records"],
-                        row.source.data.records.filter(
-                          (_: any, i: number) => i !== row.index,
-                        ),
-                        "レコードを削除",
-                      ),
-                    [row.key],
-                  );
-                if (key === "up" || key === "down")
-                  move(row, {
-                    ...row,
-                    index: row.index + (key === "up" ? -1 : 1),
-                    key: "destination",
-                  });
-              }),
-          }}
-        >
-          <Button
-            size="small"
-            type="text"
-            aria-label={`行${row.index + 1}の操作`}
-            icon={<MoreOutlined />}
-          />
-        </Dropdown>
-      ),
-    },
   ];
   const copy = (event: React.ClipboardEvent) => {
     const target = event.target as HTMLInputElement;
@@ -1037,6 +1105,10 @@ export function GridEditor({
           pagination={false}
           rowSelection={{
             selectedRowKeys: rowKeys,
+            onCell: metaCell,
+            onSelect: (row) => {
+              rowAnchor.current = row.key;
+            },
             onChange: (keys) => {
               setRowKeys(keys);
               setCell(null);
@@ -1088,23 +1160,24 @@ export function GridEditor({
           >
             レコードを追加
           </Button>
-          <Select
-            aria-label="追加先"
-            size="small"
-            value={destination}
-            options={table.sources.map((s) => ({
-              value: s.id,
-              label:
-                s.id === table.source.id
-                  ? "テーブル定義ファイル内"
-                  : s.path
-                      .split("/")
-                      .at(-1)
-                      ?.replace(/\.ya?ml$/, ""),
-            }))}
-            onChange={setDestination}
-            style={{ width: 195 }}
-          />
+          {table.sources.length > 1 && (
+            <Tooltip title="新しく追加するレコードを保存するファイルです。既存のレコードは移動しません。">
+              <label className="record-destination">
+                <span>追加先ファイル</span>
+                <SearchSelect
+                  aria-label="追加先ファイル"
+                  size="small"
+                  value={destination}
+                  options={table.sources.map((s) => ({
+                    value: s.id,
+                    label: `${s.path.replace(/\.ya?ml$/, "")}${s.id === table.source.id ? "（テーブル定義ファイル）" : ""}`,
+                  }))}
+                  onChange={setDestination}
+                  style={{ width: 230 }}
+                />
+              </label>
+            </Tooltip>
+          )}
           <Tooltip title="同じテーブルのレコードを追加できる空のテーブルデータファイルを作成します">
             <Button
               size="small"

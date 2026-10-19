@@ -1,9 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button, Dropdown, Empty, Input, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
-  DeleteOutlined,
-  EditOutlined,
   FolderAddOutlined,
   FolderOutlined,
   PlusOutlined,
@@ -13,6 +18,7 @@ import { type Snapshot, type Source, type SavedFile } from "../core/types";
 import { session } from "../core/session";
 export { SourceIcon } from "./source-icon";
 import { SourceKindIcon, SourceIcon } from "./source-icon";
+import { FileContextMenu, type FileOperations } from "./file-context-menu";
 import { useEditing } from "./editing";
 export function Explorer({
   snapshot,
@@ -20,12 +26,14 @@ export function Explorer({
   onSelect,
   fail,
   saved,
+  ref,
 }: {
   snapshot: Snapshot;
   active: string;
   onSelect: (id: string, pin?: boolean) => void;
   fail: (error: unknown) => void;
   saved: Map<string, SavedFile>;
+  ref?: React.Ref<FileOperations>;
 }) {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<React.Key[]>([]);
@@ -40,14 +48,26 @@ export function Explorer({
   const treeRef = useRef<any>(null);
   const dropTarget = useRef<{
     folder: string;
-    row: HTMLElement;
+    row?: HTMLElement;
     inside: boolean;
     valid: boolean;
   } | null>(null);
   const dragSource = useRef("");
-  const clearDrop = () => {
-    dropTarget.current?.row.classList.remove("folder-drop-target");
+  const dropLine = useRef<HTMLDivElement>(null);
+  const hover = useRef<{
+    folder: string;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const clearDropVisual = () => {
+    dropTarget.current?.row?.classList.remove("folder-drop-target");
+    container.current?.closest("aside")?.classList.remove("root-drop-target");
+    if (dropLine.current) dropLine.current.hidden = true;
     dropTarget.current = null;
+  };
+  const clearDrop = () => {
+    clearDropVisual();
+    if (hover.current) clearTimeout(hover.current.timer);
+    hover.current = null;
   };
   useEffect(() => clearDrop, []);
   useEffect(() => {
@@ -83,35 +103,104 @@ export function Explorer({
     return { folders, sources, children };
   }, [snapshot.sources, snapshot.folders]);
   const proposeDrop = (event: React.DragEvent) => {
-    const row = (event.target as HTMLElement).closest<HTMLElement>(
-      ".ant-tree-treenode",
-    );
+    if (!dragSource.current) return;
+    // Own the actual HTML drop as well as its indicator. Letting rc-tree run a
+    // second ancestor/gap policy made highlighted destinations reject the drop.
+    event.preventDefault();
+    event.stopPropagation();
+    const row =
+      (event.target as HTMLElement).closest<HTMLElement>(
+        ".ant-tree-treenode",
+      ) ?? undefined;
     const pathNode = row?.querySelector<HTMLElement>("[data-path]");
-    if (!row || !pathNode) {
-      clearDrop();
-      return;
-    }
-    const path = pathNode.dataset.path!,
-      box = row.getBoundingClientRect();
+    const path = pathNode?.dataset.path ?? "",
+      box = row?.getBoundingClientRect();
     const inside =
+      !!pathNode &&
       allPaths.folders.has(path) &&
+      !!box &&
       event.clientY > box.top + 3 &&
       event.clientY < box.bottom - 3;
     const folder = inside ? path : path.split("/").slice(0, -1).join("/");
-    clearDrop();
-    const destination = [folder, dragSource.current.split("/").at(-1)]
+    const from = dragSource.current;
+    const destination = [folder, from.split("/").at(-1)]
       .filter(Boolean)
       .join("/");
     const valid =
-      !!dragSource.current &&
-      folder !== dragSource.current &&
-      !folder.startsWith(`${dragSource.current}/`) &&
-      (destination === dragSource.current ||
+      folder !== from &&
+      !folder.startsWith(`${from}/`) &&
+      (destination === from ||
         (!allPaths.sources.has(destination) &&
           !allPaths.folders.has(destination)));
+    clearDropVisual();
     dropTarget.current = { folder, row, inside, valid };
-    if (inside && valid) row.classList.add("folder-drop-target");
+    event.dataTransfer.dropEffect = valid ? "move" : "none";
+    if (valid && !row)
+      container.current?.closest("aside")?.classList.add("root-drop-target");
+    else if (valid && inside) row?.classList.add("folder-drop-target");
+    else if (valid && box && dropLine.current && container.current) {
+      const host = container.current.getBoundingClientRect();
+      const icon = row!
+        .querySelector(".ant-tree-iconEle")
+        ?.getBoundingClientRect();
+      Object.assign(dropLine.current.style, {
+        top: `${(event.clientY < box.top + box.height / 2 ? box.top : box.bottom) - host.top}px`,
+        left: `${(icon?.left ?? box.left) - host.left}px`,
+      });
+      dropLine.current.hidden = false;
+    }
+    const hoverFolder = valid && inside ? folder : "";
+    if (hover.current?.folder !== hoverFolder) {
+      if (hover.current) clearTimeout(hover.current.timer);
+      hover.current = hoverFolder
+        ? {
+            folder: hoverFolder,
+            timer: setTimeout(() => {
+              setExpanded((old) => [
+                ...new Set([...old, `folder:${hoverFolder}`]),
+              ]);
+            }, 220),
+          }
+        : null;
+    }
   };
+  const drop = (event: React.DragEvent) => {
+    if (!dragSource.current) return;
+    proposeDrop(event);
+    const target = dropTarget.current,
+      from = dragSource.current;
+    clearDrop();
+    dragSource.current = "";
+    if (!target?.valid) return;
+    const destination = [target.folder, from.split("/").at(-1)]
+      .filter(Boolean)
+      .join("/");
+    if (destination === from) return;
+    run(() => {
+      movePath(from, destination);
+      setExpanded((old) => [
+        ...new Set([
+          ...old,
+          ...target.folder
+            .split("/")
+            .filter(Boolean)
+            .map((_, i, p) => `folder:${p.slice(0, i + 1).join("/")}`),
+        ]),
+      ]);
+    });
+  };
+  const dragProps = (path: string) => ({
+    draggable: true,
+    onDragStart: (event: React.DragEvent) => {
+      dragSource.current = path;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-masterdata-source", path);
+    },
+    onDragEnd: () => {
+      clearDrop();
+      dragSource.current = "";
+    },
+  });
   const selectedPath = keys[0]?.toString().startsWith("folder:")
     ? String(keys[0]).slice(7)
     : snapshot.sources.find((s) => s.id === keys[0])?.path;
@@ -258,6 +347,25 @@ export function Explorer({
     editing.run(() => session.remove(paths), removed);
     setKeys([]);
   };
+  function beginRename(path: string) {
+    setSearch("");
+    const source = allPaths.sources.get(path);
+    setKeys([source?.id ?? `folder:${path}`]);
+    setExpanded((old) => [
+      ...new Set([
+        ...old,
+        ...path
+          .split("/")
+          .slice(0, -1)
+          .map((_, i, p) => `folder:${p.slice(0, i + 1).join("/")}`),
+      ]),
+    ]);
+    editing.run(() => {
+      rename(path);
+      return { focus: `node-${source?.id ?? path}` };
+    });
+  }
+  useImperativeHandle(ref, () => ({ rename: beginRename, remove }));
   const tree = useMemo(() => {
     const build = (folder: string): DataNode[] => {
       const children = [...(allPaths.children.get(folder) ?? [])];
@@ -295,48 +403,15 @@ export function Explorer({
                 }}
               />
             ) : (
-              <Dropdown
-                trigger={["contextMenu"]}
-                menu={{
-                  items: [
-                    ...(item.folder
-                      ? [...createItems, { type: "divider" as const }]
-                      : []),
-                    {
-                      key: "rename",
-                      icon: <EditOutlined />,
-                      label: "名前を変更",
-                    },
-                    {
-                      key: "delete",
-                      icon: <DeleteOutlined />,
-                      label: "削除",
-                      danger: true,
-                    },
-                  ],
-                  onClick: ({ key, domEvent }) => {
-                    domEvent.stopPropagation();
-                    run(() => {
-                      if (key === "rename")
-                        editing.run(() => {
-                          rename(item.path);
-                          return {
-                            focus: `node-${item.source?.id ?? item.path}`,
-                          };
-                        });
-                      else if (key === "delete") remove([item.path]);
-                      else
-                        add(
-                          key as any,
-                          item.folder
-                            ? item.path
-                            : item.path.split("/").slice(0, -1).join("/"),
-                        );
-                    });
-                  },
-                }}
+              <FileContextMenu
+                path={item.path}
+                operations={{ rename: beginRename, remove }}
+                fail={fail}
+                createItems={item.folder ? createItems : undefined}
+                create={(kind) => add(kind as any, item.path)}
               >
                 <span
+                  {...dragProps(item.path)}
                   data-motion-key={`node-${item.source?.id ?? item.path}`}
                   data-path={item.path}
                   onContextMenu={(event) => event.stopPropagation()}
@@ -352,17 +427,15 @@ export function Explorer({
                     <span className="dirty-dot" />
                   )}
                 </span>
-              </Dropdown>
+              </FileContextMenu>
             );
           return [
             {
               key: item.folder ? `folder:${item.path}` : item.source!.id,
               title,
-              icon: item.folder ? (
-                <FolderOutlined />
-              ) : (
-                <SourceIcon source={item.source} />
-              ),
+              icon: <span className="tree-drag-icon" data-path={item.path} {...dragProps(item.path)}>
+                {item.folder ? <FolderOutlined /> : <SourceIcon source={item.source} />}
+              </span>,
               isLeaf: !item.folder,
               children: nested,
               path: item.path,
@@ -372,6 +445,60 @@ export function Explorer({
     };
     return build("");
   }, [allPaths, search, renaming, snapshot, saved]);
+  const guides = useMemo(() => {
+    const visible: { path: string; ancestors: string[] }[] = [];
+    const open = new Set(
+      search ? [...allPaths.folders].map((p) => `folder:${p}`) : expanded,
+    );
+    const visit = (nodes: DataNode[], ancestors: string[] = []) =>
+      nodes.forEach((node) => {
+        const path = (node as any).path as string;
+        visible.push({ path, ancestors });
+        if (node.children && open.has(node.key))
+          visit(node.children, [...ancestors, path]);
+      });
+    visit(tree);
+    const last = new Map<string, string>();
+    visible.forEach(({ path, ancestors }) =>
+      ancestors.forEach((ancestor) => last.set(ancestor, path)),
+    );
+    return new Map(
+      visible.map(({ path, ancestors }) => {
+        const layers: string[] = [];
+        ancestors.forEach((ancestor, i) => {
+          const end = last.get(ancestor) === path,
+            x = i * 16 + 8;
+          layers.push(
+            `linear-gradient(var(--tree-guide),var(--tree-guide)) ${x}px 0 / 1px ${end ? 14 : 28}px no-repeat`,
+          );
+          if (end || i === ancestors.length - 1)
+            layers.push(
+              `linear-gradient(var(--tree-guide),var(--tree-guide)) ${x}px 14px / ${ancestors.length * 16 + 13 - x}px 1px no-repeat`,
+            );
+        });
+        return [path, layers.join(",") || "none"];
+      }),
+    );
+  }, [tree, expanded, search]);
+  useLayoutEffect(() => {
+    const host = container.current;
+    if (!host) return;
+    const apply = () =>
+      host
+        .querySelectorAll<HTMLElement>(".ant-tree-treenode")
+        .forEach((row) => {
+          const path =
+            row.querySelector<HTMLElement>("[data-path]")?.dataset.path;
+          row.style.setProperty(
+            "--tree-guides",
+            guides.get(path ?? "") ?? "none",
+          );
+        });
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(host, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [guides]);
   useEffect(() => {
     if (!active) return;
     const source = snapshot.sources.find((s) => s.id === active);
@@ -387,7 +514,16 @@ export function Explorer({
     ]);
   }, [active]);
   return (
-    <aside className="explorer">
+    <aside
+      className="explorer"
+      onDragEnterCapture={proposeDrop}
+      onDragOverCapture={proposeDrop}
+      onDropCapture={drop}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node))
+          clearDrop();
+      }}
+    >
       <div className="explorer-heading">
         <span>エクスプローラー</span>
         <Dropdown
@@ -416,11 +552,6 @@ export function Explorer({
       <div
         className="tree-scroll"
         ref={container}
-        onDragOverCapture={proposeDrop}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node))
-            clearDrop();
-        }}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !renaming) {
             // An open context menu owns the first Escape.
@@ -461,6 +592,12 @@ export function Explorer({
           }
         }}
       >
+        <div
+          ref={dropLine}
+          className="explorer-drop-line"
+          hidden
+          aria-hidden="true"
+        />
         {tree.length ? (
           <Tree
             ref={treeRef}
@@ -482,7 +619,6 @@ export function Explorer({
               if (!id.startsWith("folder:")) onSelect(id, true);
             }}
             multiple
-            draggable={{ icon: false }}
             onSelect={(selected, info) => {
               const event = info.nativeEvent;
               if (
@@ -503,58 +639,6 @@ export function Explorer({
                     : [...old, key],
                 );
               } else onSelect(key);
-            }}
-            onDragStart={(info) => {
-              dragSource.current = (info.node as any).path;
-            }}
-            onDragEnd={() => {
-              clearDrop();
-              dragSource.current = "";
-            }}
-            allowDrop={({ dragNode, dropNode }) => {
-              const from = (dragNode as any).path,
-                target = (dropNode as any).path;
-              return (
-                (dropTarget.current?.valid ?? true) &&
-                target !== from &&
-                !target.startsWith(`${from}/`)
-              );
-            }}
-            dropIndicatorRender={(props) =>
-              dropTarget.current?.inside ? null : (
-                <div
-                  className="ant-tree-drop-indicator"
-                  style={{
-                    left: props.dropLevelOffset * props.indent + 16,
-                    right: 0,
-                    [props.dropPosition === -1 ? "top" : "bottom"]: -3,
-                  }}
-                />
-              )
-            }
-            onDrop={(info) => {
-              proposeDrop(info.event);
-              if (dropTarget.current?.valid === false) {
-                clearDrop();
-                return;
-              }
-              const from = (info.dragNode as any).path as string;
-              const target = (info.node as any).path as string;
-              const folder =
-                dropTarget.current?.folder ??
-                (String(info.node.key).startsWith("folder:") && !info.dropToGap
-                  ? target
-                  : target.split("/").slice(0, -1).join("/"));
-              clearDrop();
-              run(() => {
-                movePath(
-                  from,
-                  [folder, from.split("/").at(-1)].filter(Boolean).join("/"),
-                );
-                setExpanded((old) => [
-                  ...new Set([...old, `folder:${folder}`]),
-                ]);
-              });
             }}
           />
         ) : (

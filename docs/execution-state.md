@@ -1,16 +1,14 @@
 # Development State
 
-Stage: objective-complete
-Candidate: c59d34002b1917b44b9015860f2b3325dd58159b
-Work base: e4b1cd32f922d9f519bd7e51acdd0c7ad0ee161d
+Stage: implementation-ready
+Candidate: none
+Work base: 3f16d2690f19706b41e8d9da8f5180b69a605be0
 
 ## Active work
 
-None.
-
-## Evidence
-
-[3 OS CI](https://github.com/kamahir0/masterdata/actions/runs/39257637895): success（model / native / UI / package / startup / development install）。fresh review: Blockingなし。開発版を更新し、nativeでEnum / 行の削除・Undo、motion OFFでのメニュー・削除を確認。実時間録画の途中frameで退出・末尾操作・外枠の連動を確認した。sample copyは未変更、確認用app / host / recorderは終了確認済み。
+Completed: 仕様review・自律承認、共通項目枠・file操作・Explorer移動・表とnestedの実装、単体 / focused検証と実アプリの代表作業。
+In progress: 全体UI回帰、最終開発版更新と検証。
+Remaining: exact Candidateのfresh review、Git deliveryと3 OS CI。
 
 ## Blocking findings
 

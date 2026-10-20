@@ -1,6 +1,6 @@
 # TOMLプロジェクトファイルと開く対象
 
-Status: Approved
+Status: Applied
 
 Approval mode: Agent-autonomous
 

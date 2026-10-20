@@ -2273,11 +2273,8 @@ test("source heading distinguishes table data, key labels and references communi
   await expect(page.locator(".column-keys").first()).toHaveText("PKKey 0");
   await expect(page.locator(".column-keys").nth(1)).toHaveText("SK 0Key 1");
   await expect(page.locator(".column-keys").nth(3)).toHaveText("SK 1Key 3");
-  await expect(
-    page
-      .getByLabel("追加先ファイル")
-      .locator("xpath=ancestor::*[contains(@class, 'ant-select')][1]"),
-  ).toContainText("テーブル定義ファイル");
+  await expect(page.getByRole("combobox", { name: "追加先ファイル", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /レコードを追加/ })).toBeDisabled();
   await expect(
     page.getByRole("button", {
       name: "テーブルデータファイルを作成",
@@ -2694,4 +2691,281 @@ test("project settings save to TOML and reopening restores profile, output and d
   await expect(
     page.getByLabel("プロファイル名", { exact: true }).first(),
   ).toHaveValue("production.v2");
+});
+
+test("rightmost tab exit remains visibly present without relying on a following tab", async () => {
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  await selectSource("rarity");
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  for (const name of ["rarity", "announcement"]) {
+    const tab = page.getByRole("tab", { name, exact: true });
+    await tab.evaluate((element) => {
+      const slot = element.closest<HTMLElement>(".file-tab-slot")!;
+      (window as any).__exitBackground =
+        getComputedStyle(element).backgroundColor;
+      (window as any).__exitFrames = new Promise((resolve) => {
+        const frames: any[] = [];
+        let exitingAt = 0;
+        const start = performance.now();
+        const sample = () => {
+          if (!slot.isConnected || performance.now() - start > 1500)
+            return resolve(frames);
+          if (slot.inert) {
+            exitingAt ||= performance.now();
+            frames.push({
+              width: slot.getBoundingClientRect().width,
+              opacity: Number(getComputedStyle(slot).opacity),
+              hidden: slot.getAttribute("aria-hidden"),
+              background: getComputedStyle(element).backgroundColor,
+              time: performance.now() - exitingAt,
+            });
+          }
+          requestAnimationFrame(sample);
+        };
+        sample();
+      });
+    });
+    await tab
+      .getByRole("button", { name: `${name}を閉じる`, exact: true })
+      .click();
+    const frames = (await page.evaluate(
+      () => (window as any).__exitFrames,
+    )) as {
+      width: number;
+      opacity: number;
+      hidden: string;
+      time: number;
+      background: string;
+    }[];
+    await fs.writeFile(
+      test.info().outputPath(`tab-${name}-exit.json`),
+      JSON.stringify(frames),
+    );
+    expect(
+      frames.filter((f) => f.width > 5 && f.opacity > 0.05 && f.opacity < 0.95)
+        .length,
+    ).toBeGreaterThan(2);
+    expect(frames.every((f) => f.hidden === "true")).toBe(true);
+    const background = await page.evaluate(
+      () => (window as any).__exitBackground,
+    );
+    expect(
+      frames
+        .filter((f) => f.opacity > 0.5)
+        .every((f) => f.background === background),
+    ).toBe(true);
+    await expect(page.locator(".file-tab-slot[inert]")).toHaveCount(0);
+  }
+});
+
+async function selectTableFile(label: string | RegExp) {
+  await page
+    .getByRole("combobox", { name: "表示するデータ", exact: true })
+    .click();
+  await page
+    .locator(
+      ".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content",
+    )
+    .filter({ hasText: label })
+    .click();
+}
+async function pasteText(target: ReturnType<Page["locator"]>, text: string) {
+  await target.evaluate((element, text) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", text);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, text);
+}
+
+test("table file scope controls all record creation without an independent destination", async () => {
+  await selectSource("schema");
+  const add = page.getByRole("button", { name: /レコードを追加/ });
+  await expect(add).toBeDisabled();
+  await expect(add).toHaveAccessibleDescription(/1つのファイルを選択/);
+  await expect(page.getByLabel("追加先ファイル", { exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByLabel("表を検索", { exact: true }).fill("銅の剣");
+  await expect(add).toBeDisabled();
+  await page.getByLabel("表を検索", { exact: true }).fill("");
+  await page.getByRole("button", { name: "行1の操作", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /複製/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  const name = page.getByLabel("name 行1", { exact: true });
+  await pasteText(name, "超過1\n超過2\n超過3\n超過4");
+  await expect(
+    page.getByText(/複数ファイルの表示中はレコードを増やせません/),
+  ).toBeVisible();
+  await expect(name).toHaveValue("銅の剣");
+  await pasteText(name, "既存行の編集\n二番目の編集");
+  await expect(name).toHaveValue("既存行の編集");
+  await selectTableFile(/^common$/);
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page.getByLabel("id 行4", { exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "行4の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /複製/ }).click();
+  await expect(page.getByLabel("id 行5", { exact: true })).toBeFocused();
+  await pasteText(
+    page.getByLabel("name 行5", { exact: true }),
+    "貼付け5\n貼付け6",
+  );
+  await expect(page.getByLabel("name 行6", { exact: true })).toHaveValue(
+    "貼付け6",
+  );
+  await saveAll();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  const common = parse(
+    await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"),
+  );
+  const schema = parse(
+    await fs.readFile(path.join(root, "sources/items/schema.yaml"), "utf8"),
+  );
+  expect(common.records).toHaveLength(6);
+  expect(schema.records).toHaveLength(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("name 行6", { exact: true })).toHaveCount(0);
+});
+
+test("empty table definition and new data file have unambiguous record creation and save targets", async () => {
+  await selectSource("schema");
+  await selectTableFile(/schema（テーブル定義ファイル内）/);
+  const add = page.getByRole("button", { name: /レコードを追加/ });
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("0");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await page
+    .getByRole("button", { name: "テーブルデータファイルを作成", exact: true })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "new-data1", exact: true }),
+  ).toBeVisible();
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  expect(
+    parse(
+      await fs.readFile(
+        path.join(root, "sources/items/new-data1.yaml"),
+        "utf8",
+      ),
+    ).records,
+  ).toHaveLength(1);
+  await selectSource("schema");
+  await selectTableFile(/^new-data1$/);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(add).toBeDisabled();
+});
+
+test("default context menus are cancelled across editor surfaces while custom menus and editing remain usable", async () => {
+  for (const target of [
+    page.locator(".titlebar"),
+    page.locator(".grid-editor"),
+    page.getByLabel("message 行1", { exact: true }),
+  ]) {
+    expect(
+      await target.evaluate(
+        (element) =>
+          !element.dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+          ),
+      ),
+    ).toBe(true);
+  }
+  await page
+    .getByRole("button", { name: "プロジェクト設定", exact: true })
+    .click();
+  expect(
+    await page
+      .locator(".ant-drawer-body")
+      .evaluate(
+        (element) =>
+          !element.dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+          ),
+      ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "閉じる", exact: true }).click();
+  await selectSource("rarity");
+  await page
+    .getByRole("tab", { name: "rarity", exact: true })
+    .click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "パスをコピー", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "パスをコピー", exact: true }),
+  ).toBeHidden();
+  await page
+    .locator('.tree-name[title="types/rarity.yaml"]')
+    .click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "名前を変更", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "名前を変更", exact: true }),
+  ).toBeHidden();
+  const member = page.getByLabel("候補1の名前", { exact: true });
+  await member.fill("EditStillWorks");
+  await member.press("Enter");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(member).toHaveValue("Common");
+});
+
+test("welcome suppresses the default WebView context menu", async () => {
+  expect(
+    await page
+      .locator(".welcome")
+      .evaluate(
+        (element) =>
+          !element.dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+          ),
+      ),
+  ).toBe(true);
+  await expect(
+    page.getByRole("button", { name: /プロジェクトを開く/ }),
+  ).toBeVisible();
+});
+
+test("keyboard tab navigation skips outgoing tabs and reopening during exit stays singular", async () => {
+  for (const name of ["announcement", "rarity", "combat-stats"]) {
+    await selectSource(name);
+    await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  }
+  const first = page.getByRole("tab", { name: "announcement", exact: true });
+  await first.click();
+  await page
+    .getByRole("button", { name: "rarityを閉じる", exact: true })
+    .click();
+  await first.press("ArrowRight");
+  await expect(
+    page.getByRole("tab", { name: "combat-stats", exact: true }),
+  ).toBeFocused();
+  await page
+    .getByRole("button", { name: "combat-statsを閉じる", exact: true })
+    .click();
+  await selectSource("combat-stats");
+  await expect(
+    page.getByRole("tab", { name: "combat-stats", exact: true }),
+  ).toHaveCount(1);
+  await expect(page.locator(".file-tab-slot[inert]")).toHaveCount(0);
+  await expect(
+    page.getByRole("tab", { name: "combat-stats", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
 });

@@ -282,7 +282,8 @@ button:focus-visible,
   cursor: pointer;
   user-select: none;
 }
-.file-tab[aria-selected="true"] {
+.file-tab[aria-selected="true"],
+.file-tab-slot[data-exiting-active] .file-tab {
   color: var(--text);
   background: var(--surface);
   border-top-color: var(--accent);
@@ -1611,16 +1612,6 @@ button:focus-visible,
 }
 .row-meta input {
   user-select: text;
-}
-.record-destination {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.record-destination > span {
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
 }
 .grid-footer {
   gap: 8px;

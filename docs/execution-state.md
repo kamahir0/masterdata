@@ -1,18 +1,17 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 836e138170e709ca3d306daa889ab3c47c65a88d
-Work base: d48ba86a87bae456a3e7406763a30fe003cf7a3a
+Stage: implementation-ready
+Candidate: none
+Work base: 92d2fcc58adf2ac88b9b0c05532d0a880ec7099c
 
 ## Active work
 
-None.
+Completed: 変更仕様のreview・承認、表の追加scope統一、tab退出とkeyboard対象、標準context menu抑止、単体36件・Chromium / WebKit focused UI 16ケース、self-review（Blockingなし）。
+Remaining: Candidate記録、実機確認、開発版更新、fresh review、3 OS CI。
 
 ## Evidence
 
-[3 OS CI](https://github.com/kamahir0/masterdata/actions/runs/39414703442): success（workspace / model / native / UI / package / startup / development install）。ローカル単体36件・更新hostのnative 3件・Chromium / WebKit focused UI 8件を確認。初回のsample末尾空行を修正し、修正後CandidateのCIは全job成功。fresh review: Blockingなし。
-
-既定のMasterData [Dev]を更新。sample copyでnative file pickerからmasterdata.tomlを選択し、表示名変更→全保存→同fileの再openで復元、picker取消で現在project保持を確認。確認用app（PID 23592）と専用hostは終了確認済み。実作業projectの変換は行っていない。設定変更時のTOML comment / layout保持は仕様の対象外。
+複数file表示の追加・複製・超過paste拒否、既存値編集、単一fileへの追加 / paste・保存・Undo、空file作成後の編集と保存、tabの退出途中の幅 / opacity / 見た目、最後tab・連続keyboard、custom menu維持を確認。
 
 ## Blocking findings
 

@@ -1,11 +1,11 @@
 # Desktop Authoring
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -90,6 +90,8 @@ React / Ant DesignのTable、Tree、Input、Select、Switch、Tabs、Dropdown、
 
 editor設定とproject設定を別の入口・画面にする。editor設定はPC内で保存し、project dirty / Undoから独立させる。themeはLight / Dark / System（初期System）、SystemではOSの変更に追従する。file tabsは一行scroll（初期）または自動折返しを選べる。折返しが多数になればtab帯内を縦scrollして編集領域を保つ。Explorer visibilityとmotionもeditor preferenceで、変更時にsessionをreloadしない。darkの基調は黒に近い無彩色、lightは白・灰色とし、緑accentでactive / focusを示す。error / warningの意味色を保持する。titlebar・操作帯・tabs・modeをcompactにし、大きい見出しとpathの重複を圧縮する。定義名の直接編集、型表示、日常操作と設定への入口を保ち、最小window幅で重ねない。
 
+rendererの共通入口でWebView標準context menuを抑え、未保存draftをReloadで失う入口を作らない。custom file / folder / tab menuへのevent伝播、textのkeyboard shortcutとnative編集menuを維持する。
+
 ## DESKTOP-001 — Desktop基盤と開発版
 
 Tauriで既存React / Ant Design UIと編集sessionを提供する。専用の同梱hostを含め、利用者側にNode.jsを要求しない。window・menu・native file / folder dialog、限定されたnative操作、未保存・処理中のclose保護を維持する。二重起動は既存windowを前面にする。「開く」はproject file用pickerから`masterdata.toml`を選び、cancelなら現在projectを保持する。新規作成は保存先folderを選び、新root内に`masterdata.toml`と`sources/`を作る。sampleとinternal startupにも同じproject fileを使う。表示名は設定内nameであり、root名との強制同期はしない。
@@ -115,7 +117,7 @@ Explorer境界をdragで幅変更でき、矢印 / Home / End、double clickでd
 
 種類iconは形を維持し、Table=blue、Table Data=cyan、Enum=amber、Flags=orange、Custom=violet、Value Object=roseの種類色を両themeで用いる。green accentは操作状態に使う。headerは種類badge、icon、名前の順とし、TABLE / TABLE DATA / ENUM / FLAGS / CUSTOM TYPE / VALUE OBJECTを明示する。種類名と形も保持し、色だけに頼らない。
 
-削除は即時にdraft / Undoへ反映し、可視対象に約300msの非対話な退出snapshotを示す。退出領域の縮小と、残った項目・移動する末尾操作が空間を詰める動きを同じ補間で結び、対象の退出を視認できるようにする。列削除は横方向へ同様に詰める。画面外のsnapshotを作らず、ghostは入力・selection・accessibility対象にせず完了 / 取消時に回収する。tabの追加 / closeは当該tabの幅とopacityで約200msの出入りを示し、既存tab全体を上下移動させない。active tabへのscrollはtab帯内に限定する。reduced motionでは補間を抑える。
+削除は即時にdraft / Undoへ反映し、可視対象に約300msの非対話な退出snapshotを示す。退出領域の縮小と、残った項目・移動する末尾操作が空間を詰める動きを同じ補間で結び、対象の退出を視認できるようにする。列削除は横方向へ同様に詰める。画面外のsnapshotを作らず、ghostは入力・selection・accessibility対象にせず完了 / 取消時に回収する。tabの追加 / closeは当該tabの幅とopacityで約200〜280msの出入りを示し、既存tab全体を上下移動させない。右端・最後の一つでも対象の姿を残して退出を見せ、後続tabの移動だけに依存しない。退出tabは即時に非対話・非accessibleとし、連続操作とscroll / wrapを維持する。active tabへのscrollはtab帯内に限定する。reduced motionでは補間を抑える。
 
 app iconはgreen accent系のvector原稿から生成し、macOSは16〜1024pxのretina slot、Windowsは16〜256pxを含める。小サイズの線も読みやすくし、画面内brandとnative bundleで意匠を揃える。
 
@@ -131,6 +133,6 @@ Explorerのdrag先判定と表示を一致させる。folder中央はそのfolde
 
 仮想表では削除によるscroll終端の自動補正でも可視行 / 列の退出と後続配置を連動させ、sticky列 / headerをsnapshotで覆わず、画面外の全件をmountしない。行操作・配布タグは左の固定領域に置く。固定領域のcontrol以外のclickで行全体を選択し、Ctrl / Cmdで追加解除、Shiftで範囲選択できる。indexは選択可能textにしない。入力・タグ・menu・drag・コピー・Deleteを保持する。
 
-レコード追加先は複数source時だけ「追加先ファイル」としてfile名 / pathと用途を示す。新規recordの所属先を選ぶ機能で、既存recordを移動しない。一つだけなら選択UIを置かない。
+レコード追加先は現在の表示対象fileから一意に決め、「追加先ファイル」UIは置かない。複数sourceの「すべてのデータ」では追加buttonと複製をdisabledにし、表示選択で一つのfileを選ぶ案内をtooltip / accessible descriptionに示す。既存行数を超えるpasteも一括拒否し、理由とfile選択による回復を示す。既存recordの編集・範囲内paste・削除・移動は維持する。単一source表では全表示でも追加できる。検索結果のfile数で規則を変えない。単一file表示では追加・複製・paste拡張をそのfileだけに行う。空のテーブルデータfile作成後はそのfileを開いて追加・保存でき、選択fileがUndo等で消えたら全表示へ戻る。
 
 nestedの前進 / 後退は方向の分かる短いslideとfadeで表す。退出paneは非対話・非accessible、現在paneは完了を待たずに操作できる。途中入力の確定 / Esc、全breadcrumb、reduced motionを保持する。theme選択は文字に太陽・月・PC iconを添える。

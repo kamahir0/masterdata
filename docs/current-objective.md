@@ -2,12 +2,12 @@
 
 ## Objective
 
-2026-10-20 Human requestに基づき、固定名の`masterdata.toml`をプロジェクト設定兼「開く」対象にする。設定をTOMLで読み書きし、GUIのファイル選択、作成、sampleを一貫させる。
+2026-10-21 Human requestに基づき、表の複数ファイル同時表示では新規レコードの追加先を選ばせず、単一ファイル表示にしてから追加する操作に整理する。右端・最後のfile tabでも退出を視認できるようにし、WebView標準のReload context menuを抑える。
 
 ## Completion boundary
 
-変更仕様の別pass review・承認、設定I/O・native file dialog・sample・説明の更新、保存 / 再open・取消 / 失敗・外部変更保護の検証、実機操作、self-review、通常commit / push、必要な3 OS CI、開発版更新。
+変更仕様の別pass review・承認、追加・複製・貼付けを含む追加先規則の統一、tab退出の実画面、custom context menuの維持、focused validation、実機確認、self-review、通常commit / push、3 OS CI、開発版更新。
 
 ## Non-scope
 
-データYAMLやBuild出力形式の変更、旧YAML設定の自動移行、実作業projectの変換、OS拡張子関連付け、公開release、Unity起動。
+データ / project形式、既存値の暗黙変更、保存規則・未保存保護、汎用text context menuの新設、公開release、Unity起動。

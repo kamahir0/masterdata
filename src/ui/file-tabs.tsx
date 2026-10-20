@@ -75,9 +75,9 @@ export function FileTabs({
         if (sources[next]) {
           select(sources[next].id);
           (
-            container.current?.querySelectorAll('[role="tab"]')[
-              next
-            ] as HTMLElement
+            container.current?.querySelectorAll(
+              '.file-tab-slot:not([inert]) [role="tab"]',
+            )[next] as HTMLElement
           )?.focus();
         }
       }}
@@ -91,7 +91,12 @@ export function FileTabs({
               ?.replace(/\.ya?ml$/, "") ?? source.path;
           const temporary = preview === source.id;
           return (
-            <TabSlot key={source.id} reveal={reveal} reduced={reduced}>
+            <TabSlot
+              key={source.id}
+              reveal={reveal}
+              reduced={reduced}
+              selected={source.id === active}
+            >
               <FileContextMenu
                 path={source.path}
                 operations={operations}
@@ -153,20 +158,35 @@ function TabSlot({
   children,
   reveal,
   reduced,
+  selected,
 }: {
   children: ReactElement<{ "aria-selected"?: boolean; tabIndex?: number }>;
   reveal: () => void;
   reduced: boolean;
+  selected: boolean;
 }) {
   const present = useIsPresent();
   return (
     <motion.div
       className="file-tab-slot"
+      data-exiting-active={!present && selected ? "true" : undefined}
       inert={!present}
       aria-hidden={!present || undefined}
       initial={reduced ? false : { width: 0, opacity: 0 }}
       animate={{ width: "auto", opacity: 1 }}
-      exit={{ width: 0, opacity: 0 }}
+      exit={{
+        width: 0,
+        opacity: 0,
+        transition: {
+          duration: reduced ? 0 : 0.28,
+          ease: [0.4, 0, 0.2, 1],
+          width: {
+            duration: reduced ? 0 : 0.22,
+            delay: reduced ? 0 : 0.06,
+            ease: [0.4, 0, 0.2, 1],
+          },
+        },
+      }}
       transition={{ ...resultTransition, duration: reduced ? 0 : 0.2 }}
       onUpdate={present ? reveal : undefined}
     >

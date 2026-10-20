@@ -4,6 +4,7 @@ import React, {
   useRef,
   useState,
   useDeferredValue,
+  useId,
 } from "react";
 import {
   Button,
@@ -48,7 +49,6 @@ import {
 import { identity } from "../core/identity";
 import { usePointerSort } from "./sortable";
 import { useEditing } from "./editing";
-import { SearchSelect } from "./search-select";
 import { useTableViewport } from "./table-viewport";
 import { session } from "../core/session";
 import { defaultValue, recordAllocator } from "../core/schema";
@@ -99,8 +99,17 @@ export function GridEditor({
     tables(snapshot).find((t) => t.name === source.data?.table);
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
-  const [chosen, setChosen] = useState("all");
-  const [destination, setDestination] = useState(source.id);
+  const [chosen, setChosen] = useState(
+    source.data?.kind === "data" ? source.id : "all",
+  );
+  const additionHintId = useId();
+  const additionHint =
+    "レコードを追加するには、上部の「すべてのデータ」から1つのファイルを選択してください。";
+  // Use the chosen file scope, never the filtered rows or a separate destination.
+  const visibleSources =
+    table?.sources.filter((s) => chosen === "all" || s.id === chosen) ?? [];
+  const additionSource =
+    visibleSources.length === 1 ? visibleSources[0] : undefined;
   const [rowKeys, setRowKeys] = useState<React.Key[]>([]);
   const [cell, setCell] = useState<{
     row: number;
@@ -123,12 +132,19 @@ export function GridEditor({
   }, []);
   useEffect(() => {
     setChosen(source.data?.kind === "data" ? source.id : "all");
-    setDestination(source.id);
     setRowKeys([]);
     rowAnchor.current = null;
     setCell(null);
     setQuery("");
   }, [source.id]);
+  useEffect(() => {
+    if (chosen !== "all" && !table?.sources.some((s) => s.id === chosen)) {
+      setChosen("all");
+      setRowKeys([]);
+      setCell(null);
+      rowAnchor.current = null;
+    }
+  }, [chosen, table?.sources]);
   const rows = useMemo(
     () =>
       !table
@@ -154,15 +170,11 @@ export function GridEditor({
             ),
     [snapshot.sources, source.id, chosen, deferred],
   );
-  const addRecord = (destinationId: string, template?: any) => {
-    const target = snapshot.sources.find(
-      (source) => source.id === destinationId,
-    );
-    if (!table || !target) return;
+  const addRecord = (template?: any) => {
+    if (!table || !additionSource) return;
     setQuery("");
-    if (chosen !== "all" && chosen !== destinationId) setChosen(destinationId);
     editing.run(() => ({
-      focus: `${destinationId}:${identity(session.addRow(table.source.id, destinationId, template))}`,
+      focus: `${additionSource.id}:${identity(session.addRow(table.source.id, additionSource.id, template))}`,
     }));
   };
   // Value edits preserve row/field identity and must not replay structural motion.
@@ -477,7 +489,12 @@ export function GridEditor({
           trigger={["click"]}
           menu={{
             items: [
-              { key: "copy", label: "複製", icon: <CopyOutlined /> },
+              {
+                key: "copy",
+                label: "複製",
+                icon: <CopyOutlined />,
+                disabled: !additionSource,
+              },
               {
                 key: "up",
                 label: "上へ",
@@ -500,7 +517,7 @@ export function GridEditor({
             ],
             onClick: ({ key }) =>
               safe(() => {
-                if (key === "copy") addRecord(row.source.id, row.record);
+                if (key === "copy") addRecord(row.record);
                 if (key === "delete")
                   editing.run(
                     () =>
@@ -849,6 +866,10 @@ export function GridEditor({
         throw new Error(
           "貼り付け先の列が足りません。必要な列を追加してから貼り付けてください。",
         );
+      if (!additionSource && anchor.row + cells.length > rows.length)
+        throw new Error(
+          "複数ファイルの表示中はレコードを増やせません。上部の「すべてのデータ」から1つのファイルを選択してから貼り付けてください。",
+        );
       (event.target as HTMLElement).blur();
       session.change("セルを貼り付け", (snapshot) => {
         const allocate = recordAllocator(
@@ -859,9 +880,8 @@ export function GridEditor({
           source: row.source.id,
           index: row.index,
         }));
-        const targetId = rows[anchor.row]?.source.id ?? destination;
-        const source =
-          snapshot.sources.find((s) => s.id === targetId) ?? table.source;
+        const targetId = additionSource?.id ?? rows[anchor.row]?.source.id;
+        const source = snapshot.sources.find((s) => s.id === targetId)!;
         const original = Array.isArray(source.data?.records)
           ? source.data.records
           : [];
@@ -969,9 +989,9 @@ export function GridEditor({
           );
           const target = row
             ?.querySelectorAll(".data-cell")
-            [cell.col]?.querySelector<HTMLElement>(
-              "input, button, [role=combobox]",
-            );
+            [
+              cell.col
+            ]?.querySelector<HTMLElement>("input, button, [role=combobox]");
           target?.focus();
           return;
         }
@@ -1052,7 +1072,12 @@ export function GridEditor({
             aria-label="表示するデータ"
             value={chosen}
             style={{ width: 190 }}
-            onChange={setChosen}
+            onChange={(value) => {
+              setChosen(value);
+              setRowKeys([]);
+              rowAnchor.current = null;
+              setCell(null);
+            }}
             options={[
               { value: "all", label: "すべてのデータ" },
               ...table.sources.map((s) => ({
@@ -1136,7 +1161,9 @@ export function GridEditor({
                 description={
                   query
                     ? "一致するデータはありません"
-                    : "最初のレコードを追加しましょう"
+                    : additionSource
+                      ? "最初のレコードを追加しましょう"
+                      : "上部でファイルを選ぶとレコードを追加できます"
                 }
               />
             ),
@@ -1145,39 +1172,22 @@ export function GridEditor({
       </div>
       <div className="grid-footer">
         <Space>
-          <Button
-            type="text"
-            icon={<PlusOutlined />}
-            onClick={() =>
-              safe(() =>
-                addRecord(
-                  table.sources.some((s) => s.id === destination)
-                    ? destination
-                    : table.source.id,
-                ),
-              )
-            }
-          >
-            レコードを追加
-          </Button>
-          {table.sources.length > 1 && (
-            <Tooltip title="新しく追加するレコードを保存するファイルです。既存のレコードは移動しません。">
-              <label className="record-destination">
-                <span>追加先ファイル</span>
-                <SearchSelect
-                  aria-label="追加先ファイル"
-                  size="small"
-                  value={destination}
-                  options={table.sources.map((s) => ({
-                    value: s.id,
-                    label: `${s.path.replace(/\.ya?ml$/, "")}${s.id === table.source.id ? "（テーブル定義ファイル）" : ""}`,
-                  }))}
-                  onChange={setDestination}
-                  style={{ width: 230 }}
-                />
-              </label>
-            </Tooltip>
-          )}
+          <Tooltip title={additionSource ? undefined : additionHint}>
+            <span>
+              <Button
+                type="text"
+                icon={<PlusOutlined />}
+                disabled={!additionSource}
+                aria-describedby={additionSource ? undefined : additionHintId}
+                onClick={() => safe(() => addRecord())}
+              >
+                レコードを追加
+              </Button>
+            </span>
+          </Tooltip>
+          <span id={additionHintId} hidden>
+            {additionHint}
+          </span>
           <Tooltip title="同じテーブルのレコードを追加できる空のテーブルデータファイルを作成します">
             <Button
               size="small"
@@ -1188,7 +1198,8 @@ export function GridEditor({
                   table.source.path.split("/").slice(0, -1).join("/"),
                   table.name,
                 );
-                setDestination(id);
+                setChosen(id);
+                navigate(id);
               }}
             >
               テーブルデータファイルを作成

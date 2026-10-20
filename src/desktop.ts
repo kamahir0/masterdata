@@ -8,6 +8,13 @@ const request = async (method: string, args: unknown[] = []) =>
   decode(
     await invoke<string>("project_request", { method, payload: encode(args) }),
   );
+// Suppress only the WebView default action; custom menus still receive the event.
+// Install for every renderer surface (including portals), not individual screens.
+document.addEventListener(
+  "contextmenu",
+  (event) => event.preventDefault(),
+  true,
+);
 let zoom = 1;
 export const desktop: DesktopAPI = {
   initial: () => request("initial"),

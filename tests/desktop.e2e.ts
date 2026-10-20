@@ -3,11 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parse, stringify } from "yaml";
+import { readConfig } from "../desktop/config";
 import { ProjectService } from "../desktop/service";
 import { encode, decode } from "../src/core/wire";
 let service: ProjectService;
 let calls: string[];
-let dialogPath: string;
+let dialogPath: string | null;
 let page: Page;
 let root: string;
 let saveGate: Promise<void> | undefined;
@@ -52,7 +53,7 @@ test.beforeEach(async ({ browser }, info) => {
   saveGate = undefined;
   service = new ProjectService();
   calls = [];
-  dialogPath = root;
+  dialogPath = path.join(root, "masterdata.toml");
   page = await browser.newPage({ viewport: { width: 1480, height: 960 } });
   await page.exposeFunction(
     "__native",
@@ -61,9 +62,12 @@ test.beforeEach(async ({ browser }, info) => {
       if (method === "save") await saveGate;
       let args = decode<any[]>(payload);
       if (method === "initial")
-        args = info.title.startsWith("welcome") ? [] : [root];
-      if (method === "open") args = [dialogPath];
-      if (method === "create") args = [args[0], dialogPath];
+        args = info.title.startsWith("welcome") ? [] : [path.join(root, "masterdata.toml")];
+      if (method === "open") {
+        if (dialogPath === null) return encode(null);
+        args = [dialogPath];
+      }
+      if (method === "create") args = [args[0], root];
       if (method === "sample")
         args = [
           path.resolve("samples/Adventure"),
@@ -544,7 +548,7 @@ test("paste extends records, preserves quoted TSV, and does not alter data from 
 });
 
 test("welcome opens the first project without a phantom unsaved-change prompt", async () => {
-  dialogPath = root;
+  dialogPath = path.join(root, "masterdata.toml");
   await page.getByRole("button", { name: /プロジェクトを開く/ }).click();
   await expect(
     page.getByText("冒険の道具箱", { exact: true }).first(),
@@ -557,7 +561,7 @@ test("welcome opens the first project without a phantom unsaved-change prompt", 
 
 test("welcome creates a project, adds a table, edits and saves default records", async () => {
   const created = path.join(root, "新規作業");
-  dialogPath = root;
+  dialogPath = path.join(root, "masterdata.toml");
   await page.getByRole("button", { name: /新しく作る/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("新しいプロジェクト名").fill("新規作業");
@@ -2612,4 +2616,82 @@ test("hierarchy native pointer drag moves a folder to an ancestor and then the r
   await expect(node("deep-folder-with-a-very-long-name")).toBeVisible();
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(moved).toBeVisible();
+});
+
+test("project file cancel and invalid TOML preserve the current dirty document", async () => {
+  const message = page.getByLabel("message 行1", { exact: true });
+  await message.fill("切替前のdraft");
+  await message.press("Tab");
+  dialogPath = null;
+  await page.getByRole("button", { name: /開く$/ }).click();
+  await page
+    .getByRole("button", { name: "破棄して続ける", exact: true })
+    .click();
+  await expect(message).toHaveValue("切替前のdraft");
+  const invalidRoot = path.join(root, "invalid");
+  await fs.mkdir(invalidRoot);
+  dialogPath = path.join(invalidRoot, "masterdata.toml");
+  await fs.writeFile(dialogPath, "name = [");
+  await page.getByRole("button", { name: /開く$/ }).click();
+  await page
+    .getByRole("button", { name: "破棄して続ける", exact: true })
+    .click();
+  await expect(page.getByText(/プロジェクトを開けません/)).toBeVisible();
+  await expect(message).toHaveValue("切替前のdraft");
+  await saveAll();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).toContain("切替前のdraft");
+});
+
+test("project settings save to TOML and reopening restores profile, output and display name", async () => {
+  await page
+    .getByRole("button", { name: "プロジェクト設定", exact: true })
+    .click();
+  const drawer = page.getByRole("dialog", {
+    name: "プロジェクト設定",
+    exact: true,
+  });
+  await drawer.getByLabel("プロジェクト名", { exact: true }).fill("TOMLで管理");
+  await drawer.getByLabel("プロジェクト名", { exact: true }).press("Tab");
+  await drawer
+    .getByLabel("C#の出力先", { exact: true })
+    .fill("../Unity/Generated");
+  await drawer.getByLabel("C#の出力先", { exact: true }).press("Tab");
+  await drawer
+    .getByLabel("プロファイル名", { exact: true })
+    .first()
+    .fill("production.v2");
+  await drawer
+    .getByLabel("プロファイル名", { exact: true })
+    .first()
+    .press("Tab");
+  await drawer.getByRole("button", { name: "閉じる", exact: true }).click();
+  await saveAll();
+  await expect(
+    page.getByRole("status", { name: "保存済み", exact: true }),
+  ).toBeVisible();
+  const config = readConfig(
+    await fs.readFile(path.join(root, "masterdata.toml"), "utf8"),
+  );
+  expect(config.name).toBe("TOMLで管理");
+  expect(config.publish.csharp).toBe("../Unity/Generated");
+  expect(config.profiles["production.v2"].exclude).toEqual(["debug", "event"]);
+  expect(
+    await fs.stat(path.join(root, "masterdata.yaml")).catch(() => null),
+  ).toBeNull();
+  await page.getByRole("button", { name: /開く$/ }).click();
+  await expect(page.getByText("TOMLで管理", { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "プロジェクト設定", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("プロファイル名", { exact: true }).first(),
+  ).toHaveValue("production.v2");
 });

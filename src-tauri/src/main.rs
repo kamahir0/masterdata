@@ -128,17 +128,25 @@ async fn project_request(
             let title = if method == "create" {
                 "プロジェクトを作成する保存先フォルダ"
             } else {
-                "MasterDataプロジェクトを開く"
+                "MasterDataプロジェクトを開く（masterdata.toml）"
             };
             let dialog = app.dialog().file().set_title(title).set_parent(&window);
-            let folder =
-                tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            let Some(folder) = folder else {
+            let method_is_create = method == "create";
+            let selection = tauri::async_runtime::spawn_blocking(move || {
+                if method_is_create {
+                    dialog.blocking_pick_folder()
+                } else {
+                    dialog
+                        .add_filter("MasterData project (masterdata.toml)", &["toml"])
+                        .blocking_pick_file()
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            let Some(selection) = selection else {
                 return Ok(wire(Value::Null));
             };
-            let path = folder.into_path().map_err(|e| e.to_string())?;
+            let path = selection.into_path().map_err(|e| e.to_string())?;
             if method == "create" {
                 wire(json!([args[0], path]))
             } else {

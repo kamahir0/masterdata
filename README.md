@@ -21,6 +21,8 @@ npm ci
 npm start
 ```
 
+「開く」ではプロジェクトルートの`masterdata.toml`を選択します。プロジェクト名・出力プロファイル・Publish先はこのファイル、データ本体は`sources/`内のYAMLに保存します。設定はGUIから変更でき、設定変更の保存時はTOMLを整形し直します（手書きコメント・書式の保持には未対応）。
+
 「サンプルで試す」で冒険の道具箱を作業用コピーとして開けます。元のsampleは変更されません。表・列・Enum・Custom Typeの追加、配列・nullable・参照、Undo / Redo、保存、Build / Publishを試せます。
 
 - 通常操作はメモリ上のdraftを変更します。保存してからもUndoできます。

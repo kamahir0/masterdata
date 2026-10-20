@@ -12,7 +12,7 @@ import { serialize, parseSource } from "../src/core/yaml";
 async function sample() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "masterdata-test-"));
   await fs.cp(path.resolve("samples/Adventure"), root, { recursive: true });
-  return { root, ...(await loadWorkspace(root)) };
+  return { root, ...(await loadWorkspace(path.join(root, "masterdata.toml"))) };
 }
 test("sample includes nested nullable, full ulong, references and profiles without errors", async () => {
   const { project, root } = await sample();
@@ -114,7 +114,9 @@ test("file moves and folder deletes are undoable drafts; Save moves files withou
     });
     s.acceptSave(result, captured);
     assert.equal(
-      (await loadWorkspace(root)).project.snapshot.sources.filter((f) =>
+      (
+        await loadWorkspace(path.join(root, "masterdata.toml"))
+      ).project.snapshot.sources.filter((f) =>
         f.path.startsWith("definitions/"),
       ).length,
       5,

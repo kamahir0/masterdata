@@ -1,11 +1,11 @@
 # Desktop Authoring
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -73,7 +73,7 @@ YAML sourceはlegacy2のschema / data / typeの形を採用し、schema内record
 
 ## DATA-002 — Project・出力選択
 
-Projectは`masterdata.yaml`に名前・profiles・publish先を保存し、`sources/`以下のYAMLを編集する。既存legacy2の`masterdata.toml`も読込み時に解釈できるが、そのCLI lifecycleを採用しない。tagsのinclude / excludeによるprofilesをGUIで編集・選択し、今回含まれるrecordを確認できる。Build profile初期値は未選択とし、「プロファイルを選択」を表示する。clearや選択profileの削除で未選択へ戻る。未選択でもBuildでき、タグで絞り込まない既存規則を保持し、結果panelでも未選択 / 絞り込みなしとして示す。
+Projectは固定名`masterdata.toml`に名前・profiles・publish先を保存し、そのfileがあるfolderをrootとして`sources/`以下のYAMLを編集する。内部作業領域は`.masterdata/`。旧YAML設定と旧CLI設定構造へのfallback / 自動importは行わない。nameは空でない文字列を必須とし、省略したprofiles / publishはdefaultを補う。syntaxや既知項目のshape不正はfileと理由を示して読込を中止し、現在のdraftを保持する。未変更設定textを保存の副作用で書き直さない。設定変更の保存では未知項目の値を保持し、アプリ管理のblock TOMLへ整形する（手編集comment / layoutのroundtripは対象外）。設定も外部変更検出と保存transactionで保護し、Publish先として上書きできない。tagsのinclude / excludeによるprofilesをGUIで編集・選択し、今回含まれるrecordを確認できる。Build profile初期値は未選択とし、「プロファイルを選択」を表示する。clearや選択profileの削除で未選択へ戻る。未選択でもBuildでき、タグで絞り込まない既存規則を保持し、結果panelでも未選択 / 絞り込みなしとして示す。
 
 ## BUILD-001 — BuildとPublish
 
@@ -92,7 +92,7 @@ editor設定とproject設定を別の入口・画面にする。editor設定はP
 
 ## DESKTOP-001 — Desktop基盤と開発版
 
-Tauriで既存React / Ant Design UIと編集sessionを提供する。専用の同梱hostを含め、利用者側にNode.jsを要求しない。window・menu・folder dialog、限定されたnative操作、未保存・処理中のclose保護を維持する。二重起動は既存windowを前面にする。
+Tauriで既存React / Ant Design UIと編集sessionを提供する。専用の同梱hostを含め、利用者側にNode.jsを要求しない。window・menu・native file / folder dialog、限定されたnative操作、未保存・処理中のclose保護を維持する。二重起動は既存windowを前面にする。「開く」はproject file用pickerから`masterdata.toml`を選び、cancelなら現在projectを保持する。新規作成は保存先folderを選び、新root内に`masterdata.toml`と`sources/`を作る。sampleとinternal startupにも同じproject fileを使う。表示名は設定内nameであり、root名との強制同期はしない。
 
 ローカルcheckoutから`scripts/local-app/app.command` / `scripts/local-app/app.bat`で依存install、検証、package、開発版のinstall、起動まで行える。開発版は`MasterData [Dev]`、identifier `dev.kamahir0.masterdata.dev`、macOS `~/Applications/MasterData [Dev].app` / Windows LocalAppDataの固定先を使い、更新で別コピーを増やさない。通常版と設定・identityを分離する。`--no-launch`で起動を省略できる。checkoutのfetch / pullや実データ変更はしない。
 

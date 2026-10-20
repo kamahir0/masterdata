@@ -39,8 +39,7 @@ export interface LoadedProject {
   token: string;
   snapshot: Snapshot;
   saved: SavedFile[];
-  configText: string | null;
-  imported?: boolean;
+  configText: string;
 }
 export interface SaveRequest {
   token: string;

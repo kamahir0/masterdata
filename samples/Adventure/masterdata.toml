@@ -1,0 +1,18 @@
+name = "冒険の道具箱"
+
+[publish]
+csharp = "output/Generated"
+binary = "output/masterdata.bytes"
+
+[profiles.production]
+include = []
+exclude = [ "debug", "event" ]
+
+[profiles.development]
+include = []
+exclude = [ "event" ]
+
+[profiles.event]
+include = [ "common", "event" ]
+exclude = []
+

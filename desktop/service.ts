@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { stringify } from "yaml";
+import { projectFileName, writeConfig } from "./config";
 import { loadWorkspace, saveWorkspace, type Workspace } from "./files";
 import { buildWorkspace, publishBuild } from "./build";
 import {
@@ -49,7 +49,7 @@ export class ProjectService {
           `Adventure-${randomUUID().slice(0, 8)}`,
         );
         await fs.cp(source, destination, { recursive: true });
-        return this.open(destination);
+        return this.open(path.join(destination, projectFileName));
       }
       case "create": {
         this.idle();
@@ -68,10 +68,10 @@ export class ProjectService {
         await fs.mkdir(destination);
         await fs.mkdir(path.join(destination, "sources"));
         await fs.writeFile(
-          path.join(destination, "masterdata.yaml"),
-          stringify(defaultConfig(folderName)),
+          path.join(destination, projectFileName),
+          writeConfig(defaultConfig(folderName)),
         );
-        return this.open(destination);
+        return this.open(path.join(destination, projectFileName));
       }
       case "save": {
         if (this.writing) throw new Error("保存処理中です。");

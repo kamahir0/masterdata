@@ -1,11 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
-import { parse, stringify } from "yaml";
-import { parse as parseToml } from "smol-toml";
+import { projectFileName, readConfig, writeConfig } from "./config";
 import { parseSource } from "../src/core/yaml";
 import {
-  defaultConfig,
   type Config,
   type LoadedProject,
   type SaveRequest,
@@ -18,7 +16,7 @@ export interface Workspace {
   root: string;
   token: string;
   baseline: SavedFile[];
-  configText: string | null;
+  configText: string;
   folders: string[];
 }
 const safeName = (name: string) =>
@@ -49,45 +47,29 @@ export async function optionalRead(file: string) {
     throw error;
   }
 }
-export function normalizeConfig(data: any): Config {
-  const config = defaultConfig(
-    data?.name ?? data?.project?.name ?? "MasterData",
-  );
-  const profiles = data?.profiles ?? data?.build?.profiles;
-  if (profiles && typeof profiles === "object")
-    config.profiles = Object.fromEntries(
-      Object.entries(profiles).map(([key, v]: any) => [
-        key,
-        {
-          include: v.include ?? v.include_tags ?? [],
-          exclude: v.exclude ?? v.exclude_tags ?? [],
-        },
-      ]),
-    );
-  if (data?.publish?.csharp !== undefined) config.publish = data.publish;
-  if (Array.isArray(data?.publish?.targets))
-    for (const target of data.publish.targets)
-      if (target.kind === "csharp" || target.kind === "binary")
-        config.publish[target.kind as "csharp" | "binary"] = target.path;
-  return config;
-}
 export async function loadWorkspace(
   input: string,
 ): Promise<{ workspace: Workspace; project: LoadedProject }> {
-  let root = (await fs.stat(input)).isDirectory() ? input : path.dirname(input);
-  root = await fs.realpath(root);
-  const configText = await optionalRead(path.join(root, "masterdata.yaml"));
-  const legacy =
-    configText === null
-      ? await optionalRead(path.join(root, "masterdata.toml"))
-      : null;
-  if (configText === null && legacy === null)
-    throw new Error(
-      "masterdata.yaml または masterdata.toml があるフォルダを選択してください。",
+  let root: string;
+  let configText: string;
+  let config: Config;
+  try {
+    if (
+      path.basename(input) !== projectFileName ||
+      !(await fs.lstat(input)).isFile()
+    )
+      throw new Error(`${projectFileName} ファイルを選択してください。`);
+    root = await fs.realpath(path.dirname(input));
+    configText = await fs.readFile(
+      await safePath(root, projectFileName),
+      "utf8",
     );
-  const config = normalizeConfig(
-    configText !== null ? parse(configText) : parseToml(legacy!),
-  );
+    config = readConfig(configText);
+  } catch (error) {
+    throw new Error(
+      `プロジェクトを開けません: ${input}\n${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const sources: LoadedProject["snapshot"]["sources"] = [];
   const saved: SavedFile[] = [];
   const folders: string[] = [];
@@ -149,7 +131,6 @@ export async function loadWorkspace(
       snapshot: { config, sources, folders },
       saved,
       configText,
-      imported: configText === null,
     },
   };
 }
@@ -182,8 +163,8 @@ export async function saveWorkspace(
       );
     changes.push({ file, before, after });
   }
-  const configText = stringify(request.config, { lineWidth: 0 });
-  const configFile = await safePath(workspace.root, "masterdata.yaml");
+  const configText = writeConfig(request.config, workspace.configText);
+  const configFile = await safePath(workspace.root, projectFileName);
   if (configText !== workspace.configText) {
     if ((await optionalRead(configFile)) !== workspace.configText)
       throw new Error("プロジェクト設定が外部で変更されています。");

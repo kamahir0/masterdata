@@ -152,7 +152,10 @@ mod tests {
         let exe = std::env::var("MASTERDATA_HOST_TEST").unwrap();
         let bridge = Bridge::start(Path::new(&exe)).unwrap();
         let result = bridge
-            .request("open", json!([[temp.path()], []]).to_string())
+            .request(
+                "open",
+                json!([[temp.path().join("masterdata.toml")], []]).to_string(),
+            )
             .unwrap();
         let loaded: Value = serde_json::from_str(&result).unwrap();
         assert!(loaded[1]

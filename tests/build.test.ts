@@ -35,7 +35,9 @@ records:
   - {groupId: 1, locale: en, parentGroup: 1, parentLocale: ja}
 `,
       );
-      const { workspace, project } = await loadWorkspace(root);
+      const { workspace, project } = await loadWorkspace(
+        path.join(root, "masterdata.toml"),
+      );
       const result = await buildWorkspace(workspace, project.snapshot, "", 7);
       assert(
         result.log.includes(

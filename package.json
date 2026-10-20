@@ -9,6 +9,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "cli": "tsx cli/main.ts",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
     "build": "npm run check && vite build && npm run prepare:host",

@@ -31,6 +31,15 @@ npm start
 - Publishは設定した出力先へ、成功した成果物を配置します。Unityの起動や動作確認は別です。
 - 保存時の外部変更を検出した場合は上書きを中止し、入力を保持します。保存backupはProjectの`.masterdata/transactions/`に残ります。
 
+## CLIで操作する
+
+AIエージェントや自動化スクリプトからは、`npm run cli -- <command>`（または `npx tsx cli/main.ts <command>`）で同じプロジェクト設定（`masterdata.toml`）・YAMLデータ構造・診断・Build / Publishを扱えます。仕様は[CLI Authoring and Automation](docs/specs/cli.md)を参照してください。
+
+```sh
+npm run cli -- inspect --project samples/Adventure/masterdata.toml
+npm run cli -- validate --project samples/Adventure/masterdata.toml
+```
+
 ## 開発・検証
 
 ```sh

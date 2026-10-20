@@ -69,7 +69,7 @@ export function writeConfig(config: Config, before?: string): string {
           { ...(previous.profiles as any)?.[name], ...value },
         ]),
       ),
-    }) + "\n";
+    });
   readConfig(output);
   return output;
 }

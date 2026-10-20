@@ -15,4 +15,3 @@ exclude = [ "event" ]
 [profiles.event]
 include = [ "common", "event" ]
 exclude = []
-

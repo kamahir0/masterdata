@@ -1,6 +1,6 @@
 # 表の追加先規則・tab退出・標準context menu
 
-Status: Approved
+Status: Applied
 
 Approval mode: Agent-autonomous
 

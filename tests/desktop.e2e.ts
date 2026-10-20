@@ -2699,13 +2699,18 @@ test("rightmost tab exit remains visibly present without relying on a following 
   await page.locator('.file-tab[aria-selected="true"]').dblclick();
   for (const name of ["rarity", "announcement"]) {
     const tab = page.getByRole("tab", { name, exact: true });
+    await expect(
+      tab.locator('xpath=ancestor::*[contains(@class,"file-tab-slot")][1]'),
+    ).toHaveCSS("opacity", "1");
     await tab.evaluate((element) => {
       const slot = element.closest<HTMLElement>(".file-tab-slot")!;
+      (window as any).__exitInitialWidth = slot.getBoundingClientRect().width;
       (window as any).__exitBackground =
         getComputedStyle(element).backgroundColor;
       (window as any).__exitFrames = new Promise((resolve) => {
         const frames: any[] = [];
         let exitingAt = 0;
+        let held = false;
         const start = performance.now();
         const sample = () => {
           if (!slot.isConnected || performance.now() - start > 1500)
@@ -2719,6 +2724,13 @@ test("rightmost tab exit remains visibly present without relying on a following 
               background: getComputedStyle(element).backgroundColor,
               time: performance.now() - exitingAt,
             });
+            if (!held) {
+              held = true;
+              // Simulate an expensive editor commit after close. Both animated
+              // properties must still share the browser's timeline.
+              const until = performance.now() + 150;
+              while (performance.now() < until) {}
+            }
           }
           requestAnimationFrame(sample);
         };
@@ -2741,12 +2753,18 @@ test("rightmost tab exit remains visibly present without relying on a following 
       test.info().outputPath(`tab-${name}-exit.json`),
       JSON.stringify(frames),
     );
+    const initialWidth = await page.evaluate(
+      () => (window as any).__exitInitialWidth as number,
+    );
     // Main-thread sampling can skip frames while the compositor keeps fading.
     // Observe a coupled intermediate state and time, not a fixed frame count.
     expect(
-      frames.some((f) =>
-        f.width > 5 && f.width < frames[0].width - 1 &&
-        f.opacity > 0.01 && f.opacity < 0.99,
+      frames.some(
+        (f) =>
+          f.width > 5 &&
+          f.width < initialWidth - 1 &&
+          f.opacity > 0.01 &&
+          f.opacity < 0.99,
       ),
     ).toBe(true);
     expect(frames.at(-1)!.time).toBeGreaterThan(100);

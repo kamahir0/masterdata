@@ -7,7 +7,13 @@ import {
 import { Button, Tooltip } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 import type { Source } from "../core/types";
-import { AnimatePresence, motion, useIsPresent } from "motion/react";
+import {
+  AnimatePresence,
+  motion,
+  usePresence,
+  useAnimationControls,
+  useReducedMotion,
+} from "motion/react";
 import { resultTransition } from "./motion";
 import { FileContextMenu, type FileOperations } from "./file-context-menu";
 import { SourceIcon } from "./explorer";
@@ -165,29 +171,71 @@ function TabSlot({
   reduced: boolean;
   selected: boolean;
 }) {
-  const present = useIsPresent();
+  const [present, safeToRemove] = usePresence();
+  const controls = useAnimationControls();
+  const systemReduced = useReducedMotion();
+  const noMotion = reduced || !!systemReduced;
+  const node = useRef<HTMLDivElement>(null);
+  const remove = useRef(safeToRemove);
+  remove.current = safeToRemove;
+  useLayoutEffect(() => {
+    const slot = node.current;
+    if (!slot) return;
+    if (present) {
+      void controls.start({
+        width: "auto",
+        opacity: 1,
+        transition: {
+          ...resultTransition,
+          duration: noMotion ? 0 : 0.2,
+        },
+      });
+      return () => controls.stop();
+    }
+    controls.stop();
+    if (noMotion) {
+      remove.current?.();
+      return;
+    }
+    // Auto-width measurement and compositor opacity used separate clocks.
+    // One native animation keeps the departing tab visible while its space
+    // collapses, even when the newly selected editor occupies the main thread.
+    const animation = slot.animate(
+      [
+        {
+          width: `${slot.getBoundingClientRect().width}px`,
+          opacity: getComputedStyle(slot).opacity,
+        },
+        { width: "0px", opacity: 0 },
+      ],
+      { duration: 280, easing: "cubic-bezier(.4,0,.2,1)", fill: "both" },
+    );
+    let active = true;
+    void animation.finished.then(
+      () => {
+        if (active) remove.current?.();
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+      const width = slot.getBoundingClientRect().width;
+      const opacity = Number(getComputedStyle(slot).opacity);
+      animation.cancel();
+      // A re-open continues from the visible exit state instead of flashing
+      // back to the old natural width. Unmount also cancels the owned effect.
+      if (slot.isConnected) controls.set({ width, opacity });
+    };
+  }, [present, noMotion, controls]);
   return (
     <motion.div
+      ref={node}
       className="file-tab-slot"
       data-exiting-active={!present && selected ? "true" : undefined}
       inert={!present}
       aria-hidden={!present || undefined}
-      initial={reduced ? false : { width: 0, opacity: 0 }}
-      animate={{ width: "auto", opacity: 1 }}
-      exit={{
-        width: 0,
-        opacity: 0,
-        transition: {
-          duration: reduced ? 0 : 0.28,
-          ease: [0.4, 0, 0.2, 1],
-          width: {
-            duration: reduced ? 0 : 0.22,
-            delay: reduced ? 0 : 0.06,
-            ease: [0.4, 0, 0.2, 1],
-          },
-        },
-      }}
-      transition={{ ...resultTransition, duration: reduced ? 0 : 0.2 }}
+      initial={noMotion ? false : { width: 0, opacity: 0 }}
+      animate={controls}
       onUpdate={present ? reveal : undefined}
     >
       {present

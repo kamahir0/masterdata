@@ -161,6 +161,7 @@ button:focus-visible,
   width: 0;
 }
 .explorer {
+  position: relative;
   width: 100%;
   min-width: 0;
   flex-shrink: 0;
@@ -1605,6 +1606,31 @@ button:focus-visible,
   border: 1px solid var(--accent);
   background: var(--surface);
   border-radius: 50%;
+}
+.explorer-drop-feedback {
+  position: absolute;
+  inset: auto 8px 8px;
+  z-index: 26;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.explorer-drop-feedback .ant-alert {
+  padding: 10px;
+  box-shadow: 0 4px 16px #0003;
+}
+.explorer-drop-feedback .ant-alert .ant-alert-icon {
+  font-size: 14px;
+  margin: 2px 8px 0 0;
+}
+.explorer-drop-feedback .ant-alert .ant-alert-title {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+.explorer-drop-feedback .ant-alert .ant-alert-description {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
 }
 .row-meta,
 .row-number {

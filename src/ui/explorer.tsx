@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Button, Dropdown, Empty, Input, Tree } from "antd";
+import { Alert, Button, Dropdown, Empty, Input, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
   FolderAddOutlined,
@@ -43,6 +43,7 @@ export function Explorer({
     ext: string;
   } | null>(null);
   const [height, setHeight] = useState(500);
+  const [dropProblem, setDropProblem] = useState<string>();
   const container = useRef<HTMLDivElement>(null);
   const treeRef = useRef<any>(null);
   const dropTarget = useRef<{
@@ -50,6 +51,7 @@ export function Explorer({
     row?: HTMLElement;
     inside: boolean;
     valid: boolean;
+    reason?: string;
   } | null>(null);
   const dragSource = useRef("");
   const dropLine = useRef<HTMLDivElement>(null);
@@ -65,6 +67,7 @@ export function Explorer({
   };
   const clearDrop = () => {
     clearDropVisual();
+    setDropProblem(undefined);
     if (hover.current) clearTimeout(hover.current.timer);
     hover.current = null;
   };
@@ -125,14 +128,20 @@ export function Explorer({
     const destination = [folder, from.split("/").at(-1)]
       .filter(Boolean)
       .join("/");
-    const valid =
-      folder !== from &&
-      !folder.startsWith(`${from}/`) &&
-      (destination === from ||
-        (!allPaths.sources.has(destination) &&
-          !allPaths.folders.has(destination)));
+    const name = from.split("/").at(-1)!;
+    const reason =
+      folder === from || folder.startsWith(`${from}/`)
+        ? `「${name}」自身や、その配下のフォルダへは移動できません。別のフォルダを選んでください。`
+        : destination !== from &&
+            (allPaths.sources.has(destination) || allPaths.folders.has(destination))
+          ? `「${name}」が移動先「${folder || "ルートフォルダ"}」に既にあります。名前を変更するか、別のフォルダを選んでください。`
+          : undefined;
+    const valid = !reason;
     clearDropVisual();
-    dropTarget.current = { folder, row, inside, valid };
+    dropTarget.current = { folder, row, inside, valid, reason };
+    // The OS may suppress drop entirely for a forbidden cursor. Explain the
+    // same decision during hover, not only in a drop handler the user may never reach.
+    setDropProblem(reason);
     event.dataTransfer.dropEffect = valid ? "move" : "none";
     if (valid && !row)
       container.current?.closest("aside")?.classList.add("root-drop-target");
@@ -170,7 +179,10 @@ export function Explorer({
       from = dragSource.current;
     clearDrop();
     dragSource.current = "";
-    if (!target?.valid) return;
+    if (!target?.valid) {
+      if (target?.reason) fail(new Error(target.reason));
+      return;
+    }
     const destination = [target.folder, from.split("/").at(-1)]
       .filter(Boolean)
       .join("/");
@@ -191,6 +203,7 @@ export function Explorer({
   const dragProps = (path: string) => ({
     draggable: true,
     onDragStart: (event: React.DragEvent) => {
+      clearDrop();
       dragSource.current = path;
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("application/x-masterdata-source", path);
@@ -635,6 +648,18 @@ export function Explorer({
           </Empty>
         )}
       </div>
+      {dropProblem && (
+        <div className="explorer-drop-feedback">
+          <Alert
+            role="status"
+            aria-live="polite"
+            type="warning"
+            showIcon
+            title="移動できません"
+            description={dropProblem}
+          />
+        </div>
+      )}
     </aside>
   );
 }

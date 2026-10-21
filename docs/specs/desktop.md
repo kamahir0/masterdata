@@ -1,11 +1,11 @@
 # Desktop Authoring
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [Explorerの移動拒否理由](../spec-changes/0014-explorer-drop-reasons.md)、[Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -129,7 +129,7 @@ MasterRef・出力profile・副キーは共通の項目枠で編集する。head
 
 file tabとExplorerのfileは共通の名前変更・削除・パスをコピーを持つ。folderだけ作成を加える。renameはExplorerを表示し祖先を開いてinline入力へ移る。copyは現在のdraft pathに対応する絶対path（project root / sources以下）とする。保存・破棄を暗黙に行わず、変更は既存の可逆draft操作にする。
 
-Explorerのdrag先判定と表示を一致させる。folder中央はそのfolderをhighlightし、file / node間は親folderへの明瞭な挿入線、空白・見出しはsources rootへのExplorer全体のhighlightを示す。祖先への移動を許可し、自己・子孫・衝突は拒否する。同じ場所は変更なし。hover展開・取消・Undoを保持する。展開folderの下端から子孫へ細い階層線を描き、末端はnode側へ直角に折れてicon手前で止まる。triangle hover背景はtriangle付近に収め、resize境界はsticky headerより前に出す。
+Explorerのdrag先判定と表示を一致させる。folder中央はそのfolderをhighlightし、file / node間は親folderへの明瞭な挿入線、空白・見出しはsources rootへのExplorer全体のhighlightを示す。祖先への移動を許可し、自己・子孫・衝突は拒否する。拒否時はdrag中にExplorer内で理由を文字表示し、同名衝突なら名前・移動先と名前変更 / 別folder選択による対処を示す。判定は検索対象だけでなく全draftに行う。拒否のdrop eventが届いた場合も同じ理由を通知する。上書き・mergeは行わず、draft / Undo / diskを変更しない。feedbackはpointer / focusや行位置を変えず、許可先への切替・領域外・drag終了 / 取消で回収する。同じ場所は変更なし。hover展開・取消・Undoを保持する。展開folderの下端から子孫へ細い階層線を描き、末端はnode側へ直角に折れてicon手前で止まる。triangle hover背景はtriangle付近に収め、resize境界はsticky headerより前に出す。
 
 仮想表では削除によるscroll終端の自動補正でも可視行 / 列の退出と後続配置を連動させ、sticky列 / headerをsnapshotで覆わず、画面外の全件をmountしない。行操作・配布タグは左の固定領域に置く。固定領域のcontrol以外のclickで行全体を選択し、Ctrl / Cmdで追加解除、Shiftで範囲選択できる。indexは選択可能textにしない。入力・タグ・menu・drag・コピー・Deleteを保持する。
 

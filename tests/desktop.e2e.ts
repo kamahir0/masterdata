@@ -59,6 +59,15 @@ test.beforeEach(async ({ browser }, info) => {
         `kind: type\nname: Virtual${i}\ncustom:\n  fields: []\n`,
       );
   }
+  if (info.title.startsWith("hierarchy drop reasons")) {
+    for (const folder of ["incoming/clash-folder", "target/clash-folder"])
+      await fs.mkdir(path.join(root, "sources/types", folder), { recursive: true });
+    for (const [file, name] of [
+      ["sources/types/target/rarity.yaml", "TargetRarity"],
+      ["sources/types/target/other.yaml", "OtherType"],
+      ["sources/rarity.yaml", "RootRarity"],
+    ]) await fs.writeFile(path.join(root, file), `kind: type\nname: ${name}\ncustom:\n  fields: []\n`);
+  }
   if (info.title.startsWith("diagnostic")) {
     const file = path.join(root, "sources/announcements/announcement.yaml");
     const data = parse(await fs.readFile(file, "utf8"));
@@ -2533,6 +2542,115 @@ test("hierarchy drag accepts ancestors and root, shows file insertion lines and 
   expect(guide).toContain("linear-gradient");
   expect(await target.locator('xpath=ancestor::*[contains(@class,"ant-tree-treenode")][1]').evaluate(el => parseFloat(getComputedStyle(el, "::before").height))).toBe(28);
   await page.screenshot({ path: test.info().outputPath("explorer-hierarchy-guides.png") });
+});
+
+test("hierarchy drop reasons explain conflicts and descendants without changing drafts, and rename recovers", async () => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  const node = (value: string) => page.locator(`.tree-name[data-path="${value}"]`);
+  const feedback = page.locator(".explorer-drop-feedback");
+  const original = await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8");
+  const existing = await fs.readFile(path.join(root, "sources/types/target/rarity.yaml"), "utf8");
+  await node("types").click();
+  await node("types/target").click();
+  await node("types/incoming").click();
+  await page.getByRole("separator", { name: "エクスプローラーの幅", exact: true }).press("Home");
+  await expect.poll(() => page.locator(".tree-scroll").evaluate(el =>
+    el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length,
+  )).toBe(0);
+  const data = await page.evaluateHandle(() => new DataTransfer());
+  const start = async (from: string) => node(from).dispatchEvent("dragstart", { dataTransfer: data });
+  const over = async (target: ReturnType<typeof node>) => {
+    const box = (await target.boundingBox())!;
+    const args = { dataTransfer: data, clientX: box.x + 10, clientY: box.y + box.height / 2 };
+    await target.dispatchEvent("dragover", args);
+    return args;
+  };
+  await start("types/rarity.yaml");
+  const before = (await node("types/target").boundingBox())!.y;
+  const args = await over(node("types/target"));
+  await expect(feedback).toContainText("移動できません");
+  await expect(feedback.getByRole("status")).toHaveCount(1);
+  await expect(feedback.getByRole("alert")).toHaveCount(0);
+  await expect(feedback).toContainText("移動先「types/target」");
+  await expect(feedback).toContainText("「rarity.yaml」");
+  await expect(feedback).toContainText("名前を変更するか、別のフォルダ");
+  await expect(page.locator(".folder-drop-target")).toHaveCount(0);
+  expect((await node("types/target").boundingBox())!.y).toBe(before);
+  expect(await feedback.evaluate(el => getComputedStyle(el).pointerEvents)).toBe("none");
+  const noticeBox = (await feedback.boundingBox())!;
+  const explorerBox = (await page.locator(".explorer").boundingBox())!;
+  expect(noticeBox.x).toBeGreaterThanOrEqual(explorerBox.x);
+  expect(noticeBox.x + noticeBox.width).toBeLessThanOrEqual(explorerBox.x + explorerBox.width);
+  await page.screenshot({ path: test.info().outputPath("drop-conflict-dark.png") });
+  await node("types/target").dispatchEvent("drop", args);
+  await expect(feedback).toHaveCount(0);
+  await expect(page.locator(".ant-message-notice")).toContainText("「rarity.yaml」");
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();
+  expect(await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8")).toBe(original);
+  expect(await fs.readFile(path.join(root, "sources/types/target/rarity.yaml"), "utf8")).toBe(existing);
+
+  await start("types/rarity.yaml");
+  await over(page.locator(".explorer-heading"));
+  await expect(feedback).toContainText("移動先「ルートフォルダ」");
+  await over(node("types/target/other.yaml"));
+  await expect(feedback).toContainText("移動先「types/target」");
+  await over(node("types/incoming"));
+  await expect(feedback).toHaveCount(0);
+  await expect(page.locator(".folder-drop-target")).toHaveCount(1);
+  await over(node("types/target"));
+  await page.locator(".explorer").dispatchEvent("dragleave", { relatedTarget: null });
+  await expect(feedback).toHaveCount(0);
+  await over(node("types/target"));
+  await node("types/rarity.yaml").dispatchEvent("dragend", { dataTransfer: data });
+  await expect(feedback).toHaveCount(0);
+
+  await start("types/incoming/clash-folder");
+  await over(node("types/target"));
+  await expect(feedback).toContainText("「clash-folder」");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.screenshot({ path: test.info().outputPath("drop-conflict-light.png") });
+  await over(node("types/incoming/clash-folder"));
+  await expect(feedback).toContainText("自身や、その配下");
+  await node("types/incoming/clash-folder").dispatchEvent("dragend", { dataTransfer: data });
+  await start("types/incoming");
+  await over(node("types/incoming/clash-folder"));
+  await expect(feedback).toContainText("自身や、その配下");
+  await node("types/incoming").dispatchEvent("dragend", { dataTransfer: data });
+  await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();
+
+  await node("types/rarity.yaml").click();
+  await page.keyboard.press("F2");
+  const rename = page.getByRole("textbox", { name: "項目の名前", exact: true });
+  await rename.fill("rarity-moved");
+  await rename.press("Enter");
+  await node("types/rarity-moved.yaml").dragTo(node("types/target"));
+  await expect(node("types/target/rarity-moved.yaml")).toBeVisible();
+  await expect(feedback).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(node("types/rarity-moved.yaml")).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(node("types/rarity.yaml")).toBeVisible();
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+});
+
+test("hierarchy drop reasons appear during a native forbidden drag even without a drop event", async () => {
+  const node = (value: string) => page.locator(`.tree-name[data-path="${value}"]`);
+  await node("types").click();
+  await expect.poll(() => page.locator(".tree-scroll").evaluate(el =>
+    el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length,
+  )).toBe(0);
+  const source = (await node("types/rarity.yaml").boundingBox())!;
+  const target = (await node("types/target").boundingBox())!;
+  await page.mouse.move(source.x + 10, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 10, target.y + target.height / 2, { steps: 10 });
+  await page.mouse.move(target.x + 11, target.y + target.height / 2);
+  await expect(page.locator(".explorer-drop-feedback")).toContainText("移動先「types/target」");
+  await page.mouse.up();
+  await expect(node("types/rarity.yaml")).toBeVisible();
+  await expect(page.locator(".explorer-drop-feedback")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();
 });
 
 test("hierarchy guides end at direct children and follow moves, Undo, filtering and virtual reuse", async () => {

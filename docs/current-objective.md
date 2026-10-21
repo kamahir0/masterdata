@@ -6,7 +6,7 @@
 
 ## Completion boundary
 
-親子・兄弟関係による罫線描画、triangle / iconとの非重複、移動・Undo・検索・開閉・virtual scroll時の追従、Chromium / WebKitのfocused検証と実画面確認、self-review、通常commit / push、CI確認、開発版更新。CIを妨げる既存のhost初回buildの循環依存は、bundle済み入力なしでCLI / hostを生成できるよう最小限修正する。
+親子・兄弟関係による罫線描画、triangle / iconとの非重複、移動・Undo・検索・開閉・virtual scroll時の追従、Chromium / WebKitのfocused検証と実画面確認、self-review、通常commit / push、CI確認、開発版更新。CIを妨げる既存のhost初回buildの循環依存とWindows Publishのdrive prefix検査は、既存behaviorを満たす最小限のbug fixで解消する。
 
 ## Non-scope
 

@@ -691,6 +691,12 @@ fn check_no_symlinks_on_absolute(abs: &Path) -> Result<(), String> {
     let mut cur = PathBuf::new();
     for comp in abs.components() {
         cur.push(comp);
+        // A Windows drive / UNC prefix alone is not a filesystem path (a
+        // canonical verbatim prefix can fail with ERROR_INVALID_FUNCTION).
+        // Inspect the volume after RootDir is appended, then each component.
+        if matches!(comp, std::path::Component::Prefix(_)) {
+            continue;
+        }
         match fs::symlink_metadata(&cur) {
             Ok(meta) => {
                 if meta.file_type().is_symlink() {
@@ -702,6 +708,32 @@ fn check_no_symlinks_on_absolute(abs: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod publish_path_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_destination_checks_existing_and_missing_ancestors() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        fs::write(root.join("existing.g.cs"), "// retained").unwrap();
+        // Windows canonicalization yields a verbatim drive prefix; traversing
+        // it must reach the rooted volume before inspecting its metadata.
+        check_no_symlinks_on_absolute(&root.join("existing.g.cs")).unwrap();
+        check_no_symlinks_on_absolute(&root.join("new/Generated/item.g.cs")).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_still_rejects_a_symlink_ancestor() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        fs::create_dir(root.join("real")).unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
+        assert!(check_no_symlinks_on_absolute(&root.join("link/item.g.cs")).is_err());
+    }
 }
 
 fn normalize_lexical(path: &Path) -> PathBuf {

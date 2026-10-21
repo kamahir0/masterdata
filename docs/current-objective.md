@@ -2,12 +2,12 @@
 
 ## Objective
 
-2026-10-21 Human requestに基づき、表の複数ファイル同時表示では新規レコードの追加先を選ばせず、単一ファイル表示にしてから追加する操作に整理する。右端・最後のfile tabでも退出を視認できるようにし、WebView標準のReload context menuを抑える。
+2026-10-21 Human requestに基づき、GUIとYAMLデータ構造・プロジェクト概念（`masterdata.toml`、`sources/`、`.masterdata/`）・検証・Build / Publishを共有するAIエージェントファーストのCLIを策定し、GUIの即時編集セッション（WebView内draft）の操作感を維持したまま、CLIバイナリ（`masterdata`）とネイティブバックエンドコアをRustで実装する。
 
 ## Completion boundary
 
-変更仕様の別pass review・承認、追加・複製・貼付けを含む追加先規則の統一、tab退出の実画面、custom context menuの維持、focused validation、実機確認、self-review、通常commit / push、3 OS CI、開発版更新。
+CLI仕様とRustコア採用の別pass review・承認、Rustコア（YAML AST / コメント / クオート / CRLF / 64bit整数 / 配列順保持、`masterdata.toml`、スキーマ・型・レコード操作、横断リネーム、トランザクション保存、.NET Build / Publish）およびRust製 `masterdata` CLI・Tauriインプロセスバックエンドの実装、focused validation、実機・代表作業確認、self-review、通常commit / push、CI確認。
 
 ## Non-scope
 
-データ / project形式、既存値の暗黙変更、保存規則・未保存保護、汎用text context menuの新設、公開release、Unity起動。
+GUIの日常セル入力・ドラッグ・Undo/RedoごとのIPC往復化、SQLクエリエンジンの同梱、旧YAMLプロジェクト設定の自動移行、公開release、Unity起動。

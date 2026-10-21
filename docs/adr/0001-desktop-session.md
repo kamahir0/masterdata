@@ -1,29 +1,29 @@
-# ADR-0001: GUIが編集sessionを所有する
+# ADR-0001: GUIが編集sessionを所有し、永続化・Build・CLIはRustコアで共有する
 
 Status: Accepted
 
-採用根拠: Desktop Authoringの別pass review後、2026-10-17のHuman委任に基づくAgent Decision。共有言語や旧application境界より、編集sessionと入力保持を優先する。
+採用根拠: Desktop Authoringの別pass review後、2026-10-17のHuman委任および2026-10-21のHumanによるRust採用決定に基づく。日常のGUI編集レスポンス（0ms同期更新・未完成入力保持）と、ネイティブ永続化・CLIの単一バイナリ実行を両立する。
 
 ## 問題
 
-旧プロジェクトでは一回の厳密なdomain commandとGUIの一操作を近づけたため、未完成の定義を作る途中にmodalや全体検証を要求し、エラー修正まで拒否しやすかった。frontendの見た目だけを変えても解消しない。
+旧プロジェクトでは一回の厳密なdomain commandとGUIの一操作を近づけたため、未完成の定義を作る途中にmodalや全体検証を要求し、エラー修正まで拒否しやすかった。frontendの見た目だけを変えても解消しない。一方、AIエージェントやCIが呼び出すCLIやファイル永続化・Build基盤にNode SEAサイドカーを要求すると、起動オーバーヘッドとバイナリ肥大化が生じる。
 
 ## Decision
 
-2026-10-18 Human requestによりdesktop shellをTauriへ移行する。TypeScript + React / Ant Designは維持する。rendererのimmutable Project draftが操作と履歴を所有する。意味検証はpureなmoduleとして分離し、backgroundで実行する。UIは同じ値入力componentを表・nestedで使い、native hostはopen / save / build / publishだけを提供する。
+2026-10-18 Human requestによりdesktop shellをTauriへ移行し、2026-10-21 Human decisionによりバックエンドコアとCLIにRustを採用する。TypeScript + React / Ant Designは維持し、rendererのimmutable Project draftがGUIの操作と履歴を所有する。意味検証はpureなmoduleとして分離し、GUIではbackgroundで即座に実行する。UIは同じ値入力componentを表・nestedで使い、TauriのRustバックエンドはopen / create / sample / save / build / publish / revealをインプロセスで提供する。
 
-保存済みbaseと編集historyを分ける。dataはメモリ内の値として変更し、YAMLへのpatch / serializationはSaveまたは明示text表示時に行う。これにより入力やfolder開閉でdisk / 全量parseを待たない。snapshotは変更していないsource / recordを共有し、履歴は有限にする。
+保存済みbaseと編集historyを分ける。GUIのdataはメモリ内の値として変更し、YAMLへのpatch / serializationはSaveまたは明示text表示時に行う。これにより入力やfolder開閉でdisk / 全量parseやIPC往復を待たない。snapshotは変更していないsource / recordを共有し、履歴は有限にする。
 
 型変更時に入力を保持するため、draftを「その型で常にvalidな値」だけに制限しない。shapeと意味の診断は編集の受付から分ける。保存時の競合検出と安全性、Build時の厳密検証はそれぞれの境界で行う。
 
-YAMLとMasterMemoryの利用目的は維持する。出力は.NETへ委譲し、既存backend全体を呼び出すCLI subprocessは作らない。Buildはデータのsnapshotを入力とし、GUI sessionの整合性や保存を強制しない。
+YAMLとMasterMemoryの利用目的は維持する。CLI（`masterdata`）とTauriネイティブバックエンドは `src-tauri` のRustコア（`masterdata.toml` 読書き、コメント・クオート・CRLF・64bit整数・配列順を保持するYAML AST処理、スキーマ・型・レコード操作、保存トランザクション、.NET / MasterMemoryによるC#・バイナリ生成とreload検証、Publish）を共有し、Node.jsランタイムやNode SEAサイドカーに依存しない。
 
 ## 比較した選択
 
-- 旧Rust applicationの再利用: 厳密なcommandとdraftの変換を再導入しやすく、今回の編集モデルから独立して導けないため採用しない。
-- Tauriへdomain modelも移す案: 採用しない。Tauri自体はRustへのmodel移植を要求しない。TSの編集modelは維持し、検証済みの保存transaction / .NET生成はNode SEAのstdio専用hostとして同梱する。Rustはwindow / menu / dialogと限定bridgeを担当する。最小Tauriよりサイズは増えるが、保存安全性と生成の不要な再実装を避ける。端末にNode.jsを要求せず、network listenerも設けない。旧Electron選定時の「Tauriならmodel複製が必要」という比較は撤回する。
+- GUIのセル入力ごとにRustへIPC往復する案: キー入力・ドラッグ並替え・UndoのたびにシリアライズとIPC待機が発生し、未完成入力の保持も複雑になるため採用しない。
+- Node SEAサイドカーの継続: CLIの単一バイナリ高速起動とDesktopバンドルの簡素化においてRust直接実装が優れるため退役させる。
 - 独自HTML UI: 統一された入力・keyboard・テーマ・motionを再実装するため採用しない。
 
 ## 根拠
 
-[Desktop Authoring](../specs/desktop.md)、HumanのGUI単独・標準部品・豊かなmotion・legacy2を参考に自律導出する指示。Tauriの[command境界](https://v2.tauri.app/develop/calling-rust/)、[WebView](https://v2.tauri.app/reference/webview-versions/)、Nodeの[SEA](https://nodejs.org/api/single-executable-applications.html)、Ant Designの[Table](https://ant.design/components/table/)と[theme / motion](https://ant.design/docs/react/customize-theme/)を確認した。
+[Desktop Authoring](../specs/desktop.md)、[CLI Authoring and Automation](../specs/cli.md)、2026-10-17〜2026-10-21のHuman指示。Tauriの[command境界](https://v2.tauri.app/develop/calling-rust/)、[WebView](https://v2.tauri.app/reference/webview-versions/)、Ant Designの[Table](https://ant.design/components/table/)と[theme / motion](https://ant.design/docs/react/customize-theme/)を確認した。

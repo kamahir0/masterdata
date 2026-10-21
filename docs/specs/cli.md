@@ -1,21 +1,24 @@
 # CLI Authoring and Automation
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
-Basis: 2026-10-20〜2026-10-21 HumanのCLI設計決定と仕様化・実装指示。別passでAIエージェントファーストの操作体系、順序・YAML AST・64bit整数・`$tags` 保持、一部破損・診断エラー時の通過と品質ゲートの境界、複数ファイル追加先と古いBuildのPublish防止をchallenge reviewし、Blockingなし。Human gate: None within delegated scope。
+Basis: 2026-10-20〜2026-10-21 HumanのCLI設計決定とRust採用指示。別passでAIエージェントファーストの操作体系、順序・YAML AST・64bit整数・`$tags` 保持、一部破損・診断エラー時の通過と品質ゲートの境界、複数ファイル追加先と古いBuildのPublish防止、RustネイティブCLIとGUIの責務境界をchallenge reviewし、Blockingなし。Human gate: None within delegated scope。
+
+Change provenance: [Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)。
 
 ## 根拠と範囲
 
 2026-10-20〜2026-10-21 Human requestに基づく、GUIとは別のCLIプロダクトの仕様。
 
 - **Human Decision / Requirement**:
-  - YAMLデータ構造、プロジェクト概念（`masterdata.toml`、`sources/`、`.masterdata/`）、診断・編集コア、Build / PublishをGUIと共有するCLIを提供する。
+  - YAMLデータ構造、プロジェクト概念（`masterdata.toml`、`sources/`、`.masterdata/`）、診断・編集コア、Build / PublishをGUIと共有するCLIをRustで提供する。
   - 主な使い手はAIエージェント（Claude Code等）およびCI / 自動化スクリプトとし、AIエージェントファーストで設計する。
   - `init`、`build`、`publish` に加え、レコード編集とスキーマ・型定義（テーブル、列、キー、参照、Enum / Flags / Custom / Value Object）の編集・リネーム・構造把握・検証を安全かつアトミックに行えるようにする。
   - GUIの表示順に直結する配列順（`fields`、`custom.fields`、`enum.members`、`flags.members`、`records`）やYAML AST（コメント・クオート・既存キー順・改行コード・64bit整数精度・`$tags`・未変更ファイル）を勝手にソート・破壊しない。
   - プロジェクトに一部破損や診断エラーがある場合の扱い：実行に支障がない調査・編集コマンドは通し、品質ゲート（`validate` / `build` / `publish`）および変更対象自体が構文破損している場合のみエラーとして止める。
 - **Agent Decision**:
+  - GUIの0ms即時編集レスポンスを守るためWebView内のインメモリdraftセッションは維持しつつ、CLI実行バイナリ（`masterdata`）とDesktopのネイティブバックエンド（永続化・検証・Build / Publish）を `src-tauri` のRustコアで共有実装する。
   - SQLの更新文（`UPDATE` / `INSERT` / `ALTER`）は多段ネスト構造・`Flags`・`$tags`・分離データファイル・YAMLコメント保持と衝突するため採用せず、AIエージェントの直接YAML編集を補助するコマンド（`inspect` / `validate` / `rename` / `fix`）と、構造化編集コマンド（`config` / `table` / `type` / `record`）および一括トランザクション（`tx`）で構成する。
   - 条件絞り込みはシェルのエスケープ負荷が低い `--pk` とドットパス対応の `--where`（およびJSON指定）を採用する。
   - 複数ソースを持つテーブルへのレコード追加は、[Desktop Authoring UI-004](desktop.md#ui-004--対象の境界と直接操作) と同じく追加先ファイル（`--source`）の明示を必須とし、暗黙の推測追加を行わない。
@@ -27,7 +30,7 @@ GUI固有の画面状態・タブ・アニメーション、SQLクエリエン�
 
 ## CLI-001 — プロジェクト解決と共通入出力
 
-- コマンド入口は `masterdata <subcommand>` とする。
+- コマンド入口はRust製の単一ネイティブバイナリ `masterdata <subcommand>` とし、実行時にNode.jsランタイムを要求しない。
 - `--project <path>` で `masterdata.toml` ファイルまたはその親フォルダを指定できる。省略時はカレントディレクトリから親方向へ `masterdata.toml` を探索する。`masterdata.toml` 以外の任意のTOML / YAMLファイルが指定された場合は拒否する。
 - `masterdata init [dir] [--name <name>]` は対象フォルダに `masterdata.toml` と `sources/` を作成する。既存の `masterdata.toml` がある場合は上書きせず失敗する。
 - 全サブコマンドは `--json` を受け付け、成功・失敗・変更ファイル・診断件数を機械可読なJSONで出力する。`long` / `ulong` の64bit整数（`BigInt`）は精度を失わずにシリアライズ・パースする。

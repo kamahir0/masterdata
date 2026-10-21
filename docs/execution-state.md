@@ -1,17 +1,20 @@
 # Development State
 
-Stage: verification-ready
-Candidate: b7b47a51d70dca007cd975fbc747448236ba72ba
+Stage: objective-complete
+Candidate: 2b79a8dc4ab67a2c5fe83fa80d4662ab6bb52611
 Work base: 3b91861348b8ba42dc07987038fcbaf6a8f5f691
 
 ## Active work
 
-Completed: 既存Approved罫線behaviorのbug fix。直下の子と子孫を区別し、virtual tree nodeの宣言的styleとして描画する。三角・iconとの重複も解消。
-Completed: Chromium / WebKitのExplorer focused 14ケース、モデル / 保存42件、TypeScript / build、画面確認、self-review（Blockingなし）、workspace / whitespace check。
-Completed: Dev更新、macOSのsample copyで深い階層の開閉と罫線を実操作確認。確認用app（PID 47378）は通常終了・process終了確認済み。
-Completed: 既存CIのCLI / host初回buildの循環依存を修正。同梱host / licenseを退避した状態で42件とhost生成が成功。GUI bundle設定は維持する。
-Completed: Windows CIで見つかったPublishのdrive prefix単独検査を修正。canonical destinationとsymlink拒否のnative回帰、42件とnative bridge回帰が成功。再表示された確認用app（PID 48499）も通常終了・process終了確認済み。
-Remaining: 修正後CandidateのGit delivery、CI、最終Dev更新。
+None.
+
+## Evidence
+
+- Candidateの[3 OS CI](https://github.com/kamahir0/masterdata/actions/runs/39625968134)成功。全UI回帰（macOS / Linux各126件、Windows63件）、モデル / CLI / 保存42件、native tests、build / 起動、macOS / Windows開発版installを確認。
+- Explorer focused 14ケースで深いネスト、triangle / iconとの非重複、drag move、Undo / Redo、検索、開閉、virtual scrollとrow再利用を検証し、light / darkの実画面を確認。fresh review: Blockingなし。
+- 同梱host / licenseなしでのCLI / host初回build、canonical Publish pathとsymlink拒否を検証。最終Candidateの既定MasterData [Dev]更新も成功。
+- macOS sample copyで深い階層の開閉と罫線を実操作。確認用app（PID 47378 / 48499）は通常終了し、process終了確認済み。
+- 手元の全UI検証では既存のproject-open cancelケースが一度timeout（125/126成功）。同じCandidateで当該ケースの再検証3回と3 OS CIの全suiteは成功。
 
 ## Blocking findings
 

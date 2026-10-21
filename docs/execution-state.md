@@ -10,7 +10,9 @@ Completed: 展開motionによる入力欄の再生成を回避し、inline編集
 
 Completed: Linux WebKitの既存階層線testの測定raceを修正。名前入力と階層線の両ケースをChromium / WebKit各3回、計12ケースで再検証し成功。
 
-Remaining: 新Candidateの3 OS CI確認。
+Completed: Linux WebKitの既存tab削除testの任意のpixel / alpha floorを除去し、実際の正の中間状態とdurationを検証。Chromium / WebKit各8回、計16ケース成功。
+
+Remaining: 新CandidateのCI確認。
 
 ## Evidence
 

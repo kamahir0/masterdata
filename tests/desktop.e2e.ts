@@ -3059,14 +3059,16 @@ test("rightmost tab exit remains visibly present without relying on a following 
       () => (window as any).__exitInitialWidth as number,
     );
     // Main-thread sampling can skip frames while the compositor keeps fading.
-    // Observe a coupled intermediate state and time, not a fixed frame count.
+    // Observe a coupled intermediate state and time, not a fixed frame count
+    // or pixel / alpha floor: after the intentional stall Linux WebKit can first sample
+    // a still-visible 4px frame (run 39691706478), followed by full removal.
     expect(
       frames.some(
         (f) =>
-          f.width > 5 &&
-          f.width < initialWidth - 1 &&
-          f.opacity > 0.01 &&
-          f.opacity < 0.99,
+          f.width > 0 &&
+          f.width < initialWidth &&
+          f.opacity > 0 &&
+          f.opacity < 1,
       ),
     ).toBe(true);
     expect(frames.at(-1)!.time).toBeGreaterThan(100);

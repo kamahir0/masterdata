@@ -435,6 +435,74 @@ test("folder creation, rename and deletion are inline, reversible, and saved", a
     ).isDirectory(),
   ).toBe(true);
 });
+test("hierarchy inline folder creation keeps focus through expansion and commits on outside click", async () => {
+  const name = page.getByRole("textbox", { name: "項目の名前", exact: true });
+  const node = (path: string) => page.locator(`.tree-name[data-path="${path}"]`);
+  const settleTree = () => expect.poll(() => page.locator(".tree-scroll").evaluate(
+    node => node.getAnimations({ subtree: true }).filter(a => a.playState === "running").length,
+  )).toBe(0);
+  const createIn = async (folder: string, value: string) => {
+    await expect(page.locator(".ant-tree-treenode-motion")).toHaveCount(0);
+    await settleTree();
+    await node(folder).click({ button: "right" });
+    await page.getByRole("menuitem", { name: /新しいフォルダ/ }).click();
+    await expect(name).toBeFocused();
+    await page.keyboard.type(value);
+    // A transient expansion row is replaced by the final virtual row. Focus
+    // must belong to the editor after that replacement as well as before it.
+    await expect(page.locator(".ant-tree-treenode-motion")).toHaveCount(0);
+    await settleTree();
+    await expect(name).toBeFocused();
+    await expect(name).toHaveValue(value);
+    await page.getByLabel("表・型を検索").click();
+    await expect(name).toHaveCount(0);
+    await expect(node(`${folder}/${value}`)).toBeVisible();
+    await expect(page.getByLabel("表・型を検索")).toBeFocused();
+  };
+  await node("types").click();
+  await createIn("types/outer", "created-child");
+  await createIn("types/outer/created-child", "created-grandchild");
+  const grandchildPath = "types/outer/created-child/created-grandchild";
+  const grandchild = node(grandchildPath);
+  await grandchild.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /名前を変更/ }).click();
+  await expect(name).toBeFocused();
+  await name.fill("cancelled");
+  await name.press("Escape");
+  await expect(name).toHaveCount(0);
+  await expect(grandchild).toBeVisible();
+  await grandchild.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
+  await expect(name).toBeFocused();
+  await page.keyboard.type("inside-enum");
+  await settleTree();
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue("inside-enum");
+  // A non-focusable outside surface must commit too, not just another input.
+  await page.locator(".explorer-heading > span").click();
+  await expect(name).toHaveCount(0);
+  const created = node(`${grandchildPath}/inside-enum.yaml`);
+  await expect(created).toBeVisible();
+  await created.click({ button: "right" });
+  await page.getByRole("menuitem", { name: /名前を変更/ }).click();
+  await expect(name).toBeFocused();
+  await name.fill("renamed-enum");
+  await page.getByLabel("表・型を検索").click();
+  await expect(name).toHaveCount(0);
+  await expect(node(`${grandchildPath}/renamed-enum.yaml`)).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(created).toBeVisible();
+  await grandchild.click();
+  await expect(created).toBeHidden();
+  await grandchild.click();
+  await expect(created).toBeVisible();
+  await saveAll();
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+  expect((await fs.stat(path.join(root, "sources", grandchildPath))).isDirectory()).toBe(true);
+  expect(await fs.readFile(path.join(root, "sources", grandchildPath, "inside-enum.yaml"), "utf8"))
+    .toContain("kind: type");
+  await page.screenshot({ path: test.info().outputPath("nested-folder-outside-commit.png") });
+});
 test("drag reorder retains visible rows and TSV paste is a single Undo", async () => {
   const handles = page.getByLabel("レコードを移動", { exact: true });
   await handles.first().dragTo(page.locator("[data-row-key]").nth(2));

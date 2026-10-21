@@ -1,6 +1,6 @@
 # Desktop Authoring
 
-Status: Implemented
+Status: Approved
 
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
@@ -57,7 +57,7 @@ source iconは表（grid）、分離data（record行）、Enum（単一候補）
 
 行・列・Custom field・Enum / Flags member・配列要素は、値・PK・現在indexから独立したsession内IDで識別する。同じ値の配列要素も区別し、値変更・並替え・Undo / Redoで入力対象を保つ。IDをYAMLへ追加しない。編集操作の結果から、作成対象の表示・選択・入力開始とfeedbackを共通して扱う。後続の操作・navigationは古いfocus要求を取り消し、固定frame数や表示indexの推測に依存しない。
 
-Explorerで新規作成するときは検索を解除し、全祖先と作成先folderを展開して新規nodeを表示・選択しrenameへfocusする。menu / rename操作でfolderを開閉しない。folder本体へのdropはそのfolder内へ移動し、folder全体をhighlightする。node間のgapは親folderへのdropとして線で示し、表示と移動先を一致させる。自己・子孫・path衝突への移動を実行前に防ぐ。
+Explorerで新規作成するときは検索を解除し、全祖先と作成先folderを展開して新規nodeを表示・選択しrenameへfocusする。menu / rename操作でfolderを開閉しない。作成 / rename入力は展開等の表示更新でfocusを失わず、外側clickによるblurまたはEnterで有効な名前を確定し、Escapeで今回の名前編集を取り消す。確定後は次操作先のfocusを取り戻さない。無効名は理由を通知し元のpathを保持する。folder本体へのdropはそのfolder内へ移動し、folder全体をhighlightする。node間のgapは親folderへのdropとして線で示し、表示と移動先を一致させる。自己・子孫・path衝突への移動を実行前に防ぐ。
 
 表headerにはPK、SK n（0始まりsecondary group）、Key n（MessagePack field key）を表示する。複合keyの順序、複数所属、secondaryの一意 / 重複可を確認できる。参照選択は実値を先、その後に弱い色 / 小さい文字の補助名を表示し、両方で検索できる。値の保存と参照先への移動は従来通りとする。
 

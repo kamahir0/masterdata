@@ -601,6 +601,10 @@ export function Explorer({
             blockNode
             showIcon
             virtual
+            // rc-tree reparents expansion rows when motion ends. An inline
+            // editor must live in the final row from the start: replacing a
+            // focused input drops focus without delivering its blur commit.
+            motion={renaming ? false : undefined}
             height={height}
             treeData={tree}
             selectedKeys={keys}

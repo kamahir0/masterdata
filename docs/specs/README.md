@@ -2,7 +2,7 @@
 
 | Canonical owner | Status | 範囲 |
 | --- | --- | --- |
-| [Desktop Authoring](desktop.md) | Implemented | 編集session、表・型・値、保存、Build / Publish、標準UIとmotion |
+| [Desktop Authoring](desktop.md) | Approved | 編集session、表・型・値、保存、Build / Publish、標準UIとmotion |
 | [CLI Authoring and Automation](cli.md) | Implemented | AI・自動化向けCLI、構造把握・検証、AST保持編集・横断rename・一括tx、Build / Publish |
 
 [Product Direction](../product/direction.md)は設計の出発点です。具体的な編集モデルと作業シナリオは、選択されたObjectiveで[Specification Workflow](../contributing/specification-workflow.md)に沿って整理します。

@@ -1,6 +1,6 @@
 # Explorerの名前入力と外側click確定
 
-Status: Approved
+Status: Applied
 
 Approval mode: Agent-autonomous
 

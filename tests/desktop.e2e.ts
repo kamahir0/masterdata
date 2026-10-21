@@ -44,6 +44,21 @@ test.beforeEach(async ({ browser }, info) => {
       { recursive: true },
     );
   }
+  if (info.title.startsWith("hierarchy guides")) {
+    await fs.writeFile(
+      path.join(root, "sources/types/outer/inner/deep-folder-with-a-very-long-name/leaf.yaml"),
+      "kind: type\nname: Leaf\ncustom:\n  fields: []\n",
+    );
+    await fs.writeFile(
+      path.join(root, "sources/types/outer/inner/z-last.yaml"),
+      "kind: type\nname: Last\ncustom:\n  fields: []\n",
+    );
+    for (let i = 0; i < 65; i++)
+      await fs.writeFile(
+        path.join(root, `sources/types/z-virtual-${String(i).padStart(2, "0")}.yaml`),
+        `kind: type\nname: Virtual${i}\ncustom:\n  fields: []\n`,
+      );
+  }
   if (info.title.startsWith("diagnostic")) {
     const file = path.join(root, "sources/announcements/announcement.yaml");
     const data = parse(await fs.readFile(file, "utf8"));
@@ -2518,6 +2533,96 @@ test("hierarchy drag accepts ancestors and root, shows file insertion lines and 
   expect(guide).toContain("linear-gradient");
   expect(await target.locator('xpath=ancestor::*[contains(@class,"ant-tree-treenode")][1]').evaluate(el => parseFloat(getComputedStyle(el, "::before").height))).toBe(28);
   await page.screenshot({ path: test.info().outputPath("explorer-hierarchy-guides.png") });
+});
+
+test("hierarchy guides end at direct children and follow moves, Undo, filtering and virtual reuse", async () => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  const node = (value: string) => page.locator(`.tree-name[data-path="${value}"]`);
+  const row = (value: string) => node(value).locator('xpath=ancestor::*[@role="treeitem"][1]');
+  const expand = async (value: string) => {
+    await expect(row(value)).toBeVisible();
+    if (await row(value).getAttribute("aria-expanded") === "false") await node(value).click();
+  };
+  const settled = async () => expect.poll(() => page.locator(".tree-scroll").evaluate(el =>
+    el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length,
+  )).toBe(0);
+  const deep = "types/outer/inner/deep-folder-with-a-very-long-name";
+  const segments = (value: string) => row(value).evaluate(el => {
+    const style = getComputedStyle(el, "::before");
+    if (style.backgroundImage === "none") return [];
+    const positions = style.backgroundPosition.split(",");
+    return style.backgroundSize.split(",").map((size, i) => {
+      const [x, y] = positions[i].trim().split(/\s+/).map(parseFloat);
+      const [width, height] = size.trim().split(/\s+/).map(parseFloat);
+      return { x, y, width, height };
+    });
+  });
+  const expectLeaf = async (value: string, depth: number, continuing: number[]) => {
+    await expect(node(value)).toBeVisible();
+    await expect.poll(() => segments(value)).toEqual([
+      ...continuing.map(x => ({ x, y: 0, width: 1, height: 28 })),
+      { x: (depth - 1) * 16 + 8, y: 0, width: 1, height: 14 },
+      { x: (depth - 1) * 16 + 8, y: 14, width: 21, height: 1 },
+    ]);
+    const guides = await segments(value);
+    const elbow = guides.at(-1)!;
+    const box = (await row(value).boundingBox())!;
+    const icon = (await row(value).locator(".ant-tree-iconEle").boundingBox())!;
+    expect(box.x + elbow.x + elbow.width).toBeLessThan(icon.x);
+  };
+  await node("types").click();
+  await node("types/outer").click();
+  await node("types/outer/inner").click();
+  await node(deep).click();
+  await expectLeaf(`${deep}/leaf.yaml`, 4, [8, 40]);
+  // The sole child folder ends its parent's branch at its own centre. Its
+  // descendants must not inherit a line from that finished branch.
+  await expect.poll(() => segments("types/outer/inner")).toEqual([
+    { x: 8, y: 0, width: 1, height: 28 },
+    { x: 24, y: 0, width: 1, height: 14 },
+    { x: 24, y: 14, width: 10, height: 1 },
+  ]);
+  const elbow = (await segments("types/outer/inner")).at(-1)!;
+  const innerBox = (await row("types/outer/inner").boundingBox())!;
+  const triangle = (await row("types/outer/inner").locator(".ant-tree-switcher .anticon").boundingBox())!;
+  expect(innerBox.x + elbow.x + elbow.width).toBeLessThan(triangle.x);
+  await settled();
+  await page.screenshot({ path: test.info().outputPath("guides-deep.png") });
+
+  await node(deep).dragTo(page.locator(".explorer-heading"));
+  const moved = "deep-folder-with-a-very-long-name";
+  await expect(node(moved)).toBeVisible();
+  expect(await segments(moved)).toEqual([]);
+  await expectLeaf(`${moved}/leaf.yaml`, 1, []);
+  await settled();
+  await page.screenshot({ path: test.info().outputPath("guides-moved.png") });
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expand(deep);
+  await expectLeaf(`${deep}/leaf.yaml`, 4, [8, 40]);
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expand(moved);
+  await expectLeaf(`${moved}/leaf.yaml`, 1, []);
+
+  await page.getByLabel("表・型を検索").fill("leaf");
+  await expectLeaf(`${moved}/leaf.yaml`, 1, []);
+  await page.getByLabel("表・型を検索").fill("");
+  // Row recycling must not leave the root leaf's old geometry on deep nodes
+  // or draw past the final child after scrolling back through a large folder.
+  const holder = page.locator(".ant-tree-list-holder");
+  await holder.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expectLeaf("types/z-virtual-64.yaml", 1, []);
+  await holder.evaluate(el => { el.scrollTop = 0; });
+  await expectLeaf(`${moved}/leaf.yaml`, 1, []);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expand(deep);
+  await expectLeaf(`${deep}/leaf.yaml`, 4, [8, 40]);
+  await node("types/outer/inner").click();
+  await expect(node(`${deep}/leaf.yaml`)).toHaveCount(0);
+  await node("types/outer/inner").click();
+  await expectLeaf(`${deep}/leaf.yaml`, 4, [8, 40]);
+  await page.emulateMedia({ colorScheme: "light" });
+  await settled();
+  await page.screenshot({ path: test.info().outputPath("guides-undo-light.png") });
 });
 
 test("large frozen row utilities select records and stay accessible at the horizontal end", async () => {

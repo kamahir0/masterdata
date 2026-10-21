@@ -1,6 +1,5 @@
 import React, {
   useEffect,
-  useLayoutEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -443,62 +442,46 @@ export function Explorer({
           ];
         });
     };
-    return build("");
-  }, [allPaths, search, renaming, snapshot, saved]);
-  const guides = useMemo(() => {
-    const visible: { path: string; ancestors: string[] }[] = [];
-    const open = new Set(
-      search ? [...allPaths.folders].map((p) => `folder:${p}`) : expanded,
-    );
-    const visit = (nodes: DataNode[], ancestors: string[] = []) =>
-      nodes.forEach((node) => {
-        const path = (node as any).path as string;
-        visible.push({ path, ancestors });
-        if (node.children && open.has(node.key))
-          visit(node.children, [...ancestors, path]);
-      });
-    visit(tree);
-    const last = new Map<string, string>();
-    visible.forEach(({ path, ancestors }) =>
-      ancestors.forEach((ancestor) => last.set(ancestor, path)),
-    );
-    return new Map(
-      visible.map(({ path, ancestors }) => {
+    // A parent's branch ends at its last direct child, not that child's last
+    // descendant. Carry only continuing sibling branches down the subtree.
+    // Keep these styles on the node data so virtual row reuse / moves update
+    // hierarchy and paint together, without a second DOM-observer lifecycle.
+    const withGuides = (
+      nodes: DataNode[],
+      continuing: boolean[] = [],
+      nested = false,
+    ): DataNode[] =>
+      nodes.map((node, index) => {
+        const more = index < nodes.length - 1;
         const layers: string[] = [];
-        ancestors.forEach((ancestor, i) => {
-          const end = last.get(ancestor) === path,
-            x = i * 16 + 8;
+        const line = (x: number, y: number, width: number, height: number) =>
           layers.push(
-            `linear-gradient(var(--tree-guide),var(--tree-guide)) ${x}px 0 / 1px ${end ? 14 : 28}px no-repeat`,
+            `linear-gradient(var(--tree-guide),var(--tree-guide)) ${x}px ${y}px / ${width}px ${height}px no-repeat`,
           );
-          if (end || i === ancestors.length - 1)
-            layers.push(
-              `linear-gradient(var(--tree-guide),var(--tree-guide)) ${x}px 14px / ${ancestors.length * 16 + 13 - x}px 1px no-repeat`,
-            );
+        continuing.forEach((visible, level) => {
+          if (visible) line(level * 16 + 8, 0, 1, 28);
         });
-        return [path, layers.join(",") || "none"];
-      }),
-    );
-  }, [tree, expanded, search]);
-  useLayoutEffect(() => {
-    const host = container.current;
-    if (!host) return;
-    const apply = () =>
-      host
-        .querySelectorAll<HTMLElement>(".ant-tree-treenode")
-        .forEach((row) => {
-          const path =
-            row.querySelector<HTMLElement>("[data-path]")?.dataset.path;
-          row.style.setProperty(
-            "--tree-guides",
-            guides.get(path ?? "") ?? "none",
-          );
-        });
-    apply();
-    const observer = new MutationObserver(apply);
-    observer.observe(host, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [guides]);
+        if (nested) {
+          const x = continuing.length * 16 + 8;
+          line(x, 0, 1, more ? 28 : 14);
+          // Folder elbows stop before the disclosure triangle; leaf elbows
+          // cross its empty switcher slot and stop before the file icon.
+          line(x, 14, node.isLeaf ? 21 : 10, 1);
+        }
+        return {
+          ...node,
+          style: {
+            "--tree-guides": layers.join(",") || "none",
+          } as React.CSSProperties,
+          children: node.children && withGuides(
+            node.children,
+            nested ? [...continuing, more] : [],
+            true,
+          ),
+        };
+      });
+    return withGuides(build(""));
+  }, [allPaths, search, renaming, snapshot, saved]);
   useEffect(() => {
     if (!active) return;
     const source = snapshot.sources.find((s) => s.id === active);

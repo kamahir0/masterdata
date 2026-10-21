@@ -2753,6 +2753,9 @@ test("hierarchy guides end at direct children and follow moves, Undo, filtering 
   });
   const expectLeaf = async (value: string, depth: number, continuing: number[]) => {
     await expect(node(value)).toBeVisible();
+    // Expansion copies can be visible before rc-tree replaces them. Measure
+    // the final virtual row, not an icon being detached between geometry reads.
+    await expect(page.locator(".ant-tree-treenode-motion")).toHaveCount(0);
     await expect.poll(() => segments(value)).toEqual([
       ...continuing.map(x => ({ x, y: 0, width: 1, height: 28 })),
       { x: (depth - 1) * 16 + 8, y: 0, width: 1, height: 14 },

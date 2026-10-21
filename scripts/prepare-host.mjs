@@ -31,6 +31,8 @@ if (rust.status !== 0) throw new Error("Rust toolchain is required.");
 const triple = rust.stdout.match(/^host: (.+)$/m)[1].trim();
 const ext = process.platform === "win32" ? ".exe" : "";
 
+// Bootstrap the host without asking tauri-build to copy the not-yet-built
+// host itself. The later GUI build retains its full bundle configuration.
 run("cargo", [
   "build",
   "--manifest-path",
@@ -38,7 +40,12 @@ run("cargo", [
   "--bin",
   "masterdata",
   "--locked",
-]);
+], {
+  env: {
+    ...process.env,
+    TAURI_CONFIG: JSON.stringify({ bundle: { externalBin: [], resources: [] } }),
+  },
+});
 
 const builtCli = join(root, "src-tauri/target/debug", `masterdata${ext}`);
 const binary = join(root, "src-tauri/binaries", `masterdata-host-${triple}${ext}`);

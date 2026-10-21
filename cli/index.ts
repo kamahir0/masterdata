@@ -31,6 +31,12 @@ export function ensureRustCliBinary(): string {
       cwd: repoRoot,
       encoding: "utf8",
       timeout: 300000,
+      // This CLI is also the bundled host. Its first build cannot require
+      // that host (or GUI-only resources) to have already been generated.
+      env: {
+        ...process.env,
+        TAURI_CONFIG: JSON.stringify({ bundle: { externalBin: [], resources: [] } }),
+      },
     },
   );
   if (build.error) throw build.error;

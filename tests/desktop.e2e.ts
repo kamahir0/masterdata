@@ -2640,14 +2640,22 @@ test("hierarchy drop reasons appear during a native forbidden drag even without 
   await expect.poll(() => page.locator(".tree-scroll").evaluate(el =>
     el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length,
   )).toBe(0);
-  const source = (await node("types/rarity.yaml").boundingBox())!;
-  const target = (await node("types/target").boundingBox())!;
-  await page.mouse.move(source.x + 10, source.y + source.height / 2);
+  // rc-tree can prepare its expansion after an empty getAnimations() result.
+  // Let locator actionability track the actual source / target positions;
+  // coordinates captured before that prepare phase can grab a different file.
+  await node("types/rarity.yaml").hover({ position: { x: 5, y: 10 } });
   await page.mouse.down();
-  await page.mouse.move(target.x + 10, target.y + target.height / 2, { steps: 10 });
-  await page.mouse.move(target.x + 11, target.y + target.height / 2);
-  await expect(page.locator(".explorer-drop-feedback")).toContainText("移動先「types/target」");
-  await page.mouse.up();
+  try {
+    // Cross the native drag threshold while still inside the source, rather
+    // than jumping straight out of it (WebKit can otherwise omit dragstart).
+    await node("types/rarity.yaml").hover({ position: { x: 13, y: 10 } });
+    await node("types/target").hover({ position: { x: 8, y: 10 } });
+    // WebKit requires a second move for dragover after the initial dragenter.
+    await node("types/target").hover({ position: { x: 9, y: 10 } });
+    await expect(page.locator(".explorer-drop-feedback")).toContainText("移動先「types/target」");
+  } finally {
+    await page.mouse.up();
+  }
   await expect(node("types/rarity.yaml")).toBeVisible();
   await expect(page.locator(".explorer-drop-feedback")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();

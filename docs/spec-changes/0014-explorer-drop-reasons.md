@@ -1,6 +1,6 @@
 # Explorerの移動拒否理由
 
-Status: Approved
+Status: Applied
 
 Approval mode: Agent-autonomous
 

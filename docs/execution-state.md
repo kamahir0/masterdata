@@ -1,15 +1,19 @@
 # Development State
 
-Stage: verification-ready
-Candidate: 07c2b99f0e66128e7e85429ebe735b574ad4b0db
+Stage: objective-complete
+Candidate: 32e88ae5a46f2e223257b8f30c9ae7880586f32d
 Work base: bbe80c9a577c05d34af963554033f36cce3fac42
 
 ## Active work
 
-Completed: 移動拒否理由の仕様整理・別pass review・自律承認、判定と文字feedbackの統一、data / Undo保持、取消時の回収。
-Completed: 最終Chromium / WebKit集中8ケース、実HTML dragの繰返し6ケース、モデル / 保存42件、TypeScript / build、狭いExplorerのdark / light feedback確認、self-review（Blockingなし）、workspace / whitespace check。
-Completed: Dev更新。macOS CIは129/130成功で、追加した実dragの固定座標が展開前の位置を使う問題を検出。locatorによる位置追従とsource内でのdrag開始・finallyでの終了に修正し、両engineで計8回の繰返し成功。アプリ本体は変更なし。
-Remaining: test修正後CandidateのGit deliveryとCI。
+None.
+
+## Evidence
+
+- Candidateの[3 OS CI](https://github.com/kamahir0/masterdata/actions/runs/39635875317)成功。全UI回帰、モデル / CLI / 保存42件、native tests、build / 起動、macOS / Windows開発版installを確認。
+- Chromium / WebKit集中8ケースでfile / folder衝突、root / gap、自己 / 子孫、許可先への切替・drag終了 / leave、既存内容とUndo不変、renameによる回復・移動Undoを検証。実HTML dragは位置追従・source内開始・finally終了を用い、両engineで計8回の繰返し成功。
+- 180pxのExplorerでdark / light feedbackを確認。判定と理由を一元化し、pointer / focus / 行位置を妨げない。仕様の別pass review・承認とfresh code reviewを完了し、Blockingなし。
+- 既定MasterData [Dev]を更新済み。07c2b99以降はtest / stateのみで、Candidateのアプリ本体は同一。workspace / whitespace checkも成功。
 
 ## Blocking findings
 

@@ -130,7 +130,7 @@ jobs:
           mkdir -p release-files
           cp artifacts/* release-files/ || true
           cd release-files
-          sha256sum * > SHA256SUMS.txt || true
+          sha256sum -- * > SHA256SUMS.txt || true
           cat SHA256SUMS.txt
 
       - name: Create or update draft release

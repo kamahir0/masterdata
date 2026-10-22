@@ -1,6 +1,11 @@
 import type { DesktopAPI, LoadedProject } from "../core/types";
 import { type Directory, permission } from "./filesystem";
 import { BrowserProject, RecoveryRequired, load, recover } from "./project";
+import {
+  clearRecentDirectory,
+  getRecentDirectory,
+  saveRecentDirectory,
+} from "./storage";
 
 declare global {
   interface Window {
@@ -29,6 +34,10 @@ interface Status {
   recovery?: RecoveryRequired;
   recoveryLive?: boolean;
   notice?: string;
+  recent?: {
+    name: string;
+    handle: Directory;
+  };
 }
 let status: Status = { busy: false };
 const listeners = new Set<() => void>();
@@ -119,14 +128,88 @@ export async function reauthorizeAccess() {
       );
     await permission(selected);
     if (recovery) recovery.root = selected;
-    if (project && (await project.root.isSameEntry(selected)))
+    if (project && (await project.root.isSameEntry(selected))) {
       project.root = selected;
+      await saveRecentDirectory(selected);
+    }
     return true;
+  });
+}
+export async function openRecent(): Promise<LoadedProject | null> {
+  if (status.busy) throw new Error("保存・復旧処理中です。");
+  const recent = status.recent;
+  if (!recent) return null;
+  const { handle } = recent;
+  const allowed = await handle
+    .requestPermission({ mode: "readwrite" })
+    .catch(() => "denied" as PermissionState);
+  if (allowed !== "granted") return null;
+
+  return perform(async (): Promise<LoadedProject | null> => {
+    try {
+      const value = await locked(() => load(handle));
+      project = new BrowserProject(handle, value);
+      await saveRecentDirectory(handle);
+      update({ recovery: undefined, notice: undefined, recent: undefined });
+      return value;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "NotFoundError" ||
+          error.message.includes("masterdata.toml がありません"))
+      ) {
+        await clearRecentDirectory();
+        update({ recent: undefined });
+      }
+      throw error;
+    }
   });
 }
 export const browser: DesktopAPI = {
   platform: "browser",
-  initial: async () => null,
+  initial: async () => {
+    if (!browserSupport()) return null;
+    const handle = await getRecentDirectory();
+    if (!handle) return null;
+    try {
+      const state = await handle.queryPermission({ mode: "readwrite" });
+      if (state === "granted") {
+        return await perform(async () => {
+          try {
+            const value = await locked(() => load(handle));
+            project = new BrowserProject(handle, value);
+            update({
+              recovery: undefined,
+              notice: undefined,
+              recent: undefined,
+            });
+            return value;
+          } catch (error) {
+            if (error instanceof RecoveryRequired) {
+              throw error;
+            }
+            if (
+              error instanceof Error &&
+              (error.name === "NotFoundError" ||
+                error.message.includes("masterdata.toml がありません"))
+            ) {
+              await clearRecentDirectory();
+            }
+            throw error;
+          }
+        });
+      } else {
+        update({ recent: { name: handle.name, handle } });
+        return null;
+      }
+    } catch (error) {
+      if (error instanceof RecoveryRequired) {
+        return null;
+      }
+      await clearRecentDirectory();
+      return null;
+    }
+  },
   open: async () => {
     if (!browserSupport())
       throw new Error(
@@ -149,7 +232,8 @@ export const browser: DesktopAPI = {
       }
       const value = await locked(() => load(root));
       project = new BrowserProject(root, value);
-      update({ recovery: undefined, notice: undefined });
+      await saveRecentDirectory(root);
+      update({ recovery: undefined, notice: undefined, recent: undefined });
       return value;
     });
   },

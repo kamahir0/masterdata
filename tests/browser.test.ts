@@ -10,6 +10,12 @@ import {
   inspect,
 } from "../src/browser/project";
 import { permission, type Directory } from "../src/browser/filesystem";
+import { browser, browserStatus, openRecent } from "../src/browser/runtime";
+import {
+  saveRecentDirectory,
+  getRecentDirectory,
+  clearRecentDirectory,
+} from "../src/browser/storage";
 import { parse } from "smol-toml";
 
 // Implements the File System Access contract (including create-before-stream,
@@ -398,5 +404,165 @@ test("browser refuses hidden draft paths that native discovery would ignore afte
     await assert.rejects(adapter.save(request()), /再オープンで読み込めない/);
     assert.deepEqual(disk.content(), before);
     assert(!disk.log.some((op) => /^(write|remove|mkdir):/.test(op)));
+  }
+});
+
+function setupMockBrowser() {
+  const stores = new Map<string, Map<string, any>>();
+  const origIndexedDB = (globalThis as any).indexedDB;
+  const origWindow = (globalThis as any).window;
+  const origFSFile = (globalThis as any).FileSystemFileHandle;
+  const origFSDir = (globalThis as any).FileSystemDirectoryHandle;
+
+  (globalThis as any).indexedDB = {
+    open: () => {
+      const req: any = {
+        result: {
+          objectStoreNames: { contains: (s: string) => stores.has(s) },
+          createObjectStore: (s: string) => stores.set(s, new Map()),
+        },
+      };
+      req.result.transaction = (s: string) => {
+        let store = stores.get(s);
+        if (!store) {
+          store = new Map();
+          stores.set(s, store);
+        }
+        const tx: any = {
+          objectStore: () => ({
+            put: (v: any, k: string) => store!.set(k, v),
+            get: (k: string) => {
+              const getReq: any = { result: store!.get(k) };
+              queueMicrotask(() => getReq.onsuccess?.({ target: getReq }));
+              return getReq;
+            },
+            delete: (k: string) => store!.delete(k),
+          }),
+        };
+        queueMicrotask(() => tx.oncomplete?.());
+        return tx;
+      };
+      queueMicrotask(() => {
+        req.onupgradeneeded?.();
+        req.onsuccess?.({ target: req });
+      });
+      return req;
+    },
+  };
+
+  (globalThis as any).FileSystemFileHandle = class {};
+  (globalThis as any).FileSystemFileHandle.prototype.createWritable = () => {};
+  (globalThis as any).FileSystemDirectoryHandle = class {};
+  (globalThis as any).FileSystemDirectoryHandle.prototype.queryPermission =
+    () => {};
+  (globalThis as any).FileSystemDirectoryHandle.prototype.requestPermission =
+    () => {};
+  (globalThis as any).FileSystemDirectoryHandle.prototype.values = () => {};
+
+  (globalThis as any).window = {
+    isSecureContext: true,
+    showDirectoryPicker: async () => {},
+  };
+  const origLocks = (navigator as any).locks;
+  Object.defineProperty(navigator, "locks", {
+    value: {
+      request: (_name: string, fn: () => any) => fn(),
+    },
+    configurable: true,
+    writable: true,
+  });
+
+  return () => {
+    (globalThis as any).indexedDB = origIndexedDB;
+    (globalThis as any).window = origWindow;
+    if (origLocks !== undefined) {
+      Object.defineProperty(navigator, "locks", {
+        value: origLocks,
+        configurable: true,
+        writable: true,
+      });
+    } else {
+      delete (navigator as any).locks;
+    }
+    (globalThis as any).FileSystemFileHandle = origFSFile;
+    (globalThis as any).FileSystemDirectoryHandle = origFSDir;
+  };
+}
+
+test("browser storage persists and retrieves recent directory handle via IndexedDB", async () => {
+  const restore = setupMockBrowser();
+  try {
+    const disk = new Disk();
+    const dir = disk.dir();
+    await saveRecentDirectory(dir);
+    const retrieved = await getRecentDirectory();
+    assert.equal(retrieved?.name, dir.name);
+
+    await clearRecentDirectory();
+    assert.equal(await getRecentDirectory(), null);
+  } finally {
+    restore();
+  }
+});
+
+test("browser initial automatically restores project when permission is granted", async () => {
+  const restore = setupMockBrowser();
+  try {
+    const disk = new Disk();
+    disk.grant = "granted";
+    await saveRecentDirectory(disk.root);
+
+    const project = await browser.initial();
+    assert.ok(project);
+    assert.equal(project.root, "Project");
+    assert.equal(browserStatus.get().recent, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("browser initial prompts via status when permission is not granted, and openRecent requests it", async () => {
+  const restore = setupMockBrowser();
+  try {
+    const disk = new Disk();
+    disk.grant = "prompt";
+    await saveRecentDirectory(disk.root);
+
+    // Initial returns null but registers recent in browserStatus
+    const initialResult = await browser.initial();
+    assert.equal(initialResult, null);
+    const recent = browserStatus.get().recent;
+    assert.ok(recent);
+    assert.equal(recent.name, "Project");
+
+    // Calling openRecent with denied permission returns null
+    disk.grant = "denied";
+    const deniedResult = await openRecent();
+    assert.equal(deniedResult, null);
+
+    // Calling openRecent with granted permission loads the project
+    disk.grant = "granted";
+    const loadedResult = await openRecent();
+    assert.ok(loadedResult);
+    assert.equal(loadedResult.root, "Project");
+    assert.equal(browserStatus.get().recent, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("browser initial clears stored handle if folder is missing masterdata.toml", async () => {
+  const restore = setupMockBrowser();
+  try {
+    const disk = new Disk();
+    disk.files.delete("masterdata.toml");
+    disk.grant = "granted";
+    await saveRecentDirectory(disk.root);
+
+    const result = await browser.initial();
+    assert.equal(result, null);
+    assert.equal(await getRecentDirectory(), null);
+  } finally {
+    restore();
   }
 });

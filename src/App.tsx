@@ -85,6 +85,8 @@ import {
   isBrowser,
   browserSupport,
   reauthorizeAccess,
+  browserStatus,
+  openRecent,
 } from "./browser/runtime";
 import { BrowserRecovery } from "./browser/recovery";
 import appIcon from "../assets/icon.svg";
@@ -153,6 +155,10 @@ function Workspace({
   setPreferences: React.Dispatch<React.SetStateAction<EditorPreferences>>;
 }) {
   const browser = isBrowser();
+  const browserRunStatus = useSyncExternalStore(
+    browserStatus.subscribe,
+    browserStatus.get,
+  );
   const reduced = preferences.reduced;
   const setReduced = (reduced: boolean) =>
     setPreferences((old) => ({ ...old, reduced }));
@@ -178,6 +184,7 @@ function Workspace({
   const [saving, setSaving] = useState(false);
   const savingRequest = useRef<Promise<void> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialChecking, setInitialChecking] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("新しいプロジェクト");
   const [profile, setProfile] = useState("");
@@ -332,7 +339,11 @@ function Workspace({
     } else setActive("");
   };
   useEffect(() => {
-    window.desktop?.initial().then(load).catch(fail);
+    window.desktop
+      ?.initial()
+      .then(load)
+      .catch(fail)
+      .finally(() => setInitialChecking(false));
   }, []);
   async function save(scope: boolean | string = false, report = true) {
     // A queued Save All (including close confirmation) must observe the first
@@ -1059,6 +1070,18 @@ function Workspace({
             </Space>
           </footer>
         </>
+      ) : initialChecking ? (
+        <div
+          className="welcome"
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100%",
+          }}
+        >
+          <Spin size="large" />
+        </div>
       ) : (
         <div className="welcome">
           <motion.div
@@ -1073,15 +1096,37 @@ function Workspace({
               <br />
               プロジェクトを開くか、新規作成して編集を開始します。
             </Typography.Paragraph>
-            <Space size="middle">
+            <Space size="middle" wrap>
+              {browser && browserRunStatus.recent && (
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<FolderOpenOutlined />}
+                  onClick={async () => {
+                    try {
+                      const proj = await openRecent();
+                      if (proj) load(proj);
+                    } catch (e) {
+                      fail(e);
+                    }
+                  }}
+                  disabled={!browserSupport()}
+                >
+                  前回のプロジェクトを開く（{browserRunStatus.recent.name}）
+                </Button>
+              )}
               <Button
-                type="primary"
+                type={
+                  browser && browserRunStatus.recent ? "default" : "primary"
+                }
                 size="large"
                 icon={<FolderOpenOutlined />}
                 onClick={open}
                 disabled={browser && !browserSupport()}
               >
-                プロジェクトを開く
+                {browser && browserRunStatus.recent
+                  ? "別のプロジェクトを開く"
+                  : "プロジェクトを開く"}
               </Button>
               {!browser && (
                 <Button

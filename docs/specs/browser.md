@@ -50,7 +50,7 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 ## WEB-005 — 権限、タブ終了、Project再開
 
 - フォルダへのアクセスはユーザーが選択・許可した範囲に限定する。権限要求と再要求はブラウザのユーザー操作要件に従う。許可を失っても編集中のdraftを黙って破棄しない。保存方法menuと復旧dialogの「フォルダのアクセスを再許可」でpickerを開き、元と同じfolderかhandle identityを検査してhandleだけを更新する。取消・別folder・拒否は入力 / Undo / 保存基準を保持する。再許可でload / 保存を暗黙実行せず、次の明示保存・復旧は通常の競合検査を通す。根拠と承認: [フォルダ再許可](../spec-changes/0017-browser-reauthorization.md)。
-- フォルダハンドルを保存して次回の再選択を軽減してよいが、**ハンドルの保持と権限の永続性を同一視しない**。再開時はアクセスを検査し、必要ならユーザーに許可・選択を求める。保存できたハンドルを根拠に自動書込みしない。初期版では直近Project内容そのものをIndexedDB等に永続化しない。
+- フォルダハンドルを保存して次回の再選択を軽減してよいが、**ハンドルの保持と権限の永続性を同一視しない**。プロジェクトのオープン・再開成功時にルートのDirectoryHandleをIndexedDBへ永続化する。起動時（`initial()`）に保存済みハンドルが存在し、`queryPermission` が `"granted"` であれば直近プロジェクトを自動復元する。権限確認が必要な場合はスタート画面に前回のプロジェクト名を提示し、ユーザーの明示操作（クリック）から `requestPermission` を要求してワンクリックで再開できる。保存できたハンドルを根拠に未許可の自動書込みを行わず、別フォルダ選択時はハンドルを更新し、対象フォルダの喪失・破損時は安全にクリアしてフォールバックする。根拠と承認: [ハンドル永続化と権限再開](../spec-changes/0023-browser-persistent-project-handle.md)。
 - 未保存変更があるとき、アプリ内のProject切替・file tabを閉じる操作はProject切替では「すべて保存 / 保存せず続ける / キャンセル」、file tabでは対象fileの「保存 / 保存しない / キャンセル」を示す。ブラウザタブのreload / 閉じる / navigationでは利用可能な離脱警告を使うが、ブラウザやOSの強制終了で必ず確認できるとは表現しない。
 - 警告を通さないクラッシュで未保存のメモリdraftが消える制約を明示する。自動保存、復旧用の編集中draft永続化、背景file監視は初期版に含めない。
 
@@ -74,7 +74,7 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 
 ## 保存と回復の具体化（Agent Decision）
 
-- Browser I/Oは選択したDirectoryHandleの子のみを扱い、`sources/`と`masterdata.toml`、専用`.masterdata/browser-transactions/`以外を書き換えない。handleは初期版では永続化しない。再開はフォルダの再選択と明示操作から行う。必要API・secure context・Web Locksをfeature detectionする。
+- Browser I/Oは選択したDirectoryHandleの子のみを扱い、`sources/`と`masterdata.toml`、専用`.masterdata/browser-transactions/`以外を書き換えない。直近プロジェクトのDirectoryHandleはIndexedDBに永続化し、起動時に永続権限があれば自動復元、要権限確認時はスタート画面からワンクリックで再開する。必要API・secure context・Web Locksをfeature detectionする。
 - 各保存は同一originのWeb Lockで直列化する。全変更pathの内容とfolder状態をpreflightし、保存直前にも再確認する。他originや外部エディターをOSレベルで排他できないため、再確認後の同時書込まで完全防止するとは主張しない。保存中は外部変更を避ける案内を利用文書に置く。
 - 適用前に`.masterdata/browser-transactions/<id>.json`へversion・変更path・全原文・保存予定文・folder状態を記録し、close後の再読込で一致を検証する。退避作成に失敗したらsourceを変更しない。既存Nativeの`transactions/`とは分離する。これは明示Saveに伴う復旧情報であり、編集中draftの自動永続化ではない。
 - 親folderを作り、新path / 内容を書込み後に旧pathを削除する。folder削除は空に限り、未知fileを再帰削除しない。削除対象folderに保存対象外のfileがあれば事前に止め、対象pathと理由を示す。対象fileはUTF-8の復号失敗を拒否し、lossyな上書きを行わない。

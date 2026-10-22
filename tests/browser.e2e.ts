@@ -125,8 +125,20 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
   await page.goto("http://127.0.0.1:5173");
 });
 async function open(page: Page) {
-  await page.getByRole("button", { name: /プロジェクトを開く/ }).click();
-  await expect(page.getByLabel("message 行1", { exact: true })).toBeVisible();
+  const table = page.getByLabel("message 行1", { exact: true });
+  const button = page.getByRole("button", { name: /プロジェクトを開く/ });
+  const first = await Promise.race([
+    table
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => "table" as const),
+    button
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => "button" as const),
+  ]);
+  if (first === "button") {
+    await button.click();
+  }
+  await expect(table).toBeVisible();
 }
 async function read(page: Page, name: string) {
   return page.evaluate(async (path) => {
@@ -320,10 +332,23 @@ test("browser interrupted multi-file save survives page reload and restores veri
   });
   await page.reload();
   expect(warned).toBe(true);
-  await page.getByRole("button", { name: /プロジェクトを開く/ }).click();
-  await expect(
-    page.getByRole("dialog", { name: "中断した保存の復旧", exact: true }),
-  ).toBeVisible();
+  const dialog = page.getByRole("dialog", {
+    name: "中断した保存の復旧",
+    exact: true,
+  });
+  const openButton = page.getByRole("button", { name: /プロジェクトを開く/ });
+  const first = await Promise.race([
+    dialog
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => "dialog" as const),
+    openButton
+      .waitFor({ state: "visible", timeout: 10000 })
+      .then(() => "button" as const),
+  ]);
+  if (first === "button") {
+    await openButton.click();
+  }
+  await expect(dialog).toBeVisible();
   await expect(
     page.getByText("保存予定", { exact: false }).first(),
   ).toBeVisible();
@@ -540,6 +565,20 @@ test("browser explicit reauthorization preserves drafts, rejects another folder 
     "permission draft",
   );
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "冒険へようこそ",
+  );
+});
+
+test("browser reopens recent project automatically on reload when permission is granted", async ({
+  page,
+}) => {
+  await open(page);
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "冒険へようこそ",
+  );
+  await page.reload();
+  await expect(page.getByLabel("message 行1", { exact: true })).toBeVisible();
   await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
     "冒険へようこそ",
   );

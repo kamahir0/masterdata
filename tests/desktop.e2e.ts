@@ -1721,6 +1721,11 @@ test("hierarchy aligns each child arrow with its parent icon and source kinds ha
       Math.abs(icon.x + icon.width / 2 - arrow.x - arrow.width / 2),
     ).toBeLessThan(1);
   }
+  // A shifted guide must shrink within its row: even 4px of overflow can
+  // make focus scroll the holder and dismiss an open context menu.
+  expect(await page.locator(".ant-tree-list-holder").evaluate(element =>
+    element.scrollWidth - element.clientWidth,
+  )).toBe(0);
   await page.screenshot({
     path: test.info().outputPath("hierarchy-centers.png"),
   });

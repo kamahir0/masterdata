@@ -1632,8 +1632,10 @@ button:focus-visible,
   content: "";
   position: absolute;
   inset: 0;
-  /* Disclosure arrows and guide origins follow the icon's selection inset. */
+  /* Shift the guide with the icon, overriding Ant's 100% width so the
+     inset cannot create horizontal scroll that dismisses context menus. */
   left: var(--tree-inset);
+  width: auto !important;
   pointer-events: none;
   background: var(--tree-guides, none);
   height: 100% !important;

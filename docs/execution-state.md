@@ -1,14 +1,15 @@
 # Development State
 
-Stage: correction-ready
-Candidate: f2bf2547e53663df01eaa01a4b102e31fc7a95ca
+Stage: verification-ready
+Candidate: 335c66759ee18c59c055faf2d68c4ac294106bc5
 Work base: 9078e959de6d844121b0ee7b884e9be4b5c471e7
 
 ## Active work
 
 Completed: レビュー7件の修正、仕様補足と別pass review、focused validation、代表操作、self-review。
 Completed: 初回CIのWindows全工程、macOSのUI・package・起動・install検証、Linux通常 / nativeと今回追加の全GUIケース。
-In progress: Linux既存ドラッグテストの展開待機修正をdeliveryし、新CandidateのCIを確認する。
+Completed: Linux既存ドラッグテストの展開待機修正と10回の検証・通常push。
+In progress: 新Candidateのfresh verificationと全OS CI。
 
 ## Blocking findings
 
@@ -23,3 +24,5 @@ In progress: Linux既存ドラッグテストの展開待機修正をdeliveryし
 - 型検査、build、workspace / diff check、actionlint成功。review-codeの別passで対象同一性、保存scope、path境界、未知file保護、失敗時baseline、局所診断、rationale freshnessと検証を確認しBlockingなし。
 
 - [初回CI](https://github.com/kamahir0/masterdata/actions/runs/39867691880): Linux UIは177成功 / 1失敗 / 10skip。失敗は既存のfolder展開待機で、今回追加のケースは全環境で成功。
+
+- [新Candidate CI](https://github.com/kamahir0/masterdata/actions/runs/39870208073)を確認中。初回macOS / Windowsは全job成功。

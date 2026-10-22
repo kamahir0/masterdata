@@ -1,7 +1,7 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: 628d55c9b733a531e3ab9cb89866dd1bc11fe70c
 Work base: a73eb336ec44dcb083f354f4b995ec375bd6d29f
 
 ## Active work
@@ -21,3 +21,7 @@ Work base: a73eb336ec44dcb083f354f4b995ec375bd6d29f
 ## Blocking findings
 
 None.
+
+## Fresh review
+
+exact Candidate 628d55c9b733a531e3ab9cb89866dd1bc11fe70cをauthoringと分けてreview。capabilityとtokenの境界、Save / Open / recoveryの直列化、journalの適用前検証、第三の内容を保護するrollback、保存中追加入力、live復旧後のbaseline比較、DesktopのBuild / Publish入口と証拠を再照合。rationaleは実コード・fault試験と一致。Blocking / Non-blocking findings: None。Verdict: Accept。required CIは確認中。

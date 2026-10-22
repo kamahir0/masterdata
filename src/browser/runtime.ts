@@ -93,6 +93,37 @@ export async function resolveRecovery(adopt: boolean) {
     });
   });
 }
+export async function reauthorizeAccess() {
+  if (status.busy) throw new Error("保存・復旧処理中です。");
+  const recovery = status.recovery;
+  const owner = recovery?.root ?? project?.root;
+  if (!owner) throw new Error("プロジェクトが開かれていません。");
+  // A denied permission may stay denied without another prompt. A new picker
+  // grant is explicit, and handle identity prevents a same-name folder from
+  // redirecting an existing draft or its recovery writes somewhere else.
+  const picked = window.showDirectoryPicker!({
+    mode: "readwrite",
+    id: "masterdata-project",
+  });
+  return perform(async () => {
+    let selected: Directory;
+    try {
+      selected = await picked;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return false;
+      throw error;
+    }
+    if (!(await owner.isSameEntry(selected)))
+      throw new Error(
+        `元と同じフォルダ「${owner.name}」を選択してください。入力は保持しています。`,
+      );
+    await permission(selected);
+    if (recovery) recovery.root = selected;
+    if (project && (await project.root.isSameEntry(selected)))
+      project.root = selected;
+    return true;
+  });
+}
 export const browser: DesktopAPI = {
   platform: "browser",
   initial: async () => null,

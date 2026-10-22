@@ -97,6 +97,6 @@ export async function permission(root: Directory) {
     (await root.requestPermission(options)) !== "granted"
   )
     throw new Error(
-      "フォルダへの読み書きが許可されていません。入力は保持しています。保存ボタンから再度許可してください。",
+      "フォルダへの読み書きが許可されていません。入力は保持しています。「保存方法 → フォルダのアクセスを再許可」または復旧画面から同じフォルダを選択してください。",
     );
 }

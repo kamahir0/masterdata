@@ -79,7 +79,11 @@ import {
 } from "./ui/editor-settings";
 import { ExplorerResize } from "./ui/explorer-resize";
 import { sourceKind, kindBadges } from "./ui/source-icon";
-import { isBrowser, browserSupport } from "./browser/runtime";
+import {
+  isBrowser,
+  browserSupport,
+  reauthorizeAccess,
+} from "./browser/runtime";
 import { BrowserRecovery } from "./browser/recovery";
 import appIcon from "../assets/icon.svg";
 import { SearchSelect } from "./ui/search-select";
@@ -694,8 +698,28 @@ function Workspace({
                   menu={{
                     items: [
                       { key: "all", label: "すべて保存", disabled: saving },
+                      ...(browser
+                        ? [
+                            {
+                              key: "access",
+                              label: "フォルダのアクセスを再許可",
+                              disabled: saving,
+                            },
+                          ]
+                        : []),
                     ],
-                    onClick: () => void save(true).catch(() => {}),
+                    onClick: ({ key }) => {
+                      if (key === "access")
+                        void reauthorizeAccess()
+                          .then((granted) => {
+                            if (granted)
+                              message.success(
+                                "フォルダへのアクセスを許可しました。入力を確認して保存してください。",
+                              );
+                          })
+                          .catch(fail);
+                      else void save(true).catch(() => {});
+                    },
                   }}
                 >
                   <Button

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Alert, Button, Modal, Space, Typography } from "antd";
-import { browserStatus, resolveRecovery } from "./runtime";
+import { browserStatus, resolveRecovery, reauthorizeAccess } from "./runtime";
 import { inspect } from "./project";
 
 export function BrowserRecovery({ fail }: { fail: (error: unknown) => void }) {
@@ -56,6 +56,12 @@ export function BrowserRecovery({ fail }: { fail: (error: unknown) => void }) {
         footer={
           <Space wrap>
             <Button
+              disabled={status.busy}
+              onClick={() => void reauthorizeAccess().catch(fail)}
+            >
+              フォルダのアクセスを再許可
+            </Button>
+            <Button
               onClick={() => {
                 if (!recovery) return;
                 const url = URL.createObjectURL(
@@ -92,7 +98,7 @@ export function BrowserRecovery({ fail }: { fail: (error: unknown) => void }) {
         }
       >
         <Typography.Paragraph>
-          通常保存を停止しています。外部で変更された内容は上書きしません。権限を失った場合は復旧ボタンで再度許可してください。
+          通常保存を停止しています。外部で変更された内容は上書きしません。権限を拒否した場合は「フォルダのアクセスを再許可」で同じフォルダを選択してください。
         </Typography.Paragraph>
         <Typography.Text code>{recovery?.path}</Typography.Text>
         <div style={{ maxHeight: "40vh", overflow: "auto", marginTop: 16 }}>

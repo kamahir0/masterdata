@@ -39,11 +39,20 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
     ({ files }) => {
       const control = ((window as any).__browserTest = {
         calls: 0,
+        denied: false,
         mode: "normal",
         closed: 0,
         crashed: false,
         release: null as null | (() => void),
       });
+      for (const name of ["queryPermission", "requestPermission"]) {
+        const original = (FileSystemHandle.prototype as any)[name];
+        (FileSystemHandle.prototype as any)[name] = function (...args: any[]) {
+          return control.denied
+            ? Promise.resolve("denied")
+            : original.apply(this, args);
+        };
+      }
       const record = () => {
         control.calls++;
         if (control.crashed)
@@ -89,6 +98,9 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
         if (control.mode === "deny")
           throw new DOMException("denied", "NotAllowedError");
         const root = await navigator.storage.getDirectory();
+        if (control.mode === "other")
+          return root.getDirectoryHandle("another-project", { create: true });
+        if (control.mode === "grant") control.denied = false;
         try {
           await root.getDirectoryHandle("sources");
           return root;
@@ -471,5 +483,64 @@ test("browser raw syntax errors save without a build gate and can be repaired th
   );
   expect(await read(page, "sources/announcements/announcement.yaml")).toContain(
     "# Browser repair",
+  );
+});
+
+test("browser explicit reauthorization preserves drafts, rejects another folder and does not implicitly save", async ({
+  page,
+}) => {
+  await open(page);
+  const original = await read(page, "sources/announcements/announcement.yaml");
+  await page
+    .getByLabel("message 行1", { exact: true })
+    .fill("permission draft");
+  await page.getByLabel("message 行1", { exact: true }).press("Tab");
+  await page.evaluate(() => {
+    (window as any).__browserTest.denied = true;
+  });
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText(/読み書きが許可されていません/)).toBeVisible();
+  expect(await read(page, "sources/announcements/announcement.yaml")).toBe(
+    original,
+  );
+  for (const mode of ["cancel", "other", "grant"]) {
+    await page.evaluate((mode) => {
+      (window as any).__browserTest.mode = mode;
+    }, mode);
+    await page.getByRole("button", { name: "保存方法", exact: true }).click();
+    await page
+      .getByRole("menuitem", {
+        name: "フォルダのアクセスを再許可",
+        exact: true,
+      })
+      .click();
+    if (mode === "other")
+      await expect(page.getByText(/元と同じフォルダ/)).toBeVisible();
+    if (mode === "grant")
+      await expect(
+        page.getByText(/フォルダへのアクセスを許可しました/),
+      ).toBeVisible();
+    await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+      "permission draft",
+    );
+    await expect(page.locator(".save-state")).toHaveAttribute(
+      "aria-label",
+      "未保存の変更",
+    );
+    expect(await read(page, "sources/announcements/announcement.yaml")).toBe(
+      original,
+    );
+  }
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+  expect(await read(page, "sources/announcements/announcement.yaml")).toContain(
+    "permission draft",
+  );
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
+    "冒険へようこそ",
   );
 });

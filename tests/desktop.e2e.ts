@@ -723,6 +723,7 @@ for (const kind of ["テーブル", "フォルダ"]) {
     await page.getByRole("button", { name: "やり直す", exact: true }).click();
     await expect(created).toBeVisible();
     await saveAll();
+    await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
     expect((await fs.stat(path.join(root, "sources", finalPath))).isDirectory()).toBe(kind === "フォルダ");
     await created.click({ button: "right" });
     await page.getByRole("menuitem", { name: /名前を変更/ }).click();
@@ -1712,10 +1713,11 @@ test("compact layout keeps commands and wrapped tabs reachable at minimum width 
 test("new file close discards only the new draft and Undo can recover it", async () => {
   await page.getByRole("button", { name: "新しい項目", exact: true }).click();
   await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
-  await page.getByLabel("項目の名前", { exact: true }).press("Enter");
-  const name = await page
-    .locator('.file-tab[aria-selected="true"] .file-tab-name')
-    .innerText();
+  const nameInput = page.getByLabel("項目の名前", { exact: true });
+  const name = await nameInput.inputValue();
+  await nameInput.press("Enter");
+  await expect(page.getByRole("tab", { name, exact: true }))
+    .toHaveAttribute("aria-selected", "true");
   await closeFile();
   const dialog = await closePrompt();
   await dialog.getByRole("button", { name: "保存しない", exact: true }).click();
@@ -1776,10 +1778,11 @@ test("file save-and-close keeps newer edits made during save and waits for earli
 test("discard restores a saved file even if Undo removed it while close confirmation was open", async () => {
   await page.getByRole("button", { name: "新しい項目", exact: true }).click();
   await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
-  await page.getByLabel("項目の名前", { exact: true }).press("Enter");
-  const name = await page
-    .locator('.file-tab[aria-selected="true"] .file-tab-name')
-    .innerText();
+  const nameInput = page.getByLabel("項目の名前", { exact: true });
+  const name = await nameInput.inputValue();
+  await nameInput.press("Enter");
+  await expect(page.getByRole("tab", { name, exact: true }))
+    .toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),

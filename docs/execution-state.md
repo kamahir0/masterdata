@@ -1,13 +1,13 @@
 # Development State
 
-Stage: implementation-ready
-Candidate: none
+Stage: verification-ready
+Candidate: f2bf2547e53663df01eaa01a4b102e31fc7a95ca
 Work base: 9078e959de6d844121b0ee7b884e9be4b5c471e7
 
 ## Active work
 
 Completed: レビュー7件の修正、仕様補足と別pass review、focused validation、代表操作、self-review。
-Remaining: Candidate記録、push後のfresh verificationと全OS CI。
+In progress: exact Candidateのfresh verificationと全OS CI。
 
 ## Blocking findings
 
@@ -20,3 +20,5 @@ Remaining: Candidate記録、push後のfresh verificationと全OS CI。
 - IndexedDBのerror / abort / 同期例外を捕捉しconnectionを終了。失敗注入後もproject open / saveを継続。Enum / Flags / key / referenceの不正要素を局所診断する。
 - npm test 63件、Rust test 11件成功。追加GUI 8件と周辺回帰30件をChromium / WebKitで成功。実際の並替え・Undo / Redo・編集保存・削除、名前入力中Saveと他draft保持、隠し名訂正、raw修復を確認した。
 - 型検査、build、workspace / diff check、actionlint成功。review-codeの別passで対象同一性、保存scope、path境界、未知file保護、失敗時baseline、局所診断、rationale freshnessと検証を確認しBlockingなし。
+
+- Candidateは通常push済み。[全OS CI](https://github.com/kamahir0/masterdata/actions/runs/39867691880)を確認中。

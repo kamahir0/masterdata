@@ -37,8 +37,6 @@ jobs:
             archive_ext: tar.gz
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    env:
-      CARGO_BUILD_JOBS: 2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -53,6 +51,12 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@82a92a6e8fbeee08c6c4d4f6c4ff98c199589d81 # v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
       - name: Tauri Linux dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf
@@ -60,8 +64,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check and web build
-        run: npm run build
+      - name: Type check
+        run: npm run check
 
       - name: Build Tauri release bundles
         run: npm run pack:release -- ${{ matrix.bundle_flag }} -- --locked

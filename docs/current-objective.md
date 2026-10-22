@@ -2,12 +2,12 @@
 
 ## Objective
 
-2026-10-22 Humanの選択（パターンB）に基づき、製品のポジショニングをゲーム専用ツールから「完全な業務・汎用マスターデータ統合エディタ（C# / MasterMemory）」へ刷新する。リポジトリ全体（README、CLIヘルプ、package.json、設定プレースホルダー、ドキュメント群）からゲーム限定の表現を排除し、業務システム・Web API・ゲーム開発のすべてで自然に導入・運用できる汎用ツールとして位置づけ直す。
+リリースビルド（CI/CD）および関連ワークフローを最適化し、ビルド所要時間を大幅に短縮する。Rust/Cargo ビルドキャッシュの導入、ステップ重複（`npm run build` の二重実行）の排除、および CPU コア並行度の見直しを行い、成果物の完全性と安全性を担保したままビルドパイプラインを高速化する。
 
 ## Completion boundary
 
-仕様変更提案の作成・別pass review・自律承認、リポジトリ全体（README、CLIヘルプ、package.json、設定プレースホルダー、仕様書・Product Direction）の文言刷新、focused tests / CLI tests / E2Eテスト、self-review、workspace check、通常commit / push。
+仕様変更提案（0022-release-build-optimization）の作成・別pass review・自律承認、`docs/specs/distribution.md` の更新、`.github/workflows/release.yml`（および `workspace.yml`）の最適化実装、ローカル整合性検証（`python3 tools/check_workspace.py`, `git diff --check`, `npm run check` 等）、self-review、通常commit / push。
 
 ## Non-scope
 
-データ構造（YAML/TOML形式）、コア編集ロジック、C#コード生成・MasterMemoryビルドの仕様自体の変更。
+配布成果物の構成（Desktop バンドル・CLI アーカイブ・SHA256 チェックサム）の変更、署名要件の変更、GUI / CLI コア機能の振る舞い変更。

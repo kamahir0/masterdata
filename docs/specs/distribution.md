@@ -95,12 +95,12 @@ Basis: 2026-10-22 Human requestによる「MasterDataリポジトリを一般公
      - `windows-latest` (x64)
      - `ubuntu-latest` (x64)
    - **ビルド処理**:
-     - Node.js 24、Rust toolchain、.NET 8 SDKのセットアップ。
-     - `npm ci`、`npm run build`（`prepare:host` 含む）。
-     - Tauriビルド:
-       - macOS: `npm run pack -- --bundles app,dmg -- --locked`
-       - Windows: `npm run pack -- --bundles nsis -- --locked`
-       - Linux: `npm run pack -- --bundles appimage,deb -- --locked`
+     - Node.js 24、Rust toolchain、.NET 8 SDKのセットアップおよび依存キャッシュ（npmキャッシュ、Swatinem/rust-cacheによるCargo依存クレートキャッシュ）。
+     - `npm ci`、`npm run check`（早期型検査）。
+     - Tauriビルド（`beforeBuildCommand` にてWebバンドル・CLI hostを自動生成）:
+       - macOS: `npm run pack:release -- --bundles app,dmg -- --locked`
+       - Windows: `npm run pack:release -- --bundles nsis -- --locked`
+       - Linux: `npm run pack:release -- --bundles appimage,deb -- --locked`
      - 単体CLIバイナリのアーカイブ作成（`masterdata-v*-<target>.tar.gz` / `.zip`）。
    - **ドラフトRelease作成**:
      - `softprops/action-gh-release` または `gh release create --draft` を使用。

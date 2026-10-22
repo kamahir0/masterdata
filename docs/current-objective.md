@@ -2,12 +2,12 @@
 
 ## Objective
 
-Explorerで新規ファイル / フォルダの名前入力中にEscapeを押すと、作成自体をキャンセルする。既存項目の名前変更では入力のみ取り消し、blurによる誤確定を防ぐ。
+GitHub Actionsの不正なAction参照によるCI停止を解消し、Desktop各環境の検証を再開する。
 
 ## Completion boundary
 
-仕様変更0024の作成・別pass review・承認とEDIT-005への適用、共通Explorerとsessionの実装、各file種類 / folderの取消・既存rename・Enter / blur確定・Undo / Redo・保存のfocused validation、self-review、workspace check、通常commit / pushとCI確認。
+公式tag / commitとの照合、通常CIとrelease workflowの参照修正、Action参照全体の確認、actionlint・workspace check・diff check、self-review、通常commit / push、CI実行結果の確認。新たな失敗が判明した場合は参照エラーと区別して記録する。
 
 ## Non-scope
 
-通常の削除、保存形式、CLI、テーブルデータファイル作成、Unityの起動。
+製品レビューで挙げた機能上の不具合修正、Actionの別バージョンへの更新、releaseの実行・公開、Unityの起動。

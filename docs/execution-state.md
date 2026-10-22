@@ -1,22 +1,21 @@
 # Development State
 
 Stage: verification-ready
-Candidate: 1c3f7adf049b9cae3aaf7a4b2ffcc2f9bdc1f646
-Work base: 4ed28783638a27454e0422c1dd9844eec34d3b65
+Candidate: efdf6e6018b9dc7cfd858fe39d741a7401375333
+Work base: 4b7fc4fa7bdd2ea3f8d53fdb607710a9b9c9477e
 
 ## Active work
 
-- implementation / focused validation / review-code / commit / push (Completed)
-- desktop CI verification (Remaining: 既存Action参照エラーによりsetupで停止)
+- Action参照修復 / focused validation / self-review / commit / push (Completed)
+- CI結果の確認 (In progress)
 
 ## Blocking findings
 
-製品差分のBlocking: None。desktop CIは既存の`Swatinem/rust-cache@82a92a6e8fbeee08c6c4d4f6c4ff98c199589d81`を解決できず、macOS / Linux / Windowsの検証を開始できない。今回の変更範囲外でありCI成功扱いにしない。
+今回のworkflow差分のBlocking: None。Action参照エラーは全環境で解消済み。CI全体は実行中。
 
 ## Completion evidence
 
-- Candidateの型検査 / Web build、`npm test` 58件、workspace check、diff check成功。
-- macOSのChromium / WebKitでExplorer作成・取消・rename・入力focus・保存・Undo / Redo・tab / folder操作等53件成功、WebKit非対応のbrowser権限テスト1件skip。別の代表作業で深いfolderの作成・外側click確定・保存も確認した。
-- exact Candidateのコードとテストで、各種類の作成取消・IME・選択復帰・既存tab保持・保存後の不在を12件再確認。取消前後の画面を目視確認した。隔離環境のserver portだけ5184へ変更。
-- authoring後のfresh reviewで状態遷移、blur競合、衝突保護、履歴、scope、rationaleと証拠を確認。製品差分のBlockingなし。Unityは起動せず、今回のtest / preview processは終了を確認。
-- [Candidate後のCI](https://github.com/kamahir0/masterdata/actions/runs/39813543089): integrity成功、desktop全3環境は上記setup error。Web build / Pages workflow成功。未取得のcross-platform runtime証拠を残すためStageはverification-readyを維持する。
+- rust-cacheの誤記を公式v2.7.5 tagのcommit `82a92a6e8fbeee089604da2575dc567ae9ddeaab`へ修正。通常CI / release workflowの2箇所を揃え、全workflowで参照するAction commit 8種の存在をGitHub APIで確認した。
+- releaseのsha256sumに引数区切りを追加。初回actionlintの既存SC2035を解消し、actionlint / workspace check / diff check成功。
+- [Candidate CI](https://github.com/kamahir0/masterdata/actions/runs/39816630129): integrity成功、macOS / Windows / Linuxのsetup・通常テスト・build・native検証成功。WindowsのUI回帰成功、実行ファイルbuild中。macOS / LinuxのUI回帰は実行中。
+- review-codeで変更scope、参照元、修正後の参照解決、releaseを実行していないことを確認。Unityは起動していない。

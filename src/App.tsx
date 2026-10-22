@@ -1069,7 +1069,7 @@ function Workspace({
           >
             <Typography.Title>MasterData</Typography.Title>
             <Typography.Paragraph>
-              表と型定義を直接編集するマスターデータ管理ツールです。
+              テーブルデータと型定義を統合管理するマスターデータエディタです。
               <br />
               プロジェクトを開くか、新規作成して編集を開始します。
             </Typography.Paragraph>

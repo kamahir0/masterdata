@@ -4,15 +4,15 @@
 
 ## 原則
 
-- Product quality is primary。仕様・テスト・CI・文書・workflowは、製品品質を支えるために使う。
-- Humanが選択したObjective内では、調査、問題の捉え直し、仕様整理、レビュー、承認可能な判断、実装、検証、修正、通常のcommit / pushを自律的に進める。段階の移行だけを理由に追加確認を求めない。
+- 製品品質を最優先とする。仕様・テスト・CI・ドキュメント・ワークフローは、すべて製品品質を支えるために運用する。
+- ユーザーが指示した目的の範囲内では、調査、課題の整理、仕様策定、レビュー、実装、検証、修正、通常のcommit / pushを自律的に進める。段階の移行だけを理由に追加確認を求めない。
 - 実装都合や旧コードをユーザー要求へすり替えない。個別の不具合から共通する設計問題も検討する。
 - MUST / MUST NOTはauthority、data safety、security、repository integrity等のhard invariantに限る。SHOULDは理由付きで外れてよいdefault。
 - 人間向け文書、commit / PR説明、作業報告は原則日本語。identifierやstable tokenは無理に翻訳しない。
 
 ## 開始・再開
 
-[Fresh-session recovery](docs/execution-workflow.md#fresh-session-recovery)に従い、branch / working tree / remote、Current Objective、Development State、関連するApproved仕様とGit realityを確認する。会話やmemoryでcurrent repository authorityを代用しない。
+[Fresh-session recovery](docs/execution-workflow.md#fresh-session-recovery)に従い、branch / working tree / remote、Current Objective、Development State、関連する仕様とGitの実際の状態を確認する。AIの記憶や推測で代用せず、ファイルの実体を根拠とする。
 
 互換性の判断では[Development phase](docs/execution-workflow.md#development-phase)、旧資料の扱いでは[Legacy boundary](docs/execution-workflow.md#legacy-boundary)を確認する。
 

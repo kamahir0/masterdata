@@ -3408,7 +3408,7 @@ test("welcome displays business tool copy and titlebar without slogans", async (
     page.getByRole("heading", { name: "MasterData", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("表と型定義を直接編集するマスターデータ管理ツールです。"),
+    page.getByText("テーブルデータと型定義を統合管理するマスターデータエディタです。"),
   ).toBeVisible();
   await expect(
     page.getByText("テーブル編集プレビュー", { exact: true }),

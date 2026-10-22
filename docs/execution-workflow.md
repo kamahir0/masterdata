@@ -23,10 +23,10 @@ Status: Active
 1. `AGENTS.md`と、現在のbranch / working tree / upstream / remote HEADを確認する。新規リポジトリでHEADやremoteがない場合は、その事実を確認する。
 2. [Development State](execution-state.md)からStage、Candidate、Work base、残作業を読む。
 3. [Current Objective](current-objective.md)から目的、完了条件、non-scopeを確認する。
-4. Work baseからHEADのGit差分とworking treeを確認する。`none`なら初期commitからのhistoryを使う。stateの説明よりGit realityを優先する。
-5. 今回のactivityに関係するApproved仕様、設計理由、code / testsだけを読む。
+4. Work baseからHEADのGit差分とworking treeを確認する。`none`なら初期commitからのhistoryを使う。ドキュメントの記述よりGitの実際の状態を優先する。
+5. 今回の作業に関係する仕様、設計理由、コードおよびテストを確認する。
 
-同じrunでは前提が変わらない限り同じ文書を繰り返し読まない。外部変更、destructive action、commit / push、最終報告の前は関係するauthorityとGit realityを再確認する。
+前提が変わらない限り同じ文書を繰り返し読まない。外部変更、不可逆な操作、commit / push、最終報告の前は、関係する仕様とGitの実際の状態を再確認する。
 
 cleanでupstreamへstrictly behindなbranchはsafe fast-forwardしてよい。それ以外をreset / stash / rebase等で勝手に整合させない。
 

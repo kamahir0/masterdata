@@ -399,9 +399,11 @@ test("browser refuses hidden draft paths that native discovery would ignore afte
   for (const folder of [false, true]) {
     const { disk, session, adapter, request } = await fixture();
     const before = disk.content();
-    if (folder) session.move("types", ".hidden");
-    else session.move("table.yaml", ".hidden.yaml");
-    await assert.rejects(adapter.save(request()), /再オープンで読み込めない/);
+    assert.throws(() => session.move(folder ? "types" : "table.yaml", folder ? ".hidden" : ".hidden.yaml"), /読込対象外/);
+    const malicious = request();
+    if (folder) malicious.folders = [".hidden"];
+    else malicious.files[0] = { ...malicious.files[0], path: ".hidden.yaml" };
+    await assert.rejects(adapter.save(malicious), /再オープンで読み込めない/);
     assert.deepEqual(disk.content(), before);
     assert(!disk.log.some((op) => /^(write|remove|mkdir):/.test(op)));
   }
@@ -418,6 +420,7 @@ function setupMockBrowser() {
     open: () => {
       const req: any = {
         result: {
+          close: () => {},
           objectStoreNames: { contains: (s: string) => stores.has(s) },
           createObjectStore: (s: string) => stores.set(s, new Map()),
         },
@@ -428,18 +431,20 @@ function setupMockBrowser() {
           store = new Map();
           stores.set(s, store);
         }
+        const result = (value: any) => {
+          const req: any = { result: value };
+          queueMicrotask(() => { req.onsuccess?.(); tx.oncomplete?.(); });
+          return req;
+        };
         const tx: any = {
           objectStore: () => ({
-            put: (v: any, k: string) => store!.set(k, v),
+            put: (v: any, k: string) => { store!.set(k, v); return result(k); },
             get: (k: string) => {
-              const getReq: any = { result: store!.get(k) };
-              queueMicrotask(() => getReq.onsuccess?.({ target: getReq }));
-              return getReq;
+              return result(store!.get(k));
             },
-            delete: (k: string) => store!.delete(k),
+            delete: (k: string) => { store!.delete(k); return result(undefined); },
           }),
         };
-        queueMicrotask(() => tx.oncomplete?.());
         return tx;
       };
       queueMicrotask(() => {
@@ -564,5 +569,45 @@ test("browser initial clears stored handle if folder is missing masterdata.toml"
     assert.equal(await getRecentDirectory(), null);
   } finally {
     restore();
+  }
+});
+
+test("IndexedDB error, abort and synchronous failures never block project open or save", async () => {
+  for (const fault of ["error", "abort", "throw", "open"]) {
+    const restore = setupMockBrowser();
+    let closed = 0;
+    try {
+      (globalThis as any).indexedDB = {
+        open() {
+          const req: any = { result: {
+            close: () => closed++,
+            transaction() {
+              if (fault === "throw") throw new Error("store unavailable");
+              const tx: any = {
+                error: new DOMException("quota", "QuotaExceededError"),
+                objectStore: () => ({ put: () => ({}), get: () => ({}), delete: () => ({}) }),
+              };
+              queueMicrotask(() => fault === "abort" ? tx.onabort?.() : tx.onerror?.());
+              return tx;
+            },
+          } };
+          queueMicrotask(() => fault === "open" ? req.onerror?.() : req.onsuccess?.());
+          return req;
+        },
+      };
+      const disk = new Disk();
+      await saveRecentDirectory(disk.root);
+      assert.equal(await getRecentDirectory(), null);
+      await clearRecentDirectory();
+      (window as any).showDirectoryPicker = async () => disk.root;
+      const project = (await browser.open())!;
+      assert(project.snapshot.sources.length);
+      const session = new Session();
+      session.load(project);
+      session.update(project.snapshot.sources[0].id, ["records", 0, "title"], "after quota failure");
+      await browser.save({ token: project.token, files: session.files(), folders: project.snapshot.folders, config: project.snapshot.config });
+      assert.match(String(disk.files.get("sources/table.yaml")), /after quota failure/);
+      assert.equal(closed, fault === "open" ? 0 : 4);
+    } finally { restore(); }
   }
 });

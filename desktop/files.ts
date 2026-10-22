@@ -22,8 +22,8 @@ export interface Workspace {
 const safeName = (name: string) =>
   !path.isAbsolute(name) &&
   name
-    .split(/[\\/]/)
-    .every((p) => !!p && p !== ".." && p !== "." && !/[\x00-\x1f]/.test(p));
+    .split("/")
+    .every((p) => !!p && p !== ".." && p !== "." && !/[:\\\x00-\x1f]/.test(p));
 export async function safePath(root: string, relative: string) {
   if (!safeName(relative)) throw new Error("Project外のパスは使用できません。");
   const destination = path.join(root, relative);
@@ -138,6 +138,9 @@ export async function saveWorkspace(
   workspace: Workspace,
   request: SaveRequest,
 ): Promise<SaveResult> {
+  for (const name of [...request.files.map((f) => f.path), ...request.folders])
+    if (name.split("/").some((part) => part.startsWith(".")))
+      throw new Error("dotで始まる名前は読込対象外のため使用できません。");
   const desired = new Map(request.files.map((f) => [f.path, f]));
   if (
     desired.size !== request.files.length ||
@@ -177,6 +180,20 @@ export async function saveWorkspace(
   const directories = await Promise.all(
     request.folders.map((f) => safePath(workspace.root, `sources/${f}`)),
   );
+  const removedFolders = await Promise.all(workspace.folders
+    .filter((name) => !request.folders.some((p) => p === name || p.startsWith(`${name}/`)) &&
+      !request.files.some((f) => f.path.startsWith(`${name}/`)))
+    .sort((a, b) => b.split("/").length - a.split("/").length)
+    .map((name) => safePath(workspace.root, `sources/${name}`)));
+  const removals = new Set([...changes.filter((c) => c.after === null).map((c) => c.file), ...removedFolders]);
+  for (const dir of removedFolders) {
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+    catch (error: any) { if (error.code === "ENOENT") continue; throw error; }
+    for (const entry of entries)
+      if (!removals.has(path.join(dir, entry.name)) || entry.isSymbolicLink())
+        throw new Error(`保存対象外の項目があるためfolderを削除できません: ${path.join(dir, entry.name)}`);
+  }
   const transaction = await safePath(
     workspace.root,
     `.masterdata/transactions/${randomUUID()}`,
@@ -200,7 +217,9 @@ export async function saveWorkspace(
     if (change.after !== null)
       await fs.writeFile(path.join(transaction, `${i}.after`), change.after);
   }
+  await fs.writeFile(path.join(transaction, "removed-folders.json"), JSON.stringify(removedFolders));
   const applied: typeof changes = [];
+  const removed: string[] = [];
   try {
     for (const dir of directories) await fs.mkdir(dir, { recursive: true });
     for (const change of changes) {
@@ -216,8 +235,16 @@ export async function saveWorkspace(
       }
       applied.push(change);
     }
+    for (const dir of removedFolders) {
+      try { await fs.rmdir(dir); removed.push(dir); }
+      catch (error: any) { if (error.code !== "ENOENT") throw error; }
+    }
   } catch (error) {
     let recoveryFailed = false;
+    for (const dir of removed.reverse()) {
+      try { await fs.mkdir(dir, { recursive: true }); }
+      catch { recoveryFailed = true; }
+    }
     for (const change of applied.reverse()) {
       try {
         if ((await optionalRead(change.file)) !== change.after) {
@@ -233,17 +260,6 @@ export async function saveWorkspace(
     throw new Error(
       `${String(error)}${recoveryFailed ? `\n復旧情報を保持しました: ${transaction}` : "\n今回の書込みは元に戻しました。"}`,
     );
-  }
-  for (const name of [...workspace.folders].sort(
-    (a, b) => b.length - a.length,
-  )) {
-    if (!request.folders.includes(name)) {
-      try {
-        await fs.rmdir(await safePath(workspace.root, `sources/${name}`));
-      } catch {
-        /* Non-empty folders include user files and are intentionally preserved. */
-      }
-    }
   }
   await fs.writeFile(
     path.join(transaction, "complete"),

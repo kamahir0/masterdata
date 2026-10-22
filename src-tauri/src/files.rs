@@ -24,14 +24,20 @@ pub fn digest(text: &str) -> String {
 }
 
 pub fn safe_name(name: &str) -> bool {
-    if name.is_empty() || Path::new(name).is_absolute() || name.starts_with('/') || name.starts_with('\\') {
+    if name.is_empty()
+        || Path::new(name).is_absolute()
+        || name.starts_with('/')
+        || name.starts_with('\\')
+    {
         return false;
     }
-    name.split(['/', '\\']).all(|p| {
+    name.split('/').all(|p| {
         !p.is_empty()
             && p != "."
             && p != ".."
-            && !p.chars().any(|c| (c as u32) <= 0x1f)
+            && !p
+                .chars()
+                .any(|c| c == ':' || c == '\\' || (c as u32) <= 0x1f)
     })
 }
 
@@ -94,13 +100,8 @@ pub fn load_workspace(input: &Path) -> Result<(Workspace, LoadedProject), String
         Ok((root, config_text, config))
     };
 
-    let (root, config_text, config) = open_inner().map_err(|err| {
-        format!(
-            "プロジェクトを開けません: {}\n{}",
-            input.display(),
-            err
-        )
-    })?;
+    let (root, config_text, config) = open_inner()
+        .map_err(|err| format!("プロジェクトを開けません: {}\n{}", input.display(), err))?;
 
     let mut sources: Vec<Source> = Vec::new();
     let mut saved: Vec<SavedFile> = Vec::new();
@@ -194,6 +195,16 @@ pub fn save_workspace(
     workspace: &mut Workspace,
     request: &SaveRequest,
 ) -> Result<SaveResult, String> {
+    for name in request
+        .files
+        .iter()
+        .map(|f| &f.path)
+        .chain(request.folders.iter())
+    {
+        if name.split('/').any(|part| part.starts_with('.')) {
+            return Err("dotで始まる名前は読込対象外のため使用できません。".to_string());
+        }
+    }
     let mut desired: HashMap<String, &SavedFile> = HashMap::new();
     let mut ids: HashSet<&str> = HashSet::new();
     for f in &request.files {
@@ -257,6 +268,47 @@ pub fn save_workspace(
         directories.push(safe_path(&workspace.root, &format!("sources/{f}"))?);
     }
 
+    let mut removed_folders = Vec::new();
+    for name in &workspace.folders {
+        let prefix = format!("{name}/");
+        if request
+            .folders
+            .iter()
+            .any(|p| p == name || p.starts_with(&prefix))
+            || request.files.iter().any(|f| f.path.starts_with(&prefix))
+        {
+            continue;
+        }
+        removed_folders.push(safe_path(&workspace.root, &format!("sources/{name}"))?);
+    }
+    removed_folders.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
+    let removals: HashSet<_> = changes
+        .iter()
+        .filter(|c| c.after.is_none())
+        .map(|c| c.file.clone())
+        .chain(removed_folders.iter().cloned())
+        .collect();
+    // Refuse unknown children before changing any file. Nonrecursive deletion
+    // below checks again, so a concurrent writer cannot turn this into data loss.
+    for dir in &removed_folders {
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        for entry in entries {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !removals.contains(&entry.path())
+                || entry.file_type().map_err(|e| e.to_string())?.is_symlink()
+            {
+                return Err(format!(
+                    "保存対象外の項目があるためfolderを削除できません: {}",
+                    entry.path().display()
+                ));
+            }
+        }
+    }
+
     let transaction = safe_path(
         &workspace.root,
         &format!(".masterdata/transactions/{}", uid()),
@@ -292,12 +344,17 @@ pub fn save_workspace(
                 .map_err(|e| e.to_string())?;
         }
         if let Some(after) = &change.after {
-            fs::write(transaction.join(format!("{i}.after")), after)
-                .map_err(|e| e.to_string())?;
+            fs::write(transaction.join(format!("{i}.after")), after).map_err(|e| e.to_string())?;
         }
     }
+    fs::write(
+        transaction.join("removed-folders.json"),
+        serde_json::to_vec(&removed_folders).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
 
     let mut applied: Vec<FileChange> = Vec::new();
+    let mut removed = Vec::new();
     let apply_res = (|| -> Result<(), String> {
         for dir in &directories {
             fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -317,11 +374,7 @@ pub fn save_workspace(
                     fs::remove_file(&change.file).map_err(|e| e.to_string())?;
                 }
                 Some(after_text) => {
-                    let temp = PathBuf::from(format!(
-                        "{}.{}.tmp",
-                        change.file.display(),
-                        uid()
-                    ));
+                    let temp = PathBuf::from(format!("{}.{}.tmp", change.file.display(), uid()));
                     let mut f = OpenOptions::new()
                         .write(true)
                         .create_new(true)
@@ -335,11 +388,23 @@ pub fn save_workspace(
             }
             applied.push(change.clone());
         }
+        for dir in &removed_folders {
+            match fs::remove_dir(dir) {
+                Ok(()) => removed.push(dir.clone()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("folderを削除できません: {}: {e}", dir.display())),
+            }
+        }
         Ok(())
     })();
 
     if let Err(err) = apply_res {
         let mut recovery_failed = false;
+        for dir in removed.iter().rev() {
+            if fs::create_dir_all(dir).is_err() {
+                recovery_failed = true;
+            }
+        }
         for change in applied.into_iter().rev() {
             match optional_read(&change.file) {
                 Ok(cur) if cur == change.after => {
@@ -366,16 +431,6 @@ pub fn save_workspace(
         ));
     }
 
-    let mut old_folders = workspace.folders.clone();
-    old_folders.sort_by(|a, b| b.len().cmp(&a.len()));
-    for name in old_folders {
-        if !request.folders.contains(&name) {
-            if let Ok(dir) = safe_path(&workspace.root, &format!("sources/{name}")) {
-                let _ = fs::remove_dir(dir);
-            }
-        }
-    }
-
     let _ = fs::write(transaction.join("complete"), "ok");
     workspace.baseline = request.files.clone();
     workspace.config_text = config_text.clone();
@@ -396,4 +451,145 @@ pub fn compute_workspace_digest(project: &LoadedProject) -> String {
         parts.push(format!("source:{}:{}", f.path, digest(&f.text)));
     }
     digest(&parts.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Temp(PathBuf);
+    impl Drop for Temp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn workspace() -> (Temp, Workspace, LoadedProject) {
+        let root = std::env::temp_dir().join(format!("masterdata-save-{}", uid()));
+        fs::create_dir_all(root.join("sources/types/child")).unwrap();
+        fs::write(root.join(PROJECT_FILE_NAME), "name = \"Safety\"\n").unwrap();
+        fs::write(
+            root.join("sources/types/child/type.yaml"),
+            "kind: type\nname: Stats\ncustom: {fields: []}\n",
+        )
+        .unwrap();
+        let (workspace, project) = load_workspace(&root.join(PROJECT_FILE_NAME)).unwrap();
+        (Temp(root), workspace, project)
+    }
+    #[test]
+    fn every_path_segment_rejects_windows_prefixes_and_separators() {
+        let (root, _, _) = workspace();
+        for name in [
+            "sources/C:/escape",
+            "sources/C:escape",
+            "sources/a/C:/escape",
+            "sources/a\\..\\escape",
+            "C:/escape",
+            "//server/share",
+            "sources/../escape",
+        ] {
+            assert!(!safe_name(name), "{name}");
+            assert!(safe_path(&root.0, name).is_err(), "{name}");
+        }
+        assert_eq!(
+            safe_path(&root.0, "sources/types/new.yaml").unwrap(),
+            root.0.join("sources/types/new.yaml")
+        );
+    }
+    #[test]
+    fn hidden_source_destinations_fail_before_any_writes() {
+        let (root, mut workspace, project) = workspace();
+        for name in [".hidden.yaml", "types/.hidden/type.yaml"] {
+            let mut files = project.saved.clone();
+            files[0].path = name.to_string();
+            let request = SaveRequest {
+                token: project.token.clone(),
+                files,
+                folders: project.snapshot.folders.clone(),
+                config: project.snapshot.config.clone(),
+            };
+            assert!(save_workspace(&mut workspace, &request)
+                .unwrap_err()
+                .contains("dot"));
+            assert_eq!(workspace.baseline, project.saved);
+            assert!(root.0.join("sources/types/child/type.yaml").exists());
+        }
+        let request = SaveRequest {
+            token: project.token.clone(),
+            files: project.saved.clone(),
+            folders: vec![".hidden".to_string()],
+            config: project.snapshot.config.clone(),
+        };
+        assert!(save_workspace(&mut workspace, &request).is_err());
+        assert!(!root.0.join(".masterdata").exists());
+    }
+    #[test]
+    fn folder_delete_preflights_unknown_children_then_can_retry() {
+        let (root, mut workspace, project) = workspace();
+        let original = project.saved.clone();
+        let request = SaveRequest {
+            token: project.token.clone(),
+            files: vec![],
+            folders: vec![],
+            config: project.snapshot.config.clone(),
+        };
+        for unknown in [
+            "types/notes.txt",
+            "types/.hidden.yaml",
+            "types/child/foreign.yaml",
+        ] {
+            let path = root.0.join("sources").join(unknown);
+            fs::write(&path, "do not change").unwrap();
+            assert!(save_workspace(&mut workspace, &request)
+                .unwrap_err()
+                .contains("保存対象外"));
+            assert_eq!(workspace.baseline, original);
+            assert_eq!(fs::read_to_string(&path).unwrap(), "do not change");
+            assert_eq!(
+                fs::read_to_string(root.0.join("sources/types/child/type.yaml")).unwrap(),
+                original[0].text
+            );
+            fs::remove_file(path).unwrap();
+        }
+        save_workspace(&mut workspace, &request).unwrap();
+        assert!(!root.0.join("sources/types").exists());
+        assert!(workspace.baseline.is_empty());
+        assert!(load_workspace(&root.0.join(PROJECT_FILE_NAME))
+            .unwrap()
+            .1
+            .snapshot
+            .folders
+            .is_empty());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_save_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn removal_failure_restores_deleted_children_and_baseline() {
+        let root = std::env::temp_dir().join(format!("masterdata-rollback-{}", uid()));
+        fs::create_dir_all(root.join("sources/types/child")).unwrap();
+        fs::write(root.join(PROJECT_FILE_NAME), "name = \"Rollback\"\n").unwrap();
+        let file = root.join("sources/types/child/type.yaml");
+        fs::write(&file, "kind: type\nname: Stats\ncustom: {fields: []}\n").unwrap();
+        let (mut workspace, project) = load_workspace(&root.join(PROJECT_FILE_NAME)).unwrap();
+        fs::set_permissions(root.join("sources"), fs::Permissions::from_mode(0o555)).unwrap();
+        let request = SaveRequest {
+            token: project.token.clone(),
+            files: vec![],
+            folders: vec![],
+            config: project.snapshot.config.clone(),
+        };
+        let result = save_workspace(&mut workspace, &request);
+        fs::set_permissions(root.join("sources"), fs::Permissions::from_mode(0o755)).unwrap();
+        // A privileged test runner bypasses POSIX permissions.
+        if result.is_err() {
+            assert!(result.unwrap_err().contains("元に戻しました"));
+            assert_eq!(fs::read_to_string(file).unwrap(), project.saved[0].text);
+            assert_eq!(workspace.baseline, project.saved);
+            assert_eq!(workspace.folders, project.snapshot.folders);
+            save_workspace(&mut workspace, &request).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 }

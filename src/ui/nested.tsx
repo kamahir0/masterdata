@@ -40,6 +40,7 @@ import {
 } from "motion/react";
 import { resultTransition } from "./motion";
 export interface Cursor {
+  key?: string;
   source: string;
   path: (string | number)[];
   field: Field;
@@ -139,7 +140,7 @@ export function NestedEditor({
         >
           {cursor && source && (
             <NestedPage
-              key={JSON.stringify([cursor.source, ...cursor.path])}
+              key={cursor.key ?? JSON.stringify([cursor.source, ...cursor.path])}
               cursor={cursor}
               snapshot={snapshot}
               setCursor={setCursor}
@@ -187,7 +188,7 @@ function NestedPage({
   };
   const itemKeys = Array.isArray(value) ? itemIdentities(value) : [];
   const editing = useEditing(body, itemKeys, {
-    context: JSON.stringify([cursor.source, cursor?.path]),
+    context: cursor.key ?? JSON.stringify([cursor.source, cursor.path]),
     input:
       ".value-control input:not([disabled]), .value-control button:not([disabled]), .value-control .entry",
   });

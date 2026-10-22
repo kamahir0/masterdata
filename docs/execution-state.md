@@ -1,21 +1,22 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 8d105805602033114d4c227b81df14dac1fcc42f
-Work base: 4b7fc4fa7bdd2ea3f8d53fdb607710a9b9c9477e
+Stage: implementation-ready
+Candidate: none
+Work base: 9078e959de6d844121b0ee7b884e9be4b5c471e7
 
 ## Active work
 
-None.
+Completed: レビュー7件の修正、仕様補足と別pass review、focused validation、代表操作、self-review。
+Remaining: Candidate記録、push後のfresh verificationと全OS CI。
 
 ## Blocking findings
 
-今回のworkflow / test差分のBlocking: None。
+実装差分のBlocking: None。CI未確認。
 
-## Completion evidence
+## Evidence
 
-- rust-cacheの誤記を公式v2.7.5 tagのcommit `82a92a6e8fbeee089604da2575dc567ae9ddeaab`へ修正。通常CI / release workflowの2箇所を揃え、全workflowで参照するAction commit 8種の存在をGitHub APIで確認した。
-- releaseのsha256sumに引数区切りを追加し、既存SC2035も解消。actionlint / workspace check / diff check成功。
-- CI再開後に顕在化した、保存完了前のdisk確認と出現motion中の空tab名読取りをテスト側で修正。対応する4ケースをChromium / WebKitで各3回、計24件成功。製品コードは変更していない。
-- [exact Candidate CI](https://github.com/kamahir0/masterdata/actions/runs/39820690249): integrity / Windows / Linux / macOS全job成功。型検査、通常テスト、build、native検証、UI回帰、package、起動、対象OSの開発版install検証を確認した。
-- authoring後のreview-codeでscope、参照元、テストの期待結果と完了条件、CI証拠を確認し、Blockingなし。releaseの実行・公開とUnityの起動は行っていない。今回のローカル検証・CI監視processは終了を確認した。
+- nestedはsessionのobject / array slot IDからpathを再解決し、削除時に閉鎖。Saveはblurで確定した選択を同期反映してから対象を決める。
+- nativeとhostで不正path / hidden source名を拒否。folder削除は未知項目をpreflightで保護し、失敗をtransactionのrollbackへ含め、fileと削除済みfolderを復元する。
+- IndexedDBのerror / abort / 同期例外を捕捉しconnectionを終了。失敗注入後もproject open / saveを継続。Enum / Flags / key / referenceの不正要素を局所診断する。
+- npm test 63件、Rust test 11件成功。追加GUI 8件と周辺回帰30件をChromium / WebKitで成功。実際の並替え・Undo / Redo・編集保存・削除、名前入力中Saveと他draft保持、隠し名訂正、raw修復を確認した。
+- 型検査、build、workspace / diff check、actionlint成功。review-codeの別passで対象同一性、保存scope、path境界、未知file保護、失敗時baseline、局所診断、rationale freshnessと検証を確認しBlockingなし。

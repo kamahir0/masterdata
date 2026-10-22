@@ -176,12 +176,12 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
       return;
     }
     if (kind === "enum") {
-      if (!(type!.data.enum.members ?? []).some((m: any) => m.name === value))
+      if (!list(type!.data.enum.members).some((m) => isObject(m) && m.name === value))
         add(source, path, "定義されたEnumの候補を選択してください。");
       return;
     }
     if (kind === "flags") {
-      const members = (type!.data.flags.members ?? []).map((m: any) => m.name);
+      const members = list(type!.data.flags.members).filter(isObject).map((m) => m.name);
       if (
         !Array.isArray(value) ||
         !value.length ||
@@ -290,6 +290,10 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
         add(source, [kind, "members"], "候補を追加してください。", "ENUM");
       for (let i = 0; i < members.length; i++) {
         const m = members[i];
+        if (!isObject(m)) {
+          add(source, [kind, "members", i], "候補を名前と数値を持つ形式にしてください。", "SHAPE");
+          continue;
+        }
         if (
           !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(m.name ?? "") ||
           memberNames.has(m.name)
@@ -401,10 +405,11 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
         );
       });
     }
-    const allKeys: any[] = [
-      table.source.data.primaryKey,
-      ...list(table.source.data.secondaryKeys),
-    ].filter(Boolean);
+    const allKeys: { key: any; path: (string | number)[] }[] = [];
+    if (table.source.data.primaryKey !== undefined)
+      allKeys.push({ key: table.source.data.primaryKey, path: ["primaryKey"] });
+    list(table.source.data.secondaryKeys).forEach((key, i) =>
+      allKeys.push({ key, path: ["secondaryKeys", i] }));
     if (!table.source.data.primaryKey?.fields?.length)
       add(
         table.source,
@@ -412,11 +417,15 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
         "主キーの項目を選択してください。",
         "KEY",
       );
-    allKeys.forEach((key, keyIndex) => {
+    allKeys.forEach(({ key, path }) => {
+      if (!isObject(key)) {
+        add(table.source, path, "キーを項目一覧を持つ形式にしてください。", "SHAPE");
+        return;
+      }
       if (!Array.isArray(key.fields) || !key.fields.length) {
         add(
           table.source,
-          ["primaryKey"],
+          path,
           "キーの項目を選択してください。",
           "KEY",
         );
@@ -434,12 +443,12 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
         )
           add(
             table.source,
-            ["primaryKey"],
+            path,
             `キー「${name}」は必須の整数・文字列・ID・Enum項目にしてください。`,
             "KEY",
           );
       }
-      if (key.nonUnique && keyIndex > 0) return;
+      if (key.nonUnique && path[0] === "secondaryKeys") return;
       const used = new Set<string>();
       for (const { source, row, index } of rows) {
         const signature = fingerprint(key.fields.map((n: string) => row?.[n]));
@@ -453,14 +462,19 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
         used.add(signature);
       }
     });
-    for (const reference of list(table.source.data.references)) {
+    for (const [referenceIndex, reference] of list(table.source.data.references).entries()) {
+      const referencePath = ["references", referenceIndex];
+      if (!isObject(reference)) {
+        add(table.source, referencePath, "参照を名前・項目・参照先を持つ形式にしてください。", "SHAPE");
+        continue;
+      }
       if (
         !validIdentifier(reference.name) ||
         (reference.csharpName && !validIdentifier(reference.csharpName))
       )
         add(
           table.source,
-          ["references"],
+          referencePath,
           "参照の名前は英字・数字・_で指定してください。",
           "NAME",
         );
@@ -478,7 +492,7 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
       ) {
         add(
           table.source,
-          ["references"],
+          referencePath,
           `参照「${reference.name}」の表と項目を設定してください。`,
           "REFERENCE",
         );
@@ -493,20 +507,20 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
       )
         add(
           table.source,
-          ["references"],
+          referencePath,
           "参照元と参照先の項目の型を揃えてください。",
           "REFERENCE",
         );
       const keys = [
         target.source.data.primaryKey,
         ...list(target.source.data.secondaryKeys),
-      ].filter(Boolean);
+      ].filter(isObject);
       if (
         !keys.some((k) => fingerprint(k.fields) === fingerprint(targetFields))
       )
         add(
           table.source,
-          ["references"],
+          referencePath,
           `参照先に対応するキーがありません。`,
           "REFERENCE",
         );

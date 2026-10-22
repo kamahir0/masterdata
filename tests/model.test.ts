@@ -672,3 +672,41 @@ test("provisional default names avoid explicit and implicit folder paths", () =>
   assert.equal(s.prepareSource("table").path, "new-table2.yaml");
   assert.equal(s.prepareFolder(), "新しいフォルダ3");
 });
+
+test("malformed enum/flags members, keys and references report local problems without losing other diagnostics", async () => {
+  const { project, root } = await sample();
+  try {
+    const s = new Session();
+    s.load(project);
+    for (const source of project.snapshot.sources) {
+      if (source.data.enum || source.data.flags) {
+        const kind = source.data.enum ? "enum" : "flags";
+        s.update(source.id, [kind, "members"], [null, "scalar", [], ...source.data[kind].members]);
+      }
+    }
+    const schema = project.snapshot.sources.find((f) => f.data.kind === "schema")!;
+    s.update(schema.id, ["secondaryKeys"], [null, "scalar", []]);
+    s.update(schema.id, ["references"], [null, "scalar", []]);
+    s.update(schema.id, ["records", 0, "id"], "bad integer");
+    const problems = validate(s.state.snapshot);
+    for (const key of ["secondaryKeys", "references"])
+      for (let i = 0; i < 3; i++)
+        assert(problems.some((p) => p.source === schema.id && JSON.stringify(p.path) === JSON.stringify([key, i]) && p.code === "SHAPE"));
+    for (const source of s.state.snapshot.sources.filter((f) => f.data.enum || f.data.flags))
+      for (let i = 0; i < 3; i++)
+        assert(problems.some((p) => p.source === source.id && p.path.at(-1) === i && p.code === "SHAPE"));
+    assert(problems.some((p) => p.source === schema.id && p.path.includes("id") && p.code === "VALUE"));
+  } finally { await fs.rm(root, { recursive: true }); }
+});
+
+test("source creation/move rejects hidden names and embedded Windows paths without changing history", async () => {
+  const { project, root } = await sample();
+  try {
+    const s = new Session(); s.load(project);
+    const before = s.state;
+    for (const name of [".hidden", "nested/.hidden", "C:/escape", "nested/C:escape", "nested\\escape"])
+      assert.throws(() => s.create(name), /名前|文字/);
+    assert.throws(() => s.move("types", ".hidden-types"), /名前/);
+    assert.equal(s.state, before);
+  } finally { await fs.rm(root, { recursive: true }); }
+});

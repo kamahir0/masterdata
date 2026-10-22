@@ -23,15 +23,30 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
+async function transaction<T>(
+  mode: IDBTransactionMode,
+  operation: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  const db = await openDB();
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, mode);
+      let value: T;
+      tx.oncomplete = () => resolve(value);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
+      const request = operation(tx.objectStore(STORE_NAME));
+      request.onsuccess = () => { value = request.result; };
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export async function saveRecentDirectory(handle: Directory): Promise<void> {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.objectStore(STORE_NAME).put(handle, RECENT_KEY);
-    });
+    await transaction("readwrite", (store) => store.put(handle, RECENT_KEY));
   } catch {
     // IndexedDB failure should not block project usage.
   }
@@ -39,13 +54,7 @@ export async function saveRecentDirectory(handle: Directory): Promise<void> {
 
 export async function getRecentDirectory(): Promise<Directory | null> {
   try {
-    const db = await openDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, "readonly");
-      const req = tx.objectStore(STORE_NAME).get(RECENT_KEY);
-      req.onsuccess = () => resolve((req.result as Directory) ?? null);
-      req.onerror = () => resolve(null);
-    });
+    return (await transaction("readonly", (store) => store.get(RECENT_KEY))) ?? null;
   } catch {
     return null;
   }
@@ -53,13 +62,7 @@ export async function getRecentDirectory(): Promise<Directory | null> {
 
 export async function clearRecentDirectory(): Promise<void> {
   try {
-    const db = await openDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, "readwrite");
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-      tx.objectStore(STORE_NAME).delete(RECENT_KEY);
-    });
+    await transaction("readwrite", (store) => store.delete(RECENT_KEY));
   } catch {
     // Ignore cleanup errors
   }

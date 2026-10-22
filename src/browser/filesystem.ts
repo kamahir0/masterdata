@@ -11,7 +11,7 @@ export interface Directory extends FileSystemDirectoryHandle {
 export function parts(path: string) {
   const result = path.split("/");
   if (
-    result.some((p) => !p || p === "." || p === ".." || /[\\\x00-\x1f]/.test(p))
+    result.some((p) => !p || p === "." || p === ".." || /[:\\\x00-\x1f]/.test(p))
   )
     throw new Error(`安全でないパスです: ${path}`);
   return result;

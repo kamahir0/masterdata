@@ -5,6 +5,8 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
+import { flushSync } from "react-dom";
+import { captureTarget, resolveTarget, type EditTarget } from "./core/cursor";
 import {
   App as AntApp,
   Alert,
@@ -176,7 +178,27 @@ function Workspace({
   navigation.current = { active, opened, preview };
   const [tab, setTab] = useState("data");
   const explorerOperations = useRef<FileOperations>(null);
-  const [cursor, setCursor] = useState<Cursor | null>(null);
+  const [nested, setNested] = useState<
+    (EditTarget & { field: Cursor["field"] }) | null
+  >(null);
+  const nestedPath = nested && resolveTarget(snapshot, nested);
+  const cursor: Cursor | null = nested && nestedPath
+    ? {
+        source: nested.source,
+        path: nestedPath,
+        field: nested.field,
+        key: JSON.stringify([nested.source, ...nested.path]),
+      }
+    : null;
+  const setCursor = (next: Cursor | null) => setNested(next
+    ? {
+        ...captureTarget(session.getState().snapshot, next.source, next.path),
+        field: next.field,
+      }
+    : null);
+  useEffect(() => {
+    if (nested && !nestedPath) setNested(null);
+  }, [nested, snapshot]);
   const [settings, setSettings] = useState(false);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -349,11 +371,12 @@ function Workspace({
     // A queued Save All (including close confirmation) must observe the first
     // acknowledgement and then capture newer drafts, never silently skip them.
     while (savingRequest.current) await savingRequest.current;
-    commitActive();
+    // A naming blur can open a new file. Choose the scope after that selection commits.
+    flushSync(commitActive);
     const current = session.getState();
     if (!current.project) return;
     const currentSource = current.snapshot.sources.find(
-      (source) => source.id === active,
+      (source) => source.id === navigation.current.active,
     );
     const ids =
       typeof scope === "string"

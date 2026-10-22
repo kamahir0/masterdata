@@ -54,6 +54,8 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 - 未保存変更があるとき、アプリ内のProject切替・file tabを閉じる操作はProject切替では「すべて保存 / 保存せず続ける / キャンセル」、file tabでは対象fileの「保存 / 保存しない / キャンセル」を示す。ブラウザタブのreload / 閉じる / navigationでは利用可能な離脱警告を使うが、ブラウザやOSの強制終了で必ず確認できるとは表現しない。
 - 警告を通さないクラッシュで未保存のメモリdraftが消える制約を明示する。自動保存、復旧用の編集中draft永続化、背景file監視は初期版に含めない。
 
+最近のfolderのIndexedDB永続化は補助機能とし、open / transactionのerror・abort・同期例外でもprojectの使用を妨げない。読込失敗は未登録として扱い、使用後のconnectionを閉じる。根拠: [レビューの保存保護](../spec-changes/0025-review-data-safety.md)。
+
 ## WEB-006 — Browser固有UIと機能境界
 
 - BrowserではBuild / Publishの実行コマンド、toolbar button、split menu、profile選択、進捗・結果panel、成果物の表示・Reveal、Publish先編集欄など、**Build / Publish専用UIを表示しない**。無効状態のbuttonを置いて代用しない。ショートカットやメニュー、起動パラメータからも実行できない。

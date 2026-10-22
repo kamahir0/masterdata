@@ -336,9 +336,11 @@ export class Session {
     if (
       newPath
         .split("/")
-        .some((p) => !p || p === "." || p === ".." || /[\\\x00-\x1f]/.test(p))
+        .some((p) => !p || p === "." || p === ".." || /[:\\\x00-\x1f]/.test(p))
     )
       throw new Error("名前に使用できない文字があります。");
+    if (newPath.split("/").some((p) => p.startsWith(".")))
+      throw new Error("dotで始まる名前は読込対象外のため使用できません。");
     const s = this.state.snapshot;
     if (
       s.sources.some((f) => f.path === newPath) ||

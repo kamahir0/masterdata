@@ -2,12 +2,12 @@
 
 ## Objective
 
-GitHub Actionsの不正なAction参照によるCI停止を解消し、Desktop各環境の検証を再開する。
+全体レビューで確認した7件（nested編集対象、Windows path、隠し名、IndexedDB失敗、仮作成中Save、folder削除失敗、診断の不正要素）を修正する。
 
 ## Completion boundary
 
-公式tag / commitとの照合、通常CIとrelease workflowの参照修正、Action参照全体の確認、actionlint・workspace check・diff check、self-review、通常commit / push、CI実行結果の確認。新たな失敗が判明した場合は参照エラーと区別して記録する。
+必要な仕様補足のreview・適用、各不具合の実装と回帰検証、代表作業の確認、self-review、workspace / diff check、通常commit / push、exact CandidateのCI成功確認。
 
 ## Non-scope
 
-製品レビューで挙げた機能上の不具合修正、Actionの別バージョンへの更新、releaseの実行・公開、Unityの起動。
+公開release、依頼外の機能追加、ユーザーの既存変更、Unityの起動。

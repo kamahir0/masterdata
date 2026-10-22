@@ -3565,3 +3565,83 @@ test("keyboard tab navigation skips outgoing tabs and reopening during exit stay
     page.getByRole("tab", { name: "combat-stats", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
 });
+
+test("review fixes: nested editor follows its record through reorder and Undo and closes on deletion", async () => {
+  await selectSource("common");
+  await openNested("stats 行2を開く");
+  const attack = page.getByRole("textbox", { name: "attack", exact: true });
+  await expect(attack).toHaveValue("34");
+  await page.getByLabel("レコードを移動", { exact: true }).nth(1).dragTo(page.locator("[data-row-key]").first());
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("2001");
+  await expect(attack).toHaveValue("34");
+  await page.evaluate(() => (window as any).__command("undo"));
+  await expect(page.getByLabel("id 行2", { exact: true })).toHaveValue("2001");
+  await expect(attack).toHaveValue("34");
+  await page.evaluate(() => (window as any).__command("redo"));
+  await expect(page.getByLabel("id 行1", { exact: true })).toHaveValue("2001");
+  await attack.fill("999");
+  await attack.press("Tab");
+  await saveAll();
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+  const data = parse(await fs.readFile(path.join(root, "sources/items/common.yaml"), "utf8"));
+  expect(data.records.find((r: any) => r.id === 2001).stats.attack).toBe(999);
+  expect(data.records.find((r: any) => r.id === 1001).stats.attack).toBe(12);
+  // Deleting the other row must keep this editor; deleting the target closes it.
+  await page.getByRole("button", { name: "行2の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除$/ }).click();
+  await expect(attack).toHaveValue("999");
+  await page.getByRole("button", { name: "行1の操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: /削除$/ }).click();
+  await expect(attack).not.toBeVisible();
+});
+
+test("review fixes: Save during provisional naming saves the new current file and leaves the previous draft", async () => {
+  const message = page.getByLabel("message 行1", { exact: true });
+  await message.fill("previous unsaved draft");
+  await message.press("Tab");
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいテーブル$/ }).click();
+  await page.getByLabel("項目の名前", { exact: true }).fill("save-me");
+  await page.evaluate(() => (window as any).__command("save"));
+  await expect(page.getByRole("tab", { name: "save-me", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator('.file-tab[aria-selected="true"] .dirty-dot')).toHaveCount(0);
+  await expect.poll(async () => fs.readFile(path.join(root, "sources/announcements/save-me.yaml"), "utf8").catch(() => "")).toContain("kind: schema");
+  expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).not.toContain("previous unsaved draft");
+  await selectSource("announcement");
+  await expect(message).toHaveValue("previous unsaved draft");
+  await expect(page.getByRole("status", { name: "未保存の変更", exact: true })).toBeVisible();
+});
+
+test("review fixes: malformed members produce source-local diagnostics and raw editing recovers", async () => {
+  await selectSource("rarity");
+  await page.getByRole("tab", { name: /ソース/ }).click();
+  const raw = page.getByLabel("YAMLソース", { exact: true });
+  const original = await raw.inputValue();
+  const data = parse(original);
+  data.enum.members.unshift(null);
+  await raw.fill(stringify(data));
+  await raw.press("Tab");
+  await page.getByRole("button", { name: /件の問題/ }).click();
+  const problem = page.locator(".problem-item").filter({ hasText: "候補を名前と数値を持つ形式" });
+  await expect(problem).toContainText("types/rarity.yaml");
+  await expect(problem).toContainText("enum › members › 0");
+  await expect(page.locator(".problem-item").filter({ hasText: "TypeError" })).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath("local-diagnostic.png") });
+  await raw.fill(original);
+  await raw.press("Tab");
+  await expect(page.getByRole("button", { name: /0 件の問題/ })).toBeVisible();
+});
+
+test("review fixes: hidden provisional name is rejected and corrected name can be saved", async () => {
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいテーブル$/ }).click();
+  const name = page.getByLabel("項目の名前", { exact: true });
+  await name.fill(".hidden");
+  await name.press("Enter");
+  await expect(page.getByText("dotで始まる名前は読込対象外のため使用できません。", { exact: true })).toBeVisible();
+  await expect(name).toHaveValue(".hidden");
+  await name.fill("visible");
+  await page.evaluate(() => (window as any).__command("save"));
+  await expect.poll(async () => fs.readFile(path.join(root, "sources/announcements/visible.yaml"), "utf8").catch(() => "")).toContain("kind: schema");
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+});

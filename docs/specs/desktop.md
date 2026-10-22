@@ -5,7 +5,7 @@ Status: Implemented
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [Explorer新規作成のEscape取消](../spec-changes/0024-explorer-create-escape.md)、[業務ツールとしてのUI文言の統一と過剰なスローガンの排除](../spec-changes/0020-business-app-ui-copy.md)、[操作と選択のfeedback](../spec-changes/0019-workbench-action-and-selection-feedback.md)、[モダンworkbench](../spec-changes/0018-modern-workbench-surfaces.md)、[Explorerの移動拒否理由](../spec-changes/0014-explorer-drop-reasons.md)、[Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [レビューで判明した編集対象と保存の保護](../spec-changes/0025-review-data-safety.md)、[Explorer新規作成のEscape取消](../spec-changes/0024-explorer-create-escape.md)、[業務ツールとしてのUI文言の統一と過剰なスローガンの排除](../spec-changes/0020-business-app-ui-copy.md)、[操作と選択のfeedback](../spec-changes/0019-workbench-action-and-selection-feedback.md)、[モダンworkbench](../spec-changes/0018-modern-workbench-surfaces.md)、[Explorerの移動拒否理由](../spec-changes/0014-explorer-drop-reasons.md)、[Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -19,9 +19,9 @@ Humanの製品像、豊かな標準UI・motion、Enum / Customの非modal編集�
 
 操作単位のProject Undo / Redoを用意し、関連sourceを変更するrename等も一括で戻せる。Saveは履歴を消さず、保存済み状態は履歴と独立して追跡する。新規・削除・rename・移動もdraft操作とし、Save前にdiskへ反映しない。入力途中のローカル値はcommit前のEscで取消し、commit後はUndoする。日本語IMEの確定Enterを操作ショートカットへ流用しない。
 
-「保存」とCmd/Ctrl+Sは現在file、「すべて保存」とCmd/Ctrl+Shift+Sは全変更を対象にする。現在fileの保存で他file・設定・無関係なfolder変更を暗黙保存しない。対象fileの移動・作成に必要な親folderは作る。波及した他fileの編集は未保存で保持し、全保存で確定する。対象fileなしの通常保存は無効。window close / Project切替前の「保存して続ける」は全保存する。保存状態は保存I/O中の追加入力を保持し、Explorer・tab・全体で直ちに一致する。
+「保存」とCmd/Ctrl+Sは現在file、「すべて保存」とCmd/Ctrl+Shift+Sは全変更を対象にする。現在fileの保存で他file・設定・無関係なfolder変更を暗黙保存しない。対象fileの移動・作成に必要な親folderは作る。波及した他fileの編集は未保存で保持し、全保存で確定する。対象fileなしの通常保存は無効。入力のblur確定で新規fileが開かれた場合は、そのfileを今回の保存対象にする。window close / Project切替前の「保存して続ける」は全保存する。保存状態は保存I/O中の追加入力を保持し、Explorer・tab・全体で直ちに一致する。
 
-Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。
+Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。folder削除・移動は未知のfile / directory / symlinkをpreflightで保護し、削除失敗を保存成功にしない。失敗時は今回のfile変更と削除済みfolderを復元するか復旧情報を保持し、baselineを進めない。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。
 
 有効sourceをGUIで編集して保存するときは、空でないmap / sequenceを2スペースのblock形式へ統一する。コメント・引用符・整数精度・改行形式・値を保持する。未変更fileやsyntax不正なraw入力を整形のためだけに書き換えない。
 
@@ -55,15 +55,15 @@ source iconは表（grid）、分離data（record行）、Enum（単一候補）
 
 ## EDIT-005 — 編集対象と操作結果
 
-行・列・Custom field・Enum / Flags member・配列要素は、値・PK・現在indexから独立したsession内IDで識別する。同じ値の配列要素も区別し、値変更・並替え・Undo / Redoで入力対象を保つ。IDをYAMLへ追加しない。編集操作の結果から、作成対象の表示・選択・入力開始とfeedbackを共通して扱う。後続の操作・navigationは古いfocus要求を取り消し、固定frame数や表示indexの推測に依存しない。
+行・列・Custom field・Enum / Flags member・配列要素は、値・PK・現在indexから独立したsession内IDで識別する。同じ値の配列要素も区別し、値変更・並替え・Undo / Redoで入力対象を保つ。IDをYAMLへ追加しない。nested editorも祖先の行・配列要素の同一性を追跡し、並替え後も同じ対象を編集する。対象削除時は閉じ、同じindexの別要素へ移らない。編集操作の結果から、作成対象の表示・選択・入力開始とfeedbackを共通して扱う。後続の操作・navigationは古いfocus要求を取り消し、固定frame数や表示indexの推測に依存しない。
 
-Explorerで新規作成するときは検索を解除し、全祖先と作成先folderを展開して新規nodeを表示・選択しrenameへfocusする。menu / rename操作でfolderを開閉しない。作成 / rename入力は展開等の表示更新でfocusを失わず、外側clickによるblurまたはEnterで有効な名前を確定し、Escapeで新規作成自体を取り消し、既存項目では名前編集だけを取り消して元のpathを保つ。新規nodeは名前確定まで仮表示としsession・file tabへ追加せず、取消時は以前のExplorer選択・編集中file・既存draft・dirty・Undo / Redo履歴を保つ。確定時に一つのUndo単位で作成し、fileなら開く。Enter / Escape後のblurで二重確定せず、IME変換中のEnter / Escapeは確定 / 取消に流用しない。確定後は次操作先のfocusを取り戻さない。無効名は理由を通知し、既存項目は元のpathを保持し、新規作成は仮nodeと入力を残して再入力またはEscapeで回復できる。folder本体へのdropはそのfolder内へ移動し、folder全体をhighlightする。node間のgapは親folderへのdropとして線で示し、表示と移動先を一致させる。自己・子孫・path衝突への移動を実行前に防ぐ。
+Explorerで新規作成するときは検索を解除し、全祖先と作成先folderを展開して新規nodeを表示・選択しrenameへfocusする。menu / rename操作でfolderを開閉しない。作成 / rename入力は展開等の表示更新でfocusを失わず、外側clickによるblurまたはEnterで有効な名前を確定し、Escapeで新規作成自体を取り消し、既存項目では名前編集だけを取り消して元のpathを保つ。新規nodeは名前確定まで仮表示としsession・file tabへ追加せず、取消時は以前のExplorer選択・編集中file・既存draft・dirty・Undo / Redo履歴を保つ。確定時に一つのUndo単位で作成し、fileなら開く。Enter / Escape後のblurで二重確定せず、IME変換中のEnter / Escapeは確定 / 取消に流用しない。確定後は次操作先のfocusを取り戻さない。sourceの新規作成・rename・移動先にはdotで始まるsegmentを認めず、保存側でも拒否する。既存の隠し項目は変更しない。project相対pathは各segmentのWindows drive prefix・backslashも拒否し、絶対path・上位参照・symlink拒否を維持する。無効名は理由を通知し、既存項目は元のpathを保持し、新規作成は仮nodeと入力を残して再入力またはEscapeで回復できる。folder本体へのdropはそのfolder内へ移動し、folder全体をhighlightする。node間のgapは親folderへのdropとして線で示し、表示と移動先を一致させる。自己・子孫・path衝突への移動を実行前に防ぐ。
 
 表headerにはPK、SK n（0始まりsecondary group）、Key n（MessagePack field key）を表示する。複合keyの順序、複数所属、secondaryの一意 / 重複可を確認できる。参照選択は実値を先、その後に弱い色 / 小さい文字の補助名を表示し、両方で検索できる。値の保存と参照先への移動は従来通りとする。
 
 ## DATA-001 — 表・型・関係
 
-primitiveはbool / int / uint / long / ulong / float / double / string。Enum / Flags、Value Object、Custom、配列とnullableを扱う。Flagsの予約Noneは名前と値0・存在を固定し、他memberはその後ろで並替える。raw sourceの自由編集と診断は維持する。型循環や未知型、値shape、名前重複、key、参照を診断する。表のprimary / secondary（unique / nonunique、複合）、referenceをGUIで設定できる。
+primitiveはbool / int / uint / long / ulong / float / double / string。Enum / Flags、Value Object、Custom、配列とnullableを扱う。Flagsの予約Noneは名前と値0・存在を固定し、他memberはその後ろで並替える。raw sourceの自由編集と診断は維持する。型循環や未知型、値shape、名前重複、key、参照を診断する。不正なmember / reference / key要素もsourceと要素位置を示して診断し、他の診断を維持する。表のprimary / secondary（unique / nonunique、複合）、referenceをGUIで設定できる。
 
 同梱sampleの非空collectionも保存時と同じ2スペースのblock YAMLにする。
 

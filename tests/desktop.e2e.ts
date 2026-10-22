@@ -3422,6 +3422,17 @@ test("welcome displays business tool copy and titlebar without slogans", async (
   await expect(page.locator(".window-project")).toHaveCount(0);
 });
 
+test("relationships view shows business explanation for empty references", async () => {
+  await selectSource("schema");
+  await page.getByRole("tab", { name: "キーと参照", exact: true }).click();
+  await expect(
+    page.getByText("表同士の外部キー参照を定義して、関連するレコードを連携できます。"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("クエストの報酬アイテムなど、表同士のつながりを定義できます。"),
+  ).toHaveCount(0);
+});
+
 test("keyboard tab navigation skips outgoing tabs and reopening during exit stays singular", async () => {
   for (const name of ["announcement", "rarity", "combat-stats"]) {
     await selectSource(name);

@@ -1115,12 +1115,6 @@ button:focus-visible,
 .welcome-main {
   max-width: 470px;
 }
-.welcome-eyebrow {
-  font-size: 10px;
-  letter-spacing: 3px;
-  color: var(--accent);
-  font-weight: 600;
-}
 .welcome .ant-typography h1,
 .welcome h1.ant-typography {
   font-size: 48px;

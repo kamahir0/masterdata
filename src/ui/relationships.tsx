@@ -241,7 +241,7 @@ export function Relationships({
         </div>
         {!references.length && (
           <Typography.Text type="secondary">
-            クエストの報酬アイテムなど、表同士のつながりを定義できます。
+            表同士の外部キー参照を定義して、関連するレコードを連携できます。
           </Typography.Text>
         )}
       </Card>

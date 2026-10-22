@@ -2,7 +2,7 @@
   "name": "masterdata",
   "productName": "MasterData",
   "version": "0.1.0",
-  "description": "構造を理解するゲームデータエディタ",
+  "description": "ゲームマスターデータ編集ツール",
   "author": "masterdata contributors",
   "license": "MIT",
   "private": true,
@@ -17,6 +17,7 @@
     "start": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "test:ui": "playwright test",
     "pack": "tauri build --config src-tauri/tauri.dev.conf.json",
+    "pack:release": "tauri build",
     "prepare:host": "node scripts/prepare-host.mjs",
     "tauri": "tauri",
     "test:native": "node scripts/test-native.mjs"

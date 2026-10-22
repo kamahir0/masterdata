@@ -5,7 +5,7 @@ Status: Implemented
 Approval mode: Agent-autonomous
 Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資料との境界、途中状態・回復、観察可能なacceptanceをreviewし、Blockingなし。ライブラリ選定・新format・Build対象をAgent Decisionとして採用。Human gate: None within delegated scope。
 
-Change provenance: [操作と選択のfeedback](../spec-changes/0019-workbench-action-and-selection-feedback.md)、[モダンworkbench](../spec-changes/0018-modern-workbench-surfaces.md)、[Explorerの移動拒否理由](../spec-changes/0014-explorer-drop-reasons.md)、[Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
+Change provenance: [業務ツールとしてのUI文言の統一と過剰なスローガンの排除](../spec-changes/0020-business-app-ui-copy.md)、[操作と選択のfeedback](../spec-changes/0019-workbench-action-and-selection-feedback.md)、[モダンworkbench](../spec-changes/0018-modern-workbench-surfaces.md)、[Explorerの移動拒否理由](../spec-changes/0014-explorer-drop-reasons.md)、[Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
 ## 根拠と範囲
 
@@ -128,6 +128,8 @@ Explorer境界をdragで幅変更でき、矢印 / Home / End、double clickでd
 削除は即時にdraft / Undoへ反映し、可視対象に約300msの非対話な退出snapshotを示す。退出領域の縮小と、残った項目・移動する末尾操作が空間を詰める動きを同じ補間で結び、対象の退出を視認できるようにする。列削除は横方向へ同様に詰める。画面外のsnapshotを作らず、ghostは入力・selection・accessibility対象にせず完了 / 取消時に回収する。tabの追加 / closeは当該tabの幅とopacityで約200〜280msの出入りを示し、既存tab全体を上下移動させない。右端・最後の一つでも対象の姿を残して退出を見せ、後続tabの移動だけに依存しない。退出tabは即時に非対話・非accessibleとし、連続操作とscroll / wrapを維持する。active tabへのscrollはtab帯内に限定する。reduced motionでは補間を抑える。
 
 app iconはgreen accent系のvector原稿から生成し、macOSは16〜1024pxのretina slot、Windowsは16〜256pxを含める。小サイズの線も読みやすくし、画面内brandとnative bundleで意匠を揃える。
+
+UI文言は業務ツールとして平易・簡潔・正確な機能説明を用い、ポエミーなスローガンや過剰なキャッチコピー（「世界をつくる」「YOUR DATA, YOUR WORLD」「思いついたその場から」「つながりまで、見える。」等）を配置しない。未選択時はツール名（MasterData）のみを表示し、空状態・プレビュー・ヘルプは機能と対象（表・型・外部キー参照・整合性検証等）に即した表現を用いる。
 
 ## UI-004 — 対象の境界と直接操作
 

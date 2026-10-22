@@ -5,6 +5,7 @@
 | [Desktop Authoring](desktop.md) | Implemented | 編集session、表・型・値、保存、Build / Publish、標準UIとmotion |
 | [Browser Authoring](browser.md) | Implemented | 静的Browser、ローカル選択・メモリ編集・明示保存・中断復旧、Desktop / CLIとの境界 |
 | [CLI Authoring and Automation](cli.md) | Implemented | AI・自動化向けCLI、構造把握・検証、AST保持編集・横断rename・一括tx、Build / Publish |
+| [Distribution, Release and Public Documentation](distribution.md) | Approved | 公開README、実機スクリーンショット、配布・リリースCI/CD、リポジトリメタデータ |
 
 [Product Direction](../product/direction.md)は設計の出発点です。具体的な編集モデルと作業シナリオは、選択されたObjectiveで[Specification Workflow](../contributing/specification-workflow.md)に沿って整理します。
 

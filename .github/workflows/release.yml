@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos-aarch64
+            bundle_flag: --bundles app,dmg
+            cli_ext: ""
+            archive_ext: tar.gz
+          - os: windows-latest
+            platform: windows-x64
+            bundle_flag: --bundles nsis
+            cli_ext: .exe
+            archive_ext: zip
+          - os: ubuntu-latest
+            platform: linux-x64
+            bundle_flag: --bundles appimage,deb
+            cli_ext: ""
+            archive_ext: tar.gz
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Tauri Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check and web build
+        run: npm run build
+
+      - name: Build Tauri release bundles
+        run: npm run pack:release -- ${{ matrix.bundle_flag }} -- --locked
+
+      - name: Prepare release assets
+        id: assets
+        shell: bash
+        run: |
+          mkdir -p dist-release
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            TAG="v0.1.0"
+          fi
+
+          # Archive CLI binary
+          CLI_BIN="src-tauri/target/release/masterdata${{ matrix.cli_ext }}"
+          if [ -f "$CLI_BIN" ]; then
+            CLI_ARCHIVE="dist-release/masterdata-${TAG}-${{ matrix.platform }}.${{ matrix.archive_ext }}"
+            if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+              powershell -Command "Compress-Archive -Path '$CLI_BIN' -DestinationPath '$CLI_ARCHIVE'"
+            else
+              tar -czf "$CLI_ARCHIVE" -C src-tauri/target/release "masterdata${{ matrix.cli_ext }}"
+            fi
+            echo "Archived CLI: $CLI_ARCHIVE"
+          fi
+
+          # Collect Desktop bundles
+          BUNDLE_DIR="src-tauri/target/release/bundle"
+          if [ -d "$BUNDLE_DIR" ]; then
+            find "$BUNDLE_DIR" -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} dist-release/ \;
+          fi
+
+          echo "Collected assets in dist-release/:"
+          ls -la dist-release/
+
+      - name: Upload OS assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: assets-${{ matrix.platform }}
+          path: dist-release/*
+          retention-days: 1
+
+  publish-draft:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download all assets
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Compute checksums
+        shell: bash
+        run: |
+          mkdir -p release-files
+          cp artifacts/* release-files/ || true
+          cd release-files
+          sha256sum * > SHA256SUMS.txt || true
+          cat SHA256SUMS.txt
+
+      - name: Create or update draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            TAG="v0.1.0"
+          fi
+
+          TITLE="MasterData ${TAG}"
+          echo "Creating or updating draft release for tag: $TAG"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists. Uploading assets..."
+            gh release upload "$TAG" release-files/* --clobber
+          else
+            echo "Creating draft release $TAG..."
+            gh release create "$TAG" release-files/* \
+              --title "$TITLE" \
+              --draft \
+              --generate-notes
+          fi

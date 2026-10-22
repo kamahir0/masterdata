@@ -624,10 +624,12 @@ function Workspace({
             <img src={appIcon} alt="" />
           </span>
           <strong>MasterData</strong>
-          <span className="brand-divider" />{" "}
-          <span className="window-project">
-            {project ? snapshot.config.name : "データから、世界をつくる。"}
-          </span>
+          {project && (
+            <>
+              <span className="brand-divider" />{" "}
+              <span className="window-project">{snapshot.config.name}</span>
+            </>
+          )}
         </div>
         <Space className="titlebar-controls">
           <Tooltip title="エディター設定">
@@ -1065,16 +1067,11 @@ function Workspace({
             transition={{ duration: 0.35 }}
             className="welcome-main"
           >
-            <span className="welcome-eyebrow">YOUR DATA, YOUR WORLD</span>
-            <Typography.Title>
-              データから、
-              <br />
-              <span>世界をつくる。</span>
-            </Typography.Title>
+            <Typography.Title>MasterData</Typography.Title>
             <Typography.Paragraph>
-              アイテムも、クエストも、そのつながりも。
+              表と型定義を直接編集するマスターデータ管理ツールです。
               <br />
-              構造を理解するエディタで、思いついたその場から。
+              プロジェクトを開くか、新規作成して編集を開始します。
             </Typography.Paragraph>
             <Space size="middle">
               <Button
@@ -1119,7 +1116,7 @@ function Workspace({
               <span className="preview-dot" />
               <span className="preview-dot" />
               <span className="preview-dot" />
-              <strong>冒険の道具箱</strong>
+              <strong>テーブル編集プレビュー</strong>
             </div>
             <div className="preview-grid">
               <div>id</div>
@@ -1136,7 +1133,7 @@ function Workspace({
               <Tag color="gold">Epic</Tag>
             </div>
             <div className="preview-footer">
-              <CheckCircleOutlined /> つながりまで、見える。
+              <CheckCircleOutlined /> 外部キー参照・型定義・値の整合性を管理
             </div>
           </motion.div>
         </div>

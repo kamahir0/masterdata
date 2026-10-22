@@ -2857,9 +2857,17 @@ test("hierarchy drop reasons explain conflicts and descendants without changing 
   const feedback = page.locator(".explorer-drop-feedback");
   const original = await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8");
   const existing = await fs.readFile(path.join(root, "sources/types/target/rarity.yaml"), "utf8");
-  await node("types").click();
-  await node("types/target").click();
-  await node("types/incoming").click();
+  const expand = async (path: string) => {
+    await node(path).click();
+    await expect(node(path).locator('xpath=ancestor::*[@role="treeitem"][1]'))
+      .toHaveAttribute("aria-expanded", "true");
+    // rc-tree replaces temporary expansion rows at motion end. Wait for the
+    // final rows before clicking a child; WebKit can lose a click at reparenting.
+    await expect(page.locator(".ant-tree-treenode-motion")).toHaveCount(0);
+  };
+  await expand("types");
+  await expand("types/target");
+  await expand("types/incoming");
   await page.getByRole("separator", { name: "エクスプローラーの幅", exact: true }).press("Home");
   await expect.poll(() => page.locator(".tree-scroll").evaluate(el =>
     el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length,

@@ -141,3 +141,14 @@ test("Publish cannot overwrite the TOML project file", async (t) => {
   );
   assert.equal(await fs.readFile(file, "utf8"), before);
 });
+
+test("project setting edits preserve unknown TOML signed 64-bit integers", () => {
+  const before = 'name = "Test"\n[extension]\nlarge = 9223372036854775807\n';
+  const config = readConfig(before);
+  const output = writeConfig({ ...config, name: "Renamed" }, before);
+  assert.match(output, /large = 9223372036854775807/);
+  assert.equal(
+    (parse(output, { integersAsBigInt: "asNeeded" }).extension as any).large,
+    9223372036854775807n,
+  );
+});

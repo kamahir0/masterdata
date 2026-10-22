@@ -18,6 +18,12 @@ Status: Accepted
 
 YAMLとMasterMemoryの利用目的は維持する。CLI（`masterdata`）とTauriネイティブバックエンドは `src-tauri` のRustコア（`masterdata.toml` 読書き、コメント・クオート・CRLF・64bit整数・配列順を保持するYAML AST処理、スキーマ・型・レコード操作、保存トランザクション、.NET / MasterMemoryによるC#・バイナリ生成とreload検証、Publish）を共有し、Node.jsランタイムやNode SEAサイドカーに依存しない。
 
+## Browserへの拡張（2026-10-22）
+
+[Browser Authoring](../specs/browser.md)の承認に基づき、React Session / YAML serializer / TOML contract / UIを共有し、能力に応じて入口を分岐する。Native I/O・Build / PublishのRustコアは維持する。Browser用にRust / WASMを導入してNativeのtransactionを模倣するより、選択したDirectoryHandleに限定したI/O adapterでWeb APIの非atomicな複数file保存と回復を明示する方が、静的配信と既存Desktop / CLIの品質を両立できる。
+
+原文と予定文を含むjournalをsource更新前にclose・再読込し、全pathの事前検査と直前比較、失敗時の条件付きrollback、再open時の復旧を行う。Web Locksは同一originの競合を直列化するが、外部writerのOS排他を保証しない。未保存draftの自動永続化は行わない。これらの制約をNativeと同等のatomic性であるかのように隠さない。
+
 ## 比較した選択
 
 - GUIのセル入力ごとにRustへIPC往復する案: キー入力・ドラッグ並替え・UndoのたびにシリアライズとIPC待機が発生し、未完成入力の保持も複雑になるため採用しない。

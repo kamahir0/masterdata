@@ -1,0 +1,192 @@
+import type { DesktopAPI, LoadedProject } from "../core/types";
+import { type Directory, permission } from "./filesystem";
+import { BrowserProject, RecoveryRequired, load, recover } from "./project";
+
+declare global {
+  interface Window {
+    showDirectoryPicker?: (options: {
+      mode: "readwrite";
+      id: string;
+    }) => Promise<Directory>;
+  }
+}
+export const isBrowser = () => window.desktop?.platform === "browser";
+export const browserSupport = () =>
+  window.isSecureContext &&
+  !!window.showDirectoryPicker &&
+  typeof FileSystemFileHandle !== "undefined" &&
+  "createWritable" in FileSystemFileHandle.prototype &&
+  typeof FileSystemDirectoryHandle !== "undefined" &&
+  "queryPermission" in FileSystemDirectoryHandle.prototype &&
+  "requestPermission" in FileSystemDirectoryHandle.prototype &&
+  "values" in FileSystemDirectoryHandle.prototype &&
+  !!navigator.locks;
+const unsupported = async (): Promise<never> => {
+  throw new Error("ブラウザ版ではこの操作を提供していません。");
+};
+interface Status {
+  busy: boolean;
+  recovery?: RecoveryRequired;
+  recoveryLive?: boolean;
+  notice?: string;
+}
+let status: Status = { busy: false };
+const listeners = new Set<() => void>();
+const update = (value: Partial<Status>) => {
+  status = { ...status, ...value };
+  listeners.forEach((fn) => fn());
+};
+export const browserStatus = {
+  subscribe(fn: () => void) {
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  },
+  get: () => status,
+};
+let project: BrowserProject | undefined;
+let dirty = false;
+// One origin-wide lock deliberately serializes even differently-named handles
+// to the same project. Handle names and user-visible root labels are not IDs.
+const locked = <T>(fn: () => Promise<T>) =>
+  navigator.locks.request("masterdata:filesystem", fn);
+async function perform<T>(fn: () => Promise<T>): Promise<T> {
+  if (status.busy)
+    throw new Error("保存・読込・復旧処理の完了をお待ちください。");
+  update({ busy: true });
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof RecoveryRequired) {
+      const live = project
+        ? await project.root.isSameEntry(error.root).catch(() => true)
+        : false;
+      update({ recovery: error, recoveryLive: live });
+    }
+    throw error;
+  } finally {
+    update({ busy: false });
+  }
+}
+export async function resolveRecovery(adopt: boolean) {
+  const recovery = status.recovery;
+  if (!recovery) return;
+  if (status.busy) throw new Error("復旧処理中です。");
+  if (adopt && status.recoveryLive)
+    throw new Error(
+      "入力を保持するため、保存前へ復旧してから再保存してください。",
+    );
+  // requestPermission starts in the click handler, before lock / disk awaits.
+  const allowed = permission(recovery.root);
+  await perform(async () => {
+    await allowed;
+    await locked(() => recover(recovery, adopt));
+    // Rollback verified every journal path. Keep the original memory baseline:
+    // the next Save still compares each changed path against disk. Replacing it
+    // with the current disk state would authorize overwriting external changes.
+    update({
+      recovery: undefined,
+      notice: status.recoveryLive
+        ? "保存前へ復旧しました。入力とUndoは保持しています。内容を確認して再保存できます。"
+        : "復旧を確認しました。プロジェクトを開いて内容を確認してください。",
+    });
+  });
+}
+export const browser: DesktopAPI = {
+  platform: "browser",
+  initial: async () => null,
+  open: async () => {
+    if (!browserSupport())
+      throw new Error(
+        "この環境ではローカルフォルダを編集できません。デスクトップ版ChromeとHTTPS（またはlocalhost）で開いてください。",
+      );
+    if (status.busy)
+      throw new Error("保存・読込・復旧処理の完了をお待ちください。");
+    // Picker must be invoked in the user's activation, before any filesystem IO.
+    const picked = window.showDirectoryPicker!({
+      mode: "readwrite",
+      id: "masterdata-project",
+    });
+    return perform(async (): Promise<LoadedProject | null> => {
+      let root: Directory;
+      try {
+        root = await picked;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return null;
+        throw error;
+      }
+      const value = await locked(() => load(root));
+      project = new BrowserProject(root, value);
+      update({ recovery: undefined, notice: undefined });
+      return value;
+    });
+  },
+  save: (request) => {
+    if (status.busy) return Promise.reject(new Error("保存・復旧処理中です。"));
+    if (!project)
+      return Promise.reject(new Error("プロジェクトが開かれていません。"));
+    const current = project;
+    const allowed = permission(current.root);
+    return perform(async () => {
+      await allowed;
+      const result = await locked(() => current.save(request));
+      update({ notice: undefined });
+      return result;
+    });
+  },
+  create: unsupported,
+  sample: unsupported,
+  build: unsupported,
+  publish: unsupported,
+  reveal: unsupported,
+  close: unsupported,
+  dirty(value) {
+    dirty = value;
+  },
+  onCommand(callback) {
+    const handler = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.altKey ||
+        !(event.metaKey || event.ctrlKey)
+      )
+        return;
+      const key = event.key.toLowerCase();
+      const input =
+        event.target instanceof Element &&
+        event.target.closest("input, textarea, [contenteditable=true]");
+      const command =
+        key === "s"
+          ? event.shiftKey
+            ? "save-all"
+            : "save"
+          : key === "o"
+            ? "open"
+            : !input && key === "z"
+              ? event.shiftKey
+                ? "redo"
+                : "undo"
+              : !input && key === "f"
+                ? "find"
+                : "";
+      if (command) {
+        event.preventDefault();
+        callback(command);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  },
+};
+export function installBrowser() {
+  if (window.desktop || "__TAURI_INTERNALS__" in window) return;
+  window.desktop = browser;
+  window.addEventListener("beforeunload", (event) => {
+    if (dirty || status.busy || status.recovery) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+}

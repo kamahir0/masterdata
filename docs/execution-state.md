@@ -1,19 +1,22 @@
 # Development State
 
-Stage: objective-complete
-Candidate: dd348f50f255171e2ffb863e1406d37e6d0c0053
-Work base: 00efed387b13072fb537030a5be6c545c39bfa9b
+Stage: implementation-ready
+Candidate: none
+Work base: a73eb336ec44dcb083f354f4b995ec375bd6d29f
 
 ## Active work
 
-None.
+- Completed: PR #1の仕様改善・別pass review / 承認、Browser I/O / 復旧UI・能力分岐・共有TOMLの実装、focused validation、実Chrome / Tauriでの代表作業、self-review。
+- In progress: CandidateのGit deliveryとfresh review / 3 OS CI。
+- Remaining: CI確認後の完了記録と専用検証プロセスのcleanup確認。
 
 ## Evidence
 
-- Candidateの[3 OS CI](https://github.com/kamahir0/masterdata/actions/runs/39694011100)で全工程成功。全UI回帰、model / 保存 / CLI、native tests、build / 起動、macOS / Windows開発版installを確認。
-- Chromium / WebKitで閉じた親と連続ネストのfolder作成、即時keyboard入力、展開後のfocus / 値保持、入力欄 / 非focusable領域への外側click、source作成 / rename、Enter / Escape、Undo、開閉、全保存とdisk内容を検証。名前入力 / 階層線の計12反復、tab退出の計16反復も成功。42 model / 保存 / CLI tests、型check、build、workspace / whitespace check成功。
-- 既定MasterData [Dev]を更新済み。実macOS版でも専用sampleコピーでtypes/native-parent/native-childの連続作成、外側click確定、次操作先focus、全保存とdisk上のfolderを確認。今回起動したPID 19196は通常終了し、process消失を確認。f894ecd以後はtest / 文書のみで、Candidateの製品本体は同一。
-- 仕様の別pass review・承認とexact Candidateのfresh code reviewを完了。rc-treeの行再生成と近接commentを照合し、focus / 次操作・data safety・scopeとテストの測定条件をreview。Blockingなし。
+- 52 model / 保存 / CLI tests、7 native tests、型check、Browser静的bundle / Tauri build / native startup、workspace / whitespace check成功。
+- 既存Desktopの132 UI tests（Chromium / WebKit）成功。Browser固有は最終focused runで10成功・8skip（非対応WebKitの書込試験のみ対象外、非対応表示自体は両engineで確認）。途中の不正設定fixtureがpickerで再seedされる試験側の誤りを修正し、欠落・syntax / shape不正でdraft保持を再検証。
+- macOS 26.6.2 / Chrome 155.0.8059.81で、static preview `http://127.0.0.1:5174/` とdev専用故障注入画面を使用。実ローカルsampleコピーのpicker / 権限許可、セル入力、folder作成と外側click確定、保存前disk不変、現在file / 全保存、再openを確認。2file保存の1件反映直後にアクセス失敗を注入し、journal残存と再読込後のpath別状態、外部の第三の内容の保護、原文への復旧、journal消失をdisk照合。symlinkの非列挙・同名保存拒否・外部file不変と、Chrome標準の再読込警告も確認。Edge実機は未検証。
+- Browser保存・復旧済みProjectをRust CLI inspect / validate / Build / Publishで確認。今回buildしたTauri実アプリでも保存結果とfolderを開き、Build成功（3 tables / 7 records）・Publish 11files配置を確認。今回起動したPID 76210と観察時再起動PID 77566は通常終了とprocess消失を確認。検証bundleの登録解除・除去後、既存固定install先を登録。Unityは起動していない。
+- review-codeのself-review: 保存前journal検証、全対象・直前比較、条件付きrollbackと再試行、入力・Undo保持、非表示UIとNative経路を確認。再openで読まれないhidden draftの保存拒否もfocused testで検証。Blockingなし。
 
 ## Blocking findings
 

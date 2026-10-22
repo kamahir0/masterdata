@@ -74,6 +74,7 @@ export interface BuildResult {
   hashes: Record<string, string>;
 }
 export interface DesktopAPI {
+  readonly platform?: "browser" | "desktop";
   initial(): Promise<LoadedProject | null>;
   close(): Promise<void>;
   open(): Promise<LoadedProject | null>;

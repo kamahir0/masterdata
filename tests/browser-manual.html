@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+  <head><meta charset="UTF-8"><title>MasterData Browser local fault verification</title></head>
+  <body style="margin:0">
+    <div id="root"></div>
+    <div style="position:fixed;bottom:28px;right:16px;z-index:3000;background:#fff;color:#222;padding:8px;border:1px solid #888;font:12px sans-serif">
+      検証専用：次の保存で1 YAML反映後にアクセス失敗
+      <button id="crash">中断を準備</button><span id="fault-state">通常</span>
+    </div>
+    <script type="module">
+      // Dev-only harness, never an entry of the static production bundle.
+      // Real local handles / native picker / app UI; faults start AFTER close.
+      let armed = false, crashed = false;
+      const state = document.querySelector("#fault-state");
+      document.querySelector("#crash").onclick = () => { armed = true; state.textContent = "準備済み"; };
+      for (const [prototype, names] of [
+        [FileSystemDirectoryHandle.prototype, ["getDirectoryHandle", "getFileHandle", "removeEntry", "values"]],
+        [FileSystemFileHandle.prototype, ["getFile", "createWritable"]],
+      ]) for (const name of names) {
+        const original = prototype[name];
+        prototype[name] = function (...args) {
+          if (crashed) throw new DOMException("検証用のアクセス失敗", "NotAllowedError");
+          return original.apply(this, args);
+        };
+      }
+      const original = FileSystemFileHandle.prototype.createWritable;
+      FileSystemFileHandle.prototype.createWritable = async function (...args) {
+        const stream = await original.apply(this, args);
+        const close = stream.close.bind(stream), name = this.name;
+        stream.close = async () => {
+          await close();
+          if (armed && /\.ya?ml$/i.test(name)) {
+            crashed = true; state.textContent = "中断済み（再読込で解除）";
+            throw new DOMException("検証用：close後の中断", "NotAllowedError");
+          }
+        };
+        return stream;
+      };
+      await import("/src/main.tsx");
+    </script>
+  </body>
+</html>

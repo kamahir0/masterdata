@@ -79,6 +79,8 @@ import {
 } from "./ui/editor-settings";
 import { ExplorerResize } from "./ui/explorer-resize";
 import { sourceKind, kindBadges } from "./ui/source-icon";
+import { isBrowser, browserSupport } from "./browser/runtime";
+import { BrowserRecovery } from "./browser/recovery";
 import appIcon from "../assets/icon.svg";
 import { SearchSelect } from "./ui/search-select";
 import type { FileOperations } from "./ui/file-context-menu";
@@ -144,6 +146,7 @@ function Workspace({
   preferences: EditorPreferences;
   setPreferences: React.Dispatch<React.SetStateAction<EditorPreferences>>;
 }) {
+  const browser = isBrowser();
   const reduced = preferences.reduced;
   const setReduced = (reduced: boolean) =>
     setPreferences((old) => ({ ...old, reduced }));
@@ -423,6 +426,13 @@ function Workspace({
     if (guard.current) return;
     commitActive();
     if (!session.dirty) {
+      try {
+        while (savingRequest.current) await savingRequest.current;
+      } catch {
+        return;
+      }
+      commitActive();
+      if (session.dirty) return guarded(action);
       await action();
       return;
     }
@@ -436,6 +446,11 @@ function Workspace({
       onOk: async () => {
         try {
           await save(true);
+          commitActive();
+          if (session.dirty)
+            throw new Error(
+              "保存中に変更が追加されました。入力を確認して再度保存してください。",
+            );
           guard.current = false;
           await action();
         } catch {
@@ -489,7 +504,7 @@ function Workspace({
     });
   }
   async function build() {
-    if (outputBusy.current) return;
+    if (browser || outputBusy.current) return;
     commitActive();
     const current = session.getState();
     if (!current.project) return;
@@ -517,7 +532,7 @@ function Workspace({
     }
   }
   async function publish() {
-    if (!project || !buildResult || outputBusy.current) return;
+    if (browser || !project || !buildResult || outputBusy.current) return;
     outputBusy.current = true;
     const publishedBuild = buildResult;
     setPublishing(true);
@@ -548,7 +563,7 @@ function Workspace({
     () =>
       window.desktop?.onCommand((command) => {
         if (command === "open") void actions.current.open();
-        if (command === "new")
+        if (!browser && command === "new")
           void actions.current.guarded(() => setNewOpen(true));
         if (command === "save") void actions.current.save().catch(() => {});
         if (command === "save-all")
@@ -558,8 +573,8 @@ function Workspace({
         if (command === "explorer")
           setPreferences((old) => ({ ...old, explorer: !old.explorer }));
         if (command === "editor-settings") setEditorSettings(true);
-        if (command === "build-results") setBuildOpen(true);
-        if (command === "build") void actions.current.build();
+        if (!browser && command === "build-results") setBuildOpen(true);
+        if (!browser && command === "build") void actions.current.build();
         if (command === "undo") {
           commitActive();
           session.undo();
@@ -732,59 +747,61 @@ function Workspace({
                 </span>
               </Tooltip>
             </Space>
-            <Space>
-              <Tooltip title="未選択時はタグで絞り込まずにビルドします">
-                <SearchSelect
-                  aria-label="出力プロファイル"
-                  className="profile-select"
-                  placeholder="プロファイルを選択"
-                  value={profile || undefined}
-                  allowClear
-                  options={Object.keys(snapshot.config.profiles).map(
-                    (value) => ({ value, label: value }),
-                  )}
-                  onChange={(value) => setProfile(value ?? "")}
-                />
-              </Tooltip>
-              <Space.Compact className="build-controls">
-                <Button
-                  icon={<PlayCircleOutlined />}
-                  loading={building}
-                  disabled={publishing}
-                  onClick={build}
-                >
-                  Build
-                </Button>
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    items: [
-                      {
-                        key: "publish",
-                        icon: <RocketOutlined aria-hidden="true" />,
-                        label: "Publish…",
-                      },
-                      { type: "divider" },
-                      {
-                        key: "results",
-                        icon: <FileDoneOutlined aria-hidden="true" />,
-                        label: "実行結果を表示",
-                      },
-                    ],
-                    onClick: () => setBuildOpen(true),
-                  }}
-                >
-                  <Button
-                    icon={
-                      <Badge dot={!!buildError} color="red">
-                        <DownOutlined />
-                      </Badge>
-                    }
-                    aria-label="ビルドの操作"
+            {!browser && (
+              <Space>
+                <Tooltip title="未選択時はタグで絞り込まずにビルドします">
+                  <SearchSelect
+                    aria-label="出力プロファイル"
+                    className="profile-select"
+                    placeholder="プロファイルを選択"
+                    value={profile || undefined}
+                    allowClear
+                    options={Object.keys(snapshot.config.profiles).map(
+                      (value) => ({ value, label: value }),
+                    )}
+                    onChange={(value) => setProfile(value ?? "")}
                   />
-                </Dropdown>
-              </Space.Compact>
-            </Space>
+                </Tooltip>
+                <Space.Compact className="build-controls">
+                  <Button
+                    icon={<PlayCircleOutlined />}
+                    loading={building}
+                    disabled={publishing}
+                    onClick={build}
+                  >
+                    Build
+                  </Button>
+                  <Dropdown
+                    trigger={["click"]}
+                    menu={{
+                      items: [
+                        {
+                          key: "publish",
+                          icon: <RocketOutlined aria-hidden="true" />,
+                          label: "Publish…",
+                        },
+                        { type: "divider" },
+                        {
+                          key: "results",
+                          icon: <FileDoneOutlined aria-hidden="true" />,
+                          label: "実行結果を表示",
+                        },
+                      ],
+                      onClick: () => setBuildOpen(true),
+                    }}
+                  >
+                    <Button
+                      icon={
+                        <Badge dot={!!buildError} color="red">
+                          <DownOutlined />
+                        </Badge>
+                      }
+                      aria-label="ビルドの操作"
+                    />
+                  </Dropdown>
+                </Space.Compact>
+              </Space>
+            )}
           </div>
           <div className="workspace">
             <div
@@ -1037,20 +1054,32 @@ function Workspace({
                 size="large"
                 icon={<FolderOpenOutlined />}
                 onClick={open}
+                disabled={browser && !browserSupport()}
               >
                 プロジェクトを開く
               </Button>
-              <Button
-                size="large"
-                icon={<PlusOutlined />}
-                onClick={() => setNewOpen(true)}
-              >
-                新しく作る
-              </Button>
+              {!browser && (
+                <Button
+                  size="large"
+                  icon={<PlusOutlined />}
+                  onClick={() => setNewOpen(true)}
+                >
+                  新しく作る
+                </Button>
+              )}
             </Space>
-            <button className="sample-link" onClick={sample}>
-              <ExperimentOutlined /> サンプルで試す <ArrowRightOutlined />
-            </button>
+            {!browser && (
+              <button className="sample-link" onClick={sample}>
+                <ExperimentOutlined /> サンプルで試す <ArrowRightOutlined />
+              </button>
+            )}
+            {browser && (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 20 }}>
+                {browserSupport()
+                  ? "ローカルのプロジェクトフォルダを選択します。変更は保存時にだけ反映されます。未保存の入力はタブ終了で失われます。"
+                  : "この環境では編集できません。デスクトップ版ChromeとHTTPS（またはlocalhost）で開いてください。"}
+              </Typography.Paragraph>
+            )}
           </motion.div>
           <motion.div
             className="welcome-card"
@@ -1158,160 +1187,163 @@ function Workspace({
           }}
         />
       )}
-      <Drawer
-        title={
-          <Space>
-            <RocketOutlined /> Build / Publish
-          </Space>
-        }
-        width={570}
-        open={buildOpen}
-        onClose={() => setBuildOpen(false)}
-      >
-        <div className="build-panel">
-          <Typography.Paragraph type="secondary">
-            現在の編集内容をBuildし、成果物を確認してからPublishで配置します。保存は別の操作です。
-          </Typography.Paragraph>
-          <Space>
-            <Tag color="blue">{profile || "プロファイル未選択"}</Tag>
-            {!profile && (
-              <Typography.Text type="secondary">
-                タグの絞り込みなし
-              </Typography.Text>
+      {!browser && (
+        <Drawer
+          title={
+            <Space>
+              <RocketOutlined /> Build / Publish
+            </Space>
+          }
+          width={570}
+          open={buildOpen}
+          onClose={() => setBuildOpen(false)}
+        >
+          <div className="build-panel">
+            <Typography.Paragraph type="secondary">
+              現在の編集内容をBuildし、成果物を確認してからPublishで配置します。保存は別の操作です。
+            </Typography.Paragraph>
+            <Space>
+              <Tag color="blue">{profile || "プロファイル未選択"}</Tag>
+              {!profile && (
+                <Typography.Text type="secondary">
+                  タグの絞り込みなし
+                </Typography.Text>
+              )}
+              <Tag>編集 rev.{revision}</Tag>
+              {dirty && <Tag color="gold">未保存の変更を含む</Tag>}
+            </Space>
+            <Button
+              type="primary"
+              size="large"
+              icon={<PlayCircleOutlined />}
+              loading={building}
+              disabled={publishing}
+              onClick={build}
+              block
+            >
+              Buildする
+            </Button>
+            {building && (
+              <div className="build-progress">
+                <Spin />
+                <Typography.Text>
+                  データを検証し、.NETで成果物を生成・確認しています。
+                </Typography.Text>
+              </div>
             )}
-            <Tag>編集 rev.{revision}</Tag>
-            {dirty && <Tag color="gold">未保存の変更を含む</Tag>}
-          </Space>
-          <Button
-            type="primary"
-            size="large"
-            icon={<PlayCircleOutlined />}
-            loading={building}
-            disabled={publishing}
-            onClick={build}
-            block
-          >
-            Buildする
-          </Button>
-          {building && (
-            <div className="build-progress">
-              <Spin />
-              <Typography.Text>
-                データを検証し、.NETで成果物を生成・確認しています。
-              </Typography.Text>
-            </div>
-          )}
-          {publishResult && (
-            <motion.div
-              key={identity(publishResult)}
-              initial={reduced ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={reduced ? { duration: 0 } : resultTransition}
-            >
-              <Alert
-                type="success"
-                title={`Publish完了 · rev.${publishResult.revision} · ${publishResult.profile || "プロファイル未選択"}`}
-                description={publishResult.message}
-                showIcon
-              />
-            </motion.div>
-          )}
-          {buildError && (
-            <motion.div
-              initial={reduced ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={reduced ? { duration: 0 } : resultTransition}
-            >
-              <Alert
-                type="error"
-                showIcon
-                title="処理を完了できませんでした"
-                description={<pre className="build-error">{buildError}</pre>}
-              />
-            </motion.div>
-          )}
-          {buildResult && (
-            <>
+            {publishResult && (
               <motion.div
-                key={identity(buildResult)}
+                key={identity(publishResult)}
                 initial={reduced ? false : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={reduced ? { duration: 0 } : resultTransition}
               >
-                <Result
-                  status="success"
-                  title="成果物を生成しました"
-                  subTitle={`${buildResult.tables} テーブル · ${buildResult.records} レコード · ${buildResult.profile || "プロファイル未選択"} · rev.${buildResult.revision}`}
+                <Alert
+                  type="success"
+                  title={`Publish完了 · rev.${publishResult.revision} · ${publishResult.profile || "プロファイル未選択"}`}
+                  description={publishResult.message}
+                  showIcon
                 />
               </motion.div>
-              {(buildResult.revision !== revision ||
-                buildResult.profile !== profile) && (
-                <Alert
-                  type="info"
-                  title="Build後に編集内容または出力条件が変わっています"
-                  description={`以下のPublishは、成功したrev.${buildResult.revision}の成果物を配置します。`}
-                />
-              )}
-              <Card size="small" title="配置先">
-                <div className="publish-target">
-                  <strong>C#</strong>
-                  <span>{snapshot.config.publish.csharp || "未設定"}</span>
-                </div>
-                <div className="publish-target">
-                  <strong>Binary</strong>
-                  <span>{snapshot.config.publish.binary || "未設定"}</span>
-                </div>
-                <Button type="link" onClick={() => setSettings(true)}>
-                  出力先を設定
-                </Button>
-              </Card>
-              <Popconfirm
-                title="成果物を配置しますか？"
-                description="設定した出力先の、MasterDataが管理する成果物を更新します。"
-                okText="配置する"
-                cancelText="キャンセル"
-                onConfirm={publish}
+            )}
+            {buildError && (
+              <motion.div
+                initial={reduced ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0 } : resultTransition}
               >
+                <Alert
+                  type="error"
+                  showIcon
+                  title="処理を完了できませんでした"
+                  description={<pre className="build-error">{buildError}</pre>}
+                />
+              </motion.div>
+            )}
+            {buildResult && (
+              <>
+                <motion.div
+                  key={identity(buildResult)}
+                  initial={reduced ? false : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={reduced ? { duration: 0 } : resultTransition}
+                >
+                  <Result
+                    status="success"
+                    title="成果物を生成しました"
+                    subTitle={`${buildResult.tables} テーブル · ${buildResult.records} レコード · ${buildResult.profile || "プロファイル未選択"} · rev.${buildResult.revision}`}
+                  />
+                </motion.div>
+                {(buildResult.revision !== revision ||
+                  buildResult.profile !== profile) && (
+                  <Alert
+                    type="info"
+                    title="Build後に編集内容または出力条件が変わっています"
+                    description={`以下のPublishは、成功したrev.${buildResult.revision}の成果物を配置します。`}
+                  />
+                )}
+                <Card size="small" title="配置先">
+                  <div className="publish-target">
+                    <strong>C#</strong>
+                    <span>{snapshot.config.publish.csharp || "未設定"}</span>
+                  </div>
+                  <div className="publish-target">
+                    <strong>Binary</strong>
+                    <span>{snapshot.config.publish.binary || "未設定"}</span>
+                  </div>
+                  <Button type="link" onClick={() => setSettings(true)}>
+                    出力先を設定
+                  </Button>
+                </Card>
+                <Popconfirm
+                  title="成果物を配置しますか？"
+                  description="設定した出力先の、MasterDataが管理する成果物を更新します。"
+                  okText="配置する"
+                  cancelText="キャンセル"
+                  onConfirm={publish}
+                >
+                  <Button
+                    block
+                    size="large"
+                    icon={<RocketOutlined />}
+                    loading={publishing}
+                    disabled={
+                      building ||
+                      (!snapshot.config.publish.csharp &&
+                        !snapshot.config.publish.binary)
+                    }
+                  >
+                    Publishする
+                  </Button>
+                </Popconfirm>
                 <Button
-                  block
-                  size="large"
-                  icon={<RocketOutlined />}
-                  loading={publishing}
-                  disabled={
-                    building ||
-                    (!snapshot.config.publish.csharp &&
-                      !snapshot.config.publish.binary)
+                  icon={<FolderOpenOutlined />}
+                  onClick={() =>
+                    project && window.desktop.reveal(project.token, true)
                   }
                 >
-                  Publishする
+                  成果物フォルダを開く
                 </Button>
-              </Popconfirm>
-              <Button
-                icon={<FolderOpenOutlined />}
-                onClick={() =>
-                  project && window.desktop.reveal(project.token, true)
-                }
-              >
-                成果物フォルダを開く
-              </Button>
-              <Collapse
-                items={[
-                  {
-                    key: "details",
-                    label: "生成ファイルと実行結果",
-                    children: (
-                      <>
-                        <pre>{buildResult.files.join("\n")}</pre>
-                        <pre className="build-log">{buildResult.log}</pre>
-                      </>
-                    ),
-                  },
-                ]}
-              />
-            </>
-          )}
-        </div>
-      </Drawer>
+                <Collapse
+                  items={[
+                    {
+                      key: "details",
+                      label: "生成ファイルと実行結果",
+                      children: (
+                        <>
+                          <pre>{buildResult.files.join("\n")}</pre>
+                          <pre className="build-log">{buildResult.log}</pre>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
+              </>
+            )}
+          </div>
+        </Drawer>
+      )}
+      {browser && <BrowserRecovery fail={fail} />}
     </div>
   );
 }
@@ -1319,6 +1351,9 @@ export default function Root() {
   const { preferences, setPreferences, dark } = useEditorPreferences();
   const reduced = preferences.reduced;
   useEffect(() => {
+    document.documentElement.dataset.runtime = isBrowser()
+      ? "browser"
+      : "desktop";
     document.documentElement.dataset.platform = navigator.platform
       .toLowerCase()
       .includes("mac")

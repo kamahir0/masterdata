@@ -12,6 +12,7 @@
     "cli": "tsx cli/main.ts",
     "check": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
+    "build:web": "npm run check && vite build",
     "build": "npm run check && vite build && npm run prepare:host",
     "start": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "test:ui": "playwright test",

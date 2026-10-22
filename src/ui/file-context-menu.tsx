@@ -1,6 +1,7 @@
 import { cloneElement, type HTMLAttributes, type ReactElement } from "react";
 import { App, Dropdown, type MenuProps } from "antd";
 import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import { isBrowser } from "../browser/runtime";
 import { session } from "../core/session";
 
 export interface FileOperations {
@@ -8,6 +9,7 @@ export interface FileOperations {
   remove(paths: string[]): void;
 }
 export function sourcePath(path: string) {
+  if (isBrowser()) return `sources/${path}`;
   const root = session.getState().project?.root;
   if (!root) throw new Error("プロジェクトが開かれていません。");
   const separator = root.includes("\\") ? "\\" : "/";
@@ -67,8 +69,18 @@ export function FileContextMenu({
           ...(createItems
             ? [...createItems, { type: "divider" as const }]
             : []),
-          { key: "rename", label: "名前を変更", icon: <EditOutlined aria-hidden /> },
-          { key: "copy-path", label: "パスをコピー", icon: <CopyOutlined aria-hidden /> },
+          {
+            key: "rename",
+            label: "名前を変更",
+            icon: <EditOutlined aria-hidden />,
+          },
+          {
+            key: "copy-path",
+            label: isBrowser()
+              ? "プロジェクト相対パスをコピー"
+              : "パスをコピー",
+            icon: <CopyOutlined aria-hidden />,
+          },
           {
             key: "delete",
             label: "削除",

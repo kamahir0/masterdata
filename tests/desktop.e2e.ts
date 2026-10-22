@@ -631,6 +631,109 @@ test("hierarchy inline folder creation keeps focus through expansion and commits
     .toContain("kind: type");
   await page.screenshot({ path: test.info().outputPath("nested-folder-outside-commit.png") });
 });
+for (const kind of ["テーブル", "Enum", "Flags", "Custom Type", "Value Object", "フォルダ"]) {
+  test(`explorer creation Escape cancels ${kind} before and after typing without saving a node`, async () => {
+    const tabs = page.getByRole("tablist", { name: "開いているファイル" }).getByRole("tab");
+    const tabCount = await tabs.count();
+    const selected = page.locator(".ant-tree-treenode-selected .tree-name");
+    const previousPath = await selected.getAttribute("data-path");
+    for (const value of [undefined, "cancelled-creation"]) {
+      await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+      await page.getByRole("menuitem", { name: new RegExp(`新しい${kind}$`) }).click();
+      const name = page.getByLabel("項目の名前", { exact: true });
+      await expect(name).toBeFocused();
+      const provisionalPath = (await name.getAttribute("data-path"))!;
+      if (value) await name.fill(value);
+      await expect(tabs).toHaveCount(tabCount);
+      for (const key of ["Enter", "Escape"]) {
+        await name.dispatchEvent("keydown", { key, isComposing: true });
+        await expect(name).toBeVisible();
+      }
+      if (kind === "フォルダ" && value)
+        await page.screenshot({ path: test.info().outputPath("before-create-cancel.png") });
+      await name.press("Escape");
+      await expect(name).toHaveCount(0);
+      if (kind === "フォルダ" && value)
+        await page.screenshot({ path: test.info().outputPath("after-create-cancel.png") });
+      // A later outside click must not commit the canceled editor via blur.
+      await page.getByLabel("表・型を検索").click();
+      await expect(page.locator(`.tree-name[data-path="${provisionalPath}"]`)).toHaveCount(0);
+      await expect(page.locator('.tree-name').filter({ hasText: "cancelled-creation" })).toHaveCount(0);
+      await expect(tabs).toHaveCount(tabCount);
+      await expect(selected).toHaveAttribute("data-path", previousPath!);
+      await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();
+      await saveAll();
+      await expect(fs.stat(path.join(root, "sources", provisionalPath))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(fs.stat(path.join(root, "sources/announcements", `cancelled-creation${kind === "フォルダ" ? "" : ".yaml"}`))).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  });
+}
+
+test("explorer canceled creation preserves existing dirty edits and redo history", async () => {
+  const message = page.getByLabel("message 行1", { exact: true });
+  const original = await message.inputValue();
+  await message.fill("keep-existing-draft");
+  await message.press("Tab");
+  const cancelFolder = async () => {
+    await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+    await page.getByRole("menuitem", { name: /新しいフォルダ$/ }).click();
+    await page.getByLabel("項目の名前", { exact: true }).press("Escape");
+  };
+  await cancelFolder();
+  await expect(message).toHaveValue("keep-existing-draft");
+  await expect(page.getByRole("status", { name: "未保存の変更", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(message).toHaveValue(original);
+  await cancelFolder();
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(message).toHaveValue("keep-existing-draft");
+  await expect(page.locator('.tree-name').filter({ hasText: /新しいフォルダ/ })).toHaveCount(0);
+});
+
+for (const kind of ["テーブル", "フォルダ"]) {
+  test(`explorer provisional ${kind} recovers from invalid names and commits as one Undo`, async () => {
+    const name = page.getByLabel("項目の名前", { exact: true });
+    const begin = async () => {
+      await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+      await page.getByRole("menuitem", { name: new RegExp(`新しい${kind}$`) }).click();
+    };
+    await begin();
+    await name.fill("");
+    await name.press("Enter");
+    await expect(page.getByText("名前を入力してください。", { exact: true })).toBeVisible();
+    await expect(name).toBeVisible();
+    await name.fill(kind === "テーブル" ? "announcement" : "..");
+    await name.press("Enter");
+    await expect(page.getByText(kind === "テーブル" ? "同名の項目が存在します。" : "名前に使用できない文字があります。", { exact: true })).toBeVisible();
+    await name.press("Escape");
+    await expect(name).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();
+    await begin();
+    const initialPath = (await name.getAttribute("data-path"))!;
+    await name.fill("confirmed-creation");
+    await name.press("Enter");
+    const finalPath = `announcements/confirmed-creation${kind === "フォルダ" ? "" : ".yaml"}`;
+    const created = page.locator(`.tree-name[data-path="${finalPath}"]`);
+    await expect(created).toBeVisible();
+    await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+    await expect(created).toHaveCount(0);
+    await expect(page.locator(`.tree-name[data-path="${initialPath}"]`)).toHaveCount(0);
+    await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "やり直す", exact: true }).click();
+    await expect(created).toBeVisible();
+    await saveAll();
+    expect((await fs.stat(path.join(root, "sources", finalPath))).isDirectory()).toBe(kind === "フォルダ");
+    await created.click({ button: "right" });
+    await page.getByRole("menuitem", { name: /名前を変更/ }).click();
+    await name.fill("cancelled-rename");
+    await name.press("Escape");
+    await page.getByLabel("表・型を検索").click();
+    await expect(created).toBeVisible();
+    await expect(page.locator('.tree-name').filter({ hasText: "cancelled-rename" })).toHaveCount(0);
+  });
+}
+
 test("drag reorder retains visible rows and TSV paste is a single Undo", async () => {
   const handles = page.getByLabel("レコードを移動", { exact: true });
   await handles.first().dragTo(page.locator("[data-row-key]").nth(2));
@@ -941,7 +1044,7 @@ test("explorer menus match objects and folder titles toggle without disturbing t
   await folder.click();
   await page.getByRole("button", { name: "新しい項目", exact: true }).click();
   await page.getByRole("menuitem", { name: /新しいEnum/ }).click();
-  await page.getByLabel("項目の名前", { exact: true }).press("Escape");
+  await page.getByLabel("項目の名前", { exact: true }).press("Enter");
   await saveAll();
   await expect(
     page.getByRole("status", { name: "保存済み", exact: true }),

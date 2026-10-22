@@ -41,7 +41,26 @@ export function Explorer({
     path: string;
     value: string;
     ext: string;
+    creation?: { item: Source | string; previousKeys: React.Key[] };
   } | null>(null);
+  // Retire the edit synchronously before DOM removal or tab activation can blur
+  // its input. React state alone still exposes the previous edit to that blur.
+  const renameRef = useRef(renaming);
+  const setRename = (edit: typeof renaming) => {
+    renameRef.current = edit;
+    setRenaming(edit);
+  };
+  const pending = renaming?.creation?.item;
+  const shownSnapshot = useMemo(
+    () => pending === undefined ? snapshot : {
+      ...snapshot,
+      sources: typeof pending === "string"
+        ? snapshot.sources : [...snapshot.sources, pending],
+      folders: typeof pending === "string"
+        ? [...snapshot.folders, pending] : snapshot.folders,
+    },
+    [snapshot, pending],
+  );
   const [height, setHeight] = useState(500);
   const [dropProblem, setDropProblem] = useState<string>();
   const container = useRef<HTMLDivElement>(null);
@@ -80,8 +99,8 @@ export function Explorer({
     return () => observer.disconnect();
   }, []);
   const allPaths = useMemo(() => {
-    const folders = new Set(snapshot.folders);
-    snapshot.sources.forEach((s) => {
+    const folders = new Set(shownSnapshot.folders);
+    shownSnapshot.sources.forEach((s) => {
       const parts = s.path.split("/");
       parts.pop();
       while (parts.length) {
@@ -89,7 +108,7 @@ export function Explorer({
         parts.pop();
       }
     });
-    const sources = new Map(snapshot.sources.map((s) => [s.path, s]));
+    const sources = new Map(shownSnapshot.sources.map((s) => [s.path, s]));
     const children = new Map<
       string,
       { path: string; folder: boolean; source?: Source }[]
@@ -103,7 +122,7 @@ export function Explorer({
     folders.forEach((path) => add({ path, folder: true }));
     sources.forEach((source, path) => add({ path, folder: false, source }));
     return { folders, sources, children };
-  }, [snapshot.sources, snapshot.folders]);
+  }, [shownSnapshot.sources, shownSnapshot.folders]);
   const proposeDrop = (event: React.DragEvent) => {
     if (!dragSource.current) return;
     // Own the actual HTML drop as well as its indicator. Letting rc-tree run a
@@ -239,32 +258,55 @@ export function Explorer({
     setKeys((old) => old.map(remap));
     setExpanded((old) => old.map(remap));
   };
-  const rename = (p: string) => {
-    const ext = session.getState().snapshot.sources.find((s) => s.path === p)
-      ?.data?.kind
+  const rename = (
+    p: string,
+    creation?: NonNullable<typeof renaming>["creation"],
+  ) => {
+    const source = creation && typeof creation.item !== "string"
+      ? creation.item
+      : session.getState().snapshot.sources.find((s) => s.path === p);
+    const ext = source?.data?.kind
       ? (p.match(/\.ya?ml$/i)?.[0] ?? "")
       : "";
-    setRenaming({
+    setRename({
       path: p,
       value: p
         .split("/")
         .at(-1)!
         .slice(0, ext ? -ext.length : undefined),
       ext,
+      creation,
     });
   };
   const commitRename = () => {
-    if (!renaming) return;
-    run(() =>
-      movePath(
-        renaming.path,
-        [
-          ...renaming.path.split("/").slice(0, -1),
-          renaming.value + renaming.ext,
-        ].join("/"),
-      ),
-    );
-    setRenaming(null);
+    const edit = renameRef.current;
+    if (!edit) return;
+    renameRef.current = null;
+    try {
+      if (!edit.value.trim()) throw new Error("名前を入力してください。");
+      const path = [
+        ...edit.path.split("/").slice(0, -1),
+        edit.value + edit.ext,
+      ].join("/");
+      if (edit.creation) {
+        const item = edit.creation.item;
+        session.create(typeof item === "string" ? path : { ...item, path });
+        setKeys([typeof item === "string" ? `folder:${path}` : item.id]);
+        if (typeof item !== "string") onSelect(item.id, true);
+      } else movePath(edit.path, path);
+      setRename(null);
+    } catch (error) {
+      // A failed creation stays provisional so retry / Escape never needs to
+      // delete an already-created source or undo unrelated work.
+      setRename(edit.creation ? edit : null);
+      fail(error);
+    }
+  };
+  const cancelRename = () => {
+    const edit = renameRef.current;
+    if (!edit) return;
+    setRename(null);
+    if (edit.creation) setKeys(edit.creation.previousKeys);
   };
   function add(
     kind: "table" | "enum" | "flags" | "custom" | "valueObject" | "folder",
@@ -273,17 +315,10 @@ export function Explorer({
     run(() =>
       editing.run(() => {
         setSearch("");
-        let path: string, key: string;
-        if (kind === "folder") {
-          path = session.addFolder(folder);
-          key = `folder:${path}`;
-        } else {
-          key = session.add(kind, folder);
-          path = session
-            .getState()
-            .snapshot.sources.find((s) => s.id === key)!.path;
-          onSelect(key, true);
-        }
+        const item = kind === "folder"
+          ? session.prepareFolder(folder) : session.prepareSource(kind, folder);
+        const path = typeof item === "string" ? item : item.path;
+        const key = typeof item === "string" ? `folder:${path}` : item.id;
         setKeys([key]);
         setExpanded((old) => [
           ...new Set([
@@ -294,7 +329,7 @@ export function Explorer({
               .map((_, i, p) => `folder:${p.slice(0, i + 1).join("/")}`),
           ]),
         ]);
-        rename(path);
+        rename(path, { item, previousKeys: keys });
         return { focus: `node-${key.startsWith("folder:") ? path : key}` };
       }),
     );
@@ -328,7 +363,7 @@ export function Explorer({
   const editing = useEditing(
     container,
     [
-      ...snapshot.sources.map((source) => `node-${source.id}`),
+      ...shownSnapshot.sources.map((source) => `node-${source.id}`),
       ...[...allPaths.folders].map((path) => `node-${path}`),
     ],
     {
@@ -404,14 +439,19 @@ export function Explorer({
                 value={renaming.value}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) =>
-                  setRenaming({ ...renaming, value: e.target.value })
+                  setRename({ ...renaming, value: e.target.value })
                 }
-                onBlur={commitRename}
+                onBlur={() => {
+                  if (renameRef.current === renaming) commitRename();
+                }}
                 onKeyDown={(e) => {
                   e.stopPropagation();
                   if (e.nativeEvent.isComposing) return;
-                  if (e.key === "Enter") commitRename();
-                  if (e.key === "Escape") setRenaming(null);
+                  if (e.key === "Enter" || e.key === "Escape") {
+                    e.preventDefault();
+                    if (e.key === "Enter") commitRename();
+                    else cancelRename();
+                  }
                 }}
               />
             ) : (

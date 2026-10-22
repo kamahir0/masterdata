@@ -621,3 +621,54 @@ test("primitive array identities survive value edits, duplicate insertion, reord
     await fs.rm(root, { recursive: true });
   }
 });
+
+test("provisional source and folder creation preserve draft and history until confirmed", async () => {
+  const { project, root } = await sample();
+  try {
+    const s = new Session();
+    s.load(project);
+    s.addFolder();
+    s.undo();
+    const before = s.getState();
+    const source = s.prepareSource("table", "types");
+    const folder = s.prepareFolder("types");
+    assert.equal(s.getState(), before);
+    assert.equal(s.dirty, false);
+    assert.equal(s.state.future.length, 1);
+    const confirmed = { ...source, path: "types/confirmed.yaml" };
+    s.create(confirmed);
+    assert.equal(s.state.future.length, 0);
+    assert.equal(s.state.snapshot.sources.at(-1), confirmed);
+    s.undo();
+    assert.equal(s.state.snapshot, before.snapshot);
+    assert.equal(s.dirty, false);
+    s.redo();
+    assert.equal(s.state.snapshot.sources.at(-1)?.path, confirmed.path);
+    const beforeFolder = s.state.snapshot;
+    s.create(folder);
+    assert(s.state.snapshot.folders.includes(folder));
+    s.undo();
+    assert.equal(s.state.snapshot, beforeFolder);
+    const state = s.getState();
+    assert.throws(() => s.create({ ...source, path: confirmed.path }), /同名/);
+    assert.throws(() => s.create("types"), /同名/);
+    assert.throws(() => s.create({ ...source, path: "types/../invalid.yaml" }), /使用できない/);
+    assert.equal(s.getState(), state);
+  } finally {
+    await fs.rm(root, { recursive: true });
+  }
+});
+
+test("provisional default names avoid explicit and implicit folder paths", () => {
+  const s = new Session();
+  s.state = {
+    ...s.state,
+    snapshot: {
+      ...s.state.snapshot,
+      folders: ["new-table1.yaml", "新しいフォルダ1/child"],
+      sources: [{ id: "existing", path: "新しいフォルダ2/child.yaml", data: null, raw: "" }],
+    },
+  };
+  assert.equal(s.prepareSource("table").path, "new-table2.yaml");
+  assert.equal(s.prepareFolder(), "新しいフォルダ3");
+});

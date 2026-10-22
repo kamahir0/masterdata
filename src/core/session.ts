@@ -215,6 +215,15 @@ export class Session {
     folder = "",
     table = "",
   ): string {
+    const source = this.prepareSource(kind, folder, table);
+    this.create(source);
+    return source.id;
+  }
+  prepareSource(
+    kind: "table" | "enum" | "flags" | "custom" | "valueObject" | "data",
+    folder = "",
+    table = "",
+  ): Source {
     const id = uid();
     let index = 1;
     const stem =
@@ -229,7 +238,15 @@ export class Session {
           ?.replace(/\.ya?ml$/, ""),
       ]),
     );
-    while (names.has(`${stem}${index}`)) index++;
+    const paths = [
+      ...this.state.snapshot.folders,
+      ...this.state.snapshot.sources.map((s) => s.path),
+    ];
+    const occupied = (name: string) => {
+      const path = [folder, `${name}.yaml`].filter(Boolean).join("/");
+      return paths.some((p) => p === path || p.startsWith(`${path}/`));
+    };
+    while (names.has(`${stem}${index}`) || occupied(`${stem}${index}`)) index++;
     const name = `${stem}${index}`;
     const data: any =
       kind === "table"
@@ -261,43 +278,46 @@ export class Session {
                       },
             };
     const path = [folder, `${name}.yaml`].filter(Boolean).join("/");
-    this.change("新規作成", (s) => ({
-      ...s,
-      sources: [...s.sources, { id, path, data }],
-    }));
-    return id;
+    return { id, path, data };
   }
   addFolder(parent = ""): string {
+    const path = this.prepareFolder(parent);
+    this.create(path);
+    return path;
+  }
+  prepareFolder(parent = ""): string {
     let n = 1;
     const paths = new Set([
       ...this.state.snapshot.folders,
       ...this.state.snapshot.sources.map((s) => s.path),
     ]);
+    for (const path of [...paths]) {
+      const parts = path.split("/");
+      parts.pop();
+      while (parts.length) {
+        paths.add(parts.join("/"));
+        parts.pop();
+      }
+    }
     let path = "";
     do {
       path = [parent, `新しいフォルダ${n++}`].filter(Boolean).join("/");
     } while (paths.has(path));
-    this.change("フォルダを作成", (s) => ({
-      ...s,
-      folders: [...s.folders, path],
-    }));
     return path;
+  }
+  create(item: Source | string) {
+    const path = typeof item === "string" ? item : item.path;
+    this.checkDestination(path);
+    this.change(typeof item === "string" ? "フォルダを作成" : "新規作成", (s) =>
+      typeof item === "string"
+        ? { ...s, folders: [...s.folders, item] }
+        : { ...s, sources: [...s.sources, item] },
+    );
   }
   move(oldPath: string, newPath: string) {
     if (!newPath || newPath === oldPath || newPath.startsWith(`${oldPath}/`))
       return;
-    if (
-      newPath
-        .split("/")
-        .some((p) => !p || p === "." || p === ".." || /[\\\x00-\x1f]/.test(p))
-    )
-      throw new Error("名前に使用できない文字があります。");
-    const s = this.state.snapshot;
-    if (
-      s.sources.some((f) => f.path === newPath) ||
-      s.folders.includes(newPath)
-    )
-      throw new Error("同名の項目が存在します。");
+    this.checkDestination(newPath);
     const rename = (p: string) =>
       p === oldPath
         ? newPath
@@ -311,6 +331,25 @@ export class Session {
       ),
       folders: s.folders.map(rename),
     }));
+  }
+  private checkDestination(newPath: string) {
+    if (
+      newPath
+        .split("/")
+        .some((p) => !p || p === "." || p === ".." || /[\\\x00-\x1f]/.test(p))
+    )
+      throw new Error("名前に使用できない文字があります。");
+    const s = this.state.snapshot;
+    if (
+      s.sources.some((f) => f.path === newPath) ||
+      s.folders.includes(newPath) ||
+      s.sources.some((f) => f.path.startsWith(`${newPath}/`)) ||
+      s.folders.some((p) => p.startsWith(`${newPath}/`)) ||
+      newPath.split("/").some((_, i, parts) =>
+        s.sources.some((f) => f.path === parts.slice(0, i).join("/")),
+      )
+    )
+      throw new Error("同名の項目が存在します。");
   }
   remove(paths: string[]) {
     this.change("削除", (s) => ({

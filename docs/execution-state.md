@@ -1,12 +1,15 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 025e63dbdf34309d685c1a21802adee401e71f65
-Work base: 00b71886b3266cc0c831c1113ca0d0df9e194cc0
+Stage: implementation-ready
+Candidate: none
+Work base: 4ed28783638a27454e0422c1dd9844eec34d3b65
 
 ## Active work
 
-None.
+- refine-spec / review-spec: 0024-explorer-create-escape (Completed)
+- implementation (Completed)
+- focused validation / review-code (Completed)
+- Candidate verification / Git delivery / CI (In progress)
 
 ## Blocking findings
 
@@ -14,15 +17,6 @@ None.
 
 ## Completion evidence
 
-ブラウザ版におけるプロジェクトフォルダハンドルのIndexedDB永続化と権限再開機能を実装・検証完了。
-1. `src/browser/storage.ts` を新設し、`FileSystemDirectoryHandle` を IndexedDB に安全に保存・読出・クリアする永続層を実装。
-2. `src/browser/runtime.ts` の `initial()` において、保存済みハンドルが存在し `queryPermission` が `"granted"`（Chrome 122+ 永続権限）であれば直近プロジェクトを自動ロードし、権限確認が必要な場合は `browserStatus` に前回のプロジェクト情報を保持。
-3. `src/App.tsx` のスタート画面に「前回のプロジェクトを開く（フォルダ名）」ボタンを配置し、ユーザー操作からワンクリックで `requestPermission` を呼び出して再開できる導線を提供。起動チェック中のレースコンディション防止スピナーを追加。
-4. 仕様変更提案 `0023-browser-persistent-project-handle` を作成・承認し、`docs/specs/browser.md`（WEB-005）を更新。
-5. 検証:
-   - `npm run check` (TypeScript): OK
-   - `npm test`: 56件全パス
-   - `npx playwright test tests/browser.e2e.ts`: 11件全パス
-   - `npx playwright test tests/desktop.e2e.ts`: 70件全パス
-   - `python3 tools/check_workspace.py`: OK
-   - `git diff --check`: OK
+`npm test`: 58件成功。型検査 / Web build / workspace check / diff check成功。Chromium / WebKitで作成取消・既存rename・Enter / 外側click確定・Undo / Redo・保存のfocused UI 24件成功。review-codeの製品passと証拠passでBlockingなし。
+
+既存CIはrust-cache Actionの参照SHAが解決できず、desktop jobのsetupで失敗している。今回CandidateのCI結果はpush後に確認する。

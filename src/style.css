@@ -171,6 +171,7 @@ button:focus-visible,
 }
 .tree-scroll {
   --tree-step: 16px;
+  --tree-inset: var(--space-control);
   flex: 1;
   min-height: 0;
   padding: 0 7px;
@@ -187,7 +188,7 @@ button:focus-visible,
   width: 100%;
 }
 .tree-scroll .ant-tree-node-content-wrapper {
-  padding-inline: 0 4px !important;
+  padding-inline: var(--tree-inset) var(--space-control) !important;
   min-height: 28px;
   height: 28px;
   flex: 1;
@@ -294,6 +295,19 @@ button:focus-visible,
   height: 2px;
   border-radius: var(--radius-control);
   background: var(--accent);
+}
+.file-tab[aria-selected="true"]::before {
+  animation: file-tab-activate 180ms cubic-bezier(.16, 1, .3, 1);
+  transform-origin: left center;
+}
+@keyframes file-tab-activate {
+  from { transform: scaleX(0.25); opacity: 0.35; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-tab[aria-selected="true"]::before {
+    animation: none;
+  }
 }
 /* Exiting tabs are inert and lose aria-selected; preserve their captured
    surface even while WebKit still reports the closing pointer as hovering. */
@@ -677,6 +691,11 @@ button:focus-visible,
 }
 .grid-footer > .ant-typography {
   font-size: 11px;
+}
+.grid-footer .ant-btn {
+  height: 28px;
+  padding-inline: 10px;
+  font-size: 12px;
 }
 .grid-footer .ant-select {
   font-size: 11px;
@@ -1276,6 +1295,7 @@ button:focus-visible,
   flex: 0 0 var(--tree-step);
   width: var(--tree-step);
   line-height: 28px;
+  translate: var(--tree-inset) 0;
 }
 .tree-scroll .ant-tree-draggable-icon {
   display: none;
@@ -1612,6 +1632,8 @@ button:focus-visible,
   content: "";
   position: absolute;
   inset: 0;
+  /* Disclosure arrows and guide origins follow the icon's selection inset. */
+  left: var(--tree-inset);
   pointer-events: none;
   background: var(--tree-guides, none);
   height: 100% !important;

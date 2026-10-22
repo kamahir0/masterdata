@@ -23,6 +23,7 @@ import {
   CopyOutlined,
   DeleteOutlined,
   DownOutlined,
+  FileAddOutlined,
   HolderOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -1175,8 +1176,8 @@ export function GridEditor({
           <Tooltip title={additionSource ? undefined : additionHint}>
             <span>
               <Button
-                type="text"
-                icon={<PlusOutlined />}
+                size="small"
+                icon={<PlusOutlined aria-hidden />}
                 disabled={!additionSource}
                 aria-describedby={additionSource ? undefined : additionHintId}
                 onClick={() => safe(() => addRecord())}
@@ -1191,7 +1192,7 @@ export function GridEditor({
           <Tooltip title="同じテーブルのレコードを追加できる空のテーブルデータファイルを作成します">
             <Button
               size="small"
-              type="text"
+              icon={<FileAddOutlined aria-hidden />}
               onClick={() => {
                 const id = session.add(
                   "data",

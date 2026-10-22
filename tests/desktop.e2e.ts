@@ -227,6 +227,62 @@ test("modern workbench visual comparison preserves editing across themes and pan
   }
   expect(calls.filter((c) => c === "save")).toHaveLength(0);
 });
+test("tab selection motion stays inside the active tab, keeps drafts and respects reduced motion", async () => {
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  await selectSource("rarity");
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  const announcement = page.getByRole("tab", { name: "announcement", exact: true });
+  const animations = await announcement.evaluate(async (element) => {
+    (element as HTMLElement).focus();
+    (element as HTMLElement).click();
+    await new Promise(requestAnimationFrame);
+    const effects = element.getAnimations({ subtree: true }).filter(
+      (animation) => (animation as CSSAnimation).animationName === "file-tab-activate",
+    );
+    (window as any).__selectionMotion = effects[0];
+    return effects.map(animation => ({
+      state: animation.playState,
+      duration: animation.effect!.getTiming().duration,
+    }));
+  });
+  expect(animations).toHaveLength(1);
+  expect(animations[0].state).toBe("running");
+  expect(Number(animations[0].duration)).toBeGreaterThan(0);
+  expect(Number(animations[0].duration)).toBeLessThanOrEqual(250);
+  const message = page.getByLabel("message 行1", { exact: true });
+  await expect(message).toBeVisible();
+  await message.fill("tab切替でも保持するdraft");
+  await message.press("Tab");
+  await announcement.click();
+  expect(await announcement.evaluate(element => element.getAnimations({ subtree: true })
+    .filter(animation => (animation as CSSAnimation).animationName === "file-tab-activate")
+    .every(animation => animation === (window as any).__selectionMotion),
+  )).toBe(true);
+  await announcement.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await expect(announcement).toHaveAttribute("aria-selected", "true");
+  await expect(message).toHaveValue("tab切替でも保持するdraft");
+  const expectNoMotion = async () => {
+    await announcement.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
+    expect(await announcement.evaluate(element => element.getAnimations({ subtree: true })
+      .filter(animation => (animation as CSSAnimation).animationName === "file-tab-activate").length,
+    )).toBe(0);
+    await expect(message).toHaveValue("tab切替でも保持するdraft");
+  };
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expectNoMotion();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.evaluate(() => (window as any).__command("editor-settings"));
+  const settings = page.getByRole("dialog", { name: "エディター設定", exact: true });
+  await settings.getByRole("switch", { name: "モーション", exact: true }).click();
+  await settings.locator(".ant-drawer-close").click();
+  await expect(page.locator("html")).toHaveAttribute("data-reduced-motion", "true");
+  await expectNoMotion();
+  expect(calls.filter(call => call === "save")).toHaveLength(0);
+});
 test("Enum adds inline with focused name; Save keeps Undo and values persist", async () => {
   await selectSource("rarity");
   await page.getByRole("tab", { name: /ソース/ }).click();

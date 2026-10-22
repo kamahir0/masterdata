@@ -24,6 +24,8 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 
 ## WEB-002 — 編集sessionと操作体験
 
+- workbenchの面・背景階層・compact spacing・接続tab・補助panelはDesktop UI-003を共有する。Browser固有の機能境界を保ち、狭いwindowでも操作入口に到達できる。根拠と承認: [モダンworkbench](../spec-changes/0018-modern-workbench-surfaces.md)。
+
 - 既存`src/core/`のsnapshot / Sessionを共有する。セル、record、field、type、nested値、nullable / array、参照、Explorer、検索、tab、診断、Undo / Redo、focus、motion等の編集操作はDesktop仕様の観察可能な挙動を基本として維持する。
 - **Projectオープン時の初回読込の後、通常の入力・選択・folder開閉・並替え・作成・rename・move・delete・Undo / Redoではfilesystem I/Oを行わない。** メモリ上のdraftに反映し、必要な検証はメモリに対して行う。ディスク反映は明示Save時のみ。明示的なProject再オープン等は新たな読込操作として扱う。
 - 編集中の追加・移動・rename・削除は保存まで仮想的なProjectパスの変更であり、実ディスクへ逐次反映しない。保存の成功通知まで編集履歴とdirtyを保持する。

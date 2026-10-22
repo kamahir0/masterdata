@@ -155,6 +155,78 @@ async function selectSource(name: string) {
     .click();
   await search.fill("");
 }
+test("modern workbench visual comparison preserves editing across themes and panels", async () => {
+  const capture = async (name: string) => {
+    await page.mouse.move(500, 75);
+    await page.screenshot({
+      path: process.env.WORKBENCH_CAPTURE
+        ? path.join(process.env.WORKBENCH_CAPTURE, `${name}.png`)
+        : test.info().outputPath(`${name}.png`),
+      animations: "disabled",
+    });
+  };
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const explorer = (await page.locator(".explorer").boundingBox())!;
+    const editor = (await page.locator(".editor-surface").boundingBox())!;
+    expect(editor.x - (explorer.x + explorer.width)).toBeGreaterThanOrEqual(6);
+    expect(editor.x - (explorer.x + explorer.width)).toBeLessThanOrEqual(8);
+    const firstRow = await page.locator(".data-grid .ant-table-row").first().boundingBox();
+    expect(firstRow!.y).toBeLessThan(300);
+    await capture(`normal-${theme}`);
+    await page.getByRole("button", { name: /0 件の問題/ }).click();
+    await expect(page.locator(".problems-clear")).toBeVisible();
+    const panel = (await page.locator(".problems-panel").boundingBox())!;
+    const content = (await page.locator(".editor-surface").boundingBox())!;
+    expect(panel.y - (content.y + content.height)).toBeGreaterThanOrEqual(6);
+    await capture(`problems-${theme}`);
+    await page.getByRole("button", { name: "問題を閉じる" }).click();
+    await expect(page.locator(".problems-panel")).toHaveCount(0);
+  }
+  await page.getByLabel("message 行1", { exact: true }).fill("表示を変えても保持するdraft");
+  await page.getByLabel("message 行1", { exact: true }).press("Tab");
+  for (const name of [
+    "announcement", "schema", "common", "quest", "rarity",
+    "combat-stats", "effect", "item-code", "item-flags",
+  ]) {
+    await selectSource(name);
+    await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  }
+  await page.setViewportSize({ width: 1000, height: 680 });
+  await page.getByRole("tab", { name: "announcement", exact: true }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue("表示を変えても保持するdraft");
+  await capture("narrow-many-tabs");
+  await page.getByRole("button", { name: "エクスプローラーの表示切替" }).click();
+  await expect(page.locator(".explorer-container")).toHaveCSS("width", "0px");
+  await capture("narrow-hidden-explorer");
+  await page.getByRole("button", { name: "エクスプローラーの表示切替" }).click();
+  await page.setViewportSize({ width: 1480, height: 960 });
+  for (const theme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    for (const name of ["エディター設定", "プロジェクト設定"]) {
+      await page.getByRole("button", { name, exact: true }).click();
+      const drawer = page.getByRole("dialog", { name, exact: true });
+      await expect(drawer).toBeVisible();
+      await expect(drawer.locator("..")).not.toHaveClass(
+        /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+      );
+      await capture(`${name === "エディター設定" ? "editor" : "project"}-settings-${theme}`);
+      await drawer.locator(".ant-drawer-close").click();
+      await expect(drawer).toBeHidden();
+    }
+    await selectSource("common");
+    await page.getByRole("button", { name: "stats 行1を開く", exact: true }).click();
+    const nested = page.locator(".editor-content .ant-drawer-content-wrapper");
+    await expect(nested).not.toHaveClass(
+      /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+    );
+    await capture(`nested-${theme}`);
+    await nested.locator(".ant-drawer-close").click();
+    await expect(nested).toBeHidden();
+  }
+  expect(calls.filter((c) => c === "save")).toHaveLength(0);
+});
 test("Enum adds inline with focused name; Save keeps Undo and values persist", async () => {
   await selectSource("rarity");
   await page.getByRole("tab", { name: /ソース/ }).click();

@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -77,6 +78,7 @@ import {
   useEditorPreferences,
   type EditorPreferences,
 } from "./ui/editor-settings";
+import { workbenchThemes, workbenchMetrics } from "./ui/design-tokens";
 import { ExplorerResize } from "./ui/explorer-resize";
 import { sourceKind, kindBadges } from "./ui/source-icon";
 import {
@@ -857,86 +859,97 @@ function Workspace({
               />
             )}
             <main className="main-area" tabIndex={-1}>
-              <FileTabs
-                sources={opened
-                  .map((id) => snapshot.sources.find((s) => s.id === id))
-                  .filter((s): s is Source => !!s)}
-                active={active}
-                preview={preview}
-                wrap={preferences.tabLayout === "wrap"}
-                reduced={preferences.reduced}
-                dirty={(source) => session.dirtySource(source)}
-                select={select}
-                pin={(id) => select(id, true)}
-                close={closeTab}
-                fail={fail}
-                operations={{
-                  rename: (path) => {
-                    setPreferences((p) => ({ ...p, explorer: true }));
-                    explorerOperations.current?.rename(path);
-                  },
-                  remove: (paths) => explorerOperations.current?.remove(paths),
-                }}
-              />
-              {source ? (
-                <>
-                  <div className="editor-heading">
-                    <div
-                      className="editor-title"
-                      data-source-kind={sourceKind(source)}
-                    >
-                      <Tag className="source-kind-label">
-                        {kindBadges[sourceKind(source)]}
-                      </Tag>
-                      <span className="source-badge">
-                        <SourceIcon source={source} />
-                      </span>
-                      <Entry
-                        value={title ?? source.path.split("/").at(-1)}
-                        label="定義名"
-                        onCommit={(name) =>
-                          session.renameDeclaration(source.id, name)
-                        }
+              <div className="editor-surface">
+                <FileTabs
+                  sources={opened
+                    .map((id) => snapshot.sources.find((s) => s.id === id))
+                    .filter((s): s is Source => !!s)}
+                  active={active}
+                  preview={preview}
+                  wrap={preferences.tabLayout === "wrap"}
+                  reduced={preferences.reduced}
+                  dirty={(source) => session.dirtySource(source)}
+                  select={select}
+                  pin={(id) => select(id, true)}
+                  close={closeTab}
+                  fail={fail}
+                  operations={{
+                    rename: (path) => {
+                      setPreferences((p) => ({ ...p, explorer: true }));
+                      explorerOperations.current?.rename(path);
+                    },
+                    remove: (paths) => explorerOperations.current?.remove(paths),
+                  }}
+                />
+                {source ? (
+                  <>
+                    <div className="editor-heading">
+                      <div
+                        className="editor-title"
+                        data-source-kind={sourceKind(source)}
+                      >
+                        <Tag className="source-kind-label">
+                          {kindBadges[sourceKind(source)]}
+                        </Tag>
+                        <span className="source-badge">
+                          <SourceIcon source={source} />
+                        </span>
+                        <Entry
+                          value={title ?? source.path.split("/").at(-1)}
+                          label="定義名"
+                          onCommit={(name) =>
+                            session.renameDeclaration(source.id, name)
+                          }
+                        />
+                      </div>
+                      <Tabs
+                        className="editor-tabs"
+                        activeKey={tab}
+                        onChange={(value) => {
+                          commitActive();
+                          setTab(value);
+                          setCursor(null);
+                        }}
+                        items={tabs}
                       />
                     </div>
-                    <Tabs
-                      className="editor-tabs"
-                      activeKey={tab}
-                      onChange={(value) => {
-                        commitActive();
-                        setTab(value);
-                        setCursor(null);
-                      }}
-                      items={tabs}
-                    />
-                  </div>
-                  <section className="editor-content">
-                    <EditorBoundary
-                      key={`${active}:${tab}`}
-                      revision={revision}
-                      onSource={() => setTab("source")}
-                    >
-                      {tab === "source" || source.syntaxError ? (
-                        <>
-                          <SourceText key={source.id} source={source} />
-                        </>
-                      ) : source.data?.kind === "type" ? (
-                        <TypeEditor source={source} snapshot={snapshot} />
-                      ) : tab === "data" ? (
-                        <GridEditor
-                          key={source.id}
-                          source={source}
-                          snapshot={snapshot}
-                          problems={problems}
-                          onOpen={setCursor}
-                          navigate={select}
-                          profile={profile}
-                          findRef={find}
-                          jump={jump}
-                        />
-                      ) : tab === "fields" ? (
-                        <div className="editor-scroll">
-                          <FieldEditor
+                    <section className="editor-content">
+                      <EditorBoundary
+                        key={`${active}:${tab}`}
+                        revision={revision}
+                        onSource={() => setTab("source")}
+                      >
+                        {tab === "source" || source.syntaxError ? (
+                          <>
+                            <SourceText key={source.id} source={source} />
+                          </>
+                        ) : source.data?.kind === "type" ? (
+                          <TypeEditor source={source} snapshot={snapshot} />
+                        ) : tab === "data" ? (
+                          <GridEditor
+                            key={source.id}
+                            source={source}
+                            snapshot={snapshot}
+                            problems={problems}
+                            onOpen={setCursor}
+                            navigate={select}
+                            profile={profile}
+                            findRef={find}
+                            jump={jump}
+                          />
+                        ) : tab === "fields" ? (
+                          <div className="editor-scroll">
+                            <FieldEditor
+                              source={
+                                tables(snapshot).find(
+                                  (t) => t.name === source.data?.table,
+                                )?.source ?? source
+                              }
+                              snapshot={snapshot}
+                            />
+                          </div>
+                        ) : (
+                          <Relationships
                             source={
                               tables(snapshot).find(
                                 (t) => t.name === source.data?.table,
@@ -944,41 +957,32 @@ function Workspace({
                             }
                             snapshot={snapshot}
                           />
-                        </div>
-                      ) : (
-                        <Relationships
-                          source={
-                            tables(snapshot).find(
-                              (t) => t.name === source.data?.table,
-                            )?.source ?? source
-                          }
-                          snapshot={snapshot}
-                        />
-                      )}
-                    </EditorBoundary>
-                    <NestedEditor
-                      reduced={preferences.reduced}
-                      cursor={cursor}
-                      snapshot={snapshot}
-                      setCursor={setCursor}
+                        )}
+                      </EditorBoundary>
+                      <NestedEditor
+                        reduced={preferences.reduced}
+                        cursor={cursor}
+                        snapshot={snapshot}
+                        setCursor={setCursor}
+                      />
+                    </section>
+                  </>
+                ) : (
+                  <div className="empty-editor">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="左の一覧から表や型を選択してください"
                     />
-                  </section>
-                </>
-              ) : (
-                <div className="empty-editor">
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="左の一覧から表や型を選択してください"
-                  />
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => select(session.add("table"))}
-                  >
-                    テーブルを作成
-                  </Button>
-                </div>
-              )}
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => select(session.add("table"))}
+                    >
+                      テーブルを作成
+                    </Button>
+                  </div>
+                )}
+              </div>
               <AnimatePresence initial={false}>
                 {problemsOpen && (
                   <motion.section
@@ -1374,7 +1378,12 @@ function Workspace({
 export default function Root() {
   const { preferences, setPreferences, dark } = useEditorPreferences();
   const reduced = preferences.reduced;
-  useEffect(() => {
+  const palette = workbenchThemes[dark ? "dark" : "light"];
+  useLayoutEffect(() => {
+    for (const [name, value] of Object.entries(palette))
+      document.documentElement.style.setProperty(`--${name}`, value);
+    for (const [name, value] of Object.entries(workbenchMetrics))
+      document.documentElement.style.setProperty(`--${name}`, `${value}px`);
     document.documentElement.dataset.runtime = isBrowser()
       ? "browser"
       : "desktop";
@@ -1385,19 +1394,23 @@ export default function Root() {
       : "other";
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     document.documentElement.dataset.reducedMotion = String(reduced);
-  }, [dark, reduced]);
+  }, [dark, reduced, palette]);
   return (
     <ConfigProvider
       locale={jaJP}
       theme={{
         algorithm: dark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
-          colorPrimary: dark ? "#389264" : "#237b50",
-          colorBgContainer: dark ? "#1f1f1f" : "#ffffff",
-          colorBgElevated: dark ? "#252525" : "#ffffff",
-          colorBgLayout: dark ? "#181818" : "#f6f6f6",
-          colorBorder: dark ? "#404040" : "#d5d5d5",
-          borderRadius: 4,
+          colorPrimary: palette.primary,
+          colorBgContainer: palette.surface,
+          colorBgElevated: palette.surface,
+          colorBgLayout: palette.bg,
+          colorBorder: palette.border,
+          colorText: palette.text,
+          colorTextSecondary: palette.muted,
+          colorSplit: palette.line,
+          colorPrimaryText: palette.accent,
+          borderRadius: workbenchMetrics["radius-control"],
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif',
           fontSize: 13,
@@ -1413,6 +1426,15 @@ export default function Root() {
         },
         components: {
           Table: { cellPaddingBlockSM: 5, cellPaddingInlineSM: 8 },
+          Tabs: {
+            itemSelectedColor: palette.accent,
+            itemHoverColor: palette.accent,
+            inkBarColor: palette.accent,
+          },
+          Radio: {
+            colorPrimary: palette.accent,
+            colorPrimaryHover: palette.accent,
+          },
           Button: {
             defaultShadow: "none",
             primaryShadow: "none",
@@ -1420,7 +1442,7 @@ export default function Root() {
           Tree: {
             titleHeight: 28,
             indentSize: 16,
-            nodeSelectedBg: dark ? "#284235" : "#dceee3",
+            nodeSelectedBg: palette.selected,
             motionDurationSlow: ".1s",
           },
         },

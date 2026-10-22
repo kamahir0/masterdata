@@ -66,7 +66,7 @@ export function Settings({
               <Entry
                 label="C#の出力先"
                 value={config.publish.csharp}
-                placeholder="../Unity/Assets/MasterData/Generated"
+                placeholder="../Generated"
                 onCommit={(csharp) =>
                   update({ ...config, publish: { ...config.publish, csharp } })
                 }
@@ -75,7 +75,7 @@ export function Settings({
               <Entry
                 label="バイナリの出力先"
                 value={config.publish.binary}
-                placeholder="../Unity/Assets/StreamingAssets/masterdata.bytes"
+                placeholder="../Data/masterdata.bytes"
                 onCommit={(binary) =>
                   update({ ...config, publish: { ...config.publish, binary } })
                 }

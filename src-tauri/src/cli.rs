@@ -57,7 +57,7 @@ const BOOLEAN_FLAGS: &[&str] = &[
     "build",
 ];
 
-pub const HELP_TEXT: &str = "MasterData CLI — 構造を理解するゲームデータ管理・編集・ビルドツール
+pub const HELP_TEXT: &str = "MasterData CLI — 構造を理解するマスターデータ管理・編集・ビルドツール
 
 使い方:
   masterdata <command> [options]

@@ -2,7 +2,7 @@
   "name": "masterdata",
   "productName": "MasterData",
   "version": "0.1.0",
-  "description": "ゲームマスターデータ編集ツール",
+  "description": "型安全なマスターデータ統合エディタ（C# / MasterMemory）",
   "author": "masterdata contributors",
   "license": "MIT",
   "private": true,

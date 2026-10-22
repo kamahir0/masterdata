@@ -1,6 +1,6 @@
 # MasterData
 
-ゲームのマスターデータを、表と型を行き来しながら直感的に編集し、C#コードとMasterMemoryバイナリを自動生成するクロスプラットフォームエディタ。
+表と型を行き来しながら直感的に編集し、型安全なC#コードとMasterMemoryバイナリを自動生成するクロスプラットフォームのマスターデータ統合エディタ。Web API、デスクトップ業務システム、ゲーム開発まで幅広く対応します。
 
 デスクトップアプリ（macOS / Windows / Linux）、ブラウザ版（インストール不要）、およびAIエージェント・CI自動化向けのRustネイティブCLIを提供します。
 
@@ -32,7 +32,7 @@
   - テーブル定義（スキーマ）とデータファイルの分離に対応し、大規模チームでのGit競合を最小化。
 - **C# / MasterMemoryバイナリの即時生成（Desktop / CLI）**
   - .NET 8を内蔵駆動し、編集中のドラフトから型安全なC#コードと高速バイナリ（MasterMemory）を直接生成・検証。
-  - 生成されたアセットは設定した出力先（Unityプロジェクト等）へ安全にPublish。
+  - 生成されたアセットは設定した出力先（C#プロジェクト、APIサーバー、Unity等）へ安全にPublish。
 - **強固な保存・復旧トランザクション**
   - 外部ファイル変更や競合を事前検知してデータ上書きを防止。
   - 複数ファイルの一括保存時もバックアップトランザクションにより自動復旧・ロールバックを支援。
@@ -123,7 +123,7 @@ masterdata tx --file operations.json
 # C#コードとMasterMemoryバイナリの生成・検証
 masterdata build --project samples/Adventure
 
-# 成功した成果物をUnity等の出力先へ安全に配置
+# 成功した成果物を設定された出力先へ安全に配置
 masterdata publish --project samples/Adventure
 ```
 
@@ -136,7 +136,7 @@ masterdata publish --project samples/Adventure
 MasterDataプロジェクトは以下の構造で管理されます。
 
 ```text
-my-game-data/
+my-project-data/
 ├── masterdata.toml         # プロジェクト設定（名前、出力プロファイル、Publish先）
 ├── sources/                # YAMLデータソース
 │   ├── items/

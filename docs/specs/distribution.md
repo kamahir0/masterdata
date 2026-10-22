@@ -9,7 +9,7 @@ Basis: 2026-10-22 Human requestによる「MasterDataリポジトリを一般公
 
 ### 1. 解決する問題と対象シナリオ
 - **初見の訪問者**:
-  - リポジトリに訪れた瞬間、MasterDataが「ゲームのマスターデータ編集と型安全なC# / MasterMemoryバイナリ生成を行うツール」であることを3秒で理解できる。
+  - リポジトリに訪れた瞬間、MasterDataが「表と型を行き来して直接編集し、型安全なC# / MasterMemoryバイナリを自動生成するマスターデータ統合エディタ」であることを3秒で理解できる。
   - インストールなしで即座にブラウザ版（GitHub Pages）を開き、サンプルデータを読み込んで操作感を試せる。
   - 実際のUI（Light / Darkテーマ、テーブル編集画面）をスクリーンショットで事前に確認できる。
 - **Desktopユーザー**:
@@ -130,7 +130,7 @@ Basis: 2026-10-22 Human requestによる「MasterDataリポジトリを一般公
 ## DIST-005 — GitHubリポジトリメタデータの整備
 
 1. **Description**:
-   - 「ゲームのマスターデータを表と型で直感的に編集し、C# / MasterMemoryバイナリを自動生成するクロスプラットフォームエディタ（Desktop / Web / CLI）」
+   - 「表と型を行き来して直接編集し、型安全なC# / MasterMemoryバイナリを自動生成するマスターデータ統合エディタ（Desktop / Web / CLI）」
 2. **Homepage**:
    - `https://kamahir0.github.io/masterdata/`
 3. **Topics**:

@@ -8,7 +8,7 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 
 ## 目的・対象作業・非対象
 
-インストール不要の静的Webページから、利用者自身のローカルMasterDataプロジェクトを開き、既存Desktop版と同じ基本操作でデータ・型・構造を編集し、明示的に保存する。ゲーム向け成果物の生成・配置は既存CLI / Desktopに委ねる。
+インストール不要の静的Webページから、利用者自身のローカルMasterDataプロジェクトを開き、既存Desktop版と同じ基本操作でデータ・型・構造を編集し、明示的に保存する。C# / MasterMemory成果物の生成・配置は既存CLI / Desktopに委ねる。
 
 代表作業は、URLを開く → プロジェクトルートを選ぶ → 表・型・参照やExplorerの項目を編集する → Undo / Redoで修正する → ファイルまたは全体を保存する → CLI / DesktopでBuild / Publishする、という流れ。
 

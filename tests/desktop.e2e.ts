@@ -3403,6 +3403,25 @@ test("welcome suppresses the default WebView context menu", async () => {
   ).toBeVisible();
 });
 
+test("welcome displays business tool copy and titlebar without slogans", async () => {
+  await expect(
+    page.getByRole("heading", { name: "MasterData", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("表と型定義を直接編集するマスターデータ管理ツールです。"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("テーブル編集プレビュー", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("外部キー参照・型定義・値の整合性を管理"),
+  ).toBeVisible();
+  await expect(page.getByText("データから、世界をつくる。")).toHaveCount(0);
+  await expect(page.getByText("YOUR DATA, YOUR WORLD")).toHaveCount(0);
+  await expect(page.locator(".brand-divider")).toHaveCount(0);
+  await expect(page.locator(".window-project")).toHaveCount(0);
+});
+
 test("keyboard tab navigation skips outgoing tabs and reopening during exit stays singular", async () => {
   for (const name of ["announcement", "rarity", "combat-stats"]) {
     await selectSource(name);

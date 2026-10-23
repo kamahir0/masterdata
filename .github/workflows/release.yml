@@ -59,7 +59,8 @@ jobs:
 
       - name: Tauri Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+        timeout-minutes: 8
+        run: bash scripts/install-linux-dependencies.sh
 
       - name: Install dependencies
         run: npm ci

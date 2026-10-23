@@ -2,12 +2,13 @@
 
 ## Objective
 
-全体レビューで確認した7件（nested編集対象、Windows path、隠し名、IndexedDB失敗、仮作成中Save、folder削除失敗、診断の不正要素）を修正する。
+直近の修正を含むMasterData v0.1.1をGitHub Releasesへ公開する。
 
 ## Completion boundary
 
-必要な仕様補足のreview・適用、各不具合の実装と回帰検証、代表作業の確認、self-review、workspace / diff check、通常commit / push、exact CandidateのCI成功確認。
+version整合、release差分review、必要なchecks、通常commit / push、固定tagからの全OS release build、配布物とchecksumの確認、日本語release notes、draftからの公開と公開結果の確認。
+公開のauthorization: Humanの「リリースして」（2026-10-23）。既存tagは変更せず、新しいpatch versionを使用する。
 
 ## Non-scope
 
-公開release、依頼外の機能追加、ユーザーの既存変更、Unityの起動。
+既存tag / releaseの上書き、依頼外の製品機能変更、ユーザーの既存変更、外部告知、Unityの起動。

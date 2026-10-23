@@ -136,6 +136,13 @@ async function saveAll() {
   await page.getByRole("button", { name: "保存方法", exact: true }).click();
   await page.getByRole("menuitem", { name: "すべて保存", exact: true }).click();
 }
+async function waitForDropdown() {
+  const menu = page.locator(".ant-dropdown:visible");
+  await expect(menu).toBeVisible();
+  // rc-motion can start the popup's transform after Playwright's stability
+  // check. Wait for its lifecycle before clicking a moving menu item.
+  await expect(menu).not.toHaveClass(/ant-slide-up-(?:appear|enter)(?:-|\s|$)/);
+}
 async function openNested(name: string) {
   await page.getByRole("button", { name, exact: true }).click();
   const panel = page.locator(".ant-drawer-content-wrapper");
@@ -3095,11 +3102,7 @@ test("large frozen row utilities select records and stay accessible at the horiz
   await page.locator(".row-number").nth(1).click({ modifiers: ["ControlOrMeta"] });
   await expect(selections.nth(1)).not.toBeChecked();
   await page.getByRole("button", { name: "行2の操作", exact: true }).click();
-  const menu = page.locator(".ant-dropdown:visible");
-  await expect(menu).toBeVisible();
-  // rc-motion can start the popup's transform after Playwright's stability
-  // check. Wait for its lifecycle before clicking a moving menu item.
-  await expect(menu).not.toHaveClass(/ant-slide-up-(?:appear|enter)(?:-|\s|$)/);
+  await waitForDropdown();
   await page.getByRole("menuitem", { name: /削除/ }).click();
   await expect(page.getByLabel("id 行2", { exact: true })).toHaveValue("3");
   await page.locator(".row-number").nth(4).click({ modifiers: ["Shift"] });
@@ -3126,6 +3129,7 @@ test("large deletion at virtual scroll ends clips exits below headers and beyond
   });
   await expect(page.getByRole("button", { name: "行400の操作", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "行400の操作", exact: true }).click();
+  await waitForDropdown();
   await page.getByRole("menuitem", { name: /削除/ }).click();
   await expect(page.getByRole("button", { name: "行400の操作", exact: true })).toHaveCount(0);
   const ghost = page.locator(".edit-exit").first();
@@ -3144,7 +3148,9 @@ test("large deletion at virtual scroll ends clips exits below headers and beyond
   await page.mouse.wheel(20000, 0);
   await expect(page.getByRole("button", { name: "field59の操作", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "field59の操作", exact: true }).click();
+  await waitForDropdown();
   await page.getByRole("menuitem", { name: /列を削除/ }).click();
+  await expect(page.getByRole("button", { name: "field59の操作", exact: true })).toHaveCount(0);
   await expect(ghost).toBeAttached();
   const frozen = (await page.locator(".ant-table-header .ant-table-cell-fix-start-shadow").boundingBox())!;
   for (const layer of await page.locator(".edit-exit").all()) {

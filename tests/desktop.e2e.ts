@@ -3088,13 +3088,20 @@ test("large frozen row utilities select records and stay accessible at the horiz
   await action.click();
   await expect(page.getByRole("menuitem", { name: /削除/ })).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem", { name: /削除/ })).toBeHidden();
   // Escape clears grid selection as well as dismissing the row menu.
   await page.locator(".row-number").nth(0).click();
   await page.locator(".row-number").nth(2).click({ modifiers: ["Shift"] });
   await page.locator(".row-number").nth(1).click({ modifiers: ["ControlOrMeta"] });
   await expect(selections.nth(1)).not.toBeChecked();
   await page.getByRole("button", { name: "行2の操作", exact: true }).click();
+  const menu = page.locator(".ant-dropdown:visible");
+  await expect(menu).toBeVisible();
+  // rc-motion can start the popup's transform after Playwright's stability
+  // check. Wait for its lifecycle before clicking a moving menu item.
+  await expect(menu).not.toHaveClass(/ant-slide-up-(?:appear|enter)(?:-|\s|$)/);
   await page.getByRole("menuitem", { name: /削除/ }).click();
+  await expect(page.getByLabel("id 行2", { exact: true })).toHaveValue("3");
   await page.locator(".row-number").nth(4).click({ modifiers: ["Shift"] });
   await expect(page.locator('.ant-table-tbody-virtual-holder input[type="checkbox"]:checked')).toHaveCount(1);
   const resizer = page.getByRole("separator", { name: "エクスプローラーの幅", exact: true });

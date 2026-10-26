@@ -2,13 +2,12 @@
 
 ## Objective
 
-直近の修正を含むMasterData v0.1.1をGitHub Releasesへ公開する。
+表の横スクロールバー位置、file tab切替motion、列移動icon、Browser faviconとwelcomeのversion表示を改善する。
 
 ## Completion boundary
 
-version整合、release差分review、必要なchecks、通常commit / push、固定tagからの全OS release build、配布物とchecksumの確認、日本語release notes、draftからの公開と公開結果の確認。
-公開のauthorization: Humanの「リリースして」（2026-10-23）。既存tagは変更せず、新しいpatch versionを使用する。
+2026-10-26の画像付き5点の依頼に基づき、仕様の具体化・review・承認、実装、focused tests、実操作、self-review、通常commit / pushと必要なCIを完了する。Browserの静的buildにfaviconとpackage versionが含まれることも検証する。
 
 ## Non-scope
 
-既存tag / releaseの上書き、依頼外の製品機能変更、ユーザーの既存変更、外部告知、Unityの起動。
+新しいGitHub Releaseの公開、既存tag変更、依頼外の製品機能・データ形式変更、Unityの起動。既存index.htmlのfavicon指定は今回の明示依頼に対応する変更として扱う。

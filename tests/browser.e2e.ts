@@ -583,3 +583,16 @@ test("browser reopens recent project automatically on reload when permission is 
     "冒険へようこそ",
   );
 });
+
+test("browser unsupported welcome identifies the build version and serves its favicon", async ({ page }) => {
+  const { version } = JSON.parse(await fs.readFile("package.json", "utf8"));
+  const label = page.getByLabel("アプリのバージョン", { exact: true });
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(`v${version}`);
+  expect(await label.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeLessThan(14);
+  const icon = await page.locator('link[rel="icon"]').evaluate(el => (el as HTMLLinkElement).href);
+  const response = await page.request.get(icon);
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await response.text()).toContain("<svg");
+});

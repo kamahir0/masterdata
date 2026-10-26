@@ -25,9 +25,11 @@ import {
   DownOutlined,
   FileAddOutlined,
   HolderOutlined,
+  LeftOutlined,
   MoreOutlined,
   PlusOutlined,
   SearchOutlined,
+  RightOutlined,
   TableOutlined,
   UpOutlined,
 } from "@ant-design/icons";
@@ -119,18 +121,9 @@ export function GridEditor({
     anchorCol: number;
   } | null>(null);
   const rowAnchor = useRef<string | null>(null);
-  const [height, setHeight] = useState(400);
   const handledJump = useRef<number | undefined>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
   const tableRef = useRef<any>(null);
-  useTableViewport(viewport, tableRef, table?.source.id);
-  useEffect(() => {
-    const observer = new ResizeObserver((entries) =>
-      setHeight(Math.max(150, entries[0].contentRect.height - 86)),
-    );
-    if (viewport.current) observer.observe(viewport.current);
-    return () => observer.disconnect();
-  }, []);
   useEffect(() => {
     setChosen(source.data?.kind === "data" ? source.id : "all");
     setRowKeys([]);
@@ -171,6 +164,7 @@ export function GridEditor({
             ),
     [snapshot.sources, source.id, chosen, deferred],
   );
+  const height = useTableViewport(viewport, tableRef, table?.source.id, rows.length > 0);
   const addRecord = (template?: any) => {
     if (!table || !additionSource) return;
     setQuery("");
@@ -608,13 +602,13 @@ export function GridEditor({
                     {
                       key: "left",
                       label: "左へ",
-                      icon: <UpOutlined />,
+                      icon: <LeftOutlined />,
                       disabled: col === 0,
                     },
                     {
                       key: "right",
                       label: "右へ",
-                      icon: <DownOutlined />,
+                      icon: <RightOutlined />,
                       disabled: col === table.fields.length - 1,
                     },
                     {
@@ -1115,7 +1109,11 @@ export function GridEditor({
           </Button>
         </Space>
       </div>
-      <div className="grid-viewport" ref={viewport}>
+      <div
+        className="grid-viewport"
+        ref={viewport}
+        style={{ "--grid-body-height": `${height}px` } as React.CSSProperties}
+      >
         <Table<Row>
           ref={tableRef}
           className="data-grid"

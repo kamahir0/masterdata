@@ -143,6 +143,17 @@ async function waitForDropdown() {
   // check. Wait for its lifecycle before clicking a moving menu item.
   await expect(menu).not.toHaveClass(/ant-slide-up-(?:appear|enter)(?:-|\s|$)/);
 }
+async function expectScrollbarAtFooter() {
+  await expect.poll(() => page.evaluate(() => {
+    const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+    // AntD uses a native scrolling body instead of the virtual list when empty.
+    const bar = box(".ant-table-tbody-virtual-scrollbar-horizontal, .ant-table-body");
+    const viewport = box(".grid-viewport");
+    const footer = box(".grid-footer");
+    if (!bar || !viewport || !footer) return Infinity;
+    return Math.max(Math.abs(bar.bottom - viewport.bottom), Math.abs(viewport.bottom - footer.top));
+  })).toBeLessThanOrEqual(2);
+}
 async function openNested(name: string) {
   await page.getByRole("button", { name, exact: true }).click();
   const panel = page.locator(".ant-drawer-content-wrapper");
@@ -254,8 +265,21 @@ test("tab selection motion stays inside the active tab, keeps drafts and respect
   });
   expect(animations).toHaveLength(1);
   expect(animations[0].state).toBe("running");
-  expect(Number(animations[0].duration)).toBeGreaterThan(0);
-  expect(Number(animations[0].duration)).toBeLessThanOrEqual(250);
+  expect(Number(animations[0].duration)).toBeGreaterThanOrEqual(320);
+  expect(Number(animations[0].duration)).toBeLessThanOrEqual(400);
+  const intermediate = await announcement.evaluate(element => {
+    const animation = (window as any).__selectionMotion as Animation;
+    animation.pause();
+    animation.currentTime = 120;
+    const style = getComputedStyle(element, "::before");
+    const result = { scale: new DOMMatrixReadOnly(style.transform).a, opacity: Number(style.opacity) };
+    animation.play();
+    return result;
+  });
+  expect(intermediate.scale).toBeGreaterThan(.25);
+  expect(intermediate.scale).toBeLessThan(.95);
+  expect(intermediate.opacity).toBeGreaterThan(.35);
+  expect(intermediate.opacity).toBeLessThan(.95);
   const message = page.getByLabel("message 行1", { exact: true });
   await expect(message).toBeVisible();
   await message.fill("tab切替でも保持するdraft");
@@ -3078,6 +3102,7 @@ test("hierarchy guides end at direct children and follow moves, Undo, filtering 
 
 test("large frozen row utilities select records and stay accessible at the horizontal end", async () => {
   await selectSource("announcement");
+  await expectScrollbarAtFooter();
   await expect(page.getByRole("combobox", { name: "追加先ファイル", exact: true })).toHaveCount(0);
   const action = page.getByRole("button", { name: "行1の操作", exact: true });
   const tags = page.getByRole("combobox", { name: "行1のタグ", exact: true });
@@ -3665,4 +3690,59 @@ test("review fixes: hidden provisional name is rejected and corrected name can b
   await page.evaluate(() => (window as any).__command("save"));
   await expect.poll(async () => fs.readFile(path.join(root, "sources/announcements/visible.yaml"), "utf8").catch(() => "")).toContain("kind: schema");
   await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+});
+
+test("table horizontal scrollbar stays above the footer for short and empty results and resizing", async () => {
+  await selectSource("common");
+  await expectScrollbarAtFooter();
+  const holder = page.locator(".ant-table-tbody-virtual-holder");
+  const header = page.locator(".ant-table-header");
+  const headCell = page.getByLabel("列6の名前", { exact: true });
+  const bodyCell = page.getByLabel("price 行1", { exact: true });
+  const before = [(await headCell.boundingBox())!.x, (await bodyCell.boundingBox())!.x];
+  await holder.hover();
+  const thumb = page.locator(".ant-table-tbody-virtual-scrollbar-horizontal .ant-table-tbody-virtual-scrollbar-thumb");
+  await expect(thumb).toBeVisible();
+  const rect = (await thumb.boundingBox())!;
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await page.mouse.down();
+  try {
+    await expect(thumb).toHaveClass(/-thumb-moving/);
+    await page.mouse.move(rect.x + rect.width / 2 + 120, rect.y + rect.height / 2, { steps: 8 });
+    await expect.poll(() => header.evaluate(el => el.scrollLeft)).toBeGreaterThan(50);
+  } finally {
+    await page.mouse.up();
+  }
+  const after = [(await headCell.boundingBox())!.x, (await bodyCell.boundingBox())!.x];
+  expect(Math.abs((after[0] - before[0]) - (after[1] - before[1]))).toBeLessThan(2);
+  await page.getByLabel("表を検索", { exact: true }).fill("no-record-matches-this-query");
+  await expect(page.getByText("一致するデータはありません", { exact: true })).toBeVisible();
+  await expectScrollbarAtFooter();
+  await header.evaluate(el => { el.scrollLeft = 120; });
+  await expect.poll(() => page.locator(".ant-table-body").evaluate(el => el.scrollLeft)).toBe(120);
+  await page.getByLabel("表を検索", { exact: true }).fill("");
+  await page.setViewportSize({ width: 1000, height: 720 });
+  await expectScrollbarAtFooter();
+  await page.getByRole("button", { name: /0 件の問題/ }).click();
+  await expect(page.getByText("問題は見つかりませんでした", { exact: true })).toBeVisible();
+  await expectScrollbarAtFooter();
+  await expect(page.getByRole("button", { name: "レコードを追加", exact: true })).toBeVisible();
+  expect(calls.filter(call => call === "save")).toHaveLength(0);
+});
+
+test("column menu arrows match horizontal moves and Undo restores column order", async () => {
+  await page.getByRole("button", { name: "messageの操作", exact: true }).click();
+  await waitForDropdown();
+  await expect(page.getByRole("menuitem", { name: /左へ/ }).getByRole("img", { name: "left", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /右へ/ }).getByRole("img", { name: "right", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: /左へ/ }).click();
+  await expect(page.getByLabel("列1の名前", { exact: true })).toHaveValue("message");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("列1の名前", { exact: true })).toHaveValue("id");
+  await page.getByRole("button", { name: "idの操作", exact: true }).click();
+  await waitForDropdown();
+  await page.getByRole("menuitem", { name: /右へ/ }).click();
+  await expect(page.getByLabel("列2の名前", { exact: true })).toHaveValue("id");
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(page.getByLabel("列2の名前", { exact: true })).toHaveValue("message");
 });

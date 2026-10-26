@@ -1,18 +1,33 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 
 export function useTableViewport(
   root: RefObject<HTMLElement | null>,
   table: RefObject<any>,
   sourceId?: string,
+  hasRows = true,
 ) {
+  const [height, setHeight] = useState(400);
   useLayoutEffect(() => {
+    const element = root.current;
     const header =
       root.current?.querySelector<HTMLElement>(".ant-table-header");
+    // AntD swaps the virtual holder for a native body when results become empty.
+    // Rebind and remeasure across that transition, not just source changes.
     const body = root.current?.querySelector<HTMLElement>(
-      ".ant-table-tbody-virtual-holder",
+      ".ant-table-tbody-virtual-holder, .ant-table-body",
     );
-    if (!header || !body) return;
+    if (!element || !header || !body) return;
+    const measure = () => {
+      setHeight(Math.max(
+        1,
+        element.getBoundingClientRect().bottom - body.getBoundingClientRect().top,
+      ));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    observer.observe(header);
+    measure();
     let synchronizing = false;
     const scrollTo = (left: number) => {
       if (synchronizing) return;
@@ -25,7 +40,8 @@ export function useTableViewport(
         // Imperative virtual scroll does not emit onVirtualScroll; synchronize
         // the native header explicitly as well as the virtual body.
         header.scrollLeft = left;
-        flushSync(() => table.current?.scrollTo({ left: header.scrollLeft }));
+        if (body.matches(".ant-table-body")) body.scrollLeft = header.scrollLeft;
+        else flushSync(() => table.current?.scrollTo({ left: header.scrollLeft }));
       } finally {
         synchronizing = false;
       }
@@ -37,6 +53,7 @@ export function useTableViewport(
         scrollTo(header.scrollLeft);
         return;
       }
+      if (body.matches(".ant-table-body")) return;
       const row = body.querySelector("[data-row-key]");
       // The browser may choose the holder's anonymous overflow wrapper rather
       // than the holder itself. Capture ancestor scrolls, but leave text inputs
@@ -49,8 +66,11 @@ export function useTableViewport(
       target.scrollLeft = 0;
       scrollTo(left);
     };
-    root.current!.addEventListener("scroll", onScroll, true);
-    const element = root.current!;
-    return () => element.removeEventListener("scroll", onScroll, true);
-  }, [root, table, sourceId]);
+    element.addEventListener("scroll", onScroll, true);
+    return () => {
+      observer.disconnect();
+      element.removeEventListener("scroll", onScroll, true);
+    };
+  }, [root, table, sourceId, hasRows]);
+  return height;
 }

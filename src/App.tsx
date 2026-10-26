@@ -1107,6 +1107,11 @@ function Workspace({
         </div>
       ) : (
         <div className="welcome">
+          {browser && (
+            <span className="welcome-version" aria-label="アプリのバージョン">
+              v{__APP_VERSION__}
+            </span>
+          )}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}

@@ -1,6 +1,6 @@
 # Browser Authoring
 
-Status: Implemented
+Status: Approved
 
 Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ローカルのプロジェクトを選択」「編集中はインメモリ」「保存時だけI/O」。HumanがBrowser版ではBuild / Publishと関連UIを持たない方針を仕様化するよう依頼した。以下の対応ブラウザ、保存と復旧、UI分岐の具体化はAgent Decisionであり、Humanが個別に承認した実装詳細ではない。
 
@@ -14,8 +14,11 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 
 初期対象は**デスクトップ版Chrome / Edgeなど、必要なローカルDirectory Pickerと読み書きAPIを提供するChromium系ブラウザ**。HTTPS等のsecure contextで静的配信する。Safari / Firefox、モバイル、ネットワーク共有・クラウド同期特有のfilesystem挙動、Web上のBuild / Publish、サーバー保存・アカウント・同期、ローカル補助サービス、PWAインストール必須化は初期対象外とする。ブラウザ内で新規Projectを作る機能とsample作成は初期スコープに含めず、既存Projectを開いて編集することを優先する（Agent Decision）。
 
+Change provenance: [表の操作位置とBrowserの識別表示](../spec-changes/0026-table-navigation-and-browser-identity.md)。
+
 ## WEB-001 — 配布とローカルProject選択
 
+- Browserのtabには既存製品iconをfaviconとして表示し、静的buildのサブpath配信でも解決できる。welcomeにはbuild元のpackage versionを控えめな小さい文字で表示し、project未選択・非対応Browserでも確認できる。version文字列をUIへ二重管理せず、Desktop / projectのversionや更新検知とは分ける。
 - ブラウザ版は静的アセットだけで配信でき、編集・保存にアプリ専用サーバーやローカル常駐プロセス、Node.js / .NETのインストールを要求しない。ブラウザ側のBuild機能は提供しない。
 - 「プロジェクトを開く」は利用者の明示操作でローカル**フォルダ**を選ぶ。選択フォルダをProject rootとし、直下の`masterdata.toml`と`sources/`を読み込む。ファイル単体選択をProject root選択の代わりにしない。Tauri版のProjectとのファイル互換性を維持する。
 - ファイル読込、YAML / TOMLの解釈、source一覧構築をProjectオープン時に行い、完了後に編集sessionを開始する。開く対象が不適切（設定がない、構文不正、権限不足など）なら、対象と理由を示し、現在のProject / 未保存draftを保持する。

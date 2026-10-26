@@ -1,6 +1,6 @@
 # Browser Authoring
 
-Status: Approved
+Status: Implemented
 
 Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ローカルのプロジェクトを選択」「編集中はインメモリ」「保存時だけI/O」。HumanがBrowser版ではBuild / Publishと関連UIを持たない方針を仕様化するよう依頼した。以下の対応ブラウザ、保存と復旧、UI分岐の具体化はAgent Decisionであり、Humanが個別に承認した実装詳細ではない。
 

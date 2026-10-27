@@ -48,9 +48,14 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
       for (const name of ["queryPermission", "requestPermission"]) {
         const original = (FileSystemHandle.prototype as any)[name];
         (FileSystemHandle.prototype as any)[name] = function (...args: any[]) {
-          return control.denied
-            ? Promise.resolve("denied")
-            : original.apply(this, args);
+          if (control.denied) return Promise.resolve("denied");
+          if (name === "queryPermission") {
+            const override = sessionStorage.getItem(
+              "__browserTestQueryPermission",
+            );
+            if (override) return Promise.resolve(override);
+          }
+          return original.apply(this, args);
         };
       }
       const record = () => {
@@ -69,6 +74,14 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
           const original = (prototype as any)[name];
           (prototype as any)[name] = function (...args: any[]) {
             record();
+            if (
+              name === "removeEntry" &&
+              control.mode === "crash-cleanup" &&
+              String(args[0]).endsWith(".json")
+            ) {
+              control.crashed = true;
+              throw new DOMException("permission revoked", "NotAllowedError");
+            }
             return original.apply(this, args);
           };
         }
@@ -100,6 +113,27 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
         const root = await navigator.storage.getDirectory();
         if (control.mode === "other")
           return root.getDirectoryHandle("another-project", { create: true });
+        if (control.mode === "other-project") {
+          const other = await root.getDirectoryHandle("another-project", {
+            create: true,
+          });
+          const toml = await (
+            await other.getFileHandle("masterdata.toml", { create: true })
+          ).createWritable();
+          await toml.write('name = "別プロジェクト"\n');
+          await toml.close();
+          const sources = await other.getDirectoryHandle("sources", {
+            create: true,
+          });
+          const yaml = await (
+            await sources.getFileHandle("other.yaml", { create: true })
+          ).createWritable();
+          await yaml.write(
+            "kind: schema\ntable: Other\nprimaryKey:\n  fields:\n    - id\nfields:\n  - key: 0\n    name: id\n    type: int\n  - key: 1\n    name: title\n    type: string\nrecords:\n  - id: 1\n    title: 別プロジェクトの行\n",
+          );
+          await yaml.close();
+          return other;
+        }
         if (control.mode === "grant") control.denied = false;
         if (control.mode === "empty") {
           for await (const name of (root as any).keys())
@@ -662,4 +696,364 @@ test("browser unsupported welcome identifies the build version and serves its fa
   expect(response.ok()).toBe(true);
   expect(response.headers()["content-type"]).toContain("image/svg+xml");
   expect(await response.text()).toContain("<svg");
+});
+
+test("browser guarded navigation confirms unsaved edits, preserves drafts/Undo/tabs on cancel, and saves before switching project", async ({
+  page,
+}) => {
+  await open(page);
+  const originalAnnouncement = await read(
+    page,
+    "sources/announcements/announcement.yaml",
+  );
+  const originalRarity = await read(page, "sources/types/rarity.yaml");
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  const message = page.getByLabel("message 行1", { exact: true });
+  await message.fill("1回目の編集");
+  await message.press("Tab");
+  await message.fill("2回目の未保存draft");
+  await message.press("Tab");
+  await select(page, "rarity");
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  await page.getByRole("button", { name: /候補を追加$/ }).click();
+  await select(page, "combat-stats");
+  await expect(page.locator(".file-tab")).toHaveCount(3);
+  await expect(page.locator(".preview-tab")).toHaveCount(1);
+  await page.getByRole("tab", { name: /^announcement/ }).click();
+
+  const callsBeforeCancel = await page.evaluate(
+    () => (window as any).__browserTest.calls,
+  );
+  await page.getByRole("button", { name: /開く$/ }).click();
+  const confirmDialog = page.getByRole("dialog", {
+    name: "変更を保存しますか？",
+    exact: true,
+  });
+  await expect(confirmDialog).toBeVisible();
+  await expect(
+    confirmDialog.getByRole("button", { name: "保存して続ける", exact: true }),
+  ).toBeVisible();
+  await expect(
+    confirmDialog.getByRole("button", { name: "破棄して続ける", exact: true }),
+  ).toBeVisible();
+  await confirmDialog
+    .getByRole("button", { name: "キャンセル", exact: true })
+    .click();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
+
+  expect(await page.evaluate(() => (window as any).__browserTest.calls)).toBe(
+    callsBeforeCancel,
+  );
+  expect(await read(page, "sources/announcements/announcement.yaml")).toBe(
+    originalAnnouncement,
+  );
+  expect(await read(page, "sources/types/rarity.yaml")).toBe(originalRarity);
+  await expect(page.locator(".file-tab")).toHaveCount(3);
+  await expect(page.locator(".preview-tab")).toHaveCount(1);
+  await expect(message).toHaveValue("2回目の未保存draft");
+
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(message).toHaveValue("1回目の編集");
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(message).toHaveValue("2回目の未保存draft");
+  await page.getByRole("tab", { name: /^rarity/ }).click();
+  await expect(page.getByLabel("候補4の名前", { exact: true })).toHaveValue(
+    "Member1",
+  );
+  await page.getByRole("tab", { name: /^announcement/ }).click();
+
+  await page.keyboard.press("ControlOrMeta+o");
+  await expect(confirmDialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
+  await expect(page.locator(".file-tab")).toHaveCount(3);
+  await expect(message).toHaveValue("2回目の未保存draft");
+
+  await page.evaluate(() => {
+    (window as any).__browserTest.mode = "other-project";
+  });
+  await page.getByRole("button", { name: /開く$/ }).click();
+  await expect(confirmDialog).toBeVisible();
+  await confirmDialog
+    .getByRole("button", { name: "保存して続ける", exact: true })
+    .click();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
+  await expect(page.locator(".window-project")).toHaveText("別プロジェクト");
+  await expect(page.getByLabel("title 行1", { exact: true })).toHaveValue(
+    "別プロジェクトの行",
+  );
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+  expect(
+    await read(page, "sources/announcements/announcement.yaml"),
+  ).toContain("2回目の未保存draft");
+  expect(await read(page, "sources/types/rarity.yaml")).toContain("Member1");
+});
+
+test("browser modals, drawers and panels isolate shortcuts, prevent key conflicts and restore focus on Escape", async ({
+  page,
+}) => {
+  const createButton = page.getByRole("button", { name: /新しく作る/ });
+  await createButton.click();
+  const createDialog = page.getByRole("dialog", { name: "新しいプロジェクト" });
+  const newNameInput = createDialog.getByLabel("新しいプロジェクト名");
+  await expect(newNameInput).toBeFocused();
+  await newNameInput.fill("モーダル内テスト");
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(createDialog).toBeVisible();
+  await expect(newNameInput).toHaveValue("モーダル内テスト");
+  await page.keyboard.press("Escape");
+  await expect(createDialog).toBeHidden();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
+
+  await open(page);
+  const message = page.getByLabel("message 行1", { exact: true });
+  await message.fill("ドロワー検証用draft");
+  await message.press("Tab");
+  const callsAfterEdit = await page.evaluate(
+    () => (window as any).__browserTest.calls,
+  );
+
+  await page
+    .getByRole("button", { name: "プロジェクト設定", exact: true })
+    .click();
+  const settingsDrawer = page.getByRole("dialog", {
+    name: "プロジェクト設定",
+    exact: true,
+  });
+  await expect(settingsDrawer).toBeVisible();
+  await expect(settingsDrawer.locator("..")).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
+  const projectName = settingsDrawer.getByRole("textbox", {
+    name: "プロジェクト名",
+    exact: true,
+  });
+  await projectName.fill("未確定のプロジェクト名");
+  await expect(projectName).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(message).toHaveValue("ドロワー検証用draft");
+  await projectName.press("Escape");
+  await expect(projectName).toHaveValue("冒険の道具箱");
+  await expect(settingsDrawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(settingsDrawer).toBeHidden();
+  await expect(message).toHaveValue("ドロワー検証用draft");
+
+  await page
+    .getByRole("button", { name: "エディター設定", exact: true })
+    .click();
+  const editorDrawer = page.getByRole("dialog", {
+    name: "エディター設定",
+    exact: true,
+  });
+  await expect(editorDrawer).toBeVisible();
+  await expect(editorDrawer.locator("..")).not.toHaveClass(
+    /ant-drawer-panel-motion-.*-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await editorDrawer.getByText("ダーク", { exact: true }).click();
+  await editorDrawer.getByText("複数行に折り返す", { exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(editorDrawer).toBeHidden();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator(".file-tabs")).toHaveClass(/wrap-tabs/);
+  await expect(message).toHaveValue("ドロワー検証用draft");
+  expect(await page.evaluate(() => (window as any).__browserTest.calls)).toBe(
+    callsAfterEdit,
+  );
+
+  const idCell = page.getByLabel("id 行1", { exact: true });
+  await idCell.fill("broken-id");
+  await idCell.press("Tab");
+  const problemsButton = page.getByRole("button", { name: /1 件の問題/ });
+  await expect(problemsButton).toBeVisible();
+  await problemsButton.click();
+  const problemsPanel = page.locator(".problems-panel");
+  await expect(problemsPanel).toBeVisible();
+  const problemItem = problemsPanel.locator(".problem-item").first();
+  await expect(problemItem).toBeVisible();
+  await problemItem.focus();
+  await page.keyboard.press("Delete");
+  await page.keyboard.press("Backspace");
+  await expect(idCell).toHaveValue("broken-id");
+  await expect(message).toHaveValue("ドロワー検証用draft");
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(page.getByLabel("表を検索", { exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "問題を閉じる", exact: true }).click();
+  await expect(problemsPanel).toHaveCount(0);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(idCell).toHaveValue("1");
+  await expect(message).toHaveValue("ドロワー検証用draft");
+});
+
+test("browser focus and commit boundary commits active input on shortcut Save and cancels uncommitted typing on Escape", async ({
+  page,
+}) => {
+  await open(page);
+  const message = page.getByLabel("message 行1", { exact: true });
+  await message.click();
+  await message.fill("Blur前セル保存");
+  await expect(message).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+  expect(
+    await read(page, "sources/announcements/announcement.yaml"),
+  ).toContain("Blur前セル保存");
+
+  await message.click();
+  await message.fill("Escで取り消す未確定入力");
+  await expect(message).toBeFocused();
+  await message.press("Escape");
+  await expect(message).toHaveValue("Blur前セル保存");
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+
+  await message.fill("コミット済みメモリ値");
+  await message.press("Tab");
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "未保存の変更",
+  );
+  await message.click();
+  await message.fill("さらに途中の未確定入力");
+  await expect(message).toBeFocused();
+  await message.press("Escape");
+  await expect(message).toHaveValue("コミット済みメモリ値");
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+  expect(
+    await read(page, "sources/announcements/announcement.yaml"),
+  ).toContain("コミット済みメモリ値");
+
+  await page
+    .getByRole("button", { name: "プロジェクト設定", exact: true })
+    .click();
+  const settingsDrawer = page.getByRole("dialog", {
+    name: "プロジェクト設定",
+    exact: true,
+  });
+  await expect(settingsDrawer).toBeVisible();
+  const projectName = settingsDrawer.getByRole("textbox", {
+    name: "プロジェクト名",
+    exact: true,
+  });
+  await projectName.click();
+  await projectName.fill("Blur前設定保存");
+  await expect(projectName).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+Shift+s");
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+  expect(await read(page, "masterdata.toml")).toContain(
+    'name = "Blur前設定保存"',
+  );
+});
+
+test("browser one-click recent project resume from IndexedDB and recovery adoption with reauthorization", async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() => {
+    sessionStorage.setItem("__browserTestQueryPermission", "prompt");
+  });
+  await page.reload();
+  const resumeButton = page.getByRole("button", {
+    name: /前回のプロジェクトを開く/,
+  });
+  await expect(resumeButton).toBeVisible();
+  await expect(resumeButton).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: /別のプロジェクトを開く/ }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    (window as any).__browserTest.denied = true;
+  });
+  await resumeButton.click();
+  await expect(resumeButton).toBeVisible();
+
+  await page.evaluate(() => {
+    (window as any).__browserTest.denied = false;
+    (window as any).__browserTest.mode = "cancel";
+    sessionStorage.removeItem("__browserTestQueryPermission");
+  });
+  await resumeButton.click();
+  const message = page.getByLabel("message 行1", { exact: true });
+  await expect(message).toBeVisible();
+  await expect(message).toHaveValue("冒険へようこそ");
+
+  await message.fill("ジャーナル採用テスト");
+  await message.press("Tab");
+  await page.evaluate(() => {
+    (window as any).__browserTest.mode = "crash-cleanup";
+  });
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  const recoveryDialog = page.getByRole("dialog", {
+    name: "中断した保存の復旧",
+    exact: true,
+  });
+  await expect(recoveryDialog).toBeVisible();
+
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
+  await page.reload();
+  await expect(recoveryDialog).toBeVisible();
+  await expect(
+    recoveryDialog.getByText(
+      /sources\/announcements\/announcement\.yaml.*保存予定/,
+    ),
+  ).toBeVisible();
+  const adoptButton = recoveryDialog.getByRole("button", {
+    name: "保存済み内容を採用",
+    exact: true,
+  });
+  await expect(adoptButton).toBeVisible();
+  await expect(
+    recoveryDialog.getByRole("button", { name: "保存前へ復旧", exact: true }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    (window as any).__browserTest.denied = true;
+  });
+  await adoptButton.click();
+  await expect(page.getByText(/読み書きが許可されていません/)).toBeVisible();
+  await expect(recoveryDialog).toBeVisible();
+
+  const reauthButton = recoveryDialog.getByRole("button", {
+    name: "フォルダのアクセスを再許可",
+    exact: true,
+  });
+  await page.evaluate(() => {
+    (window as any).__browserTest.mode = "other";
+  });
+  await reauthButton.click();
+  await expect(page.getByText(/元と同じフォルダ/)).toBeVisible();
+
+  await page.evaluate(() => {
+    (window as any).__browserTest.mode = "grant";
+  });
+  await reauthButton.click();
+  await adoptButton.click();
+  await expect(recoveryDialog).toHaveCount(0);
+  await expect(page.getByText(/復旧を確認しました/)).toBeVisible();
+  expect(
+    await read(page, "sources/announcements/announcement.yaml"),
+  ).toContain("ジャーナル採用テスト");
+
+  await open(page);
+  await expect(message).toHaveValue("ジャーナル採用テスト");
 });

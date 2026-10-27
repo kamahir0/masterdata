@@ -2,13 +2,13 @@
 
 ## Objective
 
-ブラウザ版MasterDataに「プロジェクト新規作成」を導入する。ウェルカム画面から、利用者が選んだローカルフォルダ自体をプロジェクトルートとして初期化し、そのまま編集sessionを開始して直近プロジェクトとして永続化する。
+タブ切り替え時の選択アニメーション時間を約270ms（基準時間180msの約1.5倍）に調整し、過度な遅延感を解消しつつ視認性を維持する。
 
 ## Completion boundary
 
-[変更提案0027](spec-changes/0027-browser-project-create.md)の仕様策定・review・承認、[Browser Authoring](specs/browser.md)への適用、`src/browser/`と`src/App.tsx`の実装、focused unit / UI testsとworkspace check、通常commit / push。Desktop版の既存挙動とCLI `init`との互換を維持する。
-Authorization: Humanの「ブラウザ版MasterData（Web版）に『プロジェクト新規作成』機能を導入してください」（2026-10-27）。
+[変更提案0028](spec-changes/0028-file-tab-selection-motion-duration.md)の仕様策定・review・承認、[Desktop Authoring](specs/desktop.md)への適用、`src/style.css`と`tests/desktop.e2e.ts`の更新、focused testsとworkspace check、通常commit / push。本文の即時切替・draft保持・追加/close motionの維持。
+Authorization: Humanの「時間2倍はやりすぎなので1.5倍くらいに抑えたい」（2026-10-28）。
 
 ## Non-scope
 
-Browserでのsample作成、Build / Publish、親フォルダへの権限要求、Desktop / CLIの挙動変更、release / tag、Edge実機検証、ユーザーの既存変更。
+タブ追加・削除アニメーションの変更、他のUIアニメーションの変更、実データの変更、リリース作成。

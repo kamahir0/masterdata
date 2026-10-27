@@ -267,8 +267,8 @@ test("tab selection motion stays inside the active tab, keeps drafts and respect
   });
   expect(animations).toHaveLength(1);
   expect(animations[0].state).toBe("running");
-  expect(Number(animations[0].duration)).toBeGreaterThanOrEqual(320);
-  expect(Number(animations[0].duration)).toBeLessThanOrEqual(400);
+  expect(Number(animations[0].duration)).toBeGreaterThanOrEqual(240);
+  expect(Number(animations[0].duration)).toBeLessThanOrEqual(300);
   const intermediate = await announcement.evaluate(element => {
     const animation = (window as any).__selectionMotion as Animation;
     animation.pause();

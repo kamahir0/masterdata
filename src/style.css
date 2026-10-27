@@ -297,7 +297,7 @@ button:focus-visible,
   background: var(--accent);
 }
 .file-tab[aria-selected="true"]::before {
-  animation: file-tab-activate 360ms cubic-bezier(.4, 0, .2, 1);
+  animation: file-tab-activate 270ms cubic-bezier(.4, 0, .2, 1);
   transform-origin: left center;
 }
 @keyframes file-tab-activate {

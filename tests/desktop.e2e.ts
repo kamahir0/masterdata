@@ -3753,3 +3753,87 @@ test("column menu arrows match horizontal moves and Undo restores column order",
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(page.getByLabel("列2の名前", { exact: true })).toHaveValue("message");
 });
+
+test("guarded navigation on create-new and open-project preserves draft, Undo history and tabs on cancel, and saves before continuing", async () => {
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  const message = page.getByLabel("message 行1", { exact: true });
+  await message.fill("1回目の編集");
+  await message.press("Tab");
+  await message.fill("2回目の未保存draft");
+  await message.press("Tab");
+  await selectSource("rarity");
+  await page.locator('.file-tab[aria-selected="true"]').dblclick();
+  await page.getByRole("button", { name: "候補を追加" }).click();
+  await selectSource("combat-stats");
+  await expect(page.locator(".file-tab")).toHaveCount(3);
+  await expect(page.locator(".preview-tab")).toHaveCount(1);
+  await page.getByRole("tab", { name: /^announcement/ }).click();
+
+  await page.evaluate(() => (window as any).__command("new"));
+  const confirmDialog = page.getByRole("dialog", {
+    name: "変更を保存しますか？",
+    exact: true,
+  });
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog).not.toHaveClass(
+    /ant-zoom-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await expect(
+    confirmDialog.getByRole("button", { name: "保存して続ける", exact: true }),
+  ).toBeVisible();
+  await expect(
+    confirmDialog.getByRole("button", { name: "破棄して続ける", exact: true }),
+  ).toBeVisible();
+  await confirmDialog
+    .getByRole("button", { name: "キャンセル", exact: true })
+    .click();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
+  await expect(
+    page.getByRole("dialog", { name: "新しいプロジェクト" }),
+  ).toHaveCount(0);
+  expect(calls.filter((c) => c === "save")).toHaveLength(0);
+  await expect(page.locator(".file-tab")).toHaveCount(3);
+  await expect(page.locator(".preview-tab")).toHaveCount(1);
+  await expect(message).toHaveValue("2回目の未保存draft");
+
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(message).toHaveValue("1回目の編集");
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(message).toHaveValue("2回目の未保存draft");
+
+  await page.evaluate(() => (window as any).__command("new"));
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog).not.toHaveClass(
+    /ant-zoom-(?:appear|enter)(?:-|\s|$)/,
+  );
+  await confirmDialog
+    .getByRole("button", { name: "保存して続ける", exact: true })
+    .click();
+  const createDialog = page.getByRole("dialog", { name: "新しいプロジェクト" });
+  await expect(createDialog).toBeVisible();
+  await expect(createDialog).not.toHaveClass(
+    /ant-zoom-(?:appear|enter)(?:-|\s|$)/,
+  );
+  expect(calls.filter((c) => c === "save")).toHaveLength(1);
+  expect(
+    await fs.readFile(
+      path.join(root, "sources/announcements/announcement.yaml"),
+      "utf8",
+    ),
+  ).toContain("2回目の未保存draft");
+  expect(
+    await fs.readFile(path.join(root, "sources/types/rarity.yaml"), "utf8"),
+  ).toContain("Member1");
+
+  const newName = createDialog.getByLabel("新しいプロジェクト名");
+  await newName.fill("保存後の新規Project");
+  await createDialog
+    .getByRole("button", { name: "保存先を選択", exact: true })
+    .click();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
+  await expect(page.locator(".window-project")).toHaveText(
+    "保存後の新規Project",
+  );
+});

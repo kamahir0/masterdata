@@ -137,7 +137,8 @@ async function saveAll() {
   await page.getByRole("menuitem", { name: "すべて保存", exact: true }).click();
 }
 async function waitForDropdown() {
-  const menu = page.locator(".ant-dropdown:visible");
+  await expect(page.locator(".ant-dropdown.ant-slide-up-leave")).toHaveCount(0);
+  const menu = page.locator(".ant-dropdown:not(.ant-dropdown-hidden):not(.ant-slide-up-leave)");
   await expect(menu).toBeVisible();
   // rc-motion can start the popup's transform after Playwright's stability
   // check. Wait for its lifecycle before clicking a moving menu item.
@@ -3736,12 +3737,14 @@ test("column menu arrows match horizontal moves and Undo restores column order",
   await expect(page.getByRole("menuitem", { name: /左へ/ }).getByRole("img", { name: "left", exact: true })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /右へ/ }).getByRole("img", { name: "right", exact: true })).toBeVisible();
   await page.getByRole("menuitem", { name: /左へ/ }).click();
+  await expect(page.locator(".ant-dropdown:not(.ant-dropdown-hidden):not(.ant-slide-up-leave)")).toHaveCount(0);
   await expect(page.getByLabel("列1の名前", { exact: true })).toHaveValue("message");
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(page.getByLabel("列1の名前", { exact: true })).toHaveValue("id");
   await page.getByRole("button", { name: "idの操作", exact: true }).click();
   await waitForDropdown();
   await page.getByRole("menuitem", { name: /右へ/ }).click();
+  await expect(page.locator(".ant-dropdown:not(.ant-dropdown-hidden):not(.ant-slide-up-leave)")).toHaveCount(0);
   await expect(page.getByLabel("列2の名前", { exact: true })).toHaveValue("id");
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(page.getByLabel("列2の名前", { exact: true })).toHaveValue("message");

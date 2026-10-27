@@ -168,10 +168,11 @@ async function openNested(name: string) {
 async function selectSource(name: string) {
   const search = page.getByLabel("表・型を検索");
   await search.fill(name);
-  await page
+  const target = page
     .locator(".tree-name")
-    .filter({ hasText: new RegExp(`^${name}$`) })
-    .click();
+    .filter({ hasText: new RegExp(`^${name}$`) });
+  await expect(target).toBeVisible();
+  await target.click();
   await search.fill("");
 }
 test("modern workbench visual comparison preserves editing across themes and panels", async () => {
@@ -3512,6 +3513,7 @@ test("default context menus are cancelled across editor surfaces while custom me
       ),
   ).toBe(true);
   await page.getByRole("button", { name: "閉じる", exact: true }).click();
+  await expect(page.locator(".ant-drawer-open")).toHaveCount(0);
   await selectSource("rarity");
   await page
     .getByRole("tab", { name: "rarity", exact: true })

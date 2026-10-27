@@ -16,10 +16,8 @@ import {
   Collapse,
   ConfigProvider,
   Drawer,
-  Dropdown,
   Empty,
   Input,
-  Modal,
   Popconfirm,
   Progress,
   Result,
@@ -34,26 +32,17 @@ import {
 import jaJP from "antd/locale/ja_JP";
 import { Provider as ComponentMotionProvider } from "@rc-component/motion";
 import {
-  ArrowRightOutlined,
   CheckCircleOutlined,
   CloseOutlined,
   CodeOutlined,
   DatabaseOutlined,
   ExclamationCircleOutlined,
-  ExperimentOutlined,
   FolderOpenOutlined,
-  FileDoneOutlined,
-  DownOutlined,
   PlayCircleOutlined,
   PlusOutlined,
-  RedoOutlined,
   RocketOutlined,
-  SaveOutlined,
   SettingOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   ControlOutlined,
-  UndoOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
@@ -92,7 +81,9 @@ import {
 } from "./browser/runtime";
 import { BrowserRecovery } from "./browser/recovery";
 import appIcon from "../assets/icon.svg";
-import { SearchSelect } from "./ui/search-select";
+import { WelcomeScreen } from "./ui/welcome-screen";
+import { WorkbenchToolbar } from "./ui/workbench-toolbar";
+import { NewProjectModal } from "./ui/new-project-modal";
 import type { FileOperations } from "./ui/file-context-menu";
 import { FileTabs } from "./ui/file-tabs";
 import { CloseFileDialog } from "./ui/close-file";
@@ -208,7 +199,6 @@ function Workspace({
   const [loading, setLoading] = useState(false);
   const [initialChecking, setInitialChecking] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
-  const [newName, setNewName] = useState("新しいプロジェクト");
   const [profile, setProfile] = useState("");
   useEffect(() => {
     if (profile && !Object.hasOwn(snapshot.config.profiles, profile))
@@ -688,183 +678,48 @@ function Workspace({
       </header>
       {project ? (
         <>
-          <div className="app-toolbar">
-            <Space size={4}>
-              <Tooltip
-                title={
-                  preferences.explorer
-                    ? "エクスプローラーを折りたたむ"
-                    : "エクスプローラーを表示"
-                }
-              >
-                <Button
-                  type="text"
-                  aria-label="エクスプローラーの表示切替"
-                  aria-expanded={preferences.explorer}
-                  icon={
-                    preferences.explorer ? (
-                      <MenuFoldOutlined />
-                    ) : (
-                      <MenuUnfoldOutlined />
-                    )
-                  }
-                  onClick={() =>
-                    setPreferences((old) => ({
-                      ...old,
-                      explorer: !old.explorer,
-                    }))
-                  }
-                />
-              </Tooltip>
-              <Button icon={<FolderOpenOutlined />} onClick={open}>
-                開く
-              </Button>
-              <Space.Compact>
-                <Button
-                  aria-label="保存"
-                  title="現在のファイルを保存"
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  loading={saving}
-                  disabled={saving || !source}
-                  onClick={() => void save().catch(() => {})}
-                >
-                  保存
-                </Button>
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    items: [
-                      { key: "all", label: "すべて保存", disabled: saving },
-                      ...(browser
-                        ? [
-                            {
-                              key: "access",
-                              label: "フォルダのアクセスを再許可",
-                              disabled: saving,
-                            },
-                          ]
-                        : []),
-                    ],
-                    onClick: ({ key }) => {
-                      if (key === "access")
-                        void reauthorizeAccess()
-                          .then((granted) => {
-                            if (granted)
-                              message.success(
-                                "フォルダへのアクセスを許可しました。入力を確認して保存してください。",
-                              );
-                          })
-                          .catch(fail);
-                      else void save(true).catch(() => {});
-                    },
-                  }}
-                >
-                  <Button
-                    type="primary"
-                    aria-label="保存方法"
-                    icon={<DownOutlined />}
-                  />
-                </Dropdown>
-              </Space.Compact>
-              <span className="toolbar-divider" />
-              <Tooltip
-                title={
-                  state.past.length
-                    ? `元に戻す: ${state.past.at(-1)?.label}`
-                    : "元に戻す"
-                }
-              >
-                <Button
-                  type="text"
-                  icon={<UndoOutlined />}
-                  aria-label="元に戻す"
-                  disabled={!state.past.length}
-                  onClick={() => {
-                    commitActive();
-                    session.undo();
-                  }}
-                />
-              </Tooltip>
-              <Tooltip title="やり直す">
-                <Button
-                  type="text"
-                  icon={<RedoOutlined />}
-                  aria-label="やり直す"
-                  disabled={!state.future.length}
-                  onClick={() => session.redo()}
-                />
-              </Tooltip>
-              <Tooltip title={dirty ? "未保存の変更" : "保存済み"}>
-                <span
-                  className="save-state"
-                  role="status"
-                  aria-label={dirty ? "未保存の変更" : "保存済み"}
-                >
-                  {dirty ? (
-                    <span className="dirty-dot" />
-                  ) : (
-                    <CheckCircleOutlined />
-                  )}
-                </span>
-              </Tooltip>
-            </Space>
-            {!browser && (
-              <Space>
-                <Tooltip title="未選択時はタグで絞り込まずにビルドします">
-                  <SearchSelect
-                    aria-label="出力プロファイル"
-                    className="profile-select"
-                    placeholder="プロファイルを選択"
-                    value={profile || undefined}
-                    allowClear
-                    options={Object.keys(snapshot.config.profiles).map(
-                      (value) => ({ value, label: value }),
-                    )}
-                    onChange={(value) => setProfile(value ?? "")}
-                  />
-                </Tooltip>
-                <Space.Compact className="build-controls">
-                  <Button
-                    icon={<PlayCircleOutlined />}
-                    loading={building}
-                    disabled={publishing}
-                    onClick={build}
-                  >
-                    Build
-                  </Button>
-                  <Dropdown
-                    trigger={["click"]}
-                    menu={{
-                      items: [
-                        {
-                          key: "publish",
-                          icon: <RocketOutlined aria-hidden="true" />,
-                          label: "Publish…",
-                        },
-                        { type: "divider" },
-                        {
-                          key: "results",
-                          icon: <FileDoneOutlined aria-hidden="true" />,
-                          label: "実行結果を表示",
-                        },
-                      ],
-                      onClick: () => setBuildOpen(true),
-                    }}
-                  >
-                    <Button
-                      icon={
-                        <Badge dot={!!buildError} color="red">
-                          <DownOutlined />
-                        </Badge>
-                      }
-                      aria-label="ビルドの操作"
-                    />
-                  </Dropdown>
-                </Space.Compact>
-              </Space>
-            )}
-          </div>
+          <WorkbenchToolbar
+            browser={browser}
+            explorer={preferences.explorer}
+            onToggleExplorer={() =>
+              setPreferences((old) => ({
+                ...old,
+                explorer: !old.explorer,
+              }))
+            }
+            onOpen={open}
+            saving={saving}
+            canSave={!!source}
+            onSave={() => void save().catch(() => {})}
+            onSaveAll={() => void save(true).catch(() => {})}
+            onReauthorize={() =>
+              void reauthorizeAccess()
+                .then((granted) => {
+                  if (granted)
+                    message.success(
+                      "フォルダへのアクセスを許可しました。入力を確認して保存してください。",
+                    );
+                })
+                .catch(fail)
+            }
+            dirty={dirty}
+            undoLabel={state.past.at(-1)?.label}
+            canUndo={!!state.past.length}
+            canRedo={!!state.future.length}
+            onUndo={() => {
+              commitActive();
+              session.undo();
+            }}
+            onRedo={() => session.redo()}
+            profile={profile}
+            profiles={Object.keys(snapshot.config.profiles)}
+            onProfileChange={setProfile}
+            building={building}
+            publishing={publishing}
+            buildError={buildError}
+            onBuild={build}
+            onShowBuild={() => setBuildOpen(true)}
+          />
           <div className="workspace">
             <div
               className={`explorer-container ${preferences.explorer ? "" : "explorer-collapsed"}`}
@@ -1093,122 +948,24 @@ function Workspace({
             </Space>
           </footer>
         </>
-      ) : initialChecking ? (
-        <div
-          className="welcome"
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            height: "100%",
-          }}
-        >
-          <Spin size="large" />
-        </div>
       ) : (
-        <div className="welcome">
-          {browser && (
-            <span className="welcome-version" aria-label="アプリのバージョン">
-              v{__APP_VERSION__}
-            </span>
-          )}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className="welcome-main"
-          >
-            <Typography.Title>MasterData</Typography.Title>
-            <Typography.Paragraph>
-              テーブルデータと型定義を統合管理するマスターデータエディタです。
-              <br />
-              プロジェクトを開くか、新規作成して編集を開始します。
-            </Typography.Paragraph>
-            <Space size="middle" wrap>
-              {browser && browserRunStatus.recent && (
-                <Button
-                  type="primary"
-                  size="large"
-                  icon={<FolderOpenOutlined />}
-                  onClick={async () => {
-                    try {
-                      const proj = await openRecent();
-                      if (proj) load(proj);
-                    } catch (e) {
-                      fail(e);
-                    }
-                  }}
-                  disabled={!browserSupport()}
-                >
-                  前回のプロジェクトを開く（{browserRunStatus.recent.name}）
-                </Button>
-              )}
-              <Button
-                type={
-                  browser && browserRunStatus.recent ? "default" : "primary"
-                }
-                size="large"
-                icon={<FolderOpenOutlined />}
-                onClick={open}
-                disabled={browser && !browserSupport()}
-              >
-                {browser && browserRunStatus.recent
-                  ? "別のプロジェクトを開く"
-                  : "プロジェクトを開く"}
-              </Button>
-              <Button
-                size="large"
-                icon={<PlusOutlined />}
-                onClick={() => setNewOpen(true)}
-                disabled={browser && !browserSupport()}
-              >
-                新しく作る
-              </Button>
-            </Space>
-            {!browser && (
-              <button className="sample-link" onClick={sample}>
-                <ExperimentOutlined /> サンプルで試す <ArrowRightOutlined />
-              </button>
-            )}
-            {browser && (
-              <Typography.Paragraph type="secondary" style={{ marginTop: 20 }}>
-                {browserSupport()
-                  ? "ローカルのプロジェクトフォルダを選択します。変更は保存時にだけ反映されます。未保存の入力はタブ終了で失われます。"
-                  : "この環境では編集できません。デスクトップ版ChromeとHTTPS（またはlocalhost）で開いてください。"}
-              </Typography.Paragraph>
-            )}
-          </motion.div>
-          <motion.div
-            className="welcome-card"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.12, duration: 0.35 }}
-          >
-            <div className="welcome-card-header">
-              <span className="preview-dot" />
-              <span className="preview-dot" />
-              <span className="preview-dot" />
-              <strong>テーブル編集プレビュー</strong>
-            </div>
-            <div className="preview-grid">
-              <div>id</div>
-              <div>name</div>
-              <div>rarity</div>
-              <span>1001</span>
-              <strong>銅の剣</strong>
-              <Tag color="blue">Common</Tag>
-              <span>2001</span>
-              <strong>氷晶の剣</strong>
-              <Tag color="purple">Rare</Tag>
-              <span>3001</span>
-              <strong>夜明けの剣</strong>
-              <Tag color="gold">Epic</Tag>
-            </div>
-            <div className="preview-footer">
-              <CheckCircleOutlined /> 外部キー参照・型定義・値の整合性を管理
-            </div>
-          </motion.div>
-        </div>
+        <WelcomeScreen
+          checking={initialChecking}
+          browser={browser}
+          supported={browserSupport()}
+          recent={browserRunStatus.recent}
+          onOpenRecent={async () => {
+            try {
+              const proj = await openRecent();
+              if (proj) load(proj);
+            } catch (e) {
+              fail(e);
+            }
+          }}
+          onOpen={open}
+          onNew={() => setNewOpen(true)}
+          onSample={sample}
+        />
       )}
       {loading && (
         <div className="loading-cover">
@@ -1216,15 +973,13 @@ function Workspace({
           <span>プロジェクトを読み込んでいます</span>
         </div>
       )}
-      <Modal
-        title="新しいプロジェクト"
+      <NewProjectModal
         open={newOpen}
-        okText="保存先を選択"
-        cancelText="キャンセル"
+        browser={browser}
         onCancel={() => setNewOpen(false)}
-        onOk={async () => {
+        onCreate={async (name) => {
           try {
-            const value = await window.desktop.create(newName);
+            const value = await window.desktop.create(name);
             if (value) {
               load(value);
               setNewOpen(false);
@@ -1233,23 +988,7 @@ function Workspace({
             fail(error);
           }
         }}
-      >
-        <label>プロジェクト名</label>
-        <Input
-          aria-label="新しいプロジェクト名"
-          autoFocus
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-        />
-        <Typography.Paragraph
-          type="secondary"
-          style={{ marginTop: 12, marginBottom: 0 }}
-        >
-          {browser
-            ? "次に選ぶフォルダ自体をプロジェクトとして初期化し、masterdata.toml と sources/ を追加します。既存のファイルは変更しません。"
-            : "次に選ぶ保存先の中へ、この名前のフォルダを作成します。"}
-        </Typography.Paragraph>
-      </Modal>
+      />
       <Settings
         open={settings}
         close={() => setSettings(false)}

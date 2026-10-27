@@ -1156,15 +1156,14 @@ function Workspace({
                   ? "別のプロジェクトを開く"
                   : "プロジェクトを開く"}
               </Button>
-              {!browser && (
-                <Button
-                  size="large"
-                  icon={<PlusOutlined />}
-                  onClick={() => setNewOpen(true)}
-                >
-                  新しく作る
-                </Button>
-              )}
+              <Button
+                size="large"
+                icon={<PlusOutlined />}
+                onClick={() => setNewOpen(true)}
+                disabled={browser && !browserSupport()}
+              >
+                新しく作る
+              </Button>
             </Space>
             {!browser && (
               <button className="sample-link" onClick={sample}>
@@ -1246,7 +1245,9 @@ function Workspace({
           type="secondary"
           style={{ marginTop: 12, marginBottom: 0 }}
         >
-          次に選ぶ保存先の中へ、この名前のフォルダを作成します。
+          {browser
+            ? "次に選ぶフォルダ自体をプロジェクトとして初期化し、masterdata.toml と sources/ を追加します。既存のファイルは変更しません。"
+            : "次に選ぶ保存先の中へ、この名前のフォルダを作成します。"}
         </Typography.Paragraph>
       </Modal>
       <Settings

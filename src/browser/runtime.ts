@@ -1,6 +1,17 @@
-import type { DesktopAPI, LoadedProject } from "../core/types";
-import { type Directory, permission } from "./filesystem";
-import { BrowserProject, RecoveryRequired, load, recover } from "./project";
+import { projectFileName, writeConfig } from "../core/config";
+import {
+  defaultConfig,
+  type DesktopAPI,
+  type LoadedProject,
+} from "../core/types";
+import { type Directory, permission, read, write } from "./filesystem";
+import {
+  BrowserProject,
+  RecoveryRequired,
+  load,
+  pending,
+  recover,
+} from "./project";
 import {
   clearRecentDirectory,
   getRecentDirectory,
@@ -76,6 +87,54 @@ async function perform<T>(fn: () => Promise<T>): Promise<T> {
     throw error;
   } finally {
     update({ busy: false });
+  }
+}
+// Same folder-name rule as the Desktop create command. The name is not a folder
+// here, but sharing the rule keeps one project name valid in every runtime.
+export function projectNameError(value: string) {
+  const name = value.trim();
+  if (
+    !name ||
+    name === "." ||
+    name === ".." ||
+    /[<>:"/\\|?*\x00-\x1f]/.test(name)
+  )
+    return "プロジェクト名にはフォルダ名に使える文字を入力してください。";
+  return "";
+}
+// Initializes the selected folder itself. Every check precedes the first write,
+// and masterdata.toml is written last because its presence defines a project.
+async function initialize(root: Directory, name: string) {
+  await permission(root);
+  await pending(root);
+  const existing = await read(root, projectFileName).catch((error) => {
+    // A directory named masterdata.toml is not a project but must not be touched.
+    if (error instanceof Error && error.message.includes("TypeMismatchError"))
+      throw new Error(
+        `${root.name}: masterdata.toml という名前のフォルダがあるため作成できません。`,
+      );
+    throw error;
+  });
+  if (existing !== null)
+    throw new Error(
+      `${root.name}: すでにプロジェクト（masterdata.toml）があります。新規作成ではなく「プロジェクトを開く」から開いてください。`,
+    );
+  try {
+    await root.getDirectoryHandle("sources", { create: true });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TypeMismatchError")
+      throw new Error(
+        `${root.name}: sources という名前のfileがあるため作成できません。`,
+      );
+    throw error;
+  }
+  await write(root, projectFileName, writeConfig(defaultConfig(name)));
+  try {
+    return await load(root);
+  } catch (error) {
+    // Only the file written above is removed; pre-existing content is untouched.
+    await write(root, projectFileName, null).catch(() => {});
+    throw error;
   }
 }
 export async function resolveRecovery(adopt: boolean) {
@@ -250,7 +309,36 @@ export const browser: DesktopAPI = {
       return result;
     });
   },
-  create: unsupported,
+  create: async (value) => {
+    if (!browserSupport())
+      throw new Error(
+        "この環境ではローカルフォルダを編集できません。デスクトップ版ChromeとHTTPS（またはlocalhost）で開いてください。",
+      );
+    if (status.busy)
+      throw new Error("保存・読込・復旧処理の完了をお待ちください。");
+    const invalid = projectNameError(value);
+    if (invalid) throw new Error(invalid);
+    const name = value.trim();
+    // Picker must be invoked in the user's activation, before any filesystem IO.
+    const picked = window.showDirectoryPicker!({
+      mode: "readwrite",
+      id: "masterdata-project",
+    });
+    return perform(async (): Promise<LoadedProject | null> => {
+      let root: Directory;
+      try {
+        root = await picked;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return null;
+        throw error;
+      }
+      const created = await locked(() => initialize(root, name));
+      project = new BrowserProject(root, created);
+      await saveRecentDirectory(root);
+      update({ recovery: undefined, notice: undefined, recent: undefined });
+      return created;
+    });
+  },
   sample: unsupported,
   build: unsupported,
   publish: unsupported,

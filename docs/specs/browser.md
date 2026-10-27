@@ -12,15 +12,17 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 
 代表作業は、URLを開く → プロジェクトルートを選ぶ → 表・型・参照やExplorerの項目を編集する → Undo / Redoで修正する → ファイルまたは全体を保存する → CLI / DesktopでBuild / Publishする、という流れ。
 
-初期対象は**デスクトップ版Chrome / Edgeなど、必要なローカルDirectory Pickerと読み書きAPIを提供するChromium系ブラウザ**。HTTPS等のsecure contextで静的配信する。Safari / Firefox、モバイル、ネットワーク共有・クラウド同期特有のfilesystem挙動、Web上のBuild / Publish、サーバー保存・アカウント・同期、ローカル補助サービス、PWAインストール必須化は初期対象外とする。ブラウザ内で新規Projectを作る機能とsample作成は初期スコープに含めず、既存Projectを開いて編集することを優先する（Agent Decision）。
+初期対象は**デスクトップ版Chrome / Edgeなど、必要なローカルDirectory Pickerと読み書きAPIを提供するChromium系ブラウザ**。HTTPS等のsecure contextで静的配信する。Safari / Firefox、モバイル、ネットワーク共有・クラウド同期特有のfilesystem挙動、Web上のBuild / Publish、サーバー保存・アカウント・同期、ローカル補助サービス、PWAインストール必須化は初期対象外とする。sample作成は初期スコープに含めない（Agent Decision）。ブラウザ内の新規Project作成は[WEB-001](#web-001--配布とローカルproject選択)に従い提供する。
 
-Change provenance: [表の操作位置とBrowserの識別表示](../spec-changes/0026-table-navigation-and-browser-identity.md)。
+Change provenance: [表の操作位置とBrowserの識別表示](../spec-changes/0026-table-navigation-and-browser-identity.md)、[Browserのプロジェクト新規作成](../spec-changes/0027-browser-project-create.md)。
 
 ## WEB-001 — 配布とローカルProject選択
 
 - Browserのtabには既存製品iconをfaviconとして表示し、静的buildのサブpath配信でも解決できる。welcomeにはbuild元のpackage versionを控えめな小さい文字で表示し、project未選択・非対応Browserでも確認できる。version文字列をUIへ二重管理せず、Desktop / projectのversionや更新検知とは分ける。
 - ブラウザ版は静的アセットだけで配信でき、編集・保存にアプリ専用サーバーやローカル常駐プロセス、Node.js / .NETのインストールを要求しない。ブラウザ側のBuild機能は提供しない。
 - 「プロジェクトを開く」は利用者の明示操作でローカル**フォルダ**を選ぶ。選択フォルダをProject rootとし、直下の`masterdata.toml`と`sources/`を読み込む。ファイル単体選択をProject root選択の代わりにしない。Tauri版のProjectとのファイル互換性を維持する。
+- 「新しく作る」は対応Browserでプロジェクト名入力modalを開き、「保存先を選択」で利用者がDirectory Pickerから選んだフォルダ**自体**をProject rootとして初期化する（親フォルダへの権限は要求せず、子フォルダも作らない）。直下に`masterdata.toml`（Desktop / CLI `init`と同じ既定設定、`name`は入力名のtrim値）と`sources/`だけを作り、既存のfileは変更しない。名前はtrim後に空でなく、`.` / `..`でなく、Desktopの新規作成と同じ禁止文字（`< > : \" / \\ | ? *`、制御文字）を含まないこと。不正な名前はpickerを開く前に理由を示す。
+- 選択フォルダに`masterdata.toml`が既にある場合、`masterdata.toml`がfolderである場合、`sources`がfileである場合、中断した保存の復旧情報が残る場合は、何も書かず理由と「プロジェクトを開く」等の案内を示す。取消では何も作らず無言でmodalに留まり、権限拒否・書込み失敗では理由を示し入力を保持する。`sources/`を作り最後に`masterdata.toml`を書き、直後の読込検証に失敗したら今回書いた`masterdata.toml`だけを撤去する。成功後は通常のオープンと同じ編集sessionを開始し、DirectoryHandleをIndexedDBの直近プロジェクトへ保存する。非対応Browserでは「新しく作る」を無効にして対応環境を案内する。sample作成は提供しない。根拠と承認: [プロジェクト新規作成](../spec-changes/0027-browser-project-create.md)。
 - ファイル読込、YAML / TOMLの解釈、source一覧構築をProjectオープン時に行い、完了後に編集sessionを開始する。開く対象が不適切（設定がない、構文不正、権限不足など）なら、対象と理由を示し、現在のProject / 未保存draftを保持する。
 - `sources/`のディスク上の固定名は変更しない。Explorerでは従来どおりその子をルートとして表示し、source / folderの通常操作を提供する。ルート外、許可のない場所、symlinkなど経路の安全性を検証できない対象へ書き込まない。
 - 必要APIを使えないブラウザでは編集可能なふりをせず、対応環境を案内する。取得したProjectデータをアプリのバックエンドへ送信しない。静的アセット配信以外のネットワークサービスを編集・保存経路へ組み込まない。
@@ -53,7 +55,7 @@ Change provenance: [表の操作位置とBrowserの識別表示](../spec-changes
 ## WEB-005 — 権限、タブ終了、Project再開
 
 - フォルダへのアクセスはユーザーが選択・許可した範囲に限定する。権限要求と再要求はブラウザのユーザー操作要件に従う。許可を失っても編集中のdraftを黙って破棄しない。保存方法menuと復旧dialogの「フォルダのアクセスを再許可」でpickerを開き、元と同じfolderかhandle identityを検査してhandleだけを更新する。取消・別folder・拒否は入力 / Undo / 保存基準を保持する。再許可でload / 保存を暗黙実行せず、次の明示保存・復旧は通常の競合検査を通す。根拠と承認: [フォルダ再許可](../spec-changes/0017-browser-reauthorization.md)。
-- フォルダハンドルを保存して次回の再選択を軽減してよいが、**ハンドルの保持と権限の永続性を同一視しない**。プロジェクトのオープン・再開成功時にルートのDirectoryHandleをIndexedDBへ永続化する。起動時（`initial()`）に保存済みハンドルが存在し、`queryPermission` が `"granted"` であれば直近プロジェクトを自動復元する。権限確認が必要な場合はスタート画面に前回のプロジェクト名を提示し、ユーザーの明示操作（クリック）から `requestPermission` を要求してワンクリックで再開できる。保存できたハンドルを根拠に未許可の自動書込みを行わず、別フォルダ選択時はハンドルを更新し、対象フォルダの喪失・破損時は安全にクリアしてフォールバックする。根拠と承認: [ハンドル永続化と権限再開](../spec-changes/0023-browser-persistent-project-handle.md)。
+- フォルダハンドルを保存して次回の再選択を軽減してよいが、**ハンドルの保持と権限の永続性を同一視しない**。プロジェクトのオープン・新規作成・再開成功時にルートのDirectoryHandleをIndexedDBへ永続化する。起動時（`initial()`）に保存済みハンドルが存在し、`queryPermission` が `"granted"` であれば直近プロジェクトを自動復元する。権限確認が必要な場合はスタート画面に前回のプロジェクト名を提示し、ユーザーの明示操作（クリック）から `requestPermission` を要求してワンクリックで再開できる。保存できたハンドルを根拠に未許可の自動書込みを行わず、別フォルダ選択時はハンドルを更新し、対象フォルダの喪失・破損時は安全にクリアしてフォールバックする。根拠と承認: [ハンドル永続化と権限再開](../spec-changes/0023-browser-persistent-project-handle.md)。
 - 未保存変更があるとき、アプリ内のProject切替・file tabを閉じる操作はProject切替では「すべて保存 / 保存せず続ける / キャンセル」、file tabでは対象fileの「保存 / 保存しない / キャンセル」を示す。ブラウザタブのreload / 閉じる / navigationでは利用可能な離脱警告を使うが、ブラウザやOSの強制終了で必ず確認できるとは表現しない。
 - 警告を通さないクラッシュで未保存のメモリdraftが消える制約を明示する。自動保存、復旧用の編集中draft永続化、背景file監視は初期版に含めない。
 
@@ -74,8 +76,9 @@ Change provenance: [表の操作位置とBrowserの識別表示](../spec-changes
 3. 現在file保存と全保存が正しい対象だけを書込み、同じProjectをCLI / Desktopで開ける。コメント、quotes、CRLF、64bit unsigned上限、空collection、未知TOMLキー、未変更fileを含む回帰fixtureで往復一致・非対象不変を確認する。
 4. 外部編集、別tab競合、同名path、書込み途中での失敗・権限取消し・再読込を再現し、黙った上書きや誤った保存成功がなく、部分反映後の復旧情報・手順が残ることを確認する。**保存の保護・回復試験が成立するまで書込み可能なBrowser版を完成扱いにしない。**
 5. 保存中の追加入力が失われず、dirtyとUndoが一致する。未保存状態でのアプリ内切替は選択で保護され、ブラウザ標準の離脱警告が利用可能な場面で動作する。
-6. Browser画面とmenu / keyboard操作にBuild / Publish関連入口や設定欄がなく、設定ファイル上のprofiles / publishは保存前後で変わらない。Tauri版とRust CLIでは既存Build / Publishが引き続き動作する。
-7. ChromiumのUI回帰、File System Accessのmockによるfocused testsだけでなく、初期検証対象Chromeの実ローカルフォルダで権限・保存・中断復旧の代表作業を手動検証する。Edge実機の証拠は別途取得するまで未検証と明記する。未検証環境を対応済みと報告しない。
+6. 空folderを選んだ新規作成は`masterdata.toml`と空の`sources/`だけを作って編集を開始し、Rust CLI / Desktopで開ける。既存`masterdata.toml`のfolderでは書込み0件で案内が出て、不正名・取消・拒否では何も作られない。作成後の直近プロジェクトが再開できる。
+7. Browser画面とmenu / keyboard操作にBuild / Publish関連入口や設定欄がなく、設定ファイル上のprofiles / publishは保存前後で変わらない。Tauri版とRust CLIでは既存Build / Publishが引き続き動作する。
+8. ChromiumのUI回帰、File System Accessのmockによるfocused testsだけでなく、初期検証対象Chromeの実ローカルフォルダで権限・保存・中断復旧の代表作業を手動検証する。Edge実機の証拠は別途取得するまで未検証と明記する。未検証環境を対応済みと報告しない。
 
 ## 保存と回復の具体化（Agent Decision）
 

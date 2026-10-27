@@ -10,7 +10,12 @@ import {
   inspect,
 } from "../src/browser/project";
 import { permission, type Directory } from "../src/browser/filesystem";
-import { browser, browserStatus, openRecent } from "../src/browser/runtime";
+import {
+  browser,
+  browserStatus,
+  openRecent,
+  projectNameError,
+} from "../src/browser/runtime";
 import {
   saveRecentDirectory,
   getRecentDirectory,
@@ -399,7 +404,14 @@ test("browser refuses hidden draft paths that native discovery would ignore afte
   for (const folder of [false, true]) {
     const { disk, session, adapter, request } = await fixture();
     const before = disk.content();
-    assert.throws(() => session.move(folder ? "types" : "table.yaml", folder ? ".hidden" : ".hidden.yaml"), /読込対象外/);
+    assert.throws(
+      () =>
+        session.move(
+          folder ? "types" : "table.yaml",
+          folder ? ".hidden" : ".hidden.yaml",
+        ),
+      /読込対象外/,
+    );
     const malicious = request();
     if (folder) malicious.folders = [".hidden"];
     else malicious.files[0] = { ...malicious.files[0], path: ".hidden.yaml" };
@@ -433,16 +445,25 @@ function setupMockBrowser() {
         }
         const result = (value: any) => {
           const req: any = { result: value };
-          queueMicrotask(() => { req.onsuccess?.(); tx.oncomplete?.(); });
+          queueMicrotask(() => {
+            req.onsuccess?.();
+            tx.oncomplete?.();
+          });
           return req;
         };
         const tx: any = {
           objectStore: () => ({
-            put: (v: any, k: string) => { store!.set(k, v); return result(k); },
+            put: (v: any, k: string) => {
+              store!.set(k, v);
+              return result(k);
+            },
             get: (k: string) => {
               return result(store!.get(k));
             },
-            delete: (k: string) => { store!.delete(k); return result(undefined); },
+            delete: (k: string) => {
+              store!.delete(k);
+              return result(undefined);
+            },
           }),
         };
         return tx;
@@ -579,19 +600,29 @@ test("IndexedDB error, abort and synchronous failures never block project open o
     try {
       (globalThis as any).indexedDB = {
         open() {
-          const req: any = { result: {
-            close: () => closed++,
-            transaction() {
-              if (fault === "throw") throw new Error("store unavailable");
-              const tx: any = {
-                error: new DOMException("quota", "QuotaExceededError"),
-                objectStore: () => ({ put: () => ({}), get: () => ({}), delete: () => ({}) }),
-              };
-              queueMicrotask(() => fault === "abort" ? tx.onabort?.() : tx.onerror?.());
-              return tx;
+          const req: any = {
+            result: {
+              close: () => closed++,
+              transaction() {
+                if (fault === "throw") throw new Error("store unavailable");
+                const tx: any = {
+                  error: new DOMException("quota", "QuotaExceededError"),
+                  objectStore: () => ({
+                    put: () => ({}),
+                    get: () => ({}),
+                    delete: () => ({}),
+                  }),
+                };
+                queueMicrotask(() =>
+                  fault === "abort" ? tx.onabort?.() : tx.onerror?.(),
+                );
+                return tx;
+              },
             },
-          } };
-          queueMicrotask(() => fault === "open" ? req.onerror?.() : req.onsuccess?.());
+          };
+          queueMicrotask(() =>
+            fault === "open" ? req.onerror?.() : req.onsuccess?.(),
+          );
           return req;
         },
       };
@@ -604,10 +635,163 @@ test("IndexedDB error, abort and synchronous failures never block project open o
       assert(project.snapshot.sources.length);
       const session = new Session();
       session.load(project);
-      session.update(project.snapshot.sources[0].id, ["records", 0, "title"], "after quota failure");
-      await browser.save({ token: project.token, files: session.files(), folders: project.snapshot.folders, config: project.snapshot.config });
-      assert.match(String(disk.files.get("sources/table.yaml")), /after quota failure/);
+      session.update(
+        project.snapshot.sources[0].id,
+        ["records", 0, "title"],
+        "after quota failure",
+      );
+      await browser.save({
+        token: project.token,
+        files: session.files(),
+        folders: project.snapshot.folders,
+        config: project.snapshot.config,
+      });
+      assert.match(
+        String(disk.files.get("sources/table.yaml")),
+        /after quota failure/,
+      );
       assert.equal(closed, fault === "open" ? 0 : 4);
-    } finally { restore(); }
+    } finally {
+      restore();
+    }
+  }
+});
+
+function emptyDisk() {
+  const disk = new Disk();
+  disk.files.clear();
+  disk.dirs = new Set([""]);
+  (globalThis as any).window.showDirectoryPicker = async () => disk.root;
+  return disk;
+}
+const writes = (disk: Disk) =>
+  disk.log.filter((op) => /^(create|mkdir|remove|write):/.test(op));
+
+test("browser create initializes the selected folder itself, starts a session and persists the handle", async () => {
+  const restore = setupMockBrowser();
+  try {
+    const disk = emptyDisk();
+    const created = await browser.create("  新しい  Project ");
+    assert.ok(created);
+    assert.deepEqual([...disk.files.keys()].sort(), ["masterdata.toml"]);
+    assert.deepEqual([...disk.dirs].sort(), ["", "sources"]);
+    assert.equal(
+      parse(disk.files.get("masterdata.toml") as string).name,
+      "新しい  Project",
+    );
+    assert.deepEqual(created.snapshot.sources, []);
+    assert.equal(created.snapshot.config.name, "新しい  Project");
+    // The same bytes as Desktop / CLI init, and reopenable without changes.
+    const reopened = await load(disk.root);
+    assert.equal(reopened.configText, disk.files.get("masterdata.toml"));
+    assert.equal((await getRecentDirectory())?.name, disk.root.name);
+    // The new session saves through the same adapter as an opened project.
+    const session = new Session();
+    session.load(created);
+    const saved = await browser.save({
+      token: created.token,
+      files: session.files(),
+      folders: session.saveFolders(session.state.snapshot),
+      config: session.saveConfig(session.state.snapshot),
+    });
+    assert.ok(saved);
+  } finally {
+    restore();
+  }
+});
+
+test("browser create never writes for invalid names, cancellation, existing projects or blocking entries", async () => {
+  const restore = setupMockBrowser();
+  try {
+    for (const bad of ["", "   ", ".", "..", "a/b", "a\\b", 'a"b', "a\u0001b"])
+      assert.notEqual(projectNameError(bad), "", JSON.stringify(bad));
+    assert.equal(projectNameError(" 日本語 name-1 "), "");
+
+    let disk = emptyDisk();
+    let picks = 0;
+    (globalThis as any).window.showDirectoryPicker = async () => {
+      picks++;
+      return disk.root;
+    };
+    await assert.rejects(browser.create("a/b"), /フォルダ名に使える文字/);
+    assert.equal(picks, 0);
+    assert.deepEqual(disk.log, []);
+
+    (globalThis as any).window.showDirectoryPicker = async () => {
+      throw new DOMException("cancel", "AbortError");
+    };
+    assert.equal(await browser.create("Name"), null);
+    (globalThis as any).window.showDirectoryPicker = async () => {
+      throw new DOMException("denied", "NotAllowedError");
+    };
+    await assert.rejects(browser.create("Name"), /denied/);
+    assert.deepEqual(writes(disk), []);
+    assert.equal(browserStatus.get().busy, false);
+
+    // Existing project: nothing is written and the user is pointed at Open.
+    disk = new Disk();
+    (globalThis as any).window.showDirectoryPicker = async () => disk.root;
+    const before = disk.content();
+    await assert.rejects(browser.create("Other"), /プロジェクトを開く/);
+    assert.deepEqual(disk.content(), before);
+    assert.deepEqual(writes(disk), []);
+
+    // Permission denied for the selected folder.
+    disk = emptyDisk();
+    disk.grant = "denied";
+    await assert.rejects(browser.create("Name"), /許可されていません/);
+    assert.deepEqual(writes(disk), []);
+
+    // A file named sources blocks creation before masterdata.toml is written.
+    disk = emptyDisk();
+    disk.files.set("sources", "not a folder");
+    await assert.rejects(browser.create("Name"), /sources という名前のfile/);
+    assert.equal(disk.files.has("masterdata.toml"), false);
+
+    // A folder named masterdata.toml is not touched either.
+    disk = emptyDisk();
+    disk.dirs.add("masterdata.toml");
+    await assert.rejects(
+      browser.create("Name"),
+      /masterdata\.toml という名前のフォルダ/,
+    );
+    assert.deepEqual(writes(disk), []);
+
+    // Interrupted-save journals use the normal recovery path, not creation.
+    disk = emptyDisk();
+    disk.dirs.add(".masterdata");
+    disk.dirs.add(".masterdata/browser-transactions");
+    disk.files.set(".masterdata/browser-transactions/x.json", "{}");
+    await assert.rejects(browser.create("Name"), /中断した保存/);
+    assert.equal(disk.files.has("masterdata.toml"), false);
+  } finally {
+    restore();
+  }
+});
+
+test("browser create keeps existing files and removes only its own config when verification fails", async () => {
+  const restore = setupMockBrowser();
+  try {
+    let disk = emptyDisk();
+    disk.files.set("notes.txt", "keep");
+    disk.dirs.add("sources");
+    disk.files.set(
+      "sources/a.yaml",
+      "kind: type\nname: A\ncustom: {fields: []}\n",
+    );
+    assert.ok(await browser.create("Existing"));
+    assert.equal(disk.files.get("notes.txt"), "keep");
+    assert.ok(disk.files.has("sources/a.yaml"));
+    assert.ok(disk.files.has("masterdata.toml"));
+
+    disk = emptyDisk();
+    disk.dirs.add("sources");
+    disk.files.set("sources/bad.yaml", new Uint8Array([0xff, 0xfe, 0xfd]));
+    await assert.rejects(browser.create("Broken"));
+    assert.equal(disk.files.has("masterdata.toml"), false);
+    assert.ok(disk.files.has("sources/bad.yaml"));
+    assert.equal(browserStatus.get().busy, false);
+  } finally {
+    restore();
   }
 });

@@ -101,6 +101,11 @@ test.beforeEach(async ({ page, browserName, context }, info) => {
         if (control.mode === "other")
           return root.getDirectoryHandle("another-project", { create: true });
         if (control.mode === "grant") control.denied = false;
+        if (control.mode === "empty") {
+          for await (const name of (root as any).keys())
+            await root.removeEntry(name, { recursive: true });
+          return root;
+        }
         try {
           await root.getDirectoryHandle("sources");
           return root;
@@ -164,9 +169,7 @@ async function select(page: Page, name: string) {
 test("browser static UI opens without native bridge, edits in memory, hides generation and saves compatible text", async ({
   page,
 }) => {
-  await expect(
-    page.getByRole("button", { name: "新しく作る", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /新しく作る/ })).toBeEnabled();
   await open(page);
   await expect(
     page.getByRole("button", { name: "Build", exact: true }),
@@ -429,6 +432,61 @@ test("browser live recovery can be dismissed, keeps newer input and Undo, and al
   );
 });
 
+test("browser create initializes the chosen folder, guards existing projects and resumes the session", async ({
+  page,
+}) => {
+  const dialog = page.getByRole("dialog", { name: "新しいプロジェクト" });
+  const name = dialog.getByLabel("新しいプロジェクト名");
+  const create = page.getByRole("button", { name: /新しく作る/ });
+  const choose = dialog.getByRole("button", { name: "保存先を選択" });
+  const mode = (value: string) =>
+    page.evaluate((value) => {
+      (window as any).__browserTest.mode = value;
+    }, value);
+  await create.click();
+  await expect(dialog).toContainText("既存のファイルは変更しません");
+  await name.fill("上書き禁止");
+  // The fake picker seeds the sample project into the folder on first use.
+  await mode("normal");
+  await choose.click();
+  await expect(page.getByText(/すでにプロジェクト/)).toBeVisible();
+  const before = await read(page, "masterdata.toml");
+  await expect(dialog).toBeVisible();
+  expect(await read(page, "masterdata.toml")).toBe(before);
+  // Invalid names never reach the picker.
+  await name.fill("a/b");
+  await mode("cancel");
+  await choose.click();
+  await expect(page.getByText(/フォルダ名に使える文字/)).toBeVisible();
+  // Cancelling the picker keeps the modal and its input.
+  await name.fill("新規Project");
+  await choose.click();
+  await expect(dialog).toBeVisible();
+  await expect(name).toHaveValue("新規Project");
+  // An empty folder becomes the project root itself.
+  await mode("empty");
+  await choose.click();
+  await expect(page.getByLabel("プロジェクト設定")).toBeVisible();
+  expect(await read(page, "masterdata.toml")).toContain('name = "新規Project"');
+  await expect(page.locator(".save-state")).toHaveAttribute(
+    "aria-label",
+    "保存済み",
+  );
+  expect(
+    await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      const names: string[] = [];
+      for await (const name of (root as any).keys()) names.push(name);
+      return names.sort();
+    }),
+  ).toEqual(["masterdata.toml", "sources"]);
+  // The handle is persisted, so a reload reopens the new project.
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: /プロジェクト設定/ }),
+  ).toBeVisible();
+});
+
 test("browser unsupported environment shows a clear explanation and no enabled picker", async ({
   page,
 }) => {
@@ -436,9 +494,10 @@ test("browser unsupported environment shows a clear explanation and no enabled p
     page.getByRole("button", { name: /プロジェクトを開く/ }),
   ).toBeDisabled();
   await expect(page.getByText(/この環境では編集できません/)).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /新しく作る|Build|Publish/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Build|Publish/ })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: /新しく作る/ })).toBeDisabled();
 });
 
 test("browser invalid or missing project config preserves prior edits and identifies the bad file", async ({
@@ -586,13 +645,19 @@ test("browser reopens recent project automatically on reload when permission is 
   );
 });
 
-test("browser unsupported welcome identifies the build version and serves its favicon", async ({ page }) => {
+test("browser unsupported welcome identifies the build version and serves its favicon", async ({
+  page,
+}) => {
   const { version } = JSON.parse(await fs.readFile("package.json", "utf8"));
   const label = page.getByLabel("アプリのバージョン", { exact: true });
   await expect(label).toBeVisible();
   await expect(label).toHaveText(`v${version}`);
-  expect(await label.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeLessThan(14);
-  const icon = await page.locator('link[rel="icon"]').evaluate(el => (el as HTMLLinkElement).href);
+  expect(
+    await label.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+  ).toBeLessThan(14);
+  const icon = await page
+    .locator('link[rel="icon"]')
+    .evaluate((el) => (el as HTMLLinkElement).href);
   const response = await page.request.get(icon);
   expect(response.ok()).toBe(true);
   expect(response.headers()["content-type"]).toContain("image/svg+xml");

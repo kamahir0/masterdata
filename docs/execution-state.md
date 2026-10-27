@@ -1,12 +1,14 @@
 # Development State
 
-Stage: objective-complete
-Candidate: 824aa42a68cbf1932aec55945ff119754f7403b6
-Work base: 65b2a0b8129da07d5106780d0e627d2e37e64caa
+Stage: implementation-ready
+Candidate: none
+Work base: 61d874e33c10b06a143173cf0dae37ebb6252d44
 
 ## Active work
 
-None.
+- Completed: 仕様0027の作成・review・自律承認、browser.mdへの適用、runtime / Welcomeの実装、unit / Chromium UI tests。
+- In progress: workspace check、commit / push。
+- Remaining: 実Chromeの実フォルダでの手動検証（未実施）、Candidate SHAの記録。
 
 ## Blocking findings
 
@@ -14,7 +16,5 @@ None.
 
 ## Evidence
 
-- 日本語notesと8 assetsを含む[MasterData v0.1.2 Latest Release](https://github.com/kamahir0/masterdata/releases/tag/v0.1.2)を公開し、公開checksumの匿名取得と全7件の一致を確認した。
-- 固定tag v0.1.2（a858e39）で[全OS release build](https://github.com/kamahir0/masterdata/actions/runs/40425976472)が成功。macOS配布DMGのマウント・アプリバンドル確認、単体CLIによるサンプルプロジェクトのvalidate成功を確認。
-- 同一製品コードのCandidate 824aa42で[全OS Workspace CI](https://github.com/kamahir0/masterdata/actions/runs/40434317051)（Windows / macOS / Linux Ubuntu）がすべて成功。UI回帰テストのドロップダウン・ドロワー・モーダル退場待機を解消。
-- 検証用process、mount、一時ファイルを回収済み。workspace / diff check成功。
+- File System Access mockのunit testsとChromiumのUI回帰（browser.e2e.ts全13件）が成功。
+- 実Chrome / Edgeでの実フォルダ検証は未取得。

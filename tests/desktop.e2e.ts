@@ -3213,6 +3213,7 @@ test("project file cancel and invalid TOML preserve the current dirty document",
   await page
     .getByRole("button", { name: "破棄して続ける", exact: true })
     .click();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
   await expect(message).toHaveValue("切替前のdraft");
   const invalidRoot = path.join(root, "invalid");
   await fs.mkdir(invalidRoot);
@@ -3222,6 +3223,7 @@ test("project file cancel and invalid TOML preserve the current dirty document",
   await page
     .getByRole("button", { name: "破棄して続ける", exact: true })
     .click();
+  await expect(page.locator(".ant-modal-wrap")).toBeHidden();
   await expect(page.getByText(/プロジェクトを開けません/)).toBeVisible();
   await expect(message).toHaveValue("切替前のdraft");
   await saveAll();

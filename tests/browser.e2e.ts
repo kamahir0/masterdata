@@ -237,6 +237,7 @@ test("browser picker cancellation and rejected opens preserve the existing draft
     await page
       .getByRole("button", { name: "破棄して続ける", exact: true })
       .click();
+    await expect(page.locator(".ant-modal-wrap")).toBeHidden();
     await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue(
       "保持するdraft",
     );
@@ -463,6 +464,7 @@ test("browser invalid or missing project config preserves prior edits and identi
     await page
       .getByRole("button", { name: "破棄して続ける", exact: true })
       .click();
+    await expect(page.locator(".ant-modal-wrap")).toBeHidden();
     await expect(
       page.getByText(/masterdata.toml.*(?:ありません|Error)/).last(),
     ).toBeVisible();

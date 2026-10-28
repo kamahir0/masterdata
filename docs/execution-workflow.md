@@ -12,7 +12,7 @@ Status: Active
 
 ## Legacy boundary
 
-2026-10-17 Human requestにより、新しいGUIプロジェクトを独立したGit履歴で開始する。旧リポジトリは[masterdata-legacy2](https://github.com/kamahir0/masterdata-legacy2)に保持する。
+2026-10-17 Human requestにより、新しいGUIプロジェクトを独立したGit履歴で開始する。旧リポジトリ `masterdata-legacy2` のGit履歴・関連資料は、2026-10-29のリポジトリ整理に伴いGitHub外のバックアップに保持する。
 
 旧仕様、ADR、テスト、oracle、CI基準、実装、作業stateは、新リポジトリのauthorityや完成条件として継承しない。旧資料の読込みをcold-startの必須手順にしない。旧会話内の指示も現在の実行指示にはならない。
 

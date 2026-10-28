@@ -120,10 +120,10 @@ CLIとの共通化を先に満たす目標は置かない。日常編集に必�
 
 ## 参考にしたもの
 
-旧資料は製品の用途と機能を把握する参考情報であり、新仕様のauthorityではない。主な参照先はlegacy2の以下の文書（参照時HEAD: `35e36608bda6925679a46257aa4be6eadd665dd9`）。
+旧資料は製品の用途と機能を把握する参考情報であり、新仕様のauthorityではない。主に参考にしたのはlegacy2の以下の文書（参照時HEAD: `35e36608bda6925679a46257aa4be6eadd665dd9`）。旧リポジトリの履歴は2026-10-29の整理に伴いGitHub外にバックアップしているため、以下は当時の出典名とパスの記録として保持する。
 
-- [Product vision](https://github.com/kamahir0/masterdata-legacy2/blob/35e36608bda6925679a46257aa4be6eadd665dd9/docs/product/vision.md): ゲーム向けの制作、テキストとGit、製品範囲。
-- [Unityモデルケース](https://github.com/kamahir0/masterdata-legacy2/blob/35e36608bda6925679a46257aa4be6eadd665dd9/samples/UnityInventory/README.md): 表、各種の型、多段ネスト、参照、タグと出力プロファイル、ゲームでの利用。
-- [Desktop baseline](https://github.com/kamahir0/masterdata-legacy2/blob/35e36608bda6925679a46257aa4be6eadd665dd9/docs/gui/rewrite-baseline.md): 直接編集、検索、コピー＆ペースト、Undo、Gitツールとの役割分担。
+- Product vision (`docs/product/vision.md`): ゲーム向けの制作、テキストとGit、製品範囲。
+- Unityモデルケース (`samples/UnityInventory/README.md`): 表、各種の型、多段ネスト、参照、タグと出力プロファイル、ゲームでの利用。
+- Desktop baseline (`docs/gui/rewrite-baseline.md`): 直接編集、検索、コピー＆ペースト、Undo、Gitツールとの役割分担。
 
 これまでHumanが示した編集上の問題と期待を踏まえ、これらを一つのGUI体験へ組み直すAgent Proposalとして記述した。旧仕様の細かな制約を採用する判断は含めていない。

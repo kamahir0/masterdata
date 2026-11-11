@@ -57,7 +57,6 @@ import {
   typeKind,
   text,
 } from "./core/types";
-import { serialize } from "./core/yaml";
 import { Explorer, SourceIcon } from "./ui/explorer";
 import { GridEditor } from "./ui/grid";
 import { TypeEditor } from "./ui/type-editor";
@@ -92,12 +91,7 @@ import { Entry } from "./ui/inputs";
 import { EditorBoundary } from "./ui/editor-boundary";
 import { quickTransition, easeOutExpoCss, resultTransition } from "./ui/motion";
 function SourceText({ source }: { source: Source }) {
-  const readText = () => {
-    const saved = session.getState().saved.get(source.id);
-    return saved && !session.dirtySource(source)
-      ? saved.text
-      : serialize(source, saved);
-  };
+  const readText = () => session.sourceText(source);
   const [draft, setDraft] = useState(readText);
   const [changed, setChanged] = useState(false);
   useEffect(() => {

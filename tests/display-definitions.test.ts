@@ -15,7 +15,8 @@ import {
 } from "../src/core/display-definitions";
 import { identity, itemIdentities } from "../src/core/identity";
 import { Session } from "../src/core/session";
-import { defaultConfig, type Source } from "../src/core/types";
+import { checkDisplayInput, displayModel } from "../src/core/display-model";
+import { defaultConfig, tables, type Source } from "../src/core/types";
 import { parseSource, serialize } from "../src/core/yaml";
 
 function setup(extra?: Record<string, unknown> | string) {
@@ -67,6 +68,36 @@ function setup(extra?: Record<string, unknown> | string) {
   return { source: current(), other, session, current, raw };
 }
 const functions = (s: Source) => displayDefinitions(s, "functionColumns").items;
+
+test("表示のみの編集では未保存のソースプレビューも正本の元のテキストを使う", () => {
+  const { session, current, raw } = setup();
+  updateDisplayDefinitions(session, current(), "functionColumns", [
+    { name: "ID", script: "return {text: String(row.id)};" },
+  ], "表示編集");
+  assert.equal(session.dirtySource(current()), true);
+  assert.equal(session.sourceText(current()), raw);
+  assert.equal(session.files()[0].text, raw);
+  session.renameField(current().id, 0, "itemId");
+  assert.match(session.sourceText(current()), /itemId/);
+  session.undo();
+  assert.equal(session.sourceText(current()), raw);
+});
+
+test("分割ファイルのrecordsが配列に戻るまで不完全な母数で評価しない", () => {
+  const { session, other } = setup({
+    functionColumns: [{ name: "件数", script: "return {text: String(table.rows.length)};" }],
+  });
+  const input = () => {
+    const snapshot = session.getState().snapshot;
+    return displayModel(tables(snapshot)[0], snapshot)!.input;
+  };
+  assert.equal(input().records.length, 2);
+  session.update(other.id, ["records"], null, "未完成");
+  assert.throws(() => checkDisplayInput(input()), /other.yaml の records/);
+  session.undo();
+  assert.doesNotThrow(() => checkDisplayInput(input()));
+  assert.equal(input().records.length, 2);
+});
 
 test("正本の同名キーを読まず、通常編集でsidecarを作らない", () => {
   const { session, source, current } = setup();

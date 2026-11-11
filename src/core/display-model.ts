@@ -82,15 +82,20 @@ export function displayModel(table: TableInfo | undefined, snapshot: Snapshot) {
   ];
   const offsets = new Map<string, number>();
   const records: unknown[] = [];
+  let error = limitError;
   for (const source of table.sources) {
     offsets.set(source.id, records.length);
-    if (Array.isArray(source.data?.records))
-      for (const record of source.data.records) records.push(record);
+    const rows = source.data?.records;
+    if (Array.isArray(rows)) {
+      for (const record of rows) records.push(record);
+    } else if (rows !== undefined) {
+      error ??= `${source.path} の records を配列に修正すると、表全体の表示計算を再開します。`;
+    }
   }
   return {
     functions,
     offsets,
-    input: { programs, columns, records, error: limitError },
+    input: { programs, columns, records, error },
   };
 }
 

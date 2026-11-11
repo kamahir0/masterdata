@@ -77,8 +77,15 @@ export class Session {
     Source,
     { base?: SavedFile; text: string }
   >();
-  private fileText(source: Source) {
+  sourceText(source: Source) {
     const base = this.state.saved.get(source.id);
+    const original = this.savedSources.get(source.id);
+    if (
+      base && original &&
+      original.data === source.data &&
+      original.raw === source.raw
+    )
+      return base.text;
     let cached = this.serialized.get(source);
     if (!cached || cached.base !== base) {
       cached = { base, text: serialize(source, base) };
@@ -723,10 +730,7 @@ export class Session {
       .filter((s) => !ids || ids.includes(s.id))
       .flatMap((s) => {
         const base = this.savedSources.get(s.id);
-        const saved = this.state.saved.get(s.id);
-        const files = [{ id: s.id, path: s.path,
-          text: saved && base?.data === s.data && base?.raw === s.raw
-            ? saved.text : this.fileText(s) }];
+        const files = [{ id: s.id, path: s.path, text: this.sourceText(s) }];
         if (s.display) {
           const id = `display:${s.id}`;
           const saved = this.state.saved.get(id);

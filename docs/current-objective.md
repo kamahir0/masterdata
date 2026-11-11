@@ -2,13 +2,12 @@
 
 ## Objective
 
-ブラウザ版プロジェクト新規作成・タブアニメーション調整・UIリファクタリングを含むMasterData v0.1.3をGitHub Releasesへ公開する。
+Browser / Desktopの表で、実データを編集しながらJavaScriptの関数カラムとテーブル単位の動的書式を利用できるようにする。2026-11-11のHuman requestに基づく。
 
 ## Completion boundary
 
-version整合（0.1.3）、release差分確認、必要なchecks、通常commit / push、固定tagからの全OS release build、配布物とchecksumの確認、日本語release notes、draftからの公開と公開結果の確認。
-公開のauthorization: Humanの「ok. マージ。新たなバージョンをリリース」（2026-10-28）。既存tagは変更せず、新しいpatch versionを使用する。
+正本YAMLの内容を保った表示定義の編集・永続化、隔離実行、Grid統合、分割ファイルをまたぐドロップ率、検索・仮想スクロール・編集・Undo / Redo、診断・過負荷からの回復、64bit整数とBuild / CLI境界を検証する。代表作業をGUIで行い、レビュー・必要なCIと通常のGit deliveryを完了する。
 
 ## Non-scope
 
-既存tag / releaseの上書き、依頼外の製品機能変更、ユーザーの既存変更、外部告知、Unityの起動。
+実データの移行・削除、アプリケーションへ渡す計算列、外部サービス、正式release、Unityの起動。

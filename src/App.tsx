@@ -822,6 +822,7 @@ function Workspace({
                             source={source}
                             snapshot={snapshot}
                             problems={problems}
+                            editDisplay={(schemaId) => { select(schemaId); setTab("fields"); }}
                             onOpen={setCursor}
                             navigate={select}
                             profile={profile}

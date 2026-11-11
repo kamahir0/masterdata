@@ -20,6 +20,7 @@ import { identity } from "../core/identity";
 import { useEditing } from "./editing";
 import { usePointerSort } from "./sortable";
 import { Entry, TypeSelect } from "./inputs";
+import { DisplayDefinitionEditor } from "./display-definition-editor";
 export function ModifierButtons({
   field,
   onChange,
@@ -225,6 +226,12 @@ export function FieldEditor({
           </Button>
         </div>
       </div>
+      {source.data?.kind === "schema" && (
+        <DisplayDefinitionEditor
+          key={`${identity(session.getState().project)}:${source.id}`}
+          source={source}
+        />
+      )}
     </div>
   );
 }

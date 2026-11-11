@@ -50,6 +50,9 @@ import {
   searchText,
 } from "../core/types";
 import { identity } from "../core/identity";
+import { displayModel } from "../core/display-model";
+import { displayDocumentProblem } from "../core/display-definitions";
+import { DisplayCell, useGridDisplay } from "./display-grid";
 import { usePointerSort } from "./sortable";
 import { useEditing } from "./editing";
 import { useTableViewport } from "./table-viewport";
@@ -82,6 +85,7 @@ export function GridEditor({
   source,
   snapshot,
   problems,
+  editDisplay,
   onOpen,
   navigate,
   profile,
@@ -91,6 +95,7 @@ export function GridEditor({
   source: Source;
   snapshot: Snapshot;
   problems: Problem[];
+  editDisplay: (schemaId: string) => void;
   onOpen: (cursor: Cursor) => void;
   navigate: (source: string) => void;
   profile: string;
@@ -100,6 +105,12 @@ export function GridEditor({
   const table =
     tables(snapshot).find((t) => t.source.id === source.id) ??
     tables(snapshot).find((t) => t.name === source.data?.table);
+  const model = useMemo(() => displayModel(table, snapshot), [table, snapshot]);
+  const display = useGridDisplay(model?.input);
+  const columnCount =
+    (table?.fields.length ?? 0) + (model?.functions.length ?? 0);
+  const displayRow = (row: Row) =>
+    (model?.offsets.get(row.source.id) ?? 0) + row.index;
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [chosen, setChosen] = useState(
@@ -164,7 +175,12 @@ export function GridEditor({
             ),
     [snapshot.sources, source.id, chosen, deferred],
   );
-  const height = useTableViewport(viewport, tableRef, table?.source.id, rows.length > 0);
+  const height = useTableViewport(
+    viewport,
+    tableRef,
+    table?.source.id,
+    rows.length > 0,
+  );
   const addRecord = (template?: any) => {
     if (!table || !additionSource) return;
     setQuery("");
@@ -422,6 +438,67 @@ export function GridEditor({
         ?.focus({ preventScroll: true });
     },
   });
+  const cellProps = (
+    row: Row,
+    rowIndex: number | undefined,
+    col: number,
+    key: string,
+    derived: boolean,
+    pk = false,
+    issues: Problem[] = [],
+  ) => {
+    const i = rowIndex ?? rows.findIndex((r) => r.key === row.key);
+    const selectedCell =
+      cell &&
+      i >= Math.min(cell.row, cell.anchorRow) &&
+      i <= Math.max(cell.row, cell.anchorRow) &&
+      col >= Math.min(cell.col, cell.anchorCol) &&
+      col <= Math.max(cell.col, cell.anchorCol);
+    return {
+      "data-column-index": col,
+      "data-motion-key": `cell-${row.key}-${key}`,
+      "data-motion-owner": `column-${key}`,
+      "data-motion-axis": "x",
+      ...(derived
+        ? {}
+        : { "data-sort-group": "columns", "data-sort-key": key }),
+      className: `data-cell ${pk ? "primary-cell" : ""} ${selectedCell ? "selected-cell" : ""} ${issues.length ? "error-cell" : ""}`,
+      title: issues.map((p) => p.message).join("\n"),
+      onClickCapture: (e: React.MouseEvent) => {
+        if (e.shiftKey && cell && (cell.row !== i || cell.col !== col)) {
+          e.preventDefault();
+          e.stopPropagation();
+          setCell({
+            row: i,
+            col,
+            anchorRow: cell.anchorRow,
+            anchorCol: cell.anchorCol,
+          });
+        }
+      },
+      onClick: (e: React.MouseEvent) =>
+        setCell((old) => ({
+          row: i,
+          col,
+          anchorRow: e.shiftKey && old ? old.anchorRow : i,
+          anchorCol: e.shiftKey && old ? old.anchorCol : col,
+        })),
+    };
+  };
+  const presentation = (row: Row, col: number, children?: React.ReactNode) =>
+    display ? (
+      <DisplayCell
+        display={display}
+        row={displayRow(row)}
+        col={col}
+        derived={col >= table.fields.length}
+        edit={() => editDisplay(table.source.id)}
+      >
+        {children}
+      </DisplayCell>
+    ) : (
+      children
+    );
   const columns: ColumnsType<Row> = [
     {
       key: "grip",
@@ -712,71 +789,69 @@ export function GridEditor({
             "data-sort-key": identity(field),
             "data-sort-anchor": "",
           }) as any,
-        onCell: (row: Row, rowIndex?: number) => {
-          const i = rowIndex ?? rows.findIndex((r) => r.key === row.key);
-          const selectedCell =
-            cell &&
-            i >= Math.min(cell.row, cell.anchorRow) &&
-            i <= Math.max(cell.row, cell.anchorRow) &&
-            col >= Math.min(cell.col, cell.anchorCol) &&
-            col <= Math.max(cell.col, cell.anchorCol);
-          const issues = problems.filter(
-            (p) =>
-              p.source === row.source.id &&
-              p.path[0] === "records" &&
-              p.path[1] === row.index &&
-              (p.path[2] === field.name || p.path.length < 3),
-          );
-          return {
-            "data-column-index": col,
-            "data-motion-key": `cell-${row.key}-${identity(field)}`,
-            "data-motion-owner": `column-${identity(field)}`,
-            "data-motion-axis": "x",
-            "data-sort-group": "columns",
-            "data-sort-key": identity(field),
-            className: `data-cell ${pk ? "primary-cell" : ""} ${selectedCell ? "selected-cell" : ""} ${issues.length ? "error-cell" : ""}`,
-            title: issues.map((p) => p.message).join("\n"),
-            onClickCapture: (e: React.MouseEvent) => {
-              if (e.shiftKey && cell && (cell.row !== i || cell.col !== col)) {
-                e.preventDefault();
-                e.stopPropagation();
-                setCell({
-                  row: i,
-                  col,
-                  anchorRow: cell.anchorRow,
-                  anchorCol: cell.anchorCol,
-                });
+        onCell: (row: Row, rowIndex?: number) =>
+          cellProps(
+            row,
+            rowIndex,
+            col,
+            identity(field),
+            false,
+            !!pk,
+            problems.filter(
+              (p) =>
+                p.source === row.source.id &&
+                p.path[0] === "records" &&
+                p.path[1] === row.index &&
+                (p.path[2] === field.name || p.path.length < 3),
+            ),
+          ),
+        render: (_: unknown, row: Row) =>
+          presentation(
+            row,
+            col,
+            <ValueControl
+              snapshot={snapshot}
+              field={field}
+              value={row.record?.[field.name]}
+              label={`${field.name} 行${row.index + 1}`}
+              onChange={(v) => update(row, field, v)}
+              onOpen={() =>
+                onOpen({
+                  source: row.source.id,
+                  path: ["records", row.index, field.name],
+                  field,
+                })
               }
-            },
-            onClick: (e: React.MouseEvent) =>
-              setCell((old) => ({
-                row: i,
-                col,
-                anchorRow: e.shiftKey && old ? old.anchorRow : i,
-                anchorCol: e.shiftKey && old ? old.anchorCol : col,
-              })),
-          };
-        },
-        render: (_: unknown, row: Row) => (
-          <ValueControl
-            snapshot={snapshot}
-            field={field}
-            value={row.record?.[field.name]}
-            label={`${field.name} 行${row.index + 1}`}
-            onChange={(v) => update(row, field, v)}
-            onOpen={() =>
-              onOpen({
-                source: row.source.id,
-                path: ["records", row.index, field.name],
-                field,
-              })
-            }
-            reference={referenceOptions}
-            navigate={(option) => {
-              navigate(option.source);
-            }}
-          />
+              reference={referenceOptions}
+              navigate={(option) => {
+                navigate(option.source);
+              }}
+            />,
+          ),
+      };
+    }),
+    ...(model?.functions ?? []).map((program, i) => {
+      const col = table.fields.length + i;
+      const key = `function-${i}`;
+      return {
+        key,
+        width: 185,
+        title: (
+          <div className="column-heading">
+            <strong>{program.name}</strong>
+            <span className="column-badges">
+              <button
+                type="button"
+                onClick={() => editDisplay(table.source.id)}
+              >
+                ƒ 関数列
+              </button>
+            </span>
+          </div>
         ),
+        onCell: (row: Row, rowIndex?: number) =>
+          cellProps(row, rowIndex, col, key, true),
+        render: (_: unknown, row: Row) => presentation(row, col),
       };
     }),
   ];
@@ -813,13 +888,31 @@ export function GridEditor({
       lastRow = Math.max(cell.row, cell.anchorRow);
     const firstCol = Math.min(cell.col, cell.anchorCol),
       lastCol = Math.max(cell.col, cell.anchorCol);
-    const values = rows
-      .slice(firstRow, lastRow + 1)
-      .map((r) =>
-        table.fields
-          .slice(firstCol, lastCol + 1)
-          .map((f) => r.record?.[f.name]),
-      );
+    const selection = rows.slice(firstRow, lastRow + 1);
+    if (display && lastCol >= table.fields.length) {
+      const status = display.prepareCopy(selection.map(displayRow));
+      if (status !== "ready") {
+        event.preventDefault();
+        fail(
+          status === "too-large"
+            ? "関数列の範囲コピーの上限を超えました。範囲を小さくしてください（最大2048行）。"
+            : "選択範囲を計算中です。少し待ってからもう一度コピーしてください。",
+        );
+        return;
+      }
+    }
+    const values = selection.map((row) =>
+      Array.from(
+        { length: Math.min(lastCol + 1, columnCount) - firstCol },
+        (_, offset) => {
+          const col = firstCol + offset;
+          const field = table.fields[col];
+          return field
+            ? row.record?.[field.name]
+            : display?.read(displayRow(row))?.[col]?.text;
+        },
+      ),
+    );
     event.clipboardData.setData(
       "text/plain",
       writeTsv(values.map((row) => row.map(cellText))),
@@ -844,7 +937,11 @@ export function GridEditor({
     const content = event.clipboardData?.getData("text/plain") ?? "";
     const rich = event.clipboardData?.getData("application/x-masterdata") ?? "";
     const field = table.fields[anchor.col];
-    if (!field || (!content && !rich)) return;
+    if (!content && !rich) return;
+    if (!field) {
+      event.preventDefault();
+      return;
+    }
     if (
       !rich &&
       !content.includes("\t") &&
@@ -857,7 +954,7 @@ export function GridEditor({
       const cells = rich ? decodeCells(rich) : readTsv(content);
       if (!Array.isArray(cells) || !cells.every(Array.isArray))
         throw new Error("貼り付けるデータを読み取れません。");
-      if (cells.some((row) => row.length > table.fields.length - anchor.col))
+      if (cells.some((row) => row.length > columnCount - anchor.col))
         throw new Error(
           "貼り付け先の列が足りません。必要な列を追加してから貼り付けてください。",
         );
@@ -899,7 +996,7 @@ export function GridEditor({
               values.forEach((value, j) => {
                 const row = targets[anchor.row + i];
                 const field = table.fields[anchor.col + j];
-                if (row.source === s.id)
+                if (field && row.source === s.id)
                   data = setIn(
                     data,
                     ["records", row.index, field.name],
@@ -933,7 +1030,7 @@ export function GridEditor({
           setRowKeys([]);
           setCell({
             row: rows.length - 1,
-            col: table.fields.length - 1,
+            col: columnCount - 1,
             anchorRow: 0,
             anchorCol: 0,
           });
@@ -941,6 +1038,7 @@ export function GridEditor({
         }
         if (e.key === "Delete" && cell && !rowKeys.length) {
           e.preventDefault();
+          if (Math.min(cell.col, cell.anchorCol) >= table.fields.length) return;
           session.change("セルをクリア", (s) => ({
             ...s,
             sources: s.sources.map((source) => {
@@ -1010,11 +1108,7 @@ export function GridEditor({
                     ),
                   );
           const col =
-            e.key === "Home"
-              ? 0
-              : e.key === "End"
-                ? table.fields.length - 1
-                : cell.col;
+            e.key === "Home" ? 0 : e.key === "End" ? columnCount - 1 : cell.col;
           setCell({ row, col, anchorRow: row, anchorCol: col });
           tableRef.current?.scrollTo({ index: row });
           return;
@@ -1035,7 +1129,7 @@ export function GridEditor({
           const col = Math.max(
             0,
             Math.min(
-              table.fields.length - 1,
+              columnCount - 1,
               cell.col +
                 (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0),
             ),
@@ -1097,6 +1191,16 @@ export function GridEditor({
               {rowKeys.length}件を削除
             </Button>
           )}
+          <Button
+            onClick={() => editDisplay(table.source.id)}
+            danger={!!displayDocumentProblem(table.source)}
+            title={
+              displayDocumentProblem(table.source) ??
+              "関数列とテーブル書式を編集"
+            }
+          >
+            表示設定
+          </Button>
           <Button
             icon={<PlusOutlined />}
             onClick={() => {
@@ -1210,7 +1314,7 @@ export function GridEditor({
           {profile
             ? ` · ${rows.filter((r) => selected(r.record, snapshot.config.profiles[profile])).length}件が出力対象`
             : ""}{" "}
-          · {table.fields.length} 列
+          · {columnCount} 列
         </Typography.Text>
       </div>
     </div>

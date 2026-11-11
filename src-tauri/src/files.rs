@@ -1,5 +1,5 @@
 use crate::config::{read_config, write_config, PROJECT_FILE_NAME};
-use crate::model::{uid, LoadedProject, SaveRequest, SaveResult, SavedFile, Snapshot, Source};
+use crate::model::{uid, Data, LoadedProject, SaveRequest, SaveResult, SavedFile, Snapshot, Source};
 use crate::yaml::parse_source;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -15,6 +15,7 @@ pub struct Workspace {
     pub baseline: Vec<SavedFile>,
     pub config_text: String,
     pub folders: Vec<String>,
+    pub display: bool,
 }
 
 pub fn digest(text: &str) -> String {
@@ -169,6 +170,7 @@ pub fn load_workspace(input: &Path) -> Result<(Workspace, LoadedProject), String
         baseline: saved.clone(),
         config_text: config_text.clone(),
         folders: folders.clone(),
+        display: false,
     };
     let project = LoadedProject {
         root: root_str,
@@ -181,6 +183,24 @@ pub fn load_workspace(input: &Path) -> Result<(Workspace, LoadedProject), String
         saved,
         config_text,
     };
+    Ok((workspace, project))
+}
+
+// The editor parses each view with its shared YAML parser. The native CLI and
+// Build operate on canonical sources only, even if a display script is invalid.
+pub fn load_workspace_gui(input: &Path) -> Result<(Workspace, LoadedProject), String> {
+    let (mut workspace, mut project) = load_workspace(input)?;
+    workspace.display = true;
+    for source in &project.snapshot.sources {
+        if source.data.get("kind").and_then(Data::as_str) != Some("schema") {
+            continue;
+        }
+        let path = format!("{}.view", source.path);
+        if let Some(text) = optional_read(&safe_path(&workspace.root, &format!("sources/{path}"))?)? {
+            project.saved.push(SavedFile { id: format!("display:{}", source.id), path, text });
+        }
+    }
+    workspace.baseline = project.saved.clone();
     Ok((workspace, project))
 }
 
@@ -228,6 +248,42 @@ pub fn save_workspace(
     for k in desired.keys() {
         names.insert(k.clone());
     }
+
+    let mut guards = Vec::new();
+    if workspace.display {
+        let mut paths = BTreeSet::new();
+        for name in &names {
+            if old.get(name).map(|f| &f.text) == desired.get(name).map(|f| &f.text) { continue; }
+            let owner = name.strip_suffix(".view").unwrap_or(name);
+            let lower = owner.to_ascii_lowercase();
+            if lower.ends_with(".yaml") || lower.ends_with(".yml") {
+                let view = format!("{owner}.view");
+                if old.contains_key(owner) && desired.contains_key(owner)
+                    && !old.contains_key(&view) && !desired.contains_key(&view) {
+                    continue;
+                }
+                paths.insert(owner.to_string());
+                paths.insert(view);
+            }
+        }
+        for name in paths {
+            guards.push(FileChange {
+                file: safe_path(&workspace.root, &format!("sources/{name}"))?,
+                before: old.get(&name).map(|f| f.text.clone()),
+                after: desired.get(&name).map(|f| f.text.clone()),
+            });
+        }
+    }
+    let verify_guards = |after: bool| -> Result<(), String> {
+        for guard in &guards {
+            let expected = if after { &guard.after } else { &guard.before };
+            if optional_read(&guard.file)?.as_ref() != expected.as_ref() {
+                return Err(format!("外部で変更されています: {}。入力は保持しています。", guard.file.display()));
+            }
+        }
+        Ok(())
+    };
+    verify_guards(false)?;
 
     let mut changes: Vec<FileChange> = Vec::new();
     for name in names {
@@ -356,6 +412,7 @@ pub fn save_workspace(
     let mut applied: Vec<FileChange> = Vec::new();
     let mut removed = Vec::new();
     let apply_res = (|| -> Result<(), String> {
+        verify_guards(false)?;
         for dir in &directories {
             fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
@@ -395,6 +452,7 @@ pub fn save_workspace(
                 Err(e) => return Err(format!("folderを削除できません: {}: {e}", dir.display())),
             }
         }
+        verify_guards(true)?;
         Ok(())
     })();
 
@@ -591,5 +649,128 @@ mod unix_save_tests {
             save_workspace(&mut workspace, &request).unwrap();
         }
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    use crate::model::default_config;
+
+    fn fixture() -> (tempfile::TempDir, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("sources/arbitrary")).unwrap();
+        fs::write(dir.path().join(PROJECT_FILE_NAME), "name = \"任意の名前\"\n").unwrap();
+        let schema = "# exact\r\nkind: schema\r\ntable: Item\r\nfields: [{key: 0, name: id, type: ulong}]\r\n".to_string();
+        let view = "# view\r\nfunctionColumns:\r\n  - name: Rate\r\n    script: |\r\n      return { text: String(row.id) };\r\nunknown: [1, 2]\r\n".to_string();
+        fs::write(dir.path().join("sources/arbitrary/schema.yaml"), &schema).unwrap();
+        fs::write(dir.path().join("sources/arbitrary/schema.yaml.view"), &view).unwrap();
+        (dir, schema, view)
+    }
+
+    fn request(ws: &Workspace) -> SaveRequest {
+        SaveRequest { token: ws.token.clone(), files: ws.baseline.clone(),
+            folders: ws.folders.clone(), config: default_config("任意の名前") }
+    }
+
+    #[test]
+    fn gui_load_attaches_view_and_cli_discovery_remains_unchanged() {
+        let (dir, _, view) = fixture();
+        let path = dir.path().join(PROJECT_FILE_NAME);
+        let (cli_ws, cli) = load_workspace(&path).unwrap();
+        assert_eq!(cli.snapshot.sources.len(), 1);
+        assert_eq!(cli.saved.len(), 1);
+        assert!(!cli_ws.display);
+        let (ws, project) = load_workspace_gui(&path).unwrap();
+        assert!(ws.display);
+        assert_eq!(ws.baseline.len(), 2);
+        assert_eq!(project.snapshot.sources.len(), 1);
+        let source = &project.snapshot.sources[0];
+        let display = project.saved.iter().find(|file| file.id == format!("display:{}", source.id)).unwrap();
+        assert_eq!(display.path, "arbitrary/schema.yaml.view");
+        assert_eq!(display.text, view);
+        assert_eq!(source.data.get("functionColumns"), None);
+    }
+
+    #[test]
+    fn gui_view_save_preserves_canonical_bytes_and_paired_move_delete() {
+        let (dir, schema, _) = fixture();
+        let (mut ws, _) = load_workspace_gui(&dir.path().join(PROJECT_FILE_NAME)).unwrap();
+        let mut req = request(&ws);
+        let new_view = "functionColumns: [{name: Next, script: 'return {'}]\n";
+        req.files.iter_mut().find(|f| f.path.ends_with(".view")).unwrap().text = new_view.to_string();
+        save_workspace(&mut ws, &req).unwrap();
+        assert_eq!(fs::read(dir.path().join("sources/arbitrary/schema.yaml")).unwrap(), schema.as_bytes());
+        for file in &mut req.files {
+            file.path = file.path.replace("arbitrary/schema.yaml", "moved/renamed.yml");
+        }
+        req.folders = vec![];
+        save_workspace(&mut ws, &req).unwrap();
+        assert_eq!(fs::read_to_string(dir.path().join("sources/moved/renamed.yml.view")).unwrap(), new_view);
+        assert!(!dir.path().join("sources/arbitrary/schema.yaml.view").exists());
+        req.files.clear();
+        save_workspace(&mut ws, &req).unwrap();
+        assert!(!dir.path().join("sources/moved/renamed.yml.view").exists());
+    }
+
+    #[test]
+    fn gui_save_protects_companion_conflicts_missing_files_and_orphan_destinations() {
+        for kind in ["schema", "view", "deleted", "orphan"] {
+            let (dir, _, _) = fixture();
+            let (mut ws, _) = load_workspace_gui(&dir.path().join(PROJECT_FILE_NAME)).unwrap();
+            let mut req = request(&ws);
+            let canonical = dir.path().join("sources/arbitrary/schema.yaml");
+            let view = dir.path().join("sources/arbitrary/schema.yaml.view");
+            if kind == "orphan" {
+                for file in &mut req.files { file.path = file.path.replace("arbitrary/schema.yaml", "new.yaml"); }
+                fs::write(dir.path().join("sources/new.yaml.view"), "orphan").unwrap();
+            } else {
+                req.files.iter_mut().find(|f| f.path.ends_with(".view")).unwrap().text = "functionColumns: []\n".to_string();
+                match kind {
+                    "schema" => fs::write(canonical, "external schema").unwrap(),
+                    "view" => fs::write(view, "external view").unwrap(),
+                    _ => fs::remove_file(view).unwrap(),
+                }
+            }
+            let before = ws.baseline.clone();
+            assert!(save_workspace(&mut ws, &req).unwrap_err().contains("外部"), "{kind}");
+            assert_eq!(ws.baseline, before);
+            assert!(!dir.path().join(".masterdata").exists());
+        }
+    }
+
+    #[test]
+    fn malformed_unknown_version_and_orphan_view_content_is_not_rewritten() {
+        for raw in ["functionColumns: [broken", "version: 999\nfunctionColumns: []\n", "null\n"] {
+            let (dir, _, _) = fixture();
+            let file = dir.path().join("sources/arbitrary/schema.yaml.view");
+            fs::write(&file, raw).unwrap();
+            fs::write(dir.path().join("sources/orphan.yaml.view"), "keep").unwrap();
+            let (mut ws, _) = load_workspace_gui(&dir.path().join(PROJECT_FILE_NAME)).unwrap();
+            let mut req = request(&ws);
+            req.files.iter_mut().find(|f| !f.path.ends_with(".view")).unwrap().text.push_str("# canonical edit\n");
+            save_workspace(&mut ws, &req).unwrap();
+            assert_eq!(fs::read_to_string(&file).unwrap(), raw);
+            assert_eq!(fs::read_to_string(dir.path().join("sources/orphan.yaml.view")).unwrap(), "keep");
+        }
+    }
+
+    #[test]
+    fn unreadable_view_aborts_gui_load_but_cli_never_reads_it() {
+        let (dir, _, _) = fixture();
+        fs::write(dir.path().join("sources/arbitrary/schema.yaml.view"), [0xff, 0xfe]).unwrap();
+        assert!(load_workspace_gui(&dir.path().join(PROJECT_FILE_NAME)).is_err());
+        assert!(load_workspace(&dir.path().join(PROJECT_FILE_NAME)).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sidecar_symlink_is_never_followed_by_gui_loader() {
+        let (dir, _, _) = fixture();
+        let view = dir.path().join("sources/arbitrary/schema.yaml.view");
+        fs::remove_file(&view).unwrap();
+        std::os::unix::fs::symlink(dir.path().join(PROJECT_FILE_NAME), &view).unwrap();
+        assert!(load_workspace_gui(&dir.path().join(PROJECT_FILE_NAME)).unwrap_err().contains("シンボリック"));
+        assert!(load_workspace(&dir.path().join(PROJECT_FILE_NAME)).is_ok());
     }
 }

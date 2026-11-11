@@ -1,19 +1,15 @@
 # Development State
 
-Stage: objective-complete
-Candidate: f36b8920811b398e788941f96dda368c0f4e8958
-Work base: d008f1399c4fe384abb37b327f3858217891dc2a
+Stage: implementation-ready
+Candidate: none
+Work base: 1ce13cdb7a790af2905d4d8d342217098b8e42a8
 
 ## Active work
 
-None.
+- Completed: 言語・VMの比較と実機試行。Humanによる起動条件選択の委任、保存方式の改訂とreview。
+- In progress: [表示定義の保存](specs/display-schema.md)、[Grid評価](specs/display-evaluation.md)の実装。
+- Remaining: 代表作業の検証とGit delivery。
 
 ## Blocking findings
 
 None.
-
-## Evidence
-
-- 日本語notesと8 assetsを含む[MasterData v0.1.3 Latest Release](https://github.com/kamahir0/masterdata/releases/tag/v0.1.3)を公開し、公開checksumと全7件の一致を確認した。
-- 固定tag v0.1.3（f36b892）で[全OS release build](https://github.com/kamahir0/masterdata/actions/runs/40534575506)が成功。macOS DMG、Windowsインストーラー、Linux AppImage/deb、各OSのCLIバイナリを含む全配布物の正常生成を確認。
-- ローカル検証（型検査、ユニットテスト全66件、Vite build、Desktop build、cargo check/test、Playwright UI tests、workspace check、diff check）すべて成功。

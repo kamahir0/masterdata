@@ -131,6 +131,23 @@ masterdata publish --project samples/Adventure
 
 ---
 
+### 表示専用の関数列と書式
+
+データタブの「表示設定」から、JavaScriptで関数列やテーブル書式を追加できます。例えば `weight` が `uint` のドロップテーブルでは、関数列 `dropRate` に次の本体を入力します。
+
+```js
+const total = table.sumBy("poolId", row.poolId, "weight");
+if (row.poolId == null || typeof total !== "bigint" || total <= 0n) {
+  return { text: "—" };
+}
+const percent = Number((row.weight * 10000n + total / 2n) / total) / 100;
+return { text: percent + "%", style: { bold: percent >= 50 } };
+```
+
+ファイルや検索結果を絞り込んでいても、分母は同じプールに属する全レコードの合計です。書式ルールは通常列と関数列に適用でき、例えば `return column.name === "dropRate" ? { color: "#186747" } : null;` と書けます。関数列のスタイルに、上から順にルールの指定を重ねます。
+
+保存先は、対象スキーマと同じ場所の付随ファイル（例 `items.yaml.view`）です。設定だけの編集・保存で正本YAMLの内容は変わりません。このファイルをスキーマと一緒にGit管理すると、共同編集者にも同じ表示を共有できます。関数は表を表示するときに専用VM内で実行され、CLI、C#生成、MasterMemoryの出力には含まれません。[関数の引数・戻り値とエラー処理](docs/specs/display-evaluation.md)
+
 ## プロジェクト構成
 
 MasterDataプロジェクトは以下の構造で管理されます。

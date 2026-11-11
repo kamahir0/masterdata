@@ -15,6 +15,19 @@ let saveGate: Promise<void> | undefined;
 test.beforeEach(async ({ browser }, info) => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "masterdata-e2e-"));
   await fs.cp(path.resolve("samples/Adventure"), root, { recursive: true });
+  if (info.title.startsWith("display functions")) {
+    for (const [name, target] of [["drop.yaml", "000-drop.yaml"], ["drop.yaml.view", "000-drop.yaml.view"], ["others.yaml", "001-others.yaml"]])
+      await fs.copyFile(path.resolve("tests/fixtures/display", name), path.join(root, "sources", target));
+  }
+  if (info.title.startsWith("display functions virtual")) {
+    await fs.writeFile(path.join(root, "sources/000-drop.yaml.view"), `functionColumns:
+  - name: rate
+    script: 'return {text: String(row.weight * 1000000n / table.sumBy("poolId", row.poolId, "weight")) + "ppm"};'
+`);
+    const rows = Array.from({ length: 9999 }, (_, i) =>
+      `  - {id: ${i + 1}, poolId: A, itemId: item-${i + 1}, weight: 20}`);
+    await fs.writeFile(path.join(root, "sources/001-others.yaml"), [ "kind: data", "table: dropPool", "records:", ...rows, "" ].join("\n"));
+  }
   if (info.title.startsWith("large")) {
     const file = path.join(root, "sources/announcements/announcement.yaml");
     const data = parse(await fs.readFile(file, "utf8"));
@@ -112,6 +125,23 @@ test.beforeEach(async ({ browser }, info) => {
       dirty: () => {}, close: async () => {}, onCommand: callback => { window.__command = callback; return () => {}; },
     };
   })()`);
+  if (info.title.startsWith("display functions virtual")) {
+    await page.addInitScript(() => {
+      const stats = { started: 0, firstResultMs: 0, requested: 0, inits: 0 };
+      (window as any).__displayStats = stats;
+      const original = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (message, ...rest: any[]) {
+        if (message.type === "init" && message.input?.programs) {
+          stats.inits++;
+          stats.started = performance.now();
+          this.addEventListener("message", e => {
+            if (e.data.type === "rows" && !stats.firstResultMs) stats.firstResultMs = performance.now() - stats.started;
+          });
+        } else if (message.type === "rows" && Array.isArray(message.indices)) stats.requested += message.indices.length;
+        return original.call(this, message, ...rest);
+      };
+    });
+  }
   await page.goto("http://127.0.0.1:5173");
   if (info.title.startsWith("welcome")) {
     await expect(
@@ -3836,4 +3866,94 @@ test("guarded navigation on create-new and open-project preserves draft, Undo hi
   await expect(page.locator(".window-project")).toHaveText(
     "保存後の新規Project",
   );
+});
+
+test("display functions calculate across files and recover through editing, filtering and Undo", async () => {
+  const values = page.locator(".display-text");
+  await expect(values).toHaveText(["20%", "30%", "50%", "100%"]);
+  await page.getByLabel("表を検索").fill("sword");
+  await expect(values).toHaveText(["20%"]);
+  await page.getByLabel("weight 行1", { exact: true }).fill("40");
+  await page.getByLabel("weight 行1", { exact: true }).press("Enter");
+  await expect(values).toHaveText(["33.33%"]);
+  await page.getByLabel("表を検索").fill("");
+  await expect(values).toHaveText(["33.33%", "25%", "41.67%", "100%"]);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(values).toHaveText(["20%", "30%", "50%", "100%"]);
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(values.first()).toHaveText("33.33%");
+
+  // Diagnostics for a broken style leave the derived text available. Repair it from the grid.
+  await page.getByRole("button", { name: /表示定義を修正.*未完成のルール/ }).first().click();
+  await page.getByRole("button", { name: "テーブル書式1を編集" }).click();
+  await page.getByLabel("テーブル書式のコード").fill('return column.name === "dropRate" || column.name === "weight" ? { bold: true, color: "#235678", backgroundColor: "#aabbcc" } : null;');
+  await page.getByRole("button", { name: /^適\s*用$/ }).click();
+  await page.getByRole("tab", { name: "データ", exact: true }).click();
+  await expect(values.first()).toHaveCSS("color", "rgb(35, 86, 120)");
+  await expect(values.first()).toHaveCSS("font-weight", "700");
+  const weight = page.getByLabel("weight 行1", { exact: true }).first();
+  await expect(weight).toHaveCSS("color", "rgb(35, 86, 120)");
+  await expect(weight).toHaveCSS("background-color", "rgb(170, 187, 204)");
+  await expect(page.getByRole("button", { name: /表示定義を修正/ })).toHaveCount(0);
+
+  await values.first().click();
+  const clipboard = await page.locator(".grid-editor").evaluate(el => {
+    const data = new DataTransfer();
+    el.dispatchEvent(new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: data }));
+    data.setData("text/plain","overwrite");
+    el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+    return data.getData("application/x-masterdata");
+  });
+  expect(JSON.parse(clipboard)).toEqual([["33.33%"]]);
+  await expect(values.first()).toHaveText("33.33%");
+  await saveAll();
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+  const disk = parse(await fs.readFile(path.join(root, "sources/000-drop.yaml"), "utf8"));
+  expect(Object.keys(disk.records[0])).toEqual(["id", "poolId", "itemId", "weight"]);
+  expect(disk.functionColumns).toBeUndefined();
+  await page.reload();
+  await expect(values.first()).toHaveText("33.33%");
+  await expect(values.first()).toHaveCSS("color", "rgb(35, 86, 120)");
+});
+
+test("display functions virtual grid aggregates ten thousand records while evaluating mounted rows", async () => {
+  const values = page.locator(".display-text");
+  await expect(values.first()).toHaveText("100ppm", { timeout: 12000 });
+  await page.locator(".ant-table-tbody-virtual-holder").evaluate(el => el.scrollTo(0, el.scrollHeight));
+  await expect(page.locator('input[value="item-9999"]')).toBeVisible();
+  await expect(values.last()).toHaveText("100ppm");
+  await page.getByLabel("表を検索").fill("item-9999");
+  await expect(values).toHaveText(["100ppm"]);
+  const stats = await page.evaluate(() => (window as any).__displayStats as {inits:number, requested:number, firstResultMs:number});
+  expect(stats.inits).toBe(1);
+  expect(stats.requested).toBeLessThan(200);
+  console.log("10,000行の表示計算", stats);
+});
+
+test("display functions keep the full group through file scope, insert, delete, reorder and pool changes", async () => {
+  await selectTableFile("001-others");
+  const values = page.locator(".display-text");
+  await expect(values).toHaveText(["30%", "50%", "100%"]);
+  await page.getByLabel("行1の操作", {exact:true}).click();
+  await page.getByRole("menuitem", {name:/下へ/}).click();
+  await expect(values).toHaveText(["50%", "30%", "100%"]);
+  await page.getByLabel("行1の操作", {exact:true}).click();
+  await page.getByRole("menuitem", {name:/削除/}).click();
+  await expect(values).toHaveText(["60%", "100%"]);
+  await page.getByRole("button", {name:"元に戻す",exact:true}).click();
+  await expect(values).toHaveText(["50%", "30%", "100%"]);
+  await page.getByRole("button", {name:/レコードを追加/}).click();
+  await expect(values).toHaveText(["50%", "30%", "100%", "—"]);
+  const group = page.getByLabel("poolId 行4", {exact:true});
+  const weight = page.getByLabel("weight 行4", {exact:true});
+  await group.fill("A");
+  await group.press("Enter");
+  await weight.fill("100");
+  await weight.press("Enter");
+  await expect(values).toHaveText(["25%", "15%", "100%", "50%"]);
+  await group.fill("B");
+  await group.press("Enter");
+  await expect(values).toHaveText(["50%", "30%", "8.26%", "91.74%"]);
+  await page.getByRole("button", {name:"元に戻す",exact:true}).click();
+  await expect(values).toHaveText(["25%", "15%", "100%", "50%"]);
 });

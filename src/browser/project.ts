@@ -1,5 +1,6 @@
 import { readConfig, writeConfig } from "../core/config";
 import { parseSource } from "../core/yaml";
+import { displaySaveGuards } from "../core/display-definitions";
 import {
   uid,
   type LoadedProject,
@@ -46,7 +47,7 @@ export class RecoveryRequired extends Error {
 }
 function sourcePath(path: string) {
   sourceParts(path);
-  if (!/\.ya?ml$/i.test(path))
+  if (!/\.ya?ml(?:\.view)?$/i.test(path))
     throw new Error(`YAML以外は保存できません: ${path}`);
   return `sources/${path}`;
 }
@@ -159,6 +160,14 @@ export async function load(root: Directory): Promise<LoadedProject> {
         if (text === null)
           throw new Error(`読込中にfileが削除されました: ${name}`);
         const source = parseSource(name, text);
+        if (source.data?.kind === "schema") {
+          const path = `${name}.view`;
+          const text = await read(root, sourcePath(path));
+          if (text !== null) {
+            source.display = parseSource(path, text, `display:${source.id}`);
+            saved.push({ id: `display:${source.id}`, path, text });
+          }
+        }
         sources.push(source);
         saved.push({ id: source.id, path: name, text });
       }
@@ -286,6 +295,8 @@ export class BrowserProject {
     before.set("masterdata.toml", this.base.configText);
     after.set("masterdata.toml", configText);
     const journal: Journal = { version: 1, files: [], folders: [] };
+    const guards: Journal = { version: 1, folders: [], files:
+      displaySaveGuards(this.base.saved, request.files).map((f) => ({ ...f, path: sourcePath(f.path) })) };
     for (const path of new Set([...before.keys(), ...after.keys()])) {
       const old = before.get(path) ?? null,
         next = after.get(path) ?? null;
@@ -314,6 +325,7 @@ export class BrowserProject {
         journal.folders.push({ path, before: was, after: next });
     }
     await verify(this.root, journal, "before");
+    await verify(this.root, guards, "before");
     const removed = new Set([
       ...journal.files.filter((f) => f.after === null).map((f) => f.path),
       ...journal.folders.filter((f) => !f.after).map((f) => f.path),
@@ -335,6 +347,7 @@ export class BrowserProject {
       throw new Error(`復旧情報の検証に失敗しました: ${path}`);
     try {
       await verify(this.root, journal, "before");
+      await verify(this.root, guards, "before");
       for (const folder of journal.folders
         .filter((f) => f.after)
         .sort((a, b) => a.path.length - b.path.length)) {
@@ -358,6 +371,7 @@ export class BrowserProject {
         await dir.removeEntry(name);
       }
       await verify(this.root, journal, "after");
+      await verify(this.root, guards, "after");
       await write(this.root, path, null);
     } catch (error) {
       try {

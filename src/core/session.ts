@@ -49,13 +49,22 @@ export class Session {
     this.listeners.forEach((l) => l());
   }
   load(project: LoadedProject) {
+    const saved = new Map(project.saved.map(file => [file.id, file]));
+    // Native sends the original attachment bytes alongside the source baseline.
+    // Decode here with the same YAML grammar as the browser, including multiline scripts.
+    const snapshot = { ...project.snapshot, sources: project.snapshot.sources.map(source => {
+      const view = saved.get(`display:${source.id}`);
+      return source.display || !view || view.path !== `${source.path}.view`
+        ? source : { ...source, display: parseSource(view.path, view.text, view.id) };
+    }) };
+    project = { ...project, snapshot };
     this.state = {
       project,
       snapshot: project.snapshot,
       revision: 0,
       past: [],
       future: [],
-      saved: new Map(project.saved.map((f) => [f.id, f])),
+      saved,
       savedConfig: JSON.stringify(project.snapshot.config),
     };
     this.savedSources = new Map(project.snapshot.sources.map((s) => [s.id, s]));
@@ -83,7 +92,8 @@ export class Session {
       !base ||
       base.path !== source.path ||
       base.data !== source.data ||
-      base.raw !== source.raw
+      base.raw !== source.raw ||
+      base.display !== source.display
     );
   }
   discardSource(id: string) {
@@ -206,8 +216,13 @@ export class Session {
     this.change("ソースを編集", (s) => ({
       ...s,
       sources: s.sources.map((f) =>
-        f.id === id ? parseSource(f.path, raw, id) : f,
+        f.id === id ? { ...parseSource(f.path, raw, id), display: f.display } : f,
       ),
+    }));
+  }
+  display(id: string, display: Source, label = "表示設定を編集") {
+    this.change(label, (s) => ({
+      ...s, sources: s.sources.map((f) => f.id === id ? { ...f, display } : f),
     }));
   }
   add(
@@ -706,16 +721,23 @@ export class Session {
   files(ids?: string[]) {
     const changed = this.state.snapshot.sources
       .filter((s) => !ids || ids.includes(s.id))
-      .map((s) => ({
-        id: s.id,
-        path: s.path,
-        text: this.dirtySource(s)
-          ? this.fileText(s)
-          : this.state.saved.get(s.id)!.text,
-      }));
+      .flatMap((s) => {
+        const base = this.savedSources.get(s.id);
+        const saved = this.state.saved.get(s.id);
+        const files = [{ id: s.id, path: s.path,
+          text: saved && base?.data === s.data && base?.raw === s.raw
+            ? saved.text : this.fileText(s) }];
+        if (s.display) {
+          const id = `display:${s.id}`;
+          const saved = this.state.saved.get(id);
+          files.push({ id, path: `${s.path}.view`, text:
+            saved && base?.display === s.display ? saved.text : serialize(s.display, saved) });
+        }
+        return files;
+      });
     if (!ids) return changed;
     const result = new Map(this.state.saved);
-    ids.forEach((id) => result.delete(id));
+    ids.forEach((id) => { result.delete(id); result.delete(`display:${id}`); });
     changed.forEach((file) => result.set(file.id, file));
     return [...result.values()];
   }

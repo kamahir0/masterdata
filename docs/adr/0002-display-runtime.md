@@ -12,6 +12,6 @@ Browserは静的アセットからReactを起動し、Desktopは同じGridをTau
 | Lua | WasmoonはLua VMをWasmで配布する。Fengariは純JSで比較的小さいが整数型が32bit。GUIのデータ型・配布制約との調整を要する。[Wasmoon](https://github.com/ceifa/wasmoon)・[Fengari](https://github.com/fengari-lua/fengari) |
 | Luau | sandbox・interruptの設計を持つ。ホスト側で配布・割込・メモリ制限を構成し、精密整数の受渡しを別途設計する必要がある。[Luau Sandbox](https://luau.org/sandbox/) |
 
-QuickJSのasm.js同期版を専用Workerに同梱するを採用する。TS実装、Rust IPC、C#生成のどれにも新しいスクリプト言語やホスト権限を追加せず、JSを一つのVMで評価できる。ホスト側のevalや動的Function、CDNからのコード取得を不要にする。実行の開始条件は[Grid評価](../specs/display-evaluation.md)の判断に従う。
+QuickJSのasm.js同期版を採用し、専用Workerに同梱する。TS実装、Rust IPC、C#生成のどれにも新しいスクリプト言語やホスト権限を追加せず、JSを一つのVMで評価できる。ホスト側のevalや動的Function、CDNからのコード取得を不要にする。実行の開始条件は[Grid評価](../specs/display-evaluation.md)の判断に従う。
 
 2026-11-11にmacOSで隔離した一時プロジェクトを使用。quickjs-emscripten-coreと@jitl/quickjs-asmjs-mjs-release-syncはいずれも0.32.0。専用Worker bundleはminify後1,027,064 bytes、gzipで332,762 bytes。localhostのHTTP CSPをscript-src self、worker-src self、connect-src noneとしてPlaywright ChromiumとWebKitで確認した。両方でulong最大値を十進文字列として保持し、20%、30%、50%を表示した。fetch、process、document、postMessage、indexedDBはゲスト側でundefined。50msの期限でループを中断し、12MiBのゲストヒープを上回る文字列処理をメモリ不足で停止し、続く42の評価が成功した。この数値はVM選定用の測定で、製品Gridの負荷測定は別途行う。

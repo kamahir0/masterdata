@@ -1,6 +1,6 @@
 # 表示関数のスキーマ編集
 
-Status: Approved
+Status: Implemented
 
 Approval mode: Agent-autonomous（追加Human directionに基づく保存方式）。再reviewで旧版CLIの探索対象、部分Save・競合、孤立ファイル保護と正本のbyte一致を確認。Blocking / Questions: None。
 

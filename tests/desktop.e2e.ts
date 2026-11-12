@@ -1502,10 +1502,10 @@ test("save-and-continue waits for an in-flight file save, then saves newer draft
   // Like Drawer preparation, Modal's paused scale(.2) can look stable for two
   // frames before its entry starts. A click there can miss the moving button.
   await expect(
-    page.getByRole("dialog", { name: "変更を保存しますか？", exact: true }),
+    page.getByRole("dialog", { name: "変更内容を保存しますか？", exact: true }),
   ).not.toHaveClass(/ant-zoom-(?:appear|enter)(?:-|\s|$)/);
-  await page
-    .getByRole("button", { name: "保存して続ける", exact: true })
+  await page.getByRole("dialog", { name: "変更内容を保存しますか？" })
+    .getByRole("button", { name: "保存", exact: true })
     .click();
   expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
   release();
@@ -3983,3 +3983,51 @@ test("welcome sample demonstrates display functions and alternating rows", async
   await expect(cell).toHaveCSS("background-color", "rgb(234, 243, 248)");
 });
 
+
+test("window close preserves or saves drafts according to the confirmation", async () => {
+  await page.evaluate(() => {
+    (window as any).__closed = false;
+    window.desktop.close = async () => { (window as any).__closed = true; };
+    (window as any).__command("close");
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
+  await page.evaluate(() => { (window as any).__closed = false; });
+  const input = page.getByLabel("message 行1", { exact: true });
+  await input.fill("ウィンドウ終了テスト");
+  await input.press("Enter");
+  await page.evaluate(() => (window as any).__command("close"));
+  const dialog = page.getByRole("dialog", { name: "変更内容を保存しますか？" });
+  await expect(dialog).toContainText("保存せずに閉じると、変更内容は失われます。");
+  await expect(dialog.locator(".ant-modal-confirm-btns button")).toHaveText(["保存しない", "キャンセル", /保\s*存/]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(input).toHaveValue("ウィンドウ終了テスト");
+  expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
+  await page.evaluate(() => (window as any).__command("close"));
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
+  expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).toContain("ウィンドウ終了テスト");
+});
+
+test("window close discard and save failure protect data", async () => {
+  const input = page.getByLabel("message 行1", { exact: true });
+  await input.fill("保存しない変更");
+  await input.press("Enter");
+  await page.evaluate(() => {
+    (window as any).__closed = false;
+    window.desktop.close = async () => { (window as any).__closed = true; };
+    (window as any).__realSave = window.desktop.save;
+    window.desktop.save = async () => { throw new Error("保存エラーのテスト"); };
+    (window as any).__command("close");
+  });
+  const dialog = page.getByRole("dialog", { name: "変更内容を保存しますか？" });
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText(/保存エラーのテスト/).first()).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(input).toHaveValue("保存しない変更");
+  expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
+  await dialog.getByRole("button", { name: "保存しない" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
+  expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).not.toContain("保存しない変更");
+});

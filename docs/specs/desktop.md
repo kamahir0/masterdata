@@ -23,7 +23,7 @@ Humanの製品像、豊かな標準UI・motion、Enum / Customの非modal編集�
 
 「保存」とCmd/Ctrl+Sは現在file、「すべて保存」とCmd/Ctrl+Shift+Sは全変更を対象にする。現在fileの保存で他file・設定・無関係なfolder変更を暗黙保存しない。対象fileの移動・作成に必要な親folderは作る。波及した他fileの編集は未保存で保持し、全保存で確定する。対象fileなしの通常保存は無効。入力のblur確定で新規fileが開かれた場合は、そのfileを今回の保存対象にする。window close / Project切替前の「保存して続ける」は全保存する。保存状態は保存I/O中の追加入力を保持し、Explorer・tab・全体で直ちに一致する。
 
-Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。folder削除・移動は未知のfile / directory / symlinkをpreflightで保護し、削除失敗を保存成功にしない。失敗時は今回のfile変更と削除済みfolderを復元するか復旧情報を保持し、baselineを進めない。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。
+Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。folder削除・移動は未知のfile / directory / symlinkをpreflightで保護し、削除失敗を保存成功にしない。失敗時は今回のfile変更と削除済みfolderを復元するか復旧情報を保持し、baselineを進めない。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。ウィンドウ終了時は「変更内容を保存しますか？」と「保存せずに閉じると、変更内容は失われます。」を示し、「保存しない」「キャンセル」「保存」の順に配置する。保存を主操作とし、Escはキャンセルする。保存成功後も新たな未保存変更があれば閉じずに通知し、失敗・保存操作の取消でも変更を保持する。未変更なら確認せず閉じる。
 
 有効sourceをGUIで編集して保存するときは、空でないmap / sequenceを2スペースのblock形式へ統一する。コメント・引用符・整数精度・改行形式・値を保持する。未変更fileやsyntax不正なraw入力を整形のためだけに書き換えない。
 

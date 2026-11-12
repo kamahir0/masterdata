@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type {
   CellDisplay,
   DisplayInput,
@@ -224,6 +224,7 @@ export function useGridDisplay(input?: DisplayInput) {
   return display;
 }
 interface DisplayCellOptions {
+  cellKey: string;
   display: GridDisplay;
   row: number;
   col: number;
@@ -238,7 +239,7 @@ export function GridBodyCell({
   ...cell
 }: GridCellProps & { displayCell?: DisplayCellOptions }) {
   if (!displayCell) return <div {...cell} />;
-  return <DisplayCell {...displayCell} cell={cell} />;
+  return <DisplayCell key={displayCell.cellKey} {...displayCell} cell={cell} />;
 }
 
 function DisplayCell({
@@ -257,7 +258,10 @@ function DisplayCell({
     subscribe,
     () => display.read(row)?.[col],
   );
-  const style = result?.style;
+  // Retain only paint on this mounted cell. Text, diagnostics and copy stay revision-bound.
+  const [lastStyle, setLastStyle] = useState<CellDisplay["style"]>();
+  if (result && result.style !== lastStyle) setLastStyle(result.style);
+  const style = result ? result.style : lastStyle;
   const css: React.CSSProperties = {
     fontWeight:
       style?.bold === undefined ? undefined : style.bold ? "bold" : "normal",

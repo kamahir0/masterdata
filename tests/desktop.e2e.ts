@@ -19,6 +19,12 @@ test.beforeEach(async ({ browser }, info) => {
     for (const [name, target] of [["drop.yaml", "000-drop.yaml"], ["drop.yaml.view", "000-drop.yaml.view"], ["others.yaml", "001-others.yaml"]])
       await fs.copyFile(path.resolve("tests/fixtures/display", name), path.join(root, "sources", target));
   }
+  if (info.title.startsWith("display functions retain")) {
+    await fs.writeFile(path.join(root, "sources/000-drop.yaml.view"), stringify({
+      functionColumns: [{ name: "weightText", script: "return {text: String(row.weight)};" }],
+      formatRules: [{ name: "even", script: 'return table.rows.indexOf(row) % 2 === 1 && row.weight > 0n ? {backgroundColor:"#EAF3F8"} : null;' }],
+    }));
+  }
   if (info.title.startsWith("display functions virtual")) {
     await fs.writeFile(path.join(root, "sources/000-drop.yaml.view"), `functionColumns:
   - name: rate
@@ -3928,6 +3934,48 @@ test("display functions calculate across files and recover through editing, filt
   await expect(values.first()).toHaveText("20%");
   await expect(weightCell).not.toHaveCSS("background-color", fill);
   await expect(rateCell).not.toHaveCSS("background-color", fill);
+});
+
+test("display functions retain even-row styles through pending edits and appends", async () => {
+  await selectTableFile("001-others");
+  const values = page.locator(".display-text");
+  const styled = page.locator(".data-cell .display-cell[data-fill]");
+  await expect(values).toHaveText(["30", "50", "9"]);
+  await expect(styled).toHaveCount(10);
+  // Hold actual worker requests until the pending DOM has been inspected.
+  await page.evaluate(() => {
+    const send = Worker.prototype.postMessage;
+    const pending: (() => void)[] = [];
+    let hold = true;
+    Worker.prototype.postMessage = function (msg, ...args) {
+      const deliver = () => Reflect.apply(send, this, [msg, ...args]);
+      if (hold && msg.type === "rows") pending.push(deliver);
+      else deliver();
+    };
+    (window as any).holdDisplay = () => { hold = true; };
+    (window as any).resumeDisplay = () => {
+      hold = false;
+      pending.splice(0).forEach(f => f());
+    };
+  });
+  const resume = () => page.evaluate(() => (window as any).resumeDisplay());
+  await page.getByRole("button", { name: /レコードを追加/ }).click();
+  await expect(values).toHaveText(["…", "…", "…", "…"]);
+  await expect(styled).toHaveCount(10);
+  await expect(values.last().locator("..")).not.toHaveAttribute("data-fill");
+  await resume();
+  await expect(values.first()).toHaveText("30");
+  await page.evaluate(() => (window as any).holdDisplay());
+  const weight = page.getByLabel("weight 行1", { exact: true });
+  await weight.fill("0");
+  await weight.press("Enter");
+  await expect(values.first()).toHaveText("…");
+  await expect(styled).toHaveCount(10);
+  await expect(values.first().locator("..")).toHaveAttribute("data-fill", "#EAF3F8");
+  await resume();
+  await expect(values.first()).toHaveText("0");
+  await expect(styled).toHaveCount(5);
+  await expect(values.first().locator("..")).not.toHaveAttribute("data-fill");
 });
 
 test("display functions virtual grid aggregates ten thousand records while evaluating mounted rows", async () => {

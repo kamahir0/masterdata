@@ -2,7 +2,7 @@
 
 | Canonical owner | Status | 範囲 |
 | --- | --- | --- |
-| [関数列とテーブル書式](display-evaluation.md) | Approved | Gridでの隔離評価、データAPI、書式、診断 |
+| [関数列とテーブル書式](display-evaluation.md) | Implemented | Gridでの隔離評価、データAPI、書式、診断 |
 | [表示関数のスキーマ編集](display-schema.md) | Implemented | 関数カラム・動的書式の定義、GUI編集と永続化 |
 | [Desktop Authoring](desktop.md) | Implemented | 編集session、表・型・値、保存、Build / Publish、標準UIとmotion |
 | [Browser Authoring](browser.md) | Implemented | 静的Browser、ローカル選択・メモリ編集・明示保存・中断復旧、Desktop / CLIとの境界 |

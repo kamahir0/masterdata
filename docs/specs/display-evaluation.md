@@ -1,6 +1,6 @@
 # 関数カラムとテーブル書式のGrid評価
 
-Status: Approved
+Status: Implemented
 
 2026-11-11 Human Requirement。分割された同一テーブルの全レコードを使って表示値・書式を計算する。独自DSLを作らない。実行開始の契機はHumanが指定していない。以下のAPI、合成、診断、キャッシュ戦略はAgent Decision。[スキーマ編集](display-schema.md)と[言語選定](../adr/0002-display-runtime.md)を参照。
 

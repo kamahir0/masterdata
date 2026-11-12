@@ -1,6 +1,6 @@
 use crate::build::{build_workspace, publish_build};
 use crate::config::{ write_config, PROJECT_FILE_NAME};
-use crate::files::{load_workspace, save_workspace, Workspace};
+use crate::files::{load_workspace_gui, save_workspace, Workspace};
 use crate::model::{default_config, uid, BuildResult, Data};
 use crate::wire::{
     build_result_to_data, decode_data, encode_data, loaded_project_to_data,
@@ -67,7 +67,7 @@ impl ProjectService {
 
     fn open_path(&self, root: &Path) -> Result<Data, String> {
         self.idle()?;
-        let (workspace, project) = load_workspace(root)?;
+        let (workspace, project) = load_workspace_gui(root)?;
         let mut guard = self.state.lock().unwrap();
         guard.workspace = Some(workspace);
         guard.build = None;

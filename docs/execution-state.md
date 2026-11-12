@@ -1,8 +1,8 @@
 # Development State
 
 Stage: objective-complete
-Candidate: f36b8920811b398e788941f96dda368c0f4e8958
-Work base: d008f1399c4fe384abb37b327f3858217891dc2a
+Candidate: b13287f0c9b5620137cc385e07f97f3b74fced4a
+Work base: 1ce13cdb7a790af2905d4d8d342217098b8e42a8
 
 ## Active work
 
@@ -14,6 +14,9 @@ None.
 
 ## Evidence
 
-- 日本語notesと8 assetsを含む[MasterData v0.1.3 Latest Release](https://github.com/kamahir0/masterdata/releases/tag/v0.1.3)を公開し、公開checksumと全7件の一致を確認した。
-- 固定tag v0.1.3（f36b892）で[全OS release build](https://github.com/kamahir0/masterdata/actions/runs/40534575506)が成功。macOS DMG、Windowsインストーラー、Linux AppImage/deb、各OSのCLIバイナリを含む全配布物の正常生成を確認。
-- ローカル検証（型検査、ユニットテスト全66件、Vite build、Desktop build、cargo check/test、Playwright UI tests、workspace check、diff check）すべて成功。
+- 再計算待ちの同一セルで書式を保持し、新規行へ混入せず条件解除後に色が消えることをWorkerの応答を保留して検証した。配送候補dcfa294の[3 OSのCI](https://github.com/kamahir0/masterdata/actions/runs/43245361137)が成功した。
+- セル背景修正（bb16f2f）のWindows・macOS・LinuxのCIが成功した。macOSは初回のキャッシュ後処理で時間上限に達し、同じSHAの再実行で完了した。[Workspace CI](https://github.com/kamahir0/masterdata/actions/runs/43126296262)
+- Chromium・WebKitで通常セルと空文字を返す関数セルを撮影し、ライト・ダーク両テーマでセル四辺のピクセルが指定色に一致した。選択枠と条件解除を操作で確認し、ローカルUI回帰198件が成功した。
+- 初回実装（040d6f6）のWindows・macOS・Linuxのパッケージ作成と起動確認に成功。macOSの初回に失敗したExplorer操作は、ローカルの反復20件と同じSHAのCI再実行で成功した。[Workspace CI](https://github.com/kamahir0/masterdata/actions/runs/42941486592)
+- 分割したドロッププールの4行をmacOSのTauriアプリで20%、30%、50%、100%と確認。ChromiumとWebKitでは1万行から1行を検索し、ウェイト編集とUndoで全件を母数に再計算することを確認した。
+- ローカルで型検査、89件のユニットテスト、Rustの14件とIPCの3件、UI回帰198件が成功。UI回帰はプラットフォーム条件で16件をスキップした。表示設定だけの保存で正本がバイト一致し、Rust CLIで生成したMasterMemoryバイナリの再読込で4件の実レコードが一致した。

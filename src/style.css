@@ -548,6 +548,28 @@ button:focus-visible,
   background: var(--accent-fill);
   box-shadow: none;
 }
+.display-definitions {
+  margin-top: 28px;
+}
+.display-definition-group {
+  margin-top: 24px;
+}
+.display-definition-problem {
+  color: var(--muted);
+  font-size: 12px;
+}
+.display-definition-form {
+  display: grid;
+  gap: 16px;
+}
+.display-definition-form label {
+  display: grid;
+  gap: 6px;
+}
+.display-definition-code {
+  font-family: ui-monospace, monospace;
+  tab-size: 2;
+}
 .data-cell {
   transition: background-color 0.12s ease;
   position: relative;
@@ -1773,3 +1795,20 @@ button:focus-visible,
     max-width: 100%;
   }
 }
+
+.display-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  min-width: 0;
+  width: 100%;
+}
+.display-cell .value-control { flex: 1; }
+.display-cell[data-ink] :is(input, .ant-select-content-value, .complex-value, .reference-label) { color: var(--display-color); }
+.display-cell[data-fill] :is(.entry, .ant-select, .ant-select-selector, .complex-value, .null-value) { background-color: transparent; }
+.display-cell[data-weight] :is(input, button, .ant-select-content-value) { font-weight: var(--display-weight); }
+.display-cell[data-italic] :is(input, button, .ant-select-content-value) { font-style: var(--display-font); }
+.display-text { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.display-error { cursor: pointer; font-weight: bold; color: var(--danger, #b44a37); background: transparent; border: 0; }
+.column-badges button { font: inherit; color: var(--muted); cursor: pointer; background: transparent; border: 0; }

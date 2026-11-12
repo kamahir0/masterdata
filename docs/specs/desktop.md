@@ -7,6 +7,8 @@ Basis: 2026-10-17 Humanの実装・判断委任。別passで製品像、旧資�
 
 Change provenance: [タブ選択アニメーション時間の調整](../spec-changes/0028-file-tab-selection-motion-duration.md)、[表の操作位置とBrowserの識別表示](../spec-changes/0026-table-navigation-and-browser-identity.md)、[レビューで判明した編集対象と保存の保護](../spec-changes/0025-review-data-safety.md)、[Explorer新規作成のEscape取消](../spec-changes/0024-explorer-create-escape.md)、[業務ツールとしてのUI文言の統一と過剰なスローガンの排除](../spec-changes/0020-business-app-ui-copy.md)、[操作と選択のfeedback](../spec-changes/0019-workbench-action-and-selection-feedback.md)、[モダンworkbench](../spec-changes/0018-modern-workbench-surfaces.md)、[Explorerの移動拒否理由](../spec-changes/0014-explorer-drop-reasons.md)、[Rust CLIとネイティブバックエンドコアの採用](../spec-changes/0013-rust-cli-and-backend-core.md)、[表の表示対象・tab退出・標準menu](../spec-changes/0012-table-scope-tab-exit-context-menu.md)、[TOMLプロジェクトファイル](../spec-changes/0011-toml-project-file.md)、[項目編集と直接操作](../spec-changes/0010-object-lists-and-direct-manipulation.md)、[視認できる削除feedback](../spec-changes/0009-visible-deletion-feedback.md)、[編集基盤とExplorer](../spec-changes/0008-editing-foundation-and-explorer.md)、[結果feedbackとBuild操作](../spec-changes/0007-result-feedback-and-build-controls.md)、[compact workbench](../spec-changes/0006-compact-editor-workbench.md)、[保存・Explorer・構造編集feedback](../spec-changes/0005-editor-save-explorer-motion.md)、[値入力の共通枠](../spec-changes/0004-value-input-frame.md)、[開発版の起動入口](../spec-changes/0003-development-app-discovery.md)、[Tauri移行と開発版install](../spec-changes/0002-tauri-development-install.md)、 [編集対象・一時操作・表示の整理](../spec-changes/0001-editor-interaction-polish.md)。
 
+表には[表示専用の関数列と書式](display-evaluation.md)を重ねられる。[表示定義](display-schema.md)をスキーマと組にして保存する。
+
 ## 根拠と範囲
 
 Humanの製品像、豊かな標準UI・motion、Enum / Customの非modal編集、2026-10-17の完成までの実装委任に基づく。legacy2の型・YAML・キー・参照・Build資料はreferenceであり、自動継承したauthorityではない。以下はその目的から導いたAgent Decisionを含む。
@@ -21,7 +23,7 @@ Humanの製品像、豊かな標準UI・motion、Enum / Customの非modal編集�
 
 「保存」とCmd/Ctrl+Sは現在file、「すべて保存」とCmd/Ctrl+Shift+Sは全変更を対象にする。現在fileの保存で他file・設定・無関係なfolder変更を暗黙保存しない。対象fileの移動・作成に必要な親folderは作る。波及した他fileの編集は未保存で保持し、全保存で確定する。対象fileなしの通常保存は無効。入力のblur確定で新規fileが開かれた場合は、そのfileを今回の保存対象にする。window close / Project切替前の「保存して続ける」は全保存する。保存状態は保存I/O中の追加入力を保持し、Explorer・tab・全体で直ちに一致する。
 
-Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。folder削除・移動は未知のfile / directory / symlinkをpreflightで保護し、削除失敗を保存成功にしない。失敗時は今回のfile変更と削除済みfolderを復元するか復旧情報を保持し、baselineを進めない。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。
+Saveは意味エラーで拒否しない。保存前に変更対象の外部変更とpath衝突を確認し、黙って上書きしない。複数fileは全対象をpreflightしてbackupを残すtransactionで更新し、失敗時は復旧または復旧情報を保持する。folder削除・移動は未知のfile / directory / symlinkをpreflightで保護し、削除失敗を保存成功にしない。失敗時は今回のfile変更と削除済みfolderを復元するか復旧情報を保持し、baselineを進めない。window close / Project切替は未保存変更を保存・破棄・cancelから選べる。破棄を自動選択しない。ウィンドウ終了時は「変更内容を保存しますか？」と「保存せずに閉じると、変更内容は失われます。」を示し、「保存しない」「キャンセル」「保存」の順に配置する。保存を主操作とし、Escはキャンセルする。保存成功後も新たな未保存変更があれば閉じずに通知し、失敗・保存操作の取消でも変更を保持する。未変更なら確認せず閉じる。
 
 有効sourceをGUIで編集して保存するときは、空でないmap / sequenceを2スペースのblock形式へ統一する。コメント・引用符・整数精度・改行形式・値を保持する。未変更fileやsyntax不正なraw入力を整形のためだけに書き換えない。
 

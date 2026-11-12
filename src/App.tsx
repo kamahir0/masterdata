@@ -57,7 +57,6 @@ import {
   typeKind,
   text,
 } from "./core/types";
-import { serialize } from "./core/yaml";
 import { Explorer, SourceIcon } from "./ui/explorer";
 import { GridEditor } from "./ui/grid";
 import { TypeEditor } from "./ui/type-editor";
@@ -92,12 +91,7 @@ import { Entry } from "./ui/inputs";
 import { EditorBoundary } from "./ui/editor-boundary";
 import { quickTransition, easeOutExpoCss, resultTransition } from "./ui/motion";
 function SourceText({ source }: { source: Source }) {
-  const readText = () => {
-    const saved = session.getState().saved.get(source.id);
-    return saved && !session.dirtySource(source)
-      ? saved.text
-      : serialize(source, saved);
-  };
+  const readText = () => session.sourceText(source);
   const [draft, setDraft] = useState(readText);
   const [changed, setChanged] = useState(false);
   useEffect(() => {
@@ -452,7 +446,7 @@ function Workspace({
     setClosing(null);
     guard.current = false;
   };
-  async function guarded(action: () => Promise<void> | void) {
+  async function guarded(action: () => Promise<void> | void, windowClose = false) {
     if (guard.current) return;
     commitActive();
     if (!session.dirty) {
@@ -462,29 +456,33 @@ function Workspace({
         return;
       }
       commitActive();
-      if (session.dirty) return guarded(action);
+      if (session.dirty) return guarded(action, windowClose);
       await action();
       return;
     }
     guard.current = true;
     const instance = modal.confirm({
-      title: "変更を保存しますか？",
-      content:
-        "未保存の変更があります。保存してから続けるか、今回の変更を破棄できます。",
-      okText: "保存して続ける",
+      title: windowClose ? "変更内容を保存しますか？" : "変更を保存しますか？",
+      content: windowClose
+        ? "保存せずに閉じると、変更内容は失われます。"
+        : "未保存の変更があります。保存してから続けるか、今回の変更を破棄できます。",
+      okText: windowClose ? "保存" : "保存して続ける",
+      okButtonProps: windowClose ? { "aria-label": "保存" } : undefined,
       cancelText: "キャンセル",
+      keyboard: true,
+      autoFocusButton: windowClose ? "cancel" : "ok",
       onOk: async () => {
         try {
           await save(true);
           commitActive();
-          if (session.dirty)
-            throw new Error(
-              "保存中に変更が追加されました。入力を確認して再度保存してください。",
-            );
+          if (session.dirty) {
+            const error = new Error("保存中に変更が追加されました。入力を確認して再度保存してください。");
+            fail(error);
+            throw error;
+          }
           guard.current = false;
           await action();
         } catch {
-          guard.current = false;
           throw new Error("保存できませんでした。入力は保持しています。");
         }
       },
@@ -496,12 +494,13 @@ function Workspace({
           <Button
             danger
             onClick={async () => {
+              if (savingRequest.current) return;
               guard.current = false;
               instance.destroy();
               await action();
             }}
           >
-            破棄して続ける
+            {windowClose ? "保存しない" : "破棄して続ける"}
           </Button>
           <CancelBtn />
           <OkBtn />
@@ -616,7 +615,7 @@ function Workspace({
         if (command === "find") find.current?.focus();
         if (command === "problems") setProblemsOpen((old) => !old);
         if (command === "close")
-          void actions.current.guarded(() => window.desktop.close());
+          void actions.current.guarded(() => window.desktop.close(), true);
         if (command === "busy-close")
           message.info("保存・生成処理が完了するまでお待ちください。");
       }),
@@ -822,6 +821,7 @@ function Workspace({
                             source={source}
                             snapshot={snapshot}
                             problems={problems}
+                            editDisplay={(schemaId) => { select(schemaId); setTab("fields"); }}
                             onOpen={setCursor}
                             navigate={select}
                             profile={profile}

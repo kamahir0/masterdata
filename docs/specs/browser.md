@@ -6,6 +6,8 @@ Basis: 2026-10-22 Humanとの検討。Human Proposalは「静的配信」「ロ�
 
 関連仕様: [Desktop Authoring](desktop.md)、[CLI Authoring and Automation](cli.md)。本書は**ブラウザ実行環境の新規仕様**であり、既存のDesktop / CLIのBuild / Publishや保存規則を変更しない。実装済みを意味しない。
 
+表には[表示専用の関数列と書式](display-evaluation.md)を重ねられる。[表示定義](display-schema.md)をスキーマと組にして保存する。
+
 ## 目的・対象作業・非対象
 
 インストール不要の静的Webページから、利用者自身のローカルMasterDataプロジェクトを開き、既存Desktop版と同じ基本操作でデータ・型・構造を編集し、明示的に保存する。C# / MasterMemory成果物の生成・配置は既存CLI / Desktopに委ねる。

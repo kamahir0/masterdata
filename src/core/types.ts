@@ -14,6 +14,8 @@ export interface Source {
   raw?: string;
   formatText?: string;
   syntaxError?: string;
+  // GUI-only YAML document. Never part of canonical data or CLI discovery.
+  display?: Source;
 }
 export interface Profile {
   include: string[];

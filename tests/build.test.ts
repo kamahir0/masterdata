@@ -35,6 +35,14 @@ records:
   - {groupId: 1, locale: en, parentGroup: 1, parentLocale: ja}
 `,
       );
+      await fs.copyFile(
+        path.resolve("tests/fixtures/display/drop.yaml"),
+        path.join(root, "sources/drop.yaml"),
+      );
+      await fs.copyFile(
+        path.resolve("tests/fixtures/display/drop.yaml.view"),
+        path.join(root, "sources/drop.yaml.view"),
+      );
       const { workspace, project } = await loadWorkspace(
         path.join(root, "masterdata.toml"),
       );
@@ -44,7 +52,12 @@ records:
           "PASS MasterMemory build / reload / every selected row",
         ),
       );
-      assert.equal(result.records, 9);
+      assert.equal(result.records, 14);
+      const dropClass = await fs.readFile(
+        path.join(result.directory, "Generated/DropPool.g.cs"), "utf8",
+      );
+      assert.match(dropClass, /public uint Weight/);
+      assert.doesNotMatch(dropClass, /dropRate|DropRate|functionColumns|formatRules|sumBy/);
       assert(
         (await fs.stat(path.join(result.directory, "masterdata.bytes"))).size >
           0,

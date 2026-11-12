@@ -1,0 +1,11 @@
+functionColumns:
+  - name: dropRate
+    script: |- # プール内の百分率
+      const total = table.sumBy("poolId", row.poolId, "weight");
+      if (typeof total !== "bigint" || total <= 0n) return { text: "—" };
+      return { text: Number((row.weight * 10000n + total / 2n) / total) / 100 + "%" };
+formatRules:
+  - name: 未完成のルール
+    script: |-
+      // 編集途中でも、保存・Buildできる。
+      return {

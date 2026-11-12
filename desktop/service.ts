@@ -29,7 +29,7 @@ export class ProjectService {
   }
   private async open(root: string) {
     this.idle();
-    const loaded = await loadWorkspace(root);
+    const loaded = await loadWorkspace(root, true);
     this.workspace = loaded.workspace;
     this.build = null;
     return loaded.project;

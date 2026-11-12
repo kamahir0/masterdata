@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { projectFileName, readConfig, writeConfig } from "./config";
 import { parseSource } from "../src/core/yaml";
+import { displaySaveGuards } from "../src/core/display-definitions";
 import {
   type Config,
   type LoadedProject,
@@ -18,6 +19,7 @@ export interface Workspace {
   baseline: SavedFile[];
   configText: string;
   folders: string[];
+  display?: boolean;
 }
 const safeName = (name: string) =>
   !path.isAbsolute(name) &&
@@ -41,7 +43,7 @@ export async function safePath(root: string, relative: string) {
 }
 export async function optionalRead(file: string) {
   try {
-    return await fs.readFile(file, "utf8");
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await fs.readFile(file));
   } catch (error: any) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -49,6 +51,7 @@ export async function optionalRead(file: string) {
 }
 export async function loadWorkspace(
   input: string,
+  display = false,
 ): Promise<{ workspace: Workspace; project: LoadedProject }> {
   let root: string;
   let configText: string;
@@ -80,7 +83,7 @@ export async function loadWorkspace(
       await new Promise<void>((resolve) => readers.push(resolve));
     else reading++;
     try {
-      return await fs.readFile(file, "utf8");
+      return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await fs.readFile(file));
     } finally {
       const next = readers.shift();
       if (next) next();
@@ -106,6 +109,14 @@ export async function loadWorkspace(
         } else if (/\.ya?ml$/i.test(entry.name)) {
           const text = await readSource(path.join(directory, entry.name));
           const source = parseSource(name, text);
+          if (display && source.data?.kind === "schema") {
+            const path = `${name}.view`;
+            const text = await optionalRead(await safePath(root, `sources/${path}`));
+            if (text !== null) {
+              source.display = parseSource(path, text, `display:${source.id}`);
+              saved.push({ id: `display:${source.id}`, path, text });
+            }
+          }
           sources.push(source);
           saved.push({ id: source.id, path: name, text });
         }
@@ -122,6 +133,7 @@ export async function loadWorkspace(
     baseline: saved,
     configText,
     folders,
+    display,
   };
   return {
     workspace,
@@ -148,6 +160,13 @@ export async function saveWorkspace(
   )
     throw new Error("保存先のパスが重複しています。");
   const old = new Map(workspace.baseline.map((f) => [f.path, f]));
+  const guards = workspace.display ? displaySaveGuards(workspace.baseline, request.files) : [];
+  async function verifyGuards(state: "before" | "after") {
+    for (const guard of guards)
+      if (await optionalRead(await safePath(workspace.root, `sources/${guard.path}`)) !== guard[state])
+        throw new Error(`外部で変更されています: ${guard.path}。入力は保持しています。`);
+  }
+  await verifyGuards("before");
   const names = new Set([...old.keys(), ...desired.keys()]);
   const changes: {
     file: string;
@@ -221,6 +240,7 @@ export async function saveWorkspace(
   const applied: typeof changes = [];
   const removed: string[] = [];
   try {
+    await verifyGuards("before");
     for (const dir of directories) await fs.mkdir(dir, { recursive: true });
     for (const change of changes) {
       // Check again immediately before replacement; cached discovery is never write authorization.
@@ -239,6 +259,7 @@ export async function saveWorkspace(
       try { await fs.rmdir(dir); removed.push(dir); }
       catch (error: any) { if (error.code !== "ENOENT") throw error; }
     }
+    await verifyGuards("after");
   } catch (error) {
     let recoveryFailed = false;
     for (const dir of removed.reverse()) {

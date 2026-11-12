@@ -15,6 +15,25 @@ let saveGate: Promise<void> | undefined;
 test.beforeEach(async ({ browser }, info) => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "masterdata-e2e-"));
   await fs.cp(path.resolve("samples/Adventure"), root, { recursive: true });
+  if (info.title.startsWith("display functions")) {
+    for (const [name, target] of [["drop.yaml", "000-drop.yaml"], ["drop.yaml.view", "000-drop.yaml.view"], ["others.yaml", "001-others.yaml"]])
+      await fs.copyFile(path.resolve("tests/fixtures/display", name), path.join(root, "sources", target));
+  }
+  if (info.title.startsWith("display functions retain")) {
+    await fs.writeFile(path.join(root, "sources/000-drop.yaml.view"), stringify({
+      functionColumns: [{ name: "weightText", script: "return {text: String(row.weight)};" }],
+      formatRules: [{ name: "even", script: 'return table.rows.indexOf(row) % 2 === 1 && row.weight > 0n ? {backgroundColor:"#EAF3F8"} : null;' }],
+    }));
+  }
+  if (info.title.startsWith("display functions virtual")) {
+    await fs.writeFile(path.join(root, "sources/000-drop.yaml.view"), `functionColumns:
+  - name: rate
+    script: 'return {text: String(row.weight * 1000000n / table.sumBy("poolId", row.poolId, "weight")) + "ppm"};'
+`);
+    const rows = Array.from({ length: 9999 }, (_, i) =>
+      `  - {id: ${i + 1}, poolId: A, itemId: item-${i + 1}, weight: 20}`);
+    await fs.writeFile(path.join(root, "sources/001-others.yaml"), [ "kind: data", "table: dropPool", "records:", ...rows, "" ].join("\n"));
+  }
   if (info.title.startsWith("large")) {
     const file = path.join(root, "sources/announcements/announcement.yaml");
     const data = parse(await fs.readFile(file, "utf8"));
@@ -112,6 +131,23 @@ test.beforeEach(async ({ browser }, info) => {
       dirty: () => {}, close: async () => {}, onCommand: callback => { window.__command = callback; return () => {}; },
     };
   })()`);
+  if (info.title.startsWith("display functions virtual")) {
+    await page.addInitScript(() => {
+      const stats = { started: 0, firstResultMs: 0, requested: 0, inits: 0 };
+      (window as any).__displayStats = stats;
+      const original = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function (message, ...rest: any[]) {
+        if (message.type === "init" && message.input?.programs) {
+          stats.inits++;
+          stats.started = performance.now();
+          this.addEventListener("message", e => {
+            if (e.data.type === "rows" && !stats.firstResultMs) stats.firstResultMs = performance.now() - stats.started;
+          });
+        } else if (message.type === "rows" && Array.isArray(message.indices)) stats.requested += message.indices.length;
+        return original.call(this, message, ...rest);
+      };
+    });
+  }
   await page.goto("http://127.0.0.1:5173");
   if (info.title.startsWith("welcome")) {
     await expect(
@@ -1472,10 +1508,10 @@ test("save-and-continue waits for an in-flight file save, then saves newer draft
   // Like Drawer preparation, Modal's paused scale(.2) can look stable for two
   // frames before its entry starts. A click there can miss the moving button.
   await expect(
-    page.getByRole("dialog", { name: "変更を保存しますか？", exact: true }),
+    page.getByRole("dialog", { name: "変更内容を保存しますか？", exact: true }),
   ).not.toHaveClass(/ant-zoom-(?:appear|enter)(?:-|\s|$)/);
-  await page
-    .getByRole("button", { name: "保存して続ける", exact: true })
+  await page.getByRole("dialog", { name: "変更内容を保存しますか？" })
+    .getByRole("button", { name: "保存", exact: true })
     .click();
   expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
   release();
@@ -3836,4 +3872,210 @@ test("guarded navigation on create-new and open-project preserves draft, Undo hi
   await expect(page.locator(".window-project")).toHaveText(
     "保存後の新規Project",
   );
+});
+
+test("display functions calculate across files and recover through editing, filtering and Undo", async () => {
+  const values = page.locator(".display-text");
+  await expect(values).toHaveText(["20%", "30%", "50%", "100%"]);
+  await page.getByLabel("表を検索").fill("sword");
+  await expect(values).toHaveText(["20%"]);
+  await page.getByLabel("weight 行1", { exact: true }).fill("40");
+  await page.getByLabel("weight 行1", { exact: true }).press("Enter");
+  await expect(values).toHaveText(["33.33%"]);
+  await page.getByLabel("表を検索").fill("");
+  await expect(values).toHaveText(["33.33%", "25%", "41.67%", "100%"]);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(values).toHaveText(["20%", "30%", "50%", "100%"]);
+  await page.getByRole("button", { name: "やり直す", exact: true }).click();
+  await expect(values.first()).toHaveText("33.33%");
+
+  // Diagnostics for a broken style leave the derived text available. Repair it from the grid.
+  await page.getByRole("button", { name: /表示定義を修正.*未完成のルール/ }).first().click();
+  await page.getByRole("button", { name: "テーブル書式1を編集" }).click();
+  await page.getByLabel("テーブル書式のコード").fill('return row.weight >= 40n && ["dropRate", "weight"].includes(column.name) ? { bold: true, color: "#235678", backgroundColor: "#aabbcc" } : null;');
+  await page.getByRole("button", { name: /^適\s*用$/ }).click();
+  await page.getByRole("tab", { name: "データ", exact: true }).click();
+  await expect(values.first()).toHaveCSS("color", "rgb(35, 86, 120)");
+  await expect(values.first()).toHaveCSS("font-weight", "700");
+  const weight = page.getByLabel("weight 行1", { exact: true }).first();
+  const weightCell = weight.locator("xpath=ancestor::*[@data-column-index][1]");
+  const rateCell = values.first().locator("xpath=ancestor::*[@data-column-index][1]");
+  const fill = "rgb(170, 187, 204)";
+  await expect(weight).toHaveCSS("color", "rgb(35, 86, 120)");
+  await expect(weightCell).toHaveCSS("background-color", fill);
+  await expect(rateCell).toHaveCSS("background-color", fill);
+  await expect(page.getByRole("button", { name: /表示定義を修正/ })).toHaveCount(0);
+
+  await values.first().click();
+  await expect(rateCell).toHaveClass(/selected-cell/);
+  await expect(rateCell).not.toHaveCSS("box-shadow", "none");
+  await expect(rateCell).toHaveCSS("background-color", fill);
+  await weightCell.screenshot({ path: test.info().outputPath("formatted-weight.png") });
+  await rateCell.screenshot({ path: test.info().outputPath("selected-drop-rate.png") });
+  const clipboard = await page.locator(".grid-editor").evaluate(el => {
+    const data = new DataTransfer();
+    el.dispatchEvent(new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: data }));
+    data.setData("text/plain","overwrite");
+    el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+    return data.getData("application/x-masterdata");
+  });
+  expect(JSON.parse(clipboard)).toEqual([["33.33%"]]);
+  await expect(values.first()).toHaveText("33.33%");
+  await saveAll();
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+  const disk = parse(await fs.readFile(path.join(root, "sources/000-drop.yaml"), "utf8"));
+  expect(Object.keys(disk.records[0])).toEqual(["id", "poolId", "itemId", "weight"]);
+  expect(disk.functionColumns).toBeUndefined();
+  await page.reload();
+  await expect(values.first()).toHaveText("33.33%");
+  await expect(values.first()).toHaveCSS("color", "rgb(35, 86, 120)");
+  await weight.fill("20");
+  await weight.press("Enter");
+  await expect(values.first()).toHaveText("20%");
+  await expect(weightCell).not.toHaveCSS("background-color", fill);
+  await expect(rateCell).not.toHaveCSS("background-color", fill);
+});
+
+test("display functions retain even-row styles through pending edits and appends", async () => {
+  await selectTableFile("001-others");
+  const values = page.locator(".display-text");
+  const styled = page.locator(".data-cell .display-cell[data-fill]");
+  await expect(values).toHaveText(["30", "50", "9"]);
+  await expect(styled).toHaveCount(10);
+  // Hold actual worker requests until the pending DOM has been inspected.
+  await page.evaluate(() => {
+    const send = Worker.prototype.postMessage;
+    const pending: (() => void)[] = [];
+    let hold = true;
+    Worker.prototype.postMessage = function (msg, ...args) {
+      const deliver = () => Reflect.apply(send, this, [msg, ...args]);
+      if (hold && msg.type === "rows") pending.push(deliver);
+      else deliver();
+    };
+    (window as any).holdDisplay = () => { hold = true; };
+    (window as any).resumeDisplay = () => {
+      hold = false;
+      pending.splice(0).forEach(f => f());
+    };
+  });
+  const resume = () => page.evaluate(() => (window as any).resumeDisplay());
+  await page.getByRole("button", { name: /レコードを追加/ }).click();
+  await expect(values).toHaveText(["…", "…", "…", "…"]);
+  await expect(styled).toHaveCount(10);
+  await expect(values.last().locator("..")).not.toHaveAttribute("data-fill");
+  await resume();
+  await expect(values.first()).toHaveText("30");
+  await page.evaluate(() => (window as any).holdDisplay());
+  const weight = page.getByLabel("weight 行1", { exact: true });
+  await weight.fill("0");
+  await weight.press("Enter");
+  await expect(values.first()).toHaveText("…");
+  await expect(styled).toHaveCount(10);
+  await expect(values.first().locator("..")).toHaveAttribute("data-fill", "#EAF3F8");
+  await resume();
+  await expect(values.first()).toHaveText("0");
+  await expect(styled).toHaveCount(5);
+  await expect(values.first().locator("..")).not.toHaveAttribute("data-fill");
+});
+
+test("display functions virtual grid aggregates ten thousand records while evaluating mounted rows", async () => {
+  const values = page.locator(".display-text");
+  await expect(values.first()).toHaveText("100ppm", { timeout: 12000 });
+  await page.locator(".ant-table-tbody-virtual-holder").evaluate(el => el.scrollTo(0, el.scrollHeight));
+  await expect(page.locator('input[value="item-9999"]')).toBeVisible();
+  await expect(values.last()).toHaveText("100ppm");
+  await page.getByLabel("表を検索").fill("item-9999");
+  await expect(values).toHaveText(["100ppm"]);
+  const stats = await page.evaluate(() => (window as any).__displayStats as {inits:number, requested:number, firstResultMs:number});
+  expect(stats.inits).toBe(1);
+  expect(stats.requested).toBeLessThan(200);
+  console.log("10,000行の表示計算", stats);
+});
+
+test("display functions keep the full group through file scope, insert, delete, reorder and pool changes", async () => {
+  await selectTableFile("001-others");
+  const values = page.locator(".display-text");
+  await expect(values).toHaveText(["30%", "50%", "100%"]);
+  await page.getByLabel("行1の操作", {exact:true}).click();
+  await page.getByRole("menuitem", {name:/下へ/}).click();
+  await expect(values).toHaveText(["50%", "30%", "100%"]);
+  await page.getByLabel("行1の操作", {exact:true}).click();
+  await page.getByRole("menuitem", {name:/削除/}).click();
+  await expect(values).toHaveText(["60%", "100%"]);
+  await page.getByRole("button", {name:"元に戻す",exact:true}).click();
+  await expect(values).toHaveText(["50%", "30%", "100%"]);
+  await page.getByRole("button", {name:/レコードを追加/}).click();
+  await expect(values).toHaveText(["50%", "30%", "100%", "—"]);
+  const group = page.getByLabel("poolId 行4", {exact:true});
+  const weight = page.getByLabel("weight 行4", {exact:true});
+  await group.fill("A");
+  await group.press("Enter");
+  await weight.fill("100");
+  await weight.press("Enter");
+  await expect(values).toHaveText(["25%", "15%", "100%", "50%"]);
+  await group.fill("B");
+  await group.press("Enter");
+  await expect(values).toHaveText(["50%", "30%", "8.26%", "91.74%"]);
+  await page.getByRole("button", {name:"元に戻す",exact:true}).click();
+  await expect(values).toHaveText(["25%", "15%", "100%", "50%"]);
+});
+
+test("welcome sample demonstrates display functions and alternating rows", async () => {
+  await page.getByRole("button", { name: /サンプルで試す/ }).click();
+  await expect(page.getByText("冒険の道具箱", { exact: true }).first()).toBeVisible();
+  await page.getByLabel("表・型を検索").fill("drop");
+  await page.getByRole("treeitem", { name: "テーブル drop" }).click();
+  const values = page.locator(".display-text");
+  await expect(values).toHaveText(["20%", "30%", "50%", "100%"]);
+  const cell = values.nth(1).locator("xpath=ancestor::*[@data-column-index][1]");
+  await expect(cell).toHaveCSS("background-color", "rgb(234, 243, 248)");
+});
+
+
+test("window close preserves or saves drafts according to the confirmation", async () => {
+  await page.evaluate(() => {
+    (window as any).__closed = false;
+    window.desktop.close = async () => { (window as any).__closed = true; };
+    (window as any).__command("close");
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
+  await page.evaluate(() => { (window as any).__closed = false; });
+  const input = page.getByLabel("message 行1", { exact: true });
+  await input.fill("ウィンドウ終了テスト");
+  await input.press("Enter");
+  await page.evaluate(() => (window as any).__command("close"));
+  const dialog = page.getByRole("dialog", { name: "変更内容を保存しますか？" });
+  await expect(dialog).toContainText("保存せずに閉じると、変更内容は失われます。");
+  await expect(dialog.locator(".ant-modal-confirm-btns button")).toHaveText(["保存しない", "キャンセル", /保\s*存/]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(input).toHaveValue("ウィンドウ終了テスト");
+  expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
+  await page.evaluate(() => (window as any).__command("close"));
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
+  expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).toContain("ウィンドウ終了テスト");
+});
+
+test("window close discard and save failure protect data", async () => {
+  const input = page.getByLabel("message 行1", { exact: true });
+  await input.fill("保存しない変更");
+  await input.press("Enter");
+  await page.evaluate(() => {
+    (window as any).__closed = false;
+    window.desktop.close = async () => { (window as any).__closed = true; };
+    (window as any).__realSave = window.desktop.save;
+    window.desktop.save = async () => { throw new Error("保存エラーのテスト"); };
+    (window as any).__command("close");
+  });
+  const dialog = page.getByRole("dialog", { name: "変更内容を保存しますか？" });
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText(/保存エラーのテスト/).first()).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(input).toHaveValue("保存しない変更");
+  expect(await page.evaluate(() => (window as any).__closed)).toBe(false);
+  await dialog.getByRole("button", { name: "保存しない" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
+  expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).not.toContain("保存しない変更");
 });

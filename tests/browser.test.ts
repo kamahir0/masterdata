@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Session } from "../src/core/session";
+import { displayDefinitions, updateDisplayDefinitions, updateRawDisplay } from "../src/core/display-definitions";
 import {
   BrowserProject,
   RecoveryRequired,
@@ -151,9 +152,8 @@ class Disk {
       .sort();
   }
 }
-async function fixture() {
-  const disk = new Disk(),
-    project = await load(disk.root),
+async function fixture(disk = new Disk()) {
+  const project = await load(disk.root),
     session = new Session();
   session.load(project);
   const adapter = new BrowserProject(disk.root, project);
@@ -794,4 +794,141 @@ test("browser create keeps existing files and removes only its own config when v
   } finally {
     restore();
   }
+});
+
+const viewText = '# view\r\nfunctionColumns:\r\n  - name: Rate\r\n    script: |\r\n      return { text: "unfinished" };\r\n    unknown: 18446744073709551615\r\nformatRules: null\r\nextension: [1, 2]\r\n';
+async function displayFixture(view: string | undefined = viewText) {
+  const disk = new Disk();
+  if (view !== undefined) disk.files.set("sources/table.yaml.view", view);
+  const fixtureValue = await fixture(disk);
+  const source = () => fixtureValue.session.state.snapshot.sources.find((s) => s.data?.kind === "schema")!;
+  const edit = (name = "Next") => updateDisplayDefinitions(fixtureValue.session, source(), "functionColumns", [{ name, script: "return {" }], "表示編集");
+  return { ...fixtureValue, source, edit };
+}
+
+test("browser data-only schema sidecar Save preserves every canonical byte and reloads multiline standard YAML", async () => {
+  const disk = new Disk();
+  disk.files.set("sources/table.yaml", '# untouched\r\nkind: schema\r\ntable: Item\r\nfields: [{key: 0, name: id, type: ulong}]\r\nfunctionColumns: keep-user-data\r\n');
+  disk.files.set("sources/split.yaml", "kind: data\ntable: Item\nrecords: [{id: 18446744073709551615}]\n");
+  disk.files.set("sources/orphan.yaml.view", "keep orphan\n");
+  disk.files.set("sources/split.yaml.view", "unowned data attachment\n");
+  const { session, adapter, request, project } = await fixture(disk);
+  const source = session.state.snapshot.sources.find((s) => s.data?.kind === "schema")!;
+  assert.equal(source.display, undefined);
+  const before = new Map(disk.files);
+  updateDisplayDefinitions(session, source, "functionColumns", [{ name: "Rate", script: 'const x = 1;\nreturn { text: String(x) };\n' }], "追加");
+  const captured = session.state.snapshot;
+  const result = await adapter.save(request([source.id]));
+  session.acceptSave(result, captured, [source.id]);
+  assert.equal(session.dirty, false);
+  for (const [path, text] of before) assert.equal(disk.files.get(path), text, path);
+  assert(project.saved.every((f) => !f.path.endsWith(".view")));
+  const reopened = await load(disk.root);
+  assert.equal(reopened.snapshot.sources.length, 3);
+  assert.equal(reopened.saved.length, 4);
+  const table = reopened.snapshot.sources.find((s) => s.data?.kind === "schema")!;
+  assert.equal(table.data.functionColumns, "keep-user-data");
+  assert.equal((displayDefinitions(table, "functionColumns").items[0] as any).script, 'const x = 1;\nreturn { text: String(x) };\n');
+  assert(disk.log.every((op) => !/^write:sources\/.*\.ya?ml$/.test(op)));
+});
+
+test("browser attachment ownership follows schema move/delete and preserves orphan files", async () => {
+  const { disk, session, adapter, request, source } = await displayFixture();
+  session.move("table.yaml", "moved/schema.yml");
+  const captured = session.state.snapshot;
+  session.acceptSave(await adapter.save(request([source().id])), captured, [source().id]);
+  assert.equal(disk.files.get("sources/moved/schema.yml.view"), viewText);
+  assert(!disk.files.has("sources/table.yaml.view"));
+  session.remove(["moved/schema.yml"]);
+  await adapter.save(request());
+  assert(!disk.files.has("sources/moved/schema.yml.view"));
+  const second = await displayFixture();
+  second.disk.files.set("sources/types/orphan.yml.view", "keep");
+  second.session.remove(["types"]);
+  await assert.rejects(second.adapter.save(second.request()), /保存対象外/);
+  assert.equal(second.disk.files.get("sources/types/orphan.yml.view"), "keep");
+});
+
+test("browser paired preflight blocks external changes, deleted companions and orphan destinations before writes", async () => {
+  for (const kind of ["view", "schema", "view-on-schema", "deleted", "new-orphan", "move-orphan"]) {
+    const { disk, session, source, edit, adapter, request } = await displayFixture();
+    if (kind === "view-on-schema") {
+      session.update(source().id, ["records", 0, "title"], "edit canonical");
+      disk.files.set("sources/table.yaml.view", "external view");
+    } else if (kind === "move-orphan") {
+      session.move("table.yaml", "moved.yaml");
+      disk.files.set("sources/moved.yaml.view", "orphan");
+    } else if (kind === "new-orphan") {
+      const id = session.add("table");
+      const fresh = session.state.snapshot.sources.find((s) => s.id === id)!;
+      disk.files.set(`sources/${fresh.path}.view`, "orphan");
+    } else {
+      edit();
+      if (kind === "deleted") disk.files.delete("sources/table.yaml");
+      else disk.files.set(`sources/table.yaml${kind === "view" ? ".view" : ""}`, "external");
+    }
+    const before = disk.content(), calls = disk.log.length;
+    await assert.rejects(adapter.save(request()), /外部|競合|変更|内容を確認/);
+    assert.deepEqual(disk.content(), before, kind);
+    assert(!disk.log.slice(calls).some((op) => /^(write|remove|mkdir):/.test(op)), kind);
+  }
+});
+
+test("browser schema/sidecar transaction rolls back together and retains concurrent pending display edits", async () => {
+  const { disk, session, source, edit, adapter, request } = await displayFixture();
+  session.update(source().id, ["records", 0, "title"], "new canonical");
+  edit();
+  const before = disk.content();
+  let failed = false;
+  disk.fault = (op, path) => {
+    if (!failed && op === "closed" && path === "sources/table.yaml.view") {
+      failed = true; throw new Error("sidecar write failed");
+    }
+  };
+  await assert.rejects(adapter.save(request()), /復旧/);
+  assert.deepEqual(disk.content(), before);
+  assert(session.dirty);
+  disk.fault = undefined;
+  const captured = session.state.snapshot;
+  disk.fault = (op, path) => {
+    if (op === "write" && path === "sources/table.yaml.view") edit("Newer pending");
+  };
+  const result = await adapter.save(request());
+  session.acceptSave(result, captured);
+  assert(session.dirty);
+  assert.equal((displayDefinitions(source(), "functionColumns").items[0] as any).name, "Newer pending");
+  session.undo(); assert.equal(session.dirty, false);
+});
+
+test("browser invalid/unsupported view YAML survives canonical edits and unreadable view aborts load", async () => {
+  for (const raw of ["functionColumns: [broken", "version: 999\nfunctionColumns: []\n", "null\n"]) {
+    const { disk, session, source, adapter, request } = await displayFixture(raw);
+    session.update(source().id, ["records", 0, "title"], "normal edit");
+    await adapter.save(request());
+    assert.equal(disk.files.get("sources/table.yaml.view"), raw);
+    const reopened = await load(disk.root);
+    assert.equal(displayDefinitions(reopened.snapshot.sources.find((s) => s.data?.kind === "schema")!, "functionColumns").kind, "invalid");
+  }
+  const disk = new Disk();
+  disk.files.set("sources/table.yaml.view", new Uint8Array([0xff]));
+  await assert.rejects(load(disk.root), /sources\/table.yaml.view/);
+});
+
+test("browser scoped schema save retains other schema's pending sidecar and unchanged projects create no view", async () => {
+  const disk = new Disk();
+  const before = disk.content();
+  const unchanged = await fixture(disk);
+  await unchanged.adapter.save(unchanged.request());
+  assert.deepEqual(disk.content(), before);
+  const secondDisk = new Disk();
+  secondDisk.files.set("sources/second.yml", "kind: schema\ntable: Second\nfields: []\n");
+  secondDisk.files.set("sources/table.yaml.view", viewText);
+  const { session, adapter, request } = await fixture(secondDisk);
+  const [second, first] = session.state.snapshot.sources.filter((s) => s.data?.kind === "schema");
+  for (const source of [first, second]) updateRawDisplay(session, source, "functionColumns: []\n");
+  const captured = session.state.snapshot;
+  session.acceptSave(await adapter.save(request([first.id])), captured, [first.id]);
+  assert(!session.dirtySource(session.state.snapshot.sources.find((s) => s.id === first.id)!));
+  assert(session.dirtySource(session.state.snapshot.sources.find((s) => s.id === second.id)!));
+  assert(!secondDisk.files.has("sources/second.yml.view"));
 });

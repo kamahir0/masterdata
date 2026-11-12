@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { parse } from "yaml";
 
 let seed: { path: string; text: string }[];
 test.beforeAll(async () => {
@@ -1056,4 +1057,44 @@ test("browser one-click recent project resume from IndexedDB and recovery adopti
 
   await open(page);
   await expect(message).toHaveValue("ジャーナル採用テスト");
+});
+
+test("browser authors and reloads view settings while every canonical file stays byte-identical", async ({page}) => {
+  await open(page);
+  const before = await Promise.all(seed.map(file => read(page, file.path)));
+  await page.getByRole("tab", { name: "フィールド", exact: true }).click();
+  await page.getByRole("button", { name: "関数列を追加" }).click();
+  const edit = page.getByRole("button", { name: "関数列1を編集" });
+  const dialog = page.getByRole("dialog", {name: "関数列の編集"});
+  await expect(dialog).toBeVisible();
+  const body = 'const n = row.id;\nreturn { text: "No." + n, style: { italic: true } };';
+  await dialog.getByLabel("関数列の名前").fill("確認番号");
+  await dialog.getByLabel("関数列のコード").fill(body);
+  await dialog.getByRole("button", { name: /^適\s*用$/ }).click();
+  await edit.click();
+  await dialog.getByLabel("関数列のコード").fill("discarded");
+  await dialog.getByRole("button", { name: /^取\s*消$/ }).click();
+  for (const [name, color] of [["基調", "#005566"], ["上書き", "#773355"]]) {
+    await page.getByRole("button", {name:"テーブル書式を追加"}).click();
+    const rule = page.getByRole("dialog", {name:"テーブル書式の編集"});
+    await rule.getByLabel("テーブル書式の名前").fill(name);
+    await rule.getByLabel("テーブル書式のコード").fill(`return {color:"${color}"};`);
+    await rule.getByRole("button", {name:/^適\s*用$/}).click();
+  }
+  await page.getByRole("button", {name:"テーブル書式2を上へ"}).click();
+  await page.getByRole("button", {name:"元に戻す",exact:true}).click();
+  await page.getByRole("button", {name:"やり直す",exact:true}).click();
+  await page.getByRole("tab", { name: "データ", exact: true }).click();
+  await expect(page.locator(".display-text").first()).toHaveText("No.1");
+  await expect(page.locator(".display-text").first()).toHaveCSS("font-style", "italic");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("status", { name: "保存済み", exact: true })).toBeVisible();
+  const displayed = parse(await read(page, "sources/announcements/announcement.yaml.view"));
+  expect(displayed.functionColumns).toEqual([{name:"確認番号",script:body}]);
+  expect(displayed.formatRules.map((rule: {name:string}) => rule.name)).toEqual(["上書き","基調"]);
+  await expect(page.locator(".display-text").first()).toHaveCSS("color", "rgb(0, 85, 102)");
+  expect(await Promise.all(seed.map(file => read(page, file.path)))).toEqual(before);
+  await page.reload();
+  await open(page);
+  await expect(page.locator(".display-text").first()).toHaveText("No.1");
 });

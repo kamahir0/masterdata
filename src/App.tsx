@@ -462,6 +462,8 @@ function Workspace({
     }
     guard.current = true;
     const instance = modal.confirm({
+      // Keep action buttons in place from the first frame, including in WebKit.
+      transitionName: "ant-fade",
       title: windowClose ? "変更内容を保存しますか？" : "変更を保存しますか？",
       content: windowClose
         ? "保存せずに閉じると、変更内容は失われます。"

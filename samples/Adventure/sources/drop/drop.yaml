@@ -1,0 +1,15 @@
+kind: schema
+table: sampleDropPool
+fields:
+  - {name: id, type: uint, key: 0}
+  - {name: poolId, type: string, key: 1}
+  - {name: itemId, type: string, key: 2}
+  - {name: weight, type: uint, key: 3}
+primaryKey: {fields: [id]}
+secondaryKeys:
+  - {fields: [poolId], nonUnique: true}
+records:
+  - {id: 1, poolId: A, itemId: sword, weight: 20}
+  - {id: 2, poolId: A, itemId: shield, weight: 30}
+  - {id: 3, poolId: A, itemId: apple, weight: 50}
+  - {id: 4, poolId: B, itemId: potion, weight: 9}

@@ -1,0 +1,12 @@
+functionColumns:
+  - name: dropRate
+    script: |
+      const total = table.sumBy("poolId", row.poolId, "weight");
+      if (typeof total !== "bigint" || total <= 0n || typeof row.weight !== "bigint") return { text: "—" };
+      return { text: Number((row.weight * 10000n + total / 2n) / total) / 100 + "%" };
+formatRules:
+  - name: 偶数行の背景色
+    script: |
+      // 小さなサンプル向け。全表検索するため大規模なテーブルでは負荷に注意。
+      // 表示上の絞り込みではなく、テーブル全体のレコード順で判定する。
+      return table.rows.indexOf(row) % 2 === 1 ? { backgroundColor: "#EAF3F8" } : null;

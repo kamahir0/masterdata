@@ -3971,3 +3971,15 @@ test("display functions keep the full group through file scope, insert, delete, 
   await page.getByRole("button", {name:"元に戻す",exact:true}).click();
   await expect(values).toHaveText(["25%", "15%", "100%", "50%"]);
 });
+
+test("welcome sample demonstrates display functions and alternating rows", async () => {
+  await page.getByRole("button", { name: /サンプルで試す/ }).click();
+  await expect(page.getByText("冒険の道具箱", { exact: true }).first()).toBeVisible();
+  await page.getByLabel("表・型を検索").fill("drop");
+  await page.getByRole("treeitem", { name: "テーブル drop" }).click();
+  const values = page.locator(".display-text");
+  await expect(values).toHaveText(["20%", "30%", "50%", "100%"]);
+  const cell = values.nth(1).locator("xpath=ancestor::*[@data-column-index][1]");
+  await expect(cell).toHaveCSS("background-color", "rgb(234, 243, 248)");
+});
+

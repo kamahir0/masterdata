@@ -52,7 +52,7 @@ records:
           "PASS MasterMemory build / reload / every selected row",
         ),
       );
-      assert.equal(result.records, 10);
+      assert.equal(result.records, 14);
       const dropClass = await fs.readFile(
         path.join(result.directory, "Generated/DropPool.g.cs"), "utf8",
       );

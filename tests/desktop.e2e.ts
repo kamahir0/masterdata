@@ -3886,17 +3886,26 @@ test("display functions calculate across files and recover through editing, filt
   // Diagnostics for a broken style leave the derived text available. Repair it from the grid.
   await page.getByRole("button", { name: /表示定義を修正.*未完成のルール/ }).first().click();
   await page.getByRole("button", { name: "テーブル書式1を編集" }).click();
-  await page.getByLabel("テーブル書式のコード").fill('return column.name === "dropRate" || column.name === "weight" ? { bold: true, color: "#235678", backgroundColor: "#aabbcc" } : null;');
+  await page.getByLabel("テーブル書式のコード").fill('return row.weight >= 40n && ["dropRate", "weight"].includes(column.name) ? { bold: true, color: "#235678", backgroundColor: "#aabbcc" } : null;');
   await page.getByRole("button", { name: /^適\s*用$/ }).click();
   await page.getByRole("tab", { name: "データ", exact: true }).click();
   await expect(values.first()).toHaveCSS("color", "rgb(35, 86, 120)");
   await expect(values.first()).toHaveCSS("font-weight", "700");
   const weight = page.getByLabel("weight 行1", { exact: true }).first();
+  const weightCell = weight.locator("xpath=ancestor::*[@data-column-index][1]");
+  const rateCell = values.first().locator("xpath=ancestor::*[@data-column-index][1]");
+  const fill = "rgb(170, 187, 204)";
   await expect(weight).toHaveCSS("color", "rgb(35, 86, 120)");
-  await expect(weight).toHaveCSS("background-color", "rgb(170, 187, 204)");
+  await expect(weightCell).toHaveCSS("background-color", fill);
+  await expect(rateCell).toHaveCSS("background-color", fill);
   await expect(page.getByRole("button", { name: /表示定義を修正/ })).toHaveCount(0);
 
   await values.first().click();
+  await expect(rateCell).toHaveClass(/selected-cell/);
+  await expect(rateCell).not.toHaveCSS("box-shadow", "none");
+  await expect(rateCell).toHaveCSS("background-color", fill);
+  await weightCell.screenshot({ path: test.info().outputPath("formatted-weight.png") });
+  await rateCell.screenshot({ path: test.info().outputPath("selected-drop-rate.png") });
   const clipboard = await page.locator(".grid-editor").evaluate(el => {
     const data = new DataTransfer();
     el.dispatchEvent(new ClipboardEvent("copy", { bubbles: true, cancelable: true, clipboardData: data }));
@@ -3914,6 +3923,11 @@ test("display functions calculate across files and recover through editing, filt
   await page.reload();
   await expect(values.first()).toHaveText("33.33%");
   await expect(values.first()).toHaveCSS("color", "rgb(35, 86, 120)");
+  await weight.fill("20");
+  await weight.press("Enter");
+  await expect(values.first()).toHaveText("20%");
+  await expect(weightCell).not.toHaveCSS("background-color", fill);
+  await expect(rateCell).not.toHaveCSS("background-color", fill);
 });
 
 test("display functions virtual grid aggregates ten thousand records while evaluating mounted rows", async () => {

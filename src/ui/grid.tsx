@@ -52,7 +52,7 @@ import {
 import { identity } from "../core/identity";
 import { displayModel } from "../core/display-model";
 import { displayDocumentProblem } from "../core/display-definitions";
-import { DisplayCell, useGridDisplay } from "./display-grid";
+import { GridBodyCell, useGridDisplay } from "./display-grid";
 import { usePointerSort } from "./sortable";
 import { useEditing } from "./editing";
 import { useTableViewport } from "./table-viewport";
@@ -75,6 +75,8 @@ import {
 } from "./inputs";
 import { ModifierButtons } from "./fields";
 import type { Cursor } from "./nested";
+const displayTableComponents = { body: { cell: GridBodyCell } };
+
 interface Row {
   key: string;
   source: Source;
@@ -455,6 +457,15 @@ export function GridEditor({
       col >= Math.min(cell.col, cell.anchorCol) &&
       col <= Math.max(cell.col, cell.anchorCol);
     return {
+      ...(display && {
+        displayCell: {
+          display,
+          row: displayRow(row),
+          col,
+          derived,
+          edit: () => editDisplay(table.source.id),
+        },
+      }),
       "data-column-index": col,
       "data-motion-key": `cell-${row.key}-${key}`,
       "data-motion-owner": `column-${key}`,
@@ -485,20 +496,6 @@ export function GridEditor({
         })),
     };
   };
-  const presentation = (row: Row, col: number, children?: React.ReactNode) =>
-    display ? (
-      <DisplayCell
-        display={display}
-        row={displayRow(row)}
-        col={col}
-        derived={col >= table.fields.length}
-        edit={() => editDisplay(table.source.id)}
-      >
-        {children}
-      </DisplayCell>
-    ) : (
-      children
-    );
   const columns: ColumnsType<Row> = [
     {
       key: "grip",
@@ -805,29 +802,26 @@ export function GridEditor({
                 (p.path[2] === field.name || p.path.length < 3),
             ),
           ),
-        render: (_: unknown, row: Row) =>
-          presentation(
-            row,
-            col,
-            <ValueControl
-              snapshot={snapshot}
-              field={field}
-              value={row.record?.[field.name]}
-              label={`${field.name} 行${row.index + 1}`}
-              onChange={(v) => update(row, field, v)}
-              onOpen={() =>
-                onOpen({
-                  source: row.source.id,
-                  path: ["records", row.index, field.name],
-                  field,
-                })
-              }
-              reference={referenceOptions}
-              navigate={(option) => {
-                navigate(option.source);
-              }}
-            />,
-          ),
+        render: (_: unknown, row: Row) => (
+          <ValueControl
+            snapshot={snapshot}
+            field={field}
+            value={row.record?.[field.name]}
+            label={`${field.name} 行${row.index + 1}`}
+            onChange={(v) => update(row, field, v)}
+            onOpen={() =>
+              onOpen({
+                source: row.source.id,
+                path: ["records", row.index, field.name],
+                field,
+              })
+            }
+            reference={referenceOptions}
+            navigate={(option) => {
+              navigate(option.source);
+            }}
+          />
+        ),
       };
     }),
     ...(model?.functions ?? []).map((program, i) => {
@@ -851,7 +845,7 @@ export function GridEditor({
         ),
         onCell: (row: Row, rowIndex?: number) =>
           cellProps(row, rowIndex, col, key, true),
-        render: (_: unknown, row: Row) => presentation(row, col),
+        render: () => null,
       };
     }),
   ];
@@ -1221,6 +1215,7 @@ export function GridEditor({
         <Table<Row>
           ref={tableRef}
           className="data-grid"
+          components={display ? displayTableComponents : undefined}
           size="small"
           virtual
           scroll={{

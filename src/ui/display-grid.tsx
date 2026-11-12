@@ -223,21 +223,32 @@ export function useGridDisplay(input?: DisplayInput) {
   }, [display]);
   return display;
 }
-export function DisplayCell({
+interface DisplayCellOptions {
+  display: GridDisplay;
+  row: number;
+  col: number;
+  derived: boolean;
+  edit: () => void;
+}
+
+type GridCellProps = React.ComponentProps<"div">;
+
+export function GridBodyCell({
+  displayCell,
+  ...cell
+}: GridCellProps & { displayCell?: DisplayCellOptions }) {
+  if (!displayCell) return <div {...cell} />;
+  return <DisplayCell {...displayCell} cell={cell} />;
+}
+
+function DisplayCell({
   display,
   row,
   col,
   derived,
-  children,
   edit,
-}: {
-  display: GridDisplay;
-  row: number;
-  col: number;
-  derived?: boolean;
-  children?: React.ReactNode;
-  edit: () => void;
-}) {
+  cell,
+}: DisplayCellOptions & { cell: GridCellProps }) {
   const subscribe = useMemo(
     () => (fn: () => void) => display.subscribe(row, fn),
     [display, row],
@@ -257,41 +268,46 @@ export function DisplayCell({
           ? "italic"
           : "normal",
     color: style?.color,
-    backgroundColor: style?.backgroundColor,
   };
   return (
     <div
-      className="display-cell"
-      style={
-        {
-          ...css,
-          "--display-color": style?.color,
-          "--display-bg": style?.backgroundColor,
-          "--display-weight": css.fontWeight,
-          "--display-font": css.fontStyle,
-        } as React.CSSProperties
-      }
-      data-ink={style?.color}
-      data-fill={style?.backgroundColor}
-      data-weight={style?.bold}
-      data-italic={style?.italic}
+      {...cell}
+      style={style?.backgroundColor
+        ? { ...cell.style, backgroundColor: style.backgroundColor }
+        : cell.style}
     >
-      {derived ? (
-        <span className="display-text">{result?.text ?? "…"}</span>
-      ) : (
-        children
-      )}
-      {result?.error && (
-        <button
-          type="button"
-          className="display-error"
-          title={result.error}
-          aria-label={`表示定義を修正: ${result.error}`}
-          onClick={edit}
-        >
-          !
-        </button>
-      )}
+      <div
+        className="display-cell"
+        style={
+          {
+            ...css,
+            "--display-color": style?.color,
+            "--display-weight": css.fontWeight,
+            "--display-font": css.fontStyle,
+          } as React.CSSProperties
+        }
+        data-ink={style?.color}
+        data-fill={style?.backgroundColor}
+        data-weight={style?.bold}
+        data-italic={style?.italic}
+      >
+        {derived ? (
+          <span className="display-text">{result?.text ?? "…"}</span>
+        ) : (
+          cell.children
+        )}
+        {result?.error && (
+          <button
+            type="button"
+            className="display-error"
+            title={result.error}
+            aria-label={`表示定義を修正: ${result.error}`}
+            onClick={edit}
+          >
+            !
+          </button>
+        )}
+      </div>
     </div>
   );
 }

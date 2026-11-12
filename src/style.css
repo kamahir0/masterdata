@@ -1806,7 +1806,7 @@ button:focus-visible,
 }
 .display-cell .value-control { flex: 1; }
 .display-cell[data-ink] :is(input, .ant-select-content-value, .complex-value, .reference-label) { color: var(--display-color); }
-.display-cell[data-fill] :is(.entry, .ant-select-selector, .complex-value) { background-color: var(--display-bg); }
+.display-cell[data-fill] :is(.entry, .ant-select, .ant-select-selector, .complex-value, .null-value) { background-color: transparent; }
 .display-cell[data-weight] :is(input, button, .ant-select-content-value) { font-weight: var(--display-weight); }
 .display-cell[data-italic] :is(input, button, .ant-select-content-value) { font-style: var(--display-font); }
 .display-text { overflow: hidden; text-overflow: ellipsis; white-space: pre; }

@@ -459,6 +459,7 @@ export function GridEditor({
     return {
       ...(display && {
         displayCell: {
+          cellKey: `${table.source.id}:${identity(table.source.display)}:${row.key}:${key}`,
           display,
           row: displayRow(row),
           col,

@@ -40,6 +40,38 @@ mod tests {
     }
 
     #[test]
+    fn wrong_case_project_file_keeps_the_original_draft_saveable() {
+        let original = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let config = original.path().join("masterdata.toml");
+        let misnamed = other.path().join("MASTERDATA.TOML");
+        std::fs::write(&config, "name = 'Original'").unwrap();
+        std::fs::write(&misnamed, "name = 'Other'").unwrap();
+
+        let bridge = Bridge::start(Path::new("")).unwrap();
+        let open = |dir: &Path| {
+            bridge.request(
+                "open",
+                json!([[dir.join("masterdata.toml")], []]).to_string(),
+            )
+        };
+        let loaded: Value = serde_json::from_str(&open(original.path()).unwrap()).unwrap();
+        let mut draft = loaded[0]["snapshot"]["config"].clone();
+        draft["name"] = json!("Edited");
+        let error = open(other.path()).unwrap_err();
+        assert!(error.contains(&other.path().join("masterdata.toml").display().to_string()));
+
+        let request =
+            json!({"token": loaded[0]["token"], "config": draft, "files": [], "folders": []});
+        bridge
+            .request("save", json!([[request], []]).to_string())
+            .unwrap();
+        let saved: toml::Table = std::fs::read_to_string(config).unwrap().parse().unwrap();
+        assert_eq!(saved["name"].as_str(), Some("Edited"));
+        assert_eq!(std::fs::read_to_string(misnamed).unwrap(), "name = 'Other'");
+    }
+
+    #[test]
     fn bundled_host_load_save_conflict_build_and_publish() {
         fn copy(from: &Path, to: &Path) {
             std::fs::create_dir_all(to).unwrap();

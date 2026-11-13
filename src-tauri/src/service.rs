@@ -96,7 +96,11 @@ impl ProjectService {
                     .first()
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "プロジェクトパスが指定されていません。".to_string())?;
-                self.open_path(Path::new(path_str))
+                let path = Path::new(path_str);
+                verify_selected_project_name(path).map_err(|reason| {
+                    format!("プロジェクトを開けません: {}\n{reason}", path.display())
+                })?;
+                self.open_path(path)
             }
             "sample" => {
                 self.idle()?;
@@ -223,6 +227,20 @@ impl ProjectService {
             _ => Err("許可されていない操作です。".to_string()),
         }
     }
+}
+
+fn verify_selected_project_name(path: &Path) -> Result<(), String> {
+    let folder = path
+        .parent()
+        .ok_or("プロジェクトフォルダが見つかりません。")?;
+    // The picker appends the fixed name. On case-insensitive volumes only a
+    // directory entry tells us whether that spelling exists on disk.
+    for entry in fs::read_dir(folder).map_err(|e| e.to_string())? {
+        if entry.map_err(|e| e.to_string())?.file_name() == PROJECT_FILE_NAME {
+            return Ok(());
+        }
+    }
+    Err(format!("フォルダ直下に {PROJECT_FILE_NAME} がありません。ファイル名の大文字・小文字を確認してください。"))
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {

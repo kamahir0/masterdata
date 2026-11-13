@@ -64,6 +64,7 @@ MasterDataは目的に応じて3つの形態で利用できます。
   - macOS: `.dmg` または `.app`（Apple Silicon / Intel）
   - Windows: `.exe`（インストーラー）
   - Linux: `.AppImage` または `.deb`
+- **プロジェクトを開く**: ブラウザ版と同じく、`masterdata.toml` が直下にあるフォルダを選択します。
 - **Build / Publish機能の要件**:
   - 通常のデータ編集・保存に特別な環境は不要です。
   - C#コード生成およびMasterMemoryバイナリ生成（Build / Publish）を実行する場合は、環境に **[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)** 以降がインストールされている必要があります。

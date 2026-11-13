@@ -98,7 +98,7 @@ rendererの共通入口でWebView標準context menuを抑え、未保存draftを
 
 ## DESKTOP-001 — Desktop基盤と開発版
 
-Tauriで既存React / Ant Design UIと編集sessionを提供する。専用の同梱hostを含め、利用者側にNode.jsを要求しない。window・menu・native file / folder dialog、限定されたnative操作、未保存・処理中のclose保護を維持する。二重起動は既存windowを前面にする。「開く」はproject file用pickerから`masterdata.toml`を選び、cancelなら現在projectを保持する。新規作成は保存先folderを選び、新root内に`masterdata.toml`と`sources/`を作る。sampleとinternal startupにも同じproject fileを使う。表示名は設定内nameであり、root名との強制同期はしない。
+Tauriで既存React / Ant Design UIと編集sessionを提供する。専用の同梱hostを含め、利用者側にNode.jsを要求しない。window・menu・native file / folder dialog、限定されたnative操作、未保存・処理中のclose保護を維持する。二重起動は既存windowを前面にする。「開く」はブラウザ版と同様にプロジェクトフォルダを選び、直下の`masterdata.toml`を読み込む。取消や設定の欠落・不正では現在のprojectとdraftを保持する。[フォルダ選択の統一](../spec-changes/0032-open-project-folder.md)を参照。新規作成は保存先folderを選び、新root内に`masterdata.toml`と`sources/`を作る。sampleとinternal startupにも同じproject fileを使う。表示名は設定内nameであり、root名との強制同期はしない。
 
 ローカルcheckoutから`scripts/local-app/app.command` / `scripts/local-app/app.bat`で依存install、検証、package、開発版のinstall、起動まで行える。開発版は`MasterData [Dev]`、identifier `dev.kamahir0.masterdata.dev`、macOS `~/Applications/MasterData [Dev].app` / Windows LocalAppDataの固定先を使い、更新で別コピーを増やさない。通常版と設定・identityを分離する。`--no-launch`で起動を省略できる。checkoutのfetch / pullや実データ変更はしない。
 

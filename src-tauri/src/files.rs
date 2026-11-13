@@ -80,20 +80,14 @@ pub fn optional_read_bytes(file: &Path) -> Result<Option<Vec<u8>>, String> {
 
 pub fn load_workspace(input: &Path) -> Result<(Workspace, LoadedProject), String> {
     let open_inner = || -> Result<(PathBuf, String, crate::model::Config), String> {
-        let is_valid_file = input
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n == PROJECT_FILE_NAME)
-            .unwrap_or(false)
-            && fs::symlink_metadata(input)
-                .map(|m| m.is_file() && !m.file_type().is_symlink())
-                .unwrap_or(false);
-        if !is_valid_file {
-            return Err(format!("{PROJECT_FILE_NAME} ファイルを選択してください。"));
+        if input.file_name() != Some(std::ffi::OsStr::new(PROJECT_FILE_NAME)) {
+            return Err(format!("設定ファイル名は {PROJECT_FILE_NAME} です。"));
         }
-        let parent = input
-            .parent()
-            .ok_or_else(|| format!("{PROJECT_FILE_NAME} ファイルを選択してください。"))?;
+        let metadata = fs::symlink_metadata(input).map_err(|e| e.to_string())?;
+        if !metadata.is_file() {
+            return Err(format!("{PROJECT_FILE_NAME} は通常のファイルである必要があります。"));
+        }
+        let parent = input.parent().ok_or("プロジェクトフォルダが見つかりません。")?;
         let root = fs::canonicalize(parent).map_err(|e| e.to_string())?;
         let config_path = safe_path(&root, PROJECT_FILE_NAME)?;
         let config_text = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;

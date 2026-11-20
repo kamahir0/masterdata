@@ -15,6 +15,7 @@ import {
   list,
 } from "./types";
 import { primitiveOf, inProfile } from "./schema";
+import { namespaceError, sourceFolder } from "./namespaces";
 const ranges: Record<string, [bigint, bigint]> = {
   int: [-2147483648n, 2147483647n],
   uint: [0n, 4294967295n],
@@ -50,6 +51,10 @@ export function validate(input: Snapshot, profile = ""): Problem[] {
     if (!isObject(source.data)) {
       add(source, [], "定義は項目と値を持つ形式にしてください。", "SHAPE");
       continue;
+    }
+    if (snapshot.config.namespaces && ["schema", "type"].includes(source.data.kind)) {
+      const error = namespaceError(snapshot.config.namespaces, sourceFolder(source.path));
+      if (error) add(source, [], error, "NAMESPACE");
     }
     if (!["schema", "data", "type"].includes(source.data.kind))
       add(

@@ -57,6 +57,17 @@ pub fn valid_identifier(name: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+pub fn namespace_segment(name: &str) -> bool {
+    static IDENT: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    const RESERVED: &str = "abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while __arglist __makeref __reftype __refvalue";
+    IDENT
+        .get_or_init(|| {
+            regex::Regex::new(r"\A[_\p{L}\p{Nl}][_\p{L}\p{Nl}\p{Nd}\p{Mn}\p{Mc}\p{Pc}]*\z").unwrap()
+        })
+        .is_match(name)
+        && !RESERVED.split_ascii_whitespace().any(|word| word == name)
+}
+
 pub fn public_name(name: &str) -> String {
     let mut out = String::new();
     let mut cap_next = true;
@@ -110,7 +121,18 @@ pub fn validate(input: &Snapshot, profile: &str) -> Vec<Problem> {
             );
             continue;
         }
-        let kind = source.data.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+        let kind = source
+            .data
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if matches!(kind, "schema" | "type") {
+            if let Some(ns) = &snapshot.config.namespaces {
+                if let Err(message) = ns.check_source(&source.path) {
+                    add(source, vec![], message, "NAMESPACE");
+                }
+            }
+        }
         if !matches!(kind, "schema" | "data" | "type") {
             add(
                 source,

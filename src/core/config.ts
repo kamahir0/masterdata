@@ -1,6 +1,8 @@
 import { parse, stringify } from "smol-toml";
 import { defaultConfig, type Config } from "./types";
 
+import { defaultNamespaces, validSegment } from "./namespaces";
+
 export const projectFileName = "masterdata.toml";
 const table = (value: unknown): value is Record<string, any> =>
   !!value &&
@@ -48,6 +50,22 @@ export function readConfig(text: string): Config {
       }
     }
   }
+  if (data.namespaces !== undefined) {
+    const ns: unknown = data.namespaces;
+    if (!table(ns)) invalid("namespaces");
+    const root = ns.root === undefined ? defaultNamespaces.root : ns.root;
+    const useFolders = ns.useFolders === undefined ? false : ns.useFolders;
+    const folders = ns.folders === undefined ? {} : ns.folders;
+    if (typeof root !== "string" || !root.split(".").every(validSegment))
+      invalid("namespaces.root");
+    if (typeof useFolders !== "boolean") invalid("namespaces.useFolders");
+    if (
+      !table(folders) ||
+      Object.values(folders).some((v) => typeof v !== "boolean")
+    )
+      invalid("namespaces.folders");
+    config.namespaces = { root, useFolders, folders };
+  }
   return config;
 }
 
@@ -60,6 +78,9 @@ export function writeConfig(config: Config, before?: string): string {
     before === undefined ? {} : parse(before, { integersAsBigInt: "asNeeded" });
   const output = stringify({
     ...previous,
+    ...(config.namespaces && {
+      namespaces: { ...(previous.namespaces as object), ...config.namespaces },
+    }),
     name: config.name,
     publish: { ...(previous.publish as object), ...config.publish },
     profiles: Object.fromEntries(
@@ -75,6 +96,7 @@ export function writeConfig(config: Config, before?: string): string {
 
 function sameConfig(a: Config, b: Config): boolean {
   return (
+    JSON.stringify(a.namespaces) === JSON.stringify(b.namespaces) &&
     a.name === b.name &&
     a.publish.csharp === b.publish.csharp &&
     a.publish.binary === b.publish.binary &&

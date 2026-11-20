@@ -71,6 +71,19 @@ pub fn read_config(text: &str) -> Result<Config, String> {
             }
         }
     }
+    if let Some(value) = data.get("namespaces") {
+        if !value.is_table() {
+            return invalid("namespaces");
+        }
+        let ns: crate::model::Namespaces = value
+            .clone()
+            .try_into()
+            .map_err(|e| format!("namespaces: {e}"))?;
+        if !ns.root.split('.').all(crate::validation::namespace_segment) {
+            return invalid("namespaces.root");
+        }
+        config.namespaces = Some(ns);
+    }
     Ok(config)
 }
 
@@ -92,6 +105,16 @@ pub fn write_config(config: &Config, before: Option<&str>) -> Result<String, Str
     let mut next = previous.clone();
     next.insert("name".to_string(), toml::Value::String(config.name.clone()));
 
+    if let Some(ns) = &config.namespaces {
+        let fields = toml::Table::try_from(ns).map_err(|e| e.to_string())?;
+        let mut section = previous
+            .get("namespaces")
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default();
+        section.extend(fields);
+        next.insert("namespaces".into(), toml::Value::Table(section));
+    }
     let mut pub_table = previous
         .get("publish")
         .and_then(|v| v.as_table())
@@ -142,4 +165,27 @@ pub fn write_config(config: &Config, before: Option<&str>) -> Result<String, Str
     let output = toml::to_string_pretty(&next).map_err(|e| e.to_string())?;
     read_config(&output)?;
     Ok(output)
+}
+
+#[cfg(test)]
+mod namespace_tests {
+    use super::*;
+    use crate::wire::{config_from_data, config_to_data};
+
+    #[test]
+    fn folder_cutoff_survives_wire_and_toml_and_preserves_unknown_settings() {
+        let text = "name = 'App'\n[namespaces]\nroot = 'Game.Data'\nuseFolders = true\nextension = 7\n[namespaces.folders]\n'Battle/Tutorial' = false\n";
+        let mut config = read_config(text).unwrap();
+        assert_eq!(config_from_data(&config_to_data(&config)).unwrap(), config);
+        let ns = config.namespaces.as_mut().unwrap();
+        let source = "Battle/Tutorial/bad-name/enemy.yaml";
+        assert_eq!(ns.for_source(source), "Game.Data.Battle");
+        assert!(ns.check_source(source).is_ok());
+        ns.folders.insert("Battle/Tutorial".into(), true);
+        assert!(ns.check_source(source).unwrap_err().contains("bad-name"));
+        let saved = write_config(&config, Some(text)).unwrap();
+        assert_eq!(read_config(&saved).unwrap(), config);
+        assert!(saved.contains("extension = 7"));
+        assert!(read_config("name = 'bad'\n[namespaces]\nroot = 'Pj.class'").is_err());
+    }
 }

@@ -109,3 +109,21 @@ test("packaged SDK resolution supports DOTNET_ROOT without a shell PATH", async 
     await fs.rm(root, { recursive: true });
   }
 });
+
+test("folder namespaces compile and reload references across the cutoff", { timeout: 180000, skip: !!process.env.SKIP_NATIVE_BUILD }, async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "masterdata-namespaces-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.cp(path.resolve("samples/Adventure"), root, {recursive: true});
+  const file = path.join(root, "masterdata.toml");
+  await fs.appendFile(file, '\n[namespaces]\nroot = "PjName"\nuseFolders = true\n[namespaces.folders]\n"Battle/Tutorial" = false\n');
+  await fs.mkdir(path.join(root, "sources/Battle/Tutorial"), {recursive: true});
+  await fs.rename(path.join(root, "sources/items"), path.join(root, "sources/Battle/Tutorial/Enemy"));
+  const {workspace, project} = await loadWorkspace(file);
+  const result = await buildWorkspace(workspace, project.snapshot, "", 1);
+  await publishBuild(result, root, project.snapshot.config.publish);
+  const read = (name: string) => fs.readFile(path.join(root, "output/Generated", name), "utf8");
+  assert.match(await read("Item.g.cs"), /namespace PjName\.Battle;/);
+  assert.match(await read("Item.g.cs"), /global::PjName\.types\.ItemCode/);
+  assert.match(await read("Quest.g.cs"), /global::PjName\.Battle\.Item/);
+  assert.match(result.log, /PASS MasterMemory build \/ reload/);
+});

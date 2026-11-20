@@ -1,8 +1,8 @@
 # Development State
 
 Stage: objective-complete
-Candidate: 4a34afce86ed68464d9049e208fd17a32ddbea88
-Work base: 61179ecc44c737a1e28ef91c199f0d9356a26e42
+Candidate: 587b515997bcf2c9a3a0f884f66221390331a429
+Work base: d50843ed885317170ec2ce8c70fdd953395dac60
 
 ## Active work
 
@@ -14,4 +14,4 @@ None.
 
 ## Evidence
 
-macOS の実アプリでサンプルのフォルダ選択と取消を確認。設定名の大文字小文字が異なる場合は macOS の Rust サービスで拒否され、元の編集を元の YAML に保存できた。修正前に失敗した回帰テストを含む Rust テスト18件、対象 UI テスト4件、[修正候補の3 OS の CI](https://github.com/kamahir0/masterdata/actions/runs/43368828222) が成功した。
+Chromium・WebKitで親の再有効化の取消・確定・保存・再読込を確認。Rust CLIでサンプル4テーブル・11件の.NET Build、再読込、13ファイルのPublishを確認した。独立した.NETプロジェクトでも配置したコードとバイナリから PjName.Battle.Item を読み出せた。[候補の3 OS CI](https://github.com/kamahir0/masterdata/actions/runs/44758349155)が成功し、[PR #7](https://github.com/kamahir0/masterdata/pull/7)を作成した。

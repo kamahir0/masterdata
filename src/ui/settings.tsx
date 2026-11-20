@@ -1,3 +1,4 @@
+import { NamespaceSettings } from "./namespace-settings";
 import React, { useRef } from "react";
 import { identity, withIdentity } from "../core/identity";
 import { useEditing } from "./editing";
@@ -56,6 +57,7 @@ export function Settings({
             onCommit={(name) => update({ ...config, name })}
           />
         </Card>
+        <NamespaceSettings snapshot={snapshot} />
         {!isBrowser() && (
           <>
             <Card size="small" title="Publishの出力先">

@@ -381,7 +381,67 @@ pub struct PublishConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Namespaces {
+    pub root: String,
+    pub use_folders: bool,
+    pub folders: IndexMap<String, bool>,
+}
+impl Namespaces {
+    pub fn check_source(&self, file: &str) -> Result<(), String> {
+        if !self
+            .root
+            .split('.')
+            .all(crate::validation::namespace_segment)
+        {
+            return Err("ルート名前空間に有効なC#識別子を指定してください。".into());
+        }
+        for (path, part) in self.included_parts(file) {
+            if !crate::validation::namespace_segment(part) {
+                return Err(format!("「{path}」をC#名前空間に使えません。名前を変更するか、このフォルダをOFFにしてください。"));
+            }
+        }
+        Ok(())
+    }
+    pub fn for_source(&self, file: &str) -> String {
+        let mut ns = self.root.clone();
+        for (_, part) in self.included_parts(file) {
+            ns.push('.');
+            ns.push_str(part);
+        }
+        ns
+    }
+    fn included_parts<'a>(&self, file: &'a str) -> Vec<(String, &'a str)> {
+        let mut parts = Vec::new();
+        let mut path = String::new();
+        let (folder, _) = file.rsplit_once('/').unwrap_or(("", file));
+        for part in folder.split('/').filter(|p| !p.is_empty()) {
+            if !path.is_empty() {
+                path.push('/');
+            }
+            path.push_str(part);
+            if !self.folders.get(&path).copied().unwrap_or(self.use_folders) {
+                break;
+            }
+            parts.push((path.clone(), part));
+        }
+        parts
+    }
+}
+impl Default for Namespaces {
+    fn default() -> Self {
+        Self {
+            root: "Masterdata.Generated".into(),
+            use_folders: false,
+            folders: IndexMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespaces: Option<Namespaces>,
     pub name: String,
     pub profiles: IndexMap<String, Profile>,
     pub publish: PublishConfig,
@@ -463,6 +523,7 @@ pub fn default_config(name: &str) -> Config {
         },
     );
     Config {
+        namespaces: None,
         name: if name.is_empty() {
             "新しいプロジェクト".to_string()
         } else {

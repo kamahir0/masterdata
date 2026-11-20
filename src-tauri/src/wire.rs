@@ -182,6 +182,12 @@ pub fn config_to_data(config: &Config) -> Data {
 
     let mut map = IndexMap::new();
     map.insert("name".to_string(), Data::Str(config.name.clone()));
+    if let Some(ns) = &config.namespaces {
+        map.insert(
+            "namespaces".into(),
+            Data::from_json_value(&serde_json::json!(ns), false),
+        );
+    }
     map.insert("profiles".to_string(), Data::Map(profiles));
     map.insert("publish".to_string(), Data::Map(publish));
     Data::Map(map)
@@ -228,7 +234,13 @@ pub fn config_from_data(data: &Data) -> Result<Config, String> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let namespaces = data
+        .get("namespaces")
+        .map(|ns| serde_json::from_value(ns.to_json_value()))
+        .transpose()
+        .map_err(|e| format!("namespaces: {e}"))?;
     Ok(Config {
+        namespaces,
         name,
         profiles,
         publish: PublishConfig { csharp, binary },

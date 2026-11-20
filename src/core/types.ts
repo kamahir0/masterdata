@@ -23,6 +23,7 @@ export interface Profile {
 }
 export interface Config {
   name: string;
+  namespaces?: import("./namespaces").Namespaces;
   profiles: Record<string, Profile>;
   publish: { csharp: string; binary: string };
 }

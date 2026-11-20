@@ -54,6 +54,8 @@ test.beforeEach(async ({ browser }, info) => {
         `kind: type\nname: Extra${i}\ncustom:\n  fields: []\n`,
       );
   }
+  if (info.title.startsWith("folder namespaces"))
+    await fs.mkdir(path.join(root, "sources/Battle/Tutorial/Enemy"), {recursive: true});
   if (info.title.startsWith("hierarchy")) {
     await fs.mkdir(
       path.join(
@@ -4077,4 +4079,33 @@ test("window close discard and save failure protect data", async () => {
   await dialog.getByRole("button", { name: "保存しない" }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
   expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).not.toContain("保存しない変更");
+});
+
+test("folder namespaces stop at the parent, confirm reactivation, and survive save and reopen", async () => {
+  const settings = page.getByRole("dialog", {name: "プロジェクト設定"});
+  const open = () => page.getByRole("button", {name: "プロジェクト設定", exact: true}).click();
+  const select = async (path: string) => {
+    await settings.getByRole("combobox", {name: "名前空間の対象フォルダ"}).click();
+    await page.locator(".ant-select-item-option").filter({hasText: new RegExp("^" + path + "$")}).click();
+  };
+  await open();
+  const rootInput = settings.getByRole("textbox", {name: "ルート名前空間"});
+  await rootInput.fill("PjName"); await rootInput.press("Enter");
+  await settings.getByRole("switch", {name: "フォルダ構成を既定で反映"}).click();
+  const toggle = settings.getByRole("switch", {name: "このフォルダ名を名前空間に含める"});
+  await select("Battle/Tutorial");
+  await toggle.click();
+  await select("Battle/Tutorial/Enemy");
+  await expect(settings.locator("code")).toHaveText("PjName.Battle");
+  await toggle.click();
+  await page.getByRole("button", {name: "キャンセル", exact: true}).click();
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await page.getByRole("button", {name: "まとめてONにする"}).click();
+  await expect(settings.locator("code")).toHaveText("PjName.Battle.Tutorial.Enemy");
+  await settings.locator(".ant-drawer-close").click();
+  await saveAll();
+  await expect.poll(async () => readConfig(await fs.readFile(path.join(root, "masterdata.toml"), "utf8")).namespaces?.root).toBe("PjName");
+  await page.reload(); await open(); await select("Battle/Tutorial/Enemy");
+  await expect(settings.locator("code")).toHaveText("PjName.Battle.Tutorial.Enemy");
 });

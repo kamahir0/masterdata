@@ -79,6 +79,8 @@ YAML sourceはlegacy2のschema / data / typeの形を採用し、schema内record
 
 Projectは固定名`masterdata.toml`に名前・profiles・publish先を保存し、そのfileがあるfolderをrootとして`sources/`以下のYAMLを編集する。内部作業領域は`.masterdata/`。旧YAML設定と旧CLI設定構造へのfallback / 自動importは行わない。nameは空でない文字列を必須とし、省略したprofiles / publishはdefaultを補う。syntaxや既知項目のshape不正はfileと理由を示して読込を中止し、現在のdraftを保持する。未変更設定textを保存の副作用で書き直さない。設定変更の保存では未知項目の値を保持し、アプリ管理のblock TOMLへ整形する（手編集comment / layoutのroundtripは対象外）。設定も外部変更検出と保存transactionで保護し、Publish先として上書きできない。tagsのinclude / excludeによるprofilesをGUIで編集・選択し、今回含まれるrecordを確認できる。Build profile初期値は未選択とし、「プロファイルを選択」を表示する。clearや選択profileの削除で未選択へ戻る。未選択でもBuildでき、タグで絞り込まない既存規則を保持し、結果panelでも未選択 / 絞り込みなしとして示す。
 
+生成するC#のルート名前空間とフォルダ階層の反映をプロジェクト設定で指定する。フォルダごとの切替、継承、保存と互換性は[フォルダ名前空間](../spec-changes/0033-folder-namespaces.md)の通り。
+
 ## BUILD-001 — BuildとPublish
 
 明示Buildは選択profileのcurrent draft snapshotを検証する。未保存draftを対象にしたことを表示し、暗黙Saveをしない。不整合があれば該当箇所へ戻れる診断を返し、前回の成功成果物を保持する。Build中も編集可能で、完了時は対象revisionを識別する。

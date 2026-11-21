@@ -1,3 +1,5 @@
+import { masterItems, sameShape } from "../core/master-values";
+import { MasterReferenceCell, recordOptions } from "./master-value-editor";
 import React, {
   useEffect,
   useMemo,
@@ -69,9 +71,7 @@ import {
 import {
   Entry,
   TypeSelect,
-  ValueControl,
   parseInput,
-  type ReferenceOption,
 } from "./inputs";
 import { ModifierButtons } from "./fields";
 import type { Cursor } from "./nested";
@@ -497,6 +497,7 @@ export function GridEditor({
         })),
     };
   };
+  const availableItems = masterItems(snapshot);
   const columns: ColumnsType<Row> = [
     {
       key: "grip",
@@ -627,21 +628,8 @@ export function GridEditor({
           r.fields[0] === field.name &&
           r.target?.fields?.length === 1,
       );
-      const target =
-        reference &&
-        tables(snapshot).find((t) => t.name === reference.target.table);
-      const referenceOptions: ReferenceOption[] | undefined =
-        target &&
-        target.sources.flatMap((s: Source) =>
-          (s.data.records ?? []).map((r: any, i: number) => ({
-            value: `${s.id}:${i}`,
-            label: `${text(r[reference.target.fields[0]])} ${r.name ?? r.title ?? ""}`,
-            displayName: text(r.name ?? r.title ?? ""),
-            actual: r[reference.target.fields[0]],
-            source: s.id,
-            index: i,
-          })),
-        );
+      const referenceOptions = recordOptions(snapshot, table.source, field);
+      const candidates = availableItems.filter(x => sameShape(x.field, field));
       return {
         key: identity(field),
         width:
@@ -804,7 +792,7 @@ export function GridEditor({
             ),
           ),
         render: (_: unknown, row: Row) => (
-          <ValueControl
+          <MasterReferenceCell candidates={candidates}
             snapshot={snapshot}
             field={field}
             value={row.record?.[field.name]}

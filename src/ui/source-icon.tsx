@@ -3,6 +3,7 @@ import type { Source } from "../core/types";
 import { typeKind } from "../core/types";
 
 export type SourceKind =
+  | "masterValue"
   | "table"
   | "data"
   | "enum"
@@ -11,6 +12,7 @@ export type SourceKind =
   | "valueObject"
   | "file";
 const labels: Record<SourceKind, string> = {
+  masterValue: "マスター値",
   table: "テーブル",
   data: "データ",
   enum: "Enum（単一選択）",
@@ -51,7 +53,7 @@ export function SourceKindIcon({
             <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="1" />
             <path d="M2 6h12M6 6v7.5M10 6v7.5M2 10h12" />
           </>
-        ) : kind === "data" ? (
+        ) : kind === "data" || kind === "masterValue" ? (
           <>
             <rect x="1.75" y="2.25" width="12.5" height="11.5" rx="1" />
             <path d="M6.5 5h5M6.5 8h5M6.5 11h5" />
@@ -104,6 +106,7 @@ export function SourceIcon({
 }
 
 export function sourceKind(source?: Source): SourceKind {
+  if (source?.data?.kind === "masterValue") return "masterValue";
   return source?.data?.kind === "schema"
     ? "table"
     : source?.data?.kind === "data"
@@ -111,6 +114,7 @@ export function sourceKind(source?: Source): SourceKind {
       : (typeKind(source) ?? "file");
 }
 export const kindBadges: Record<SourceKind, string> = {
+  masterValue: "マスター値",
   table: "TABLE",
   data: "TABLE DATA",
   enum: "ENUM",

@@ -80,7 +80,7 @@ pub fn validate(input: &Snapshot, profile: &str) -> Vec<Problem> {
     } else {
         input.clone()
     };
-    let mut problems: Vec<Problem> = Vec::new();
+    let (snapshot, mut problems) = crate::master_values::resolve(&snapshot);
     let mut add = |source: &Source, path: Vec<PathKey>, message: String, code: &str| {
         if problems.len() < 2000 {
             problems.push(Problem {

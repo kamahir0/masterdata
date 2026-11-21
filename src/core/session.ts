@@ -1,3 +1,4 @@
+import { isMaster, rewriteRefs, sameKey } from "./master-values";
 import {
   type LoadedProject,
   type Snapshot,
@@ -233,7 +234,7 @@ export class Session {
     }));
   }
   add(
-    kind: "table" | "enum" | "flags" | "custom" | "valueObject" | "data",
+    kind: "masterValue" | "table" | "enum" | "flags" | "custom" | "valueObject" | "data",
     folder = "",
     table = "",
   ): string {
@@ -242,14 +243,14 @@ export class Session {
     return source.id;
   }
   prepareSource(
-    kind: "table" | "enum" | "flags" | "custom" | "valueObject" | "data",
+    kind: "masterValue" | "table" | "enum" | "flags" | "custom" | "valueObject" | "data",
     folder = "",
     table = "",
   ): Source {
     const id = uid();
     let index = 1;
     const stem =
-      kind === "table" ? "new-table" : kind === "data" ? "new-data" : "NewType";
+      kind === "masterValue" ? "MasterValues" : kind === "table" ? "new-table" : kind === "data" ? "new-data" : "NewType";
     const names = new Set(
       this.state.snapshot.sources.flatMap((f) => [
         f.data?.table,
@@ -271,7 +272,7 @@ export class Session {
     while (names.has(`${stem}${index}`) || occupied(`${stem}${index}`)) index++;
     const name = `${stem}${index}`;
     const data: any =
-      kind === "table"
+      kind === "masterValue" ? { kind, table: name, keyMode: "number", fields: [], records: [{}] } : kind === "table"
         ? {
             kind: "schema",
             table: name,
@@ -390,7 +391,7 @@ export class Session {
     const source = this.state.snapshot.sources.find((f) => f.id === id)!;
     const fields = fieldsOf(source);
     const template = copyIndex === undefined ? undefined : fields[copyIndex];
-    const prefix = template ? `${template.name}Copy` : "field";
+    const prefix = isMaster(source) ? "Value" : template ? `${template.name}Copy` : "field";
     let n = 1;
     while (fields.some((f) => f.name === `${prefix}${n}`)) n++;
     const name = `${prefix}${n}`;
@@ -398,18 +399,24 @@ export class Session {
       ...template,
       key:
         Math.max(
-          -1,
+          isMaster(source) ? 0 : -1,
           ...fields.map((f) => Number(f.key ?? -1)).filter(Number.isFinite),
         ) + 1,
       name,
       type: template?.type ?? "string",
     };
+    if (isMaster(source)) {
+      let candidate = 1;
+      const used = new Set(fields.map(f => String(f.valueKey)));
+      while (used.has(source.data.keyMode === "number" ? String(candidate) : `Value${candidate}`)) candidate++;
+      field.valueKey = source.data.keyMode === "number" ? BigInt(candidate) : `Value${candidate}`;
+    }
     const next = [...fields];
     next.splice(template ? copyIndex! + 1 : fields.length, 0, field);
     this.change(template ? "項目を複製" : "項目を追加", (snapshot) => {
       const sources = mapRecords(
         snapshot,
-        source.data.custom ? null : source.data.table,
+        source,
         source.data.custom ? source.data.name : null,
         (record) =>
           name in record
@@ -448,7 +455,7 @@ export class Session {
     this.change("項目を削除", (snapshot) => {
       const sources = mapRecords(
         snapshot,
-        source.data.custom ? null : source.data.table,
+        source,
         source.data.custom ? source.data.name : null,
         (record) => {
           const next = { ...record };
@@ -480,7 +487,7 @@ export class Session {
     this.change("候補名を変更", (snapshot) => {
       const sources = snapshot.sources.map((s) => {
         if (!Array.isArray(s.data?.records)) return s;
-        const schema = snapshot.sources.find(
+        const schema = isMaster(s) ? s : snapshot.sources.find(
           (f) => f.data?.kind === "schema" && f.data?.table === s.data.table,
         );
         if (!schema) return s;
@@ -553,6 +560,7 @@ export class Session {
           value,
           value.map((v) => rewrite(v, type, { ...field, array: false }, seen)),
         );
+      if (value?.$masterValue) return value;
       if (!value || typeof value !== "object" || Array.isArray(value))
         return value;
       const def = thisSnapshot.sources.find(
@@ -584,7 +592,7 @@ export class Session {
               : ["fields", index, "name"],
             name,
           );
-        if (!isCustom && f.data?.table === source.data.table) {
+        if (!isCustom && (f.id === id || (!isMaster(source) && !isMaster(f) && f.data?.table === source.data.table))) {
           if (Array.isArray(data.records))
             data = {
               ...data,
@@ -640,7 +648,7 @@ export class Session {
             ),
           };
         if (isCustom && Array.isArray(data?.records)) {
-          const table = tables(s).find((t) => t.name === data.table);
+          const table = isMaster(f) ? { fields: fieldsOf(f) } : tables(s).find((t) => t.name === data.table);
           if (table)
             data = {
               ...data,
@@ -663,8 +671,38 @@ export class Session {
       }),
     }));
   }
+  renameMaster(id: string, name: string, index?: number, key?: Data) {
+    const source = this.state.snapshot.sources.find(s => s.id === id)!;
+    const oldName = source.data.table;
+    const fields = fieldsOf(source);
+    const previous = index === undefined ? undefined : fields[index].valueKey;
+    const unambiguous = this.state.snapshot.sources.filter(s => isMaster(s) && s.data.table === oldName).length === 1
+      && (index === undefined || fields.filter(f => sameKey(f.valueKey, previous)).length === 1);
+    this.change("マスター値を変更", snapshot => ({
+      ...snapshot,
+      sources: snapshot.sources.map(s => {
+        if (s.id === id) {
+          const path = index === undefined ? ["table"] : ["fields", index, "valueKey"];
+          let data = setIn(s.data, path, index === undefined ? name : key);
+          if (index !== undefined && typeof previous === "string" && /^Value\d+$/.test(previous)
+              && fields[index].name === previous && typeof key === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+              && !fields.some(f => f.name === key) && !Object.hasOwn(data.records?.[0] ?? {}, key)) {
+            data = setIn(data, ["fields", index, "name"], key);
+            const row = { ...data.records[0], [key]: data.records[0][previous] };
+            delete row[previous];
+            data = setIn(data, ["records", 0], row);
+          }
+          return { ...s, raw: undefined, data };
+        }
+        if (!unambiguous) return s;
+        return rewriteRefs(s, ref => ref?.definition === oldName && (index === undefined || sameKey(ref.key, previous))
+          ? { ...ref, definition: name, key: index === undefined ? ref.key : key } : ref);
+      })
+    }));
+  }
   renameDeclaration(id: string, name: string) {
     const source = this.state.snapshot.sources.find((f) => f.id === id)!;
+    if (isMaster(source)) return this.renameMaster(id, name);
     const key = source.data?.kind === "type" ? "name" : "table";
     const old = source.data?.[key];
     if (!source.data || source.syntaxError)
@@ -675,7 +713,7 @@ export class Session {
         let data = f.data;
         if (
           key === "table" &&
-          (f.id === id || (typeof old === "string" && data?.table === old))
+          (f.id === id || (!isMaster(f) && typeof old === "string" && data?.table === old))
         )
           data = { ...data, table: name };
         if (key === "name") {

@@ -5,6 +5,7 @@
 | [関数列とテーブル書式](display-evaluation.md) | Implemented | Gridでの隔離評価、データAPI、書式、診断 |
 | [表示関数のスキーマ編集](display-schema.md) | Implemented | 関数カラム・動的書式の定義、GUI編集と永続化 |
 | [Desktop Authoring](desktop.md) | Implemented | 編集session、表・型・値、保存、Build / Publish、標準UIとmotion |
+| [マスター値](master-values.md) | Implemented | 定義と編集、セルからの参照、Build |
 | [Browser Authoring](browser.md) | Implemented | 静的Browser、ローカル選択・メモリ編集・明示保存・中断復旧、Desktop / CLIとの境界 |
 | [CLI Authoring and Automation](cli.md) | Implemented | AI・自動化向けCLI、構造把握・検証、AST保持編集・横断rename・一括tx、Build / Publish |
 | [Distribution, Release and Public Documentation](distribution.md) | Approved | 公開README、実機スクリーンショット、配布・リリースCI/CD、リポジトリメタデータ |

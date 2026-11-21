@@ -1812,3 +1812,8 @@ button:focus-visible,
 .display-text { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 .display-error { cursor: pointer; font-weight: bold; color: var(--danger, #b44a37); background: transparent; border: 0; }
 .column-badges button { font: inherit; color: var(--muted); cursor: pointer; background: transparent; border: 0; }
+
+.master-values-editor { padding: 12px; }
+.master-values-editor > .ant-space { margin-bottom: 10px; }
+.master-reference-cell { display: flex; align-items: center; min-width: 0; }
+.master-reference-cell > .value-control { flex: 1; min-width: 0; }

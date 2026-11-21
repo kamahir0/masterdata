@@ -4,6 +4,7 @@ export interface Field {
   name: string;
   type: string;
   key?: number | bigint;
+  valueKey?: string | number | bigint;
   array?: boolean;
   nullable?: boolean;
 }

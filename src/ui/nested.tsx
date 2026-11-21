@@ -52,7 +52,7 @@ function cursorAt(
 ): Cursor | null {
   if (depth < 2) return null;
   const source = snapshot.sources.find((s) => s.id === cursor.source);
-  let schema = snapshot.sources.find(
+  let schema = source?.data?.kind === "masterValue" ? source : snapshot.sources.find(
     (s) => s.data?.table === source?.data?.table && s.data?.kind === "schema",
   );
   let field: Field | undefined;

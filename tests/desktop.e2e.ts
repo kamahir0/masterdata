@@ -4078,3 +4078,36 @@ test("window close discard and save failure protect data", async () => {
   await expect.poll(() => page.evaluate(() => (window as any).__closed)).toBe(true);
   expect(await fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).not.toContain("保存しない変更");
 });
+
+test("マスター値を作成してセルから参照し、改名・全保存・再読込する", async () => {
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいマスター値$/ }).click();
+  const filename = page.getByLabel("項目の名前", { exact: true });
+  await filename.fill("Messages");
+  await filename.press("Enter");
+  await page.getByRole("button", { name: "項目を追加", exact: true }).click();
+  const key = page.getByLabel("項目キー", { exact: true });
+  await key.fill("1001");
+  await key.press("Enter");
+  const property = page.getByLabel("プロパティ名", { exact: true });
+  await property.fill("Welcome");
+  await property.press("Enter");
+  const value = page.getByLabel("Welcomeの値", { exact: true });
+  await value.fill("こんにちは");
+  await value.press("Enter");
+  await selectSource("announcement");
+  await page.getByRole("button", { name: "マスター値を参照", exact: true }).first().click();
+  await page.getByRole("combobox", { name: "参照するマスター値" }).click();
+  await page.getByText("Messages / 1001 · Welcome", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Messages / 1001（こんにちは）" })).toBeVisible();
+  await selectSource("Messages");
+  await key.fill("2002");
+  await key.press("Enter");
+  await saveAll();
+  await expect.poll(async () => fs.readFile(path.join(root, "sources/announcements/announcement.yaml"), "utf8")).toContain("key: 2002");
+  await page.reload();
+  await selectSource("announcement");
+  await page.getByRole("button", { name: "Messages / 2002（こんにちは）" }).click();
+  await page.getByRole("button", { name: "直接値にする" }).click();
+  await expect(page.getByLabel("message 行1", { exact: true })).toHaveValue("こんにちは");
+});

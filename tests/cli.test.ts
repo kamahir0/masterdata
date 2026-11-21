@@ -789,3 +789,48 @@ test("CLI-004 & CLI-005: config, type/table subcommands, dry-run, target syntax 
   assert.match(blockedAddCol.stderr, /YAML構文エラー/);
 });
 
+
+test("マスター値の参照はプロファイルと型を検証し、直接値と一緒にBuildする", async t => {
+  const root = await tempDir(t);
+  const cli = (...args: string[]) => runCli([...args, "--json"], { cwd: root });
+  assert.equal((await runCli(["init", root])).exitCode, 0);
+  const definition = path.join(root, "sources", "battle.yaml");
+  const quest = path.join(root, "sources", "quest.yaml");
+  const source = `kind: masterValue
+table: BattleSettings
+keyMode: number
+fields:
+  - {key: 1, valueKey: 1001, name: maxPartySize, type: int}
+records:
+  - {maxPartySize: 6}
+`;
+  const records = `kind: schema
+table: Quest
+fields: [{key: 0, name: id, type: int}, {key: 1, name: limit, type: int}]
+primaryKey: {fields: [id]}
+records:
+  - {id: 1, limit: {$masterValue: {definition: BattleSettings, key: 1001}}, $tags: [debug]}
+  - {id: 2, limit: 3}
+`;
+  await fs.writeFile(definition, source);
+  await fs.writeFile(quest, records);
+  const detail = await cli("inspect", "BattleSettings");
+  assert.equal(JSON.parse(detail.stdout).detail.keyMode, "number");
+  const built = await cli("build");
+  assert.equal(built.exitCode, 0, built.stderr || built.stdout);
+  const directory = JSON.parse(built.stdout).result.directory;
+  const dataset = JSON.parse(await fs.readFile(path.join(directory, "input.json"), "utf8"));
+  assert.deepEqual(dataset.Quest.map((row: {limit: unknown}) => Number(row.limit)), [6, 3]);
+  assert.match(await fs.readFile(path.join(directory, "Generated", "MasterValueDatabase.g.cs"), "utf8"), /public BattleSettings BattleSettings/);
+  await fs.writeFile(quest, records.replace("key: 1001", 'key: "1001"'));
+  const broken = await cli("validate");
+  assert.equal(broken.exitCode, 1);
+  assert.match(broken.stdout, /MASTER_VALUE/);
+  assert.equal((await cli("validate", "--profile", "production")).exitCode, 0);
+  assert.equal((await cli("build")).exitCode, 1);
+  await fs.writeFile(quest, records);
+  await fs.writeFile(definition, source.replace("type: int", "type: long"));
+  assert.equal((await cli("validate")).exitCode, 1);
+  await fs.writeFile(definition, source);
+  assert.equal((await cli("validate")).exitCode, 0);
+});

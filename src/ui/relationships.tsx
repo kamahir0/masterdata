@@ -37,6 +37,7 @@ export function Relationships({
   });
   return (
     <div className="relationships editor-scroll">
+      {source.data.kind !== "masterValue" && <>
       <Card title="主キー" size="small">
         <Typography.Paragraph type="secondary">
           レコードを識別する、重複しない項目の組み合わせです。
@@ -144,6 +145,7 @@ export function Relationships({
           </Typography.Text>
         )}
       </Card>
+      </>}
       <Card
         title="別の表への参照"
         size="small"

@@ -3996,8 +3996,10 @@ test("display functions keep the full group through file scope, insert, delete, 
   const values = page.locator(".display-text");
   await expect(values).toHaveText(["30%", "50%", "100%"]);
   await page.getByLabel("行1の操作", {exact:true}).click();
-  await page.getByRole("menuitem", {name:/下へ/}).click();
+  const moveDown = page.getByRole("menuitem", {name:/下へ/});
+  await moveDown.click();
   await expect(values).toHaveText(["50%", "30%", "100%"]);
+  await expect(moveDown).toBeHidden();
   await page.getByLabel("行1の操作", {exact:true}).click();
   await page.getByRole("menuitem", {name:/削除/}).click();
   await expect(values).toHaveText(["60%", "100%"]);

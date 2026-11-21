@@ -114,6 +114,7 @@ pub fn in_profile(snapshot: &Snapshot, name: &str) -> Snapshot {
         .sources
         .iter()
         .map(|s| {
+            if crate::master_values::is_master(s) { return s.clone(); }
             if let Some(records) = s.data.get("records").and_then(|v| v.as_array()) {
                 let filtered: Vec<Data> = records
                     .iter()
@@ -384,7 +385,7 @@ pub fn map_typed_value<F>(
 where
     F: Fn(&Data) -> Data,
 {
-    if value.is_null_or_undefined() {
+    if value.get("$masterValue").is_some() || value.is_null_or_undefined() {
         return value.clone();
     }
     if field.array {
@@ -447,10 +448,10 @@ where
                 return source.clone();
             };
             let src_table = source.data.get("table").and_then(|v| v.as_str()).unwrap_or("");
-            let schema = snapshot.sources.iter().find(|s| {
+            let schema = if crate::master_values::is_master(source) { Some(source) } else { snapshot.sources.iter().find(|s| {
                 s.data.get("kind").and_then(|v| v.as_str()) == Some("schema")
                     && s.data.get("table").and_then(|v| v.as_str()) == Some(src_table)
-            });
+            }) };
             let mut any_changed = false;
             let next_records: Vec<Data> = records
                 .iter()
@@ -459,7 +460,7 @@ where
                         return record.clone();
                     }
                     if let Some(t_name) = table_name {
-                        if src_table == t_name {
+                        if src_table == t_name && !crate::master_values::is_master(source) {
                             let updated = modify(record);
                             if &updated != record {
                                 any_changed = true;

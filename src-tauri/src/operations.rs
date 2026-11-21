@@ -225,7 +225,7 @@ impl EditSession {
                 };
                 let table_name = s.data.get("table").and_then(|v| v.as_str());
                 let Some(schema) = snap_clone.sources.iter().find(|f| {
-                    f.data.get("kind").and_then(|v| v.as_str()) == Some("schema")
+                    matches!(f.data.get("kind").and_then(Data::as_str), Some("schema" | "masterValue"))
                         && f.data.get("table").and_then(|v| v.as_str()) == table_name
                 }) else {
                     return s.clone();
@@ -470,7 +470,7 @@ impl EditSession {
                     };
                     data = data.set_in(&path, Data::Str(name.to_string()));
                 }
-                if !is_custom
+                if !is_custom && !crate::master_values::is_master(f)
                     && f.data.get("table").and_then(|v| v.as_str())
                         == Some(target_table_name.as_str())
                 {
@@ -580,7 +580,9 @@ impl EditSession {
                 if is_custom {
                     if let Some(records) = data.get("records").and_then(|v| v.as_array()).cloned() {
                         let tname = data.get("table").and_then(|v| v.as_str()).unwrap_or("");
-                        if let Some(tbl) = all_tables.iter().find(|t| t.name == tname) {
+                        let master_fields = fields_of(f);
+                        let fields = if crate::master_values::is_master(f) { Some(&master_fields) } else { all_tables.iter().find(|t| t.name == tname).map(|t| &t.fields) };
+                        if let Some(fields) = fields {
                             let next_records: Vec<Data> = records
                                 .into_iter()
                                 .map(|r| {
@@ -589,7 +591,7 @@ impl EditSession {
                                     };
                                     let mut nmap = IndexMap::new();
                                     for (k, v) in rmap {
-                                        if let Some(fld) = tbl.fields.iter().find(|fl| fl.name == k)
+                                        if let Some(fld) = fields.iter().find(|fl| fl.name == k)
                                         {
                                             let rw = rewrite_custom(
                                                 &snap_clone,
@@ -643,7 +645,7 @@ impl EditSession {
             let mut data = f.data.clone();
             if !is_type
                 && (f.id == id
-                    || (!old.is_empty()
+                    || (!old.is_empty() && !crate::master_values::is_master(f)
                         && data.get("table").and_then(|v| v.as_str()) == Some(old.as_str())))
             {
                 data = data.set_in(&[PathKey::from("table")], Data::Str(name.to_string()));
@@ -659,16 +661,11 @@ impl EditSession {
                     } else {
                         vec![PathKey::from("fields")]
                     };
-                    let updated_fields: Vec<Data> = f_fields
-                        .into_iter()
-                        .map(|mut fl| {
-                            if fl.r#type == old {
-                                fl.r#type = name.to_string();
-                            }
-                            fl.to_data()
-                        })
-                        .collect();
-                    data = data.set_in(&path, Data::Array(updated_fields));
+                    for (i, _) in f_fields.iter().enumerate().filter(|(_, f)| f.r#type == old) {
+                        let mut field_path = path.clone();
+                        field_path.extend([i.into(), "type".into()]);
+                        data = data.set_in(&field_path, Data::Str(name.into()));
+                    }
                 }
             }
             if !is_type && !old.is_empty() {
@@ -1291,6 +1288,7 @@ pub fn inspect_project(snapshot: &Snapshot, target: Option<&str>) -> Result<Data
 
     if let Some(target_str) = target {
         let normalized = target_str.strip_prefix("sources/").unwrap_or(target_str);
+        if let Some(source) = snapshot.sources.iter().filter(|s| crate::master_values::is_master(s)).find(|s| s.path == normalized || s.data.get("table").and_then(Data::as_str) == Some(target_str)) { return Ok(source.data.clone()); }
         if let Some(table) = all_tables
             .iter()
             .find(|t| t.name == target_str || t.source.path == normalized)
@@ -1497,6 +1495,7 @@ pub fn inspect_project(snapshot: &Snapshot, target: Option<&str>) -> Result<Data
                 .collect(),
         ),
     );
+    out.insert("masterValues".into(), Data::Array(snapshot.sources.iter().filter(|s| crate::master_values::is_master(s)).map(|s| s.data.clone()).collect()));
     let mut prob_summary = IndexMap::new();
     prob_summary.insert("total".to_string(), Data::Int(problems.len() as i128));
     prob_summary.insert(

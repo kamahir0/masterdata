@@ -3,6 +3,7 @@ pub mod cli;
 pub mod config;
 pub mod files;
 pub mod model;
+pub mod master_values;
 pub mod operations;
 pub mod schema;
 pub mod service;

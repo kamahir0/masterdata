@@ -1500,6 +1500,7 @@ pub fn run_cli(argv: &[String], options: CliOptions) -> CliResult {
                 .and_then(|p| p.get("syntaxErrorCount"))
                 .map(|v| v.text())
                 .unwrap_or_else(|| "0".to_string());
+            let master_values = info.get("masterValues").and_then(Data::as_array).into_iter().flatten().map(|s| s.get("table").map(Data::text).unwrap_or_default()).collect::<Vec<_>>();
             let summary_lines = [
                 format!(
                     "Project: {} ({})",
@@ -1524,6 +1525,7 @@ pub fn run_cli(argv: &[String], options: CliOptions) -> CliResult {
                         ty_desc.join(", ")
                     }
                 ),
+                format!("マスター値 ({}): {}", master_values.len(), master_values.join(", ")),
                 format!("Problems: {total_probs} (syntaxErrors: {syn_probs})"),
             ];
             let mut payload = IndexMap::new();
@@ -1971,4 +1973,3 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 }
-

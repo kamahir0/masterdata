@@ -59,6 +59,7 @@ import {
 } from "./core/types";
 import { Explorer, SourceIcon } from "./ui/explorer";
 import { GridEditor } from "./ui/grid";
+import { MasterValueEditor } from "./ui/master-value-editor";
 import { TypeEditor } from "./ui/type-editor";
 import { Relationships } from "./ui/relationships";
 import { FieldEditor } from "./ui/fields";
@@ -629,7 +630,9 @@ function Workspace({
   };
   const title =
     source?.data?.kind === "type" ? source.data.name : source?.data?.table;
-  const tabs =
+  const tabs = source?.data?.kind === "masterValue" ? [
+    { key: "data", label: "項目" }, { key: "relations", label: "参照" }, { key: "source", label: "ソース", icon: <CodeOutlined /> },
+  ] :
     source?.data?.kind === "type"
       ? [
           { key: "data", label: "型の定義" },
@@ -817,6 +820,8 @@ function Workspace({
                           </>
                         ) : source.data?.kind === "type" ? (
                           <TypeEditor source={source} snapshot={snapshot} />
+                        ) : source.data?.kind === "masterValue" && tab !== "relations" ? (
+                          <MasterValueEditor navigate={select} snapshot={snapshot} source={source} onOpen={setCursor} />
                         ) : tab === "data" ? (
                           <GridEditor
                             key={source.id}

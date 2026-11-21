@@ -48,7 +48,7 @@ export function recordAllocator(
   table: TableInfo,
 ): (template?: Data) => Data {
   const rows = table.sources.flatMap((s) =>
-    Array.isArray(s.data?.records) ? s.data.records : [],
+    s.data?.kind !== "masterValue" && Array.isArray(s.data?.records) ? s.data.records : [],
   );
   const keys: string[][] = [
     table.source.data.primaryKey?.fields,

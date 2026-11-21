@@ -15,6 +15,7 @@ import {
   list,
 } from "./types";
 import { primitiveOf, inProfile } from "./schema";
+import { resolveMasterValues } from "./master-values";
 const ranges: Record<string, [bigint, bigint]> = {
   int: [-2147483648n, 2147483647n],
   uint: [0n, 4294967295n],
@@ -26,8 +27,7 @@ export const fingerprint = (value: Data): string =>
     typeof v === "bigint" ? { $integer: String(v) } : v,
   );
 export function validate(input: Snapshot, profile = ""): Problem[] {
-  const snapshot = profile ? inProfile(input, profile) : input;
-  const problems: Problem[] = [];
+  const { snapshot, problems } = resolveMasterValues(profile ? inProfile(input, profile) : input);
   const add = (
     source: Source,
     path: (string | number)[],

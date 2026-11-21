@@ -1,5 +1,6 @@
 import {
   type Snapshot,
+  type Source,
   type Field,
   type Data,
   typeSource,
@@ -15,7 +16,7 @@ export function mapTypedValue(
   modify: (value: Data) => Data,
   seen = new Set<string>(),
 ): Data {
-  if (value === null || value === undefined) return value;
+  if (value == null || (isObject(value) && Object.hasOwn(value, "$masterValue"))) return value;
   if (field.array) {
     if (!Array.isArray(value)) return value;
     const next = value.map((v) =>
@@ -54,18 +55,18 @@ export function mapTypedValue(
 }
 export function mapRecords(
   snapshot: Snapshot,
-  tableName: string | null,
+  owner: Source,
   typeName: string | null,
   modify: (record: Data) => Data,
 ): Snapshot["sources"] {
   return snapshot.sources.map((source) => {
     if (!Array.isArray(source.data?.records)) return source;
-    const schema = snapshot.sources.find(
+    const schema = source.data?.kind === "masterValue" ? source : snapshot.sources.find(
       (s) => s.data?.kind === "schema" && s.data?.table === source.data.table,
     );
     const records = source.data.records.map((record: Data) => {
       if (!isObject(record)) return record;
-      if (tableName && source.data.table === tableName) return modify(record);
+      if (!typeName && (source.id === owner.id || (owner.data.kind === "schema" && source.data.kind === "data" && source.data.table === owner.data.table))) return modify(record);
       if (!typeName || !schema) return record;
       let next = record;
       for (const field of fieldsOf(schema)) {

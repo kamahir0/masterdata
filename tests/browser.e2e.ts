@@ -1098,3 +1098,25 @@ test("browser authors and reloads view settings while every canonical file stays
   await open(page);
   await expect(page.locator(".display-text").first()).toHaveText("No.1");
 });
+
+test("マスター値の文字列キーをBrowserで保存して再読込できる", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: "新しい項目", exact: true }).click();
+  await page.getByRole("menuitem", { name: /新しいマスター値$/ }).click();
+  const filename = page.getByLabel("項目の名前", { exact: true });
+  await filename.fill("ShopSettings");
+  await filename.press("Enter");
+  await page.getByRole("combobox", { name: "キー方式" }).click();
+  await page.getByText("文字列", { exact: true }).click();
+  await page.getByRole("button", { name: "項目を追加", exact: true }).click();
+  const key = page.getByLabel("項目キー", { exact: true });
+  await key.fill("001");
+  await key.press("Enter");
+  await saveAll(page);
+  await expect.poll(() => read(page, "sources/announcements/ShopSettings.yaml").catch(() => "")).toContain("001");
+  await page.reload();
+  await open(page);
+  await select(page, "ShopSettings");
+  await expect(key).toHaveValue("001");
+  await expect(page.getByRole("combobox", { name: "キー方式" })).toBeDisabled();
+});

@@ -14,6 +14,7 @@ import {
   typeSource,
   typeKind,
 } from "../src/core/types";
+import { isMaster, resolveMasterValues } from "../src/core/master-values";
 import { inProfile } from "../src/core/schema";
 import { validate } from "../src/core/validation";
 import { safePath, optionalRead, digest, type Workspace } from "./files";
@@ -64,6 +65,8 @@ export function generate(snapshot: Snapshot): {
   input: string;
 } {
   const types = typeSources(snapshot);
+  const masterNames = new Set(snapshot.sources.filter(isMaster).map(s => s.data.table));
+  snapshot = resolveMasterValues(snapshot).snapshot;
   const allTables = tables(snapshot);
   const files: Record<string, string> = {};
   const prefix =
@@ -85,6 +88,9 @@ export function generate(snapshot: Snapshot): {
   function fieldType(f: Field): string {
     return `${base(f.type)}${f.array ? "[]" : ""}${f.nullable ? "?" : ""}`;
   }
+  function propertyName(name: string, table?: TableInfo) {
+    return table && masterNames.has(table.name) && name !== "MasterValueRowId" ? `@${name}` : publicName(name);
+  }
   function props(fields: Field[], table?: TableInfo): string {
     return fields
       .map((f, i) => {
@@ -100,7 +106,7 @@ export function generate(snapshot: Snapshot): {
               );
           },
         );
-        return `  ${annotations.join("\n  ")}\n  public ${fieldType(f)} ${publicName(f.name)} { get; set; }${(f.type === "string" || f.array) && !f.nullable ? " = null!;" : ""}`;
+        return `  ${annotations.join("\n  ")}\n  public ${fieldType(f)} ${propertyName(f.name, table)} { get; set; }${(f.type === "string" || f.array) && !f.nullable ? " = null!;" : ""}`;
       })
       .join("\n");
   }
@@ -138,16 +144,21 @@ export function generate(snapshot: Snapshot): {
         : `${targetType}${optional ? "?" : ""}`;
       const args = reference.fields.map((n: string) => {
         const f = table.fields.find((f) => f.name === n)!;
-        const prop = publicName(n);
+        const prop = propertyName(n, table);
         return optional && f.type !== "string" && !f.array
           ? `${prop}.Value`
           : prop;
       });
       const tuple = args.length === 1 ? args[0] : `(${args.join(", ")})`;
-      helpers += `\n  public ${ret} ${reference.csharpName || `Get${publicName(reference.name)}`}(MemoryDatabase database) {\n${optional ? `    if (${reference.fields.map((n: string) => `${publicName(n)} is null`).join(" && ")}) return ${targetKey?.nonUnique ? `${ret}.Empty` : "null"};\n` : ""}    return database.${className(target)}Table.FindBy${reference.target.fields.map(publicName).join("And")}(${tuple});\n  }\n`;
+      helpers += `\n  public ${ret} ${reference.csharpName || `Get${publicName(reference.name)}`}(MemoryDatabase database) {\n${optional ? `    if (${reference.fields.map((n: string) => `${propertyName(n, table)} is null`).join(" && ")}) return ${targetKey?.nonUnique ? `${ret}.Empty` : "null"};\n` : ""}    return database.${className(target)}Table.FindBy${reference.target.fields.map(publicName).join("And")}(${tuple});\n  }\n`;
     }
     files[`${name}.g.cs`] =
       `${prefix}[MemoryTable(${quote(table.name)}), MessagePackObject]\npublic sealed partial class ${name} {\n${props(table.fields, table)}${helpers}\n}\n`;
+  }
+  if (masterNames.size) {
+    const properties = allTables.filter(t => masterNames.has(t.name)).map(className)
+      .map(n => `  public ${n} ${n} => database.${n}Table.FindByMasterValueRowId(0);`).join("\n");
+    files["MasterValueDatabase.g.cs"] = `${prefix}public sealed class MasterValueDatabase {\n  private readonly MemoryDatabase database;\n  public MasterValueDatabase(MemoryDatabase database) => this.database = database;\n${properties}\n}\n`;
   }
   let variable = 0;
   function read(f: Field, e: string): string {
@@ -179,7 +190,7 @@ export function generate(snapshot: Snapshot): {
   let body = "";
   for (const table of allTables) {
     const name = className(table);
-    body += `var rows${name} = new List<${name}>();\nforeach(var input in document.RootElement.GetProperty(${quote(table.name)}).EnumerateArray()) rows${name}.Add(new ${name} { ${table.fields.map((f) => `${publicName(f.name)} = ${read(f, `input.GetProperty(${quote(f.name)})`)}`).join(", ")} });\nbuilder.Append(rows${name});\n`;
+    body += `var rows${name} = new List<${name}>();\nforeach(var input in document.RootElement.GetProperty(${quote(table.name)}).EnumerateArray()) rows${name}.Add(new ${name} { ${table.fields.map((f) => `${propertyName(f.name, table)} = ${read(f, `input.GetProperty(${quote(f.name)})`)}`).join(", ")} });\nbuilder.Append(rows${name});\n`;
   }
   body +=
     "var bytes = builder.Build();\nvar database = new MemoryDatabase(bytes);\n";
@@ -301,12 +312,13 @@ export async function buildWorkspace(
   ]);
   if (!log.includes("PASS MasterMemory build / reload / every selected row"))
     throw new Error("成果物のreload確認を取得できませんでした。");
+  const builtTables = tables(resolveMasterValues(snapshot).snapshot);
   const result: BuildResult = {
     directory,
     revision,
     profile,
-    tables: tables(snapshot).length,
-    records: tables(snapshot).reduce(
+    tables: builtTables.length,
+    records: builtTables.reduce(
       (sum, t) =>
         sum + t.sources.reduce((n, s) => n + (s.data.records?.length ?? 0), 0),
       0,

@@ -290,7 +290,8 @@ export function Explorer({
       ].join("/");
       if (edit.creation) {
         const item = edit.creation.item;
-        session.create(typeof item === "string" ? path : { ...item, path });
+        session.create(typeof item === "string" ? path : item.data?.kind === "masterValue"
+          ? { ...item, path, data: { ...item.data, table: edit.value } } : { ...item, path });
         setKeys([typeof item === "string" ? `folder:${path}` : item.id]);
         if (typeof item !== "string") onSelect(item.id, true);
       } else movePath(edit.path, path);
@@ -309,7 +310,7 @@ export function Explorer({
     if (edit.creation) setKeys(edit.creation.previousKeys);
   };
   function add(
-    kind: "table" | "enum" | "flags" | "custom" | "valueObject" | "folder",
+    kind: "masterValue" | "table" | "enum" | "flags" | "custom" | "valueObject" | "folder",
     folder = parent,
   ) {
     run(() =>
@@ -341,6 +342,7 @@ export function Explorer({
       icon: <SourceKindIcon kind="table" />,
       label: "新しいテーブル",
     },
+    { key: "masterValue", icon: <SourceKindIcon kind="masterValue" />, label: "新しいマスター値" },
     { key: "enum", icon: <SourceKindIcon kind="enum" />, label: "新しいEnum" },
     {
       key: "flags",
